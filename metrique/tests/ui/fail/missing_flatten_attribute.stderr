@@ -1,0 +1,25 @@
+error[E0277]: the trait bound `ChildMetricsEntry: metrique_writer_core::value::Value` is not satisfied
+  --> tests/ui/fail/missing_flatten_attribute.rs:13:1
+   |
+13 | #[metrics(rename_all = "PascalCase")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `metrique_writer_core::value::Value` is not implemented for `ChildMetricsEntry`
+...
+19 |     downstream_operation: Slot<ChildMetrics>,
+   |     -------------------- required by a bound introduced by this call
+   |
+   = help: the following other types implement trait `metrique_writer_core::value::Value`:
+             &T
+             Arc<T>
+             Box<T>
+             Cow<'_, T>
+             Duration
+             FormattedValue<'_, V, VF>
+             Option<T>
+             String
+           and $N others
+   = note: required for `Option<ChildMetricsEntry>` to implement `metrique_writer_core::value::Value`
+note: required by a bound in `value`
+  --> $WORKSPACE/metrique-writer-core/src/entry/mod.rs
+   |
+   |     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized));
+   |                                                                      ^^^^^ required by this bound in `EntryWriter::value`

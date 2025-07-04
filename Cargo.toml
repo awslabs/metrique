@@ -1,0 +1,3 @@
+[workspace]
+resolver = "3"
+members = [ "metrique", "metrique-core", "metrique-macro", "metrique-timesource", "metrique-writer","metrique-writer-core", "metrique-writer-format-emf", "metrique-writer-macro"]

@@ -1,0 +1,5 @@
+error: Cannot combine flatten with name
+ --> tests/ui/fail/rename-errors.rs:8:24
+  |
+8 |     #[metrics(flatten, name = "rename")]
+  |                        ^^^^

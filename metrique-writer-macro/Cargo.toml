@@ -1,0 +1,16 @@
+[package]
+name = "metrique-writer-macro"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+darling = "0.20"
+str_inflector = "0.12"
+synstructure = "0.13"
+syn = "2"

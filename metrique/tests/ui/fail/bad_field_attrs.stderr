@@ -1,0 +1,53 @@
+error: Unknown field: `bad_root_attr`
+ --> tests/ui/fail/bad_field_attrs.rs:6:38
+  |
+6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
+  |                                      ^^^^^^^^^^^^^
+
+error: Unknown field: `bad_root_attr_eq`
+ --> tests/ui/fail/bad_field_attrs.rs:6:53
+  |
+6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
+  |                                                     ^^^^^^^^^^^^^^^^
+
+error: Duplicate field `name`
+  --> tests/ui/fail/bad_field_attrs.rs:10:27
+   |
+10 |     #[metrics(name = "a", name = "b")]
+   |                           ^^^^
+
+error: Duplicate field `unit`
+  --> tests/ui/fail/bad_field_attrs.rs:14:31
+   |
+14 |     #[metrics(unit = Seconds, unit = Minutes)]
+   |                               ^^^^
+
+error: Cannot combine flatten with name
+  --> tests/ui/fail/bad_field_attrs.rs:17:24
+   |
+17 |     #[metrics(flatten, name = "foo")]
+   |                        ^^^^
+
+error: Unexpected type `int`
+  --> tests/ui/fail/bad_field_attrs.rs:20:22
+   |
+20 |     #[metrics(name = 5)]
+   |                      ^
+
+error: Unknown field: `nme`. Did you mean `name`?
+  --> tests/ui/fail/bad_field_attrs.rs:23:15
+   |
+23 |     #[metrics(nme = "foo")]
+   |               ^^^
+
+error: invalid name: name field must not be empty
+  --> tests/ui/fail/bad_field_attrs.rs:26:22
+   |
+26 |     #[metrics(name = "")]
+   |                      ^^
+
+error: invalid name: name must not contain spaces
+  --> tests/ui/fail/bad_field_attrs.rs:29:22
+   |
+29 |     #[metrics(name = "a b")]
+   |                      ^^^^^

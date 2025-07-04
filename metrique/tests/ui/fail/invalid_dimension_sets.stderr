@@ -1,0 +1,17 @@
+error: expected a list of dimensions like `["Service", "Operation"]`
+ --> tests/ui/fail/invalid_dimension_sets.rs:7:28
+  |
+7 |     emf::dimension_sets = ["a", "b", "c"],
+  |                            ^^^
+
+error: expected a list of dimensions like `["Service", "Operation"]`
+ --> tests/ui/fail/invalid_dimension_sets.rs:7:33
+  |
+7 |     emf::dimension_sets = ["a", "b", "c"],
+  |                                 ^^^
+
+error: expected a list of dimensions like `["Service", "Operation"]`
+ --> tests/ui/fail/invalid_dimension_sets.rs:7:38
+  |
+7 |     emf::dimension_sets = ["a", "b", "c"],
+  |                                      ^^^

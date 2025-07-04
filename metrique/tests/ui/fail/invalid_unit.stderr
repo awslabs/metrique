@@ -1,0 +1,10 @@
+error[E0412]: cannot find type `NonExistentUnit` in this scope
+  --> tests/ui/fail/invalid_unit.rs:11:22
+   |
+11 |     #[metrics(unit = NonExistentUnit)]
+   |                      ^^^^^^^^^^^^^^^ not found in this scope
+   |
+help: you might be missing a type parameter
+   |
+7  | struct MetricsWithInvalidUnit<NonExistentUnit> {
+   |                              +++++++++++++++++

@@ -1,0 +1,28 @@
+[package]
+name = "metrique-writer-format-emf"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
+
+[dependencies]
+bit-set = "0.8"
+smallvec = { version = "1.13.1", features = ["union", "const_generics", "const_new"] }
+serde_json = "1"
+dtoa = "1"
+itoa = "1"
+itertools = "0.14"
+rand = "0.9"
+hashbrown = "0.15"
+serde = { version = "1", features = ["derive"] }
+metrique-writer-core = { path = "../metrique-writer-core" }
+metrique-writer = { path = "../metrique-writer" }
+
+[dev-dependencies]
+assert-json-diff = "2"
+assert_approx_eq = "1.1.0"
+test-case = "3"
+rand_chacha = "0.9"
+metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
+metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
+tokio = { version = "1", features = ["macros", "test-util"] }
+metrics = "0.24"

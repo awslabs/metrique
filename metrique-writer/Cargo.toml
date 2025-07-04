@@ -1,0 +1,46 @@
+[package]
+name = "metrique-writer"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.87"  # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
+
+[dependencies]
+ahash = "0.8.6"
+smallvec = { version = "1.13.1", features = ["union", "const_generics", "const_new"] }
+tracing-subscriber = { version = "0.3", optional = true }
+rand = "0.9"
+crossbeam-queue = { version = "0.3", optional = true }
+crossbeam-utils = { version = "0.8", optional = true }
+tokio = { version = "1", optional = true, default-features = false, features = ["sync"] }
+tokio-util = { version = "0.7.10", optional = true, features = ["rt"] }
+tracing = { version = "0.1", optional = true }
+metrics = { version = "0.24", optional = true }
+metrics-util = { version = "0.19", optional = true }
+futures = { version = "0.3", default-features = false, optional = true }
+pin-project = { version = "1", optional = true }
+histogram = { version = "0.11", optional = true }
+metrique-writer-core = { path = "../metrique-writer-core" }
+metrique-writer-macro = { path = "../metrique-writer-macro" }
+
+[dev-dependencies]
+enum-map = "2"
+strum_macros = "0.27"
+metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
+metrics-util = { version = "0.19", features = ["debugging"] }
+futures = { version = "0.3", features = ["executor"] }
+tokio = { version = "1", features = ["macros", "test-util"] }
+tracing-appender = "0.2"
+tempfile = "3"
+assert_approx_eq = "1"
+test-case = "3"
+assert-json-diff = "2"
+serde_json = "1"
+
+[features]
+default = ["background_queue", "tracing_subscriber_03", "metrics_rs_024", "metrics_rs_bridge"]
+test-util = []
+metrics_rs_bridge = ["dep:pin-project", "dep:futures", "dep:histogram", "dep:tokio-util", "tokio/time", "futures/executor"]
+metrics_rs_024 = ["dep:metrics", "dep:metrics-util"]
+background_queue = ["dep:tokio", "dep:crossbeam-queue", "dep:crossbeam-utils", "dep:tracing"]
+tracing_subscriber_03 = ["dep:tracing-subscriber"]

@@ -1,0 +1,8 @@
+[package]
+name = "metrique-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+metrique-writer-core = { path = "../metrique-writer-core" }
+itertools = "0.14"

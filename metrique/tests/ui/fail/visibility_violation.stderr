@@ -1,0 +1,5 @@
+error[E0616]: field `private_field` of struct `PublicMetricsInMod` is private
+  --> tests/ui/fail/visibility_violation.rs:31:34
+   |
+31 |     let _val2 = metrics_from_mod.private_field;
+   |                                  ^^^^^^^^^^^^^ private field
