@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![cfg(feature = "test-util")]
 //! [`TestEntry`] provides a way to directly introspect the result of writing out fields with `Entry`
 //!
 //! This requires that the `test-util` feature be enabled.
@@ -226,7 +225,6 @@ impl ValueWriter for TestValueWriter<'_> {
 /// Converts an [`Entry`] into a `TestEntry` that can be introspected
 ///
 /// > NOTE: This method is probably not what you want. Use [`test_sink`] instead.
-/// Typically, customers will not use this method directly, but instead use [`test_sink`]
 pub fn to_test_entry(e: impl Entry) -> TestEntry {
     let mut entry = TestEntry::empty();
     e.write(&mut entry);

@@ -767,7 +767,7 @@ impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
                 .flat_map(|d| {
                     dimensions
                         .dim_sets()
-                        .map(|e| extend_dimensions(d.clone(), e.map(|x| &x[..])))
+                        .map(|e| extend_dimensions(d.clone(), e))
                 })
                 .collect();
             self.entry_dimensions = Some(dimensions);
