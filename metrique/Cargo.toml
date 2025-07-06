@@ -8,27 +8,27 @@ default = []
 test-util = []
 
 [dependencies]
-tokio = { version = "1.43.0", features = ["sync"] }
+tokio = { workspace = true, features = ["sync"] }
 metrique-writer-core = { path = "../metrique-writer-core" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.0" }
 metrique-core = { path = "../metrique-core", version = "0.1.0" }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.0" }
-ryu = "1.0.20"
-itoa = "1.0.15"
+ryu = { workspace = true }
+itoa = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1.43.0", features = ["full", "test-util"] }
-tracing-subscriber = "0.3.19"
-tracing-appender = "0.2"
+tokio = { workspace = true, features = ["full", "test-util"] }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.0", features = ["custom-timesource", "tokio", "test-util"] }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf", features = [] }
-tracing = "0.1.41"
-tokio-util = { version = "0.7.13", features = ["rt"] }
-trybuild = "1.0"
-rustversion = "1.0.20"
+tracing = { workspace = true }
+tokio-util = { workspace = true, features = ["rt"] }
+trybuild = { workspace = true }
+rustversion = { workspace = true }
 metrique = { path = ".", features = ["test-util"] }
-serde_json = "1.0.140"
-anyhow = "1.0.98"
+serde_json = { workspace = true }
+anyhow = { workspace = true }
 

@@ -10,11 +10,11 @@ test-util = ["custom-timesource"]
 default = []
 
 [dependencies]
-tokio = { version = "1", features = ["time"], optional = true }
+tokio = { workspace = true, features = ["time"], optional = true }
 
 [dev-dependencies]
 metrique-timesource = { path = ".", features = ["custom-timesource", "tokio", "test-util"] }
-tokio = { version = "1", features = ["test-util", "full"] }
+tokio = { workspace = true, features = ["test-util", "full"] }
 
 [package.metadata.docs.rs]
 all-features = true

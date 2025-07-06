@@ -5,4 +5,4 @@ edition = "2024"
 
 [dependencies]
 metrique-writer-core = { path = "../metrique-writer-core" }
-itertools = "0.14"
+itertools = { workspace = true }
