@@ -152,7 +152,8 @@ impl RootAttributes {
     fn create_configuration(&self) -> Vec<Ts2> {
         let mut fields = vec![];
         if let Some(dims) = &self.emf_dimensions {
-            fields.push(quote! { __config__: ::metrique::__plumbing_entry_dimensions!(dims: #dims) })
+            fields
+                .push(quote! { __config__: ::metrique::__plumbing_entry_dimensions!(dims: #dims) })
         }
         fields
     }

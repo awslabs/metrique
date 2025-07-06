@@ -4,7 +4,9 @@
 use metrique_writer_core::unit::{NegativeScale, PositiveScale};
 
 /// convert a metrics::Unit to an metrique_writer_core::Unit
-pub(crate) fn metrics_unit_to_metrique_unit(unit: Option<metrics::Unit>) -> metrique_writer_core::Unit {
+pub(crate) fn metrics_unit_to_metrique_unit(
+    unit: Option<metrics::Unit>,
+) -> metrique_writer_core::Unit {
     match unit {
         Some(u) => match u {
             metrics::Unit::Count => metrique_writer_core::Unit::Count,
@@ -118,7 +120,10 @@ mod test {
             metrique_writer_core::Unit::None
         );
         for (metrique_unit, metrics_unit) in map {
-            assert_eq!(metrics_unit_to_metrique_unit(Some(metrics_unit)), metrique_unit);
+            assert_eq!(
+                metrics_unit_to_metrique_unit(Some(metrics_unit)),
+                metrique_unit
+            );
         }
     }
 }
