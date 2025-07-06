@@ -21,7 +21,7 @@ insta = "1.36"
 itertools = { version = "0.14", default-features = false }
 itoa = "1.0.15"
 metrics = "0.24"
-metrics-util = "0.19"
+metrics-util = "0.20"
 pin-project = "1"
 prettyplease = "0.2"
 proc-macro2 = "1.0"

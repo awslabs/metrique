@@ -1,10 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[rustversion::attr(not(stable(1.87.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
+#[rustversion::attr(not(stable(1.88.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
 #[allow(dead_code)]
 fn matching_rust_version() -> bool {
-    rustversion::cfg!(stable(1.87.0))
+    rustversion::cfg!(stable(1.88.0))
 }
 
 #[test]
