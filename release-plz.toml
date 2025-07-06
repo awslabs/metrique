@@ -1,0 +1,27 @@
+[[package]]
+name = "metrique"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "metrique-core"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "metrique-macro"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "metrique-writer"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "metrique-writer-core"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "metrique-writer-format-emf"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
+name = "metrique-writer-macro"
+changelog_path = "CHANGELOG.md"

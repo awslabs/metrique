@@ -1,0 +1,24 @@
+name: Build
+on: [pull_request]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        toolchain:
+          - "1.87" # Current MSRV due to extend_from_within
+          - stable
+        flags:
+          - "--all-features"
+          - "--no-default-features"
+    env:
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        uses: ./.github/actions/rust-build
+        with:
+          toolchain: ${{ matrix.toolchain }}
+          flags: ${{ matrix.flags }}
