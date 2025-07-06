@@ -5,17 +5,17 @@ edition = "2024"
 rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
 
 [dependencies]
-smallvec = { version = "1.13.1", features = ["union", "const_generics", "const_new"] }
-itertools = { version = "0.14", default-features = false }
-serde = { version = "1", optional = true }
+smallvec = { workspace = true, features = ["union", "const_generics", "const_new"] }
+itertools = { workspace = true, default-features = false }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
-assert-json-diff = "2"
+assert-json-diff = { workspace = true }
 metrique-writer = { path = "../metrique-writer", features = ["tracing_subscriber_03"] }
-tracing-appender = "0.2"
+tracing-appender = { workspace = true }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
-serde_json = "1"
-tempfile = "3"
+serde_json = { workspace = true }
+tempfile = { workspace = true }
 
 [features]
 default = ["serde"]
