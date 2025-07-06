@@ -32,7 +32,10 @@ struct RequestMetrics {
 }
 
 impl RequestMetrics {
-    fn init(operation: &'static str, sink: impl Into<metrique::DefaultSink>) -> RequestMetricsGuard {
+    fn init(
+        operation: &'static str,
+        sink: impl Into<metrique::DefaultSink>,
+    ) -> RequestMetricsGuard {
         Self {
             operation,
             ..Default::default()

@@ -1,10 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[rustversion::attr(not(stable(1.88.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
+// The UI tests need to be specific to a rustc version, since error output
+// changes between versions. Currently, this should be testing a version
+// that is explicitly tested in our CI rather than merely being the latest
+// stable, to ensure the test does not "vanish" when Rust releases a new version.
+#[rustversion::attr(not(stable(1.87.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
 #[allow(dead_code)]
 fn matching_rust_version() -> bool {
-    rustversion::cfg!(stable(1.88.0))
+    rustversion::cfg!(stable(1.87.0))
 }
 
 #[test]

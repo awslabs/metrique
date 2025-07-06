@@ -274,11 +274,10 @@ impl Recorder for MetricRecorder {
         unit: Option<metrics::Unit>,
         _description: metrics::SharedString,
     ) {
-        self.0
-            .units
-            .write()
-            .unwrap()
-            .insert(key.as_str().to_string(), metrics_unit_to_metrique_unit(unit));
+        self.0.units.write().unwrap().insert(
+            key.as_str().to_string(),
+            metrics_unit_to_metrique_unit(unit),
+        );
     }
 
     fn describe_gauge(
@@ -287,11 +286,10 @@ impl Recorder for MetricRecorder {
         unit: Option<metrics::Unit>,
         _description: metrics::SharedString,
     ) {
-        self.0
-            .units
-            .write()
-            .unwrap()
-            .insert(key.as_str().to_string(), metrics_unit_to_metrique_unit(unit));
+        self.0.units.write().unwrap().insert(
+            key.as_str().to_string(),
+            metrics_unit_to_metrique_unit(unit),
+        );
     }
 
     fn describe_histogram(
@@ -300,11 +298,10 @@ impl Recorder for MetricRecorder {
         unit: Option<metrics::Unit>,
         _description: metrics::SharedString,
     ) {
-        self.0
-            .units
-            .write()
-            .unwrap()
-            .insert(key.as_str().to_string(), metrics_unit_to_metrique_unit(unit));
+        self.0.units.write().unwrap().insert(
+            key.as_str().to_string(),
+            metrics_unit_to_metrique_unit(unit),
+        );
     }
 
     fn register_counter(
