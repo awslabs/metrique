@@ -20,7 +20,6 @@ impl<E1: Entry, E2: Entry> Entry for Merged<E1, E2> {
     }
 }
 
-
 /// Merges 2 [Entry] objects by reference. See [Entry::merge_by_ref].
 #[derive(Debug)]
 pub struct MergedRef<'a, E1: ?Sized, E2: ?Sized>(pub(super) &'a E1, pub(super) &'a E2);

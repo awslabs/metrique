@@ -6,3 +6,7 @@ edition = "2024"
 [dependencies]
 metrique-writer-core = { path = "../metrique-writer-core" }
 itertools = { workspace = true }
+
+[dev-dependencies]
+metrique = { path = "../metrique" }
+metrique-writer = { path = "../metrique-writer" }
