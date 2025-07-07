@@ -40,6 +40,7 @@ pub mod timers;
 /// handle that work in the background.
 pub mod slot;
 
+use metrique_core::CloseEntry;
 use metrique_writer_core::Entry;
 use metrique_writer_core::EntryWriter;
 use metrique_writer_core::entry::SampleGroupElement;
@@ -144,15 +145,12 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
-pub struct AppendAndCloseOnDrop<
-    E: CloseValue<Closed: InflectableEntry>,
-    S: EntrySink<RootEntry<E::Closed>>,
-> {
+pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
     inner: Parent<AppendAndCloseOnDropInner<E, S>>,
 }
 
 impl<
-    E: CloseValue<Closed: InflectableEntry> + Send + Sync + 'static,
+    E: CloseEntry + Send + Sync + 'static,
     S: EntrySink<RootEntry<E::Closed>> + Send + Sync + 'static,
 > AppendAndCloseOnDrop<E, S>
 {
@@ -193,17 +191,12 @@ impl<
     }
 }
 
-struct AppendAndCloseOnDropInner<
-    E: CloseValue<Closed: InflectableEntry>,
-    S: EntrySink<RootEntry<E::Closed>>,
-> {
+struct AppendAndCloseOnDropInner<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
     entry: Option<E>,
     sink: S,
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> Deref
-    for AppendAndCloseOnDrop<E, S>
-{
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndCloseOnDrop<E, S> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {
@@ -211,17 +204,13 @@ impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>
     }
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> DerefMut
-    for AppendAndCloseOnDrop<E, S>
-{
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> DerefMut for AppendAndCloseOnDrop<E, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.deref_mut()
     }
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> Deref
-    for AppendAndCloseOnDropInner<E, S>
-{
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndCloseOnDropInner<E, S> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {
@@ -229,7 +218,7 @@ impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>
     }
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> DerefMut
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> DerefMut
     for AppendAndCloseOnDropInner<E, S>
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
@@ -237,9 +226,7 @@ impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>
     }
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> Drop
-    for AppendAndCloseOnDropInner<E, S>
-{
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Drop for AppendAndCloseOnDropInner<E, S> {
     fn drop(&mut self) {
         let entry = self.entry.take().expect("only drop calls this");
         let entry = entry.close();
@@ -248,16 +235,11 @@ impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>
 }
 
 /// Handle to an AppendAndCloseOnDrop
-pub struct AppendAndCloseOnDropHandle<
-    E: CloseValue<Closed: InflectableEntry>,
-    S: EntrySink<RootEntry<E::Closed>>,
-> {
+pub struct AppendAndCloseOnDropHandle<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
     inner: Arc<AppendAndCloseOnDrop<E, S>>,
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> Clone
-    for AppendAndCloseOnDropHandle<E, S>
-{
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Clone for AppendAndCloseOnDropHandle<E, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -265,7 +247,7 @@ impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>
     }
 }
 
-impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
+impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
     for AppendAndCloseOnDropHandle<E, S>
 {
     type Target = E;
@@ -308,7 +290,7 @@ impl<E: CloseValue<Closed: InflectableEntry>, S: EntrySink<RootEntry<E::Closed>>
 /// # }
 /// ```
 pub fn append_and_close<
-    C: CloseValue<Closed: InflectableEntry> + Send + Sync + 'static,
+    C: CloseEntry + Send + Sync + 'static,
     S: EntrySink<RootEntry<C::Closed>> + Send + Sync + 'static,
 >(
     base: C,

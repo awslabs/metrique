@@ -5,6 +5,7 @@ use crate::entry::SampleGroupElement;
 
 use super::{Entry, EntryWriter};
 
+/// Merges 2 [Entry] objecs by value. See [Entry::merge].
 #[derive(Clone, Debug)]
 pub struct Merged<E1, E2>(pub(super) E1, pub(super) E2);
 
@@ -19,6 +20,7 @@ impl<E1: Entry, E2: Entry> Entry for Merged<E1, E2> {
     }
 }
 
+/// Merges 2 [Entry] objects by reference. See [Entry::merge_by_ref].
 #[derive(Debug)]
 pub struct MergedRef<'a, E1: ?Sized, E2: ?Sized>(pub(super) &'a E1, pub(super) &'a E2);
 

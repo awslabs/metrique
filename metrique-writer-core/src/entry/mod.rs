@@ -9,7 +9,7 @@ pub use boxed::BoxEntry;
 mod map;
 
 mod merged;
-use merged::{Merged, MergedRef};
+pub use merged::{Merged, MergedRef};
 
 use crate::Value;
 

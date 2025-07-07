@@ -605,6 +605,8 @@ name = "metrique-core"
 version = "0.1.0"
 dependencies = [
  "itertools",
+ "metrique",
+ "metrique-writer",
  "metrique-writer-core",
 ]
 
