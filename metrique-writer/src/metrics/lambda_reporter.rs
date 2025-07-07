@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module contains a metric reporter that allows easily emitting metrics from a Lambda.
+//!
+//! It is designed for short-lived Lambda handlers that want to flush metrics once, at the end of
+//! an invocation, rather than on a background loop.
+//!
+//! It provides a default [`install_reporter()`] method that flushes to stdout,
+//! or a [`install_reporter_to_writer()`] method that allows customizing the i/o destination.
+//!
+//! You are responsible for calling [`flush_metrics()`] or [`flush_metrics_sync()`] at the end
+//! of your Lambda invocation handler, or else no metrics will be emitted.
 
 use std::io;
 use std::io::stdout;
@@ -184,11 +193,16 @@ pub fn install_reporter<F: Format + Send + 'static>(f: F) {
 
 /// Synchronously flush the metrics in the current reporter. This function blocks
 /// until the metrics are flushed so it is undesirable to use it in an async context.
+///
+/// You are responsible for calling [`flush_metrics()`] or [`flush_metrics_sync()`] at the end
+/// of your Lambda invocation handler, or else no metrics will be emitted.
 pub fn flush_metrics_sync() -> Result<(), IoStreamError> {
     futures::executor::block_on(flush_metrics())
 }
 
 /// Asynchronously flush the metrics in the current reporter
+/// You are responsible for calling [`flush_metrics()`] or [`flush_metrics_sync()`] at the end
+/// of your Lambda invocation handler, or else no metrics will be emitted.
 pub async fn flush_metrics() -> Result<(), IoStreamError> {
     if let Some(metrics) = METRIC_REPORTER.get() {
         metrics.report().await;
