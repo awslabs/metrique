@@ -10,6 +10,7 @@ use metrique::{
 #[derive(Default)]
 pub struct LookupBookMetrics {
     books_considered: usize,
+    success: bool,
     error: bool,
 }
 
@@ -18,10 +19,12 @@ fn instrument_on_error() {
     let (is_odd, metrics) = try_odd(3).into_parts();
     assert_eq!(is_odd, Ok(true));
     assert_eq!(metrics.error, false);
+    assert_eq!(metrics.success, true);
 
     let (is_odd, metrics) = try_odd(4).into_parts();
     assert_eq!(is_odd, Err(4));
     assert_eq!(metrics.error, true);
+    assert_eq!(metrics.success, false);
 }
 
 fn try_odd(n: usize) -> instrument::Result<bool, usize, LookupBookMetrics> {
@@ -30,6 +33,7 @@ fn try_odd(n: usize) -> instrument::Result<bool, usize, LookupBookMetrics> {
         if n % 2 == 0 { Err(n) } else { Ok(true) }
     })
     .on_error(|_res, metrics| metrics.error = true)
+    .on_success(|_res, metrics| metrics.success = true)
 }
 
 #[tokio::test]

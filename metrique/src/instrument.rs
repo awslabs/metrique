@@ -119,13 +119,13 @@ impl<T, E, U> Instrumented<std::result::Result<T, E>, U> {
     ///     Instrumented::instrument(EventMetrics::default(), |metrics| {
     ///         let event: usize = event.parse()?;
     ///         Ok(event)
-    ///     }).on_success(|_e, metrics|metrics.success = true)
+    ///     }).on_success(|_v, metrics|metrics.success = true)
     /// }
     /// ```
-    pub fn on_success(self, f: impl FnOnce(&E, &mut U)) -> Self {
+    pub fn on_success(self, f: impl FnOnce(&T, &mut U)) -> Self {
         self.finalize_metrics(|res, metrics| {
-            if let Err(e) = res {
-                f(e, metrics);
+            if let Ok(v) = res {
+                f(v, metrics);
             }
         })
     }
