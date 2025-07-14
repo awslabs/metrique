@@ -45,7 +45,7 @@ impl PrefixedStringBuf {
     }
 
     #[inline]
-    pub fn push_str<'a>(&'a mut self, s: &str) -> &'a mut Self {
+    pub fn push_raw_str<'a>(&'a mut self, s: &str) -> &'a mut Self {
         self.buf.push_str(s);
         self
     }
@@ -149,7 +149,7 @@ mod test {
     #[test]
     fn test_extend_from_within() {
         let mut buf = PrefixedStringBuf::from_prefix("0123".into());
-        buf.push_str("4567")
+        buf.push_raw_str("4567")
             .extend_from_within_range(0, 2)
             .extend_from_within_range(2, 8)
             .extend_from_within_range(0, 0);

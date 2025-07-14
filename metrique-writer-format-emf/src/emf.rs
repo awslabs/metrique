@@ -16,7 +16,7 @@ use metrique_writer_core::{
 use rand::rngs::ThreadRng;
 use rand::{Rng, RngCore};
 use std::any::Any;
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 use std::mem;
 use std::num::NonZero;
 use std::ops::Deref;
@@ -148,8 +148,8 @@ pub struct Emf {
 
 #[derive(Clone)]
 struct State {
-    namespaces: Vec<String>,
-    each_dimensions_str: Vec<String>,
+    namespaces: Vec<JsonEncodedString>,
+    each_dimensions_str: Vec<JsonEncodedArray>,
     dimension_set_map: hashbrown::HashMap<DimensionSet, MetricsForDimensionSet>,
 
     // buf that string fields can be added to
@@ -197,6 +197,76 @@ pub struct MetricDefinition<'a> {
 pub enum StorageResolution {
     Second = 1,
     Minute = 60,
+}
+
+/// Contains a JSON string that has been JSON-encoded
+#[derive(Clone)]
+struct JsonEncodedString {
+    encoded_str: String,
+}
+
+impl JsonEncodedString {
+    fn encode(input: &str) -> Self {
+        JsonEncodedString {
+            encoded_str: serde_json::to_string(input).expect("everything here is valid"),
+        }
+    }
+}
+
+impl Display for JsonEncodedString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.encoded_str.fmt(f)
+    }
+}
+
+/// Contains a JSON array that has been JSON-encoded
+#[derive(Clone)]
+struct JsonEncodedArray {
+    encoded_array: String,
+}
+
+impl JsonEncodedArray {
+    fn encode(input: &[String]) -> Self {
+        JsonEncodedArray {
+            encoded_array: serde_json::to_string(input).expect("everything here is valid"),
+        }
+    }
+
+    fn extend_with_strings<'a>(self, extend_with: impl Iterator<Item = &'a str>) -> Self {
+        let mut encoded_array = self.encoded_array;
+        let mut first: bool = encoded_array.len() == 2; // []
+        encoded_array.pop();
+        for name in extend_with {
+            if !first {
+                encoded_array.push(',');
+            }
+            first = false;
+            encoded_array.json_string(name);
+        }
+        encoded_array.push(']');
+        JsonEncodedArray { encoded_array }
+    }
+}
+
+impl Display for JsonEncodedArray {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.encoded_array.fmt(f)
+    }
+}
+
+trait PushJsonSafeString {
+    fn push_json_safe_string<'a>(&'a mut self, s: &JsonEncodedString) -> &'a mut Self;
+    fn push_json_safe_array<'a>(&'a mut self, s: &JsonEncodedArray) -> &'a mut Self;
+}
+
+impl PushJsonSafeString for PrefixedStringBuf {
+    fn push_json_safe_string<'a>(&'a mut self, s: &JsonEncodedString) -> &'a mut Self {
+        self.push_raw_str(&s.encoded_str)
+    }
+
+    fn push_json_safe_array<'a>(&'a mut self, s: &JsonEncodedArray) -> &'a mut Self {
+        self.push_raw_str(&s.encoded_array)
+    }
 }
 
 impl serde::Serialize for StorageResolution {
@@ -388,17 +458,17 @@ impl EmfBuilder {
             "must publish to at least 1 namespace"
         );
 
-        let each_dimensions_str: Vec<String> = self
+        let each_dimensions_str: Vec<JsonEncodedArray> = self
             .default_dimensions
             .iter()
-            .map(|x| serde_json::to_string(x).expect("everything here is valid"))
+            .map(|x| JsonEncodedArray::encode(x))
             .collect();
-        let namespaces: Vec<String> = self
+        let namespaces: Vec<JsonEncodedString> = self
             .namespaces
             .iter()
-            .map(|ns| serde_json::to_string(ns).expect("everything here is valid"))
+            .map(|x| JsonEncodedString::encode(x))
             .collect();
-        let first_ns: &String = &namespaces[0];
+        let first_ns: &JsonEncodedString = &namespaces[0];
         let dimensions_after_ns = r#","Dimensions":["#;
         let dimensions_prefix = &format!(
             r#"{{"_aws":{{"CloudWatchMetrics":[{{"Namespace":{first_ns}{dimensions_after_ns}"#
@@ -429,6 +499,7 @@ impl EmfBuilder {
     /// you have a metric that appears only in some entries it is OK to emit a directive for it.
     pub fn directive(mut self, directive: MetricDirective) -> Self {
         self.extra_directives.push(',');
+        // injection-safe because this is pushing directly after serialization
         self.extra_directives
             .push_str(&serde_json::to_string(&directive).expect("nothing that can fail here"));
         self
@@ -626,32 +697,17 @@ struct MetricsForDimensionSet {
     index: NonZero<usize>,
 }
 
-fn extend_dimensions<'a>(mut dim_s: String, extend_with: impl Iterator<Item = &'a str>) -> String {
-    let mut first: bool = dim_s.len() == 2; // []
-    dim_s.pop();
-    for name in extend_with {
-        if !first {
-            dim_s.push(',');
-        }
-        first = false;
-        dim_s.json_string(name);
-    }
-    dim_s.push(']');
-    dim_s
-}
-
 impl MetricsForDimensionSet {
     fn new(
-        namespace_str: &str,
-        each_dimensions_str: &[String],
+        namespace_str: &JsonEncodedString,
+        each_dimensions_str: &[JsonEncodedArray],
         variable_dimensions: &DimensionSetKey<'_>,
         index: NonZero<usize>,
     ) -> Self {
         let dimensions_str = each_dimensions_str
             .iter()
             .map(|dim_s| {
-                extend_dimensions(
-                    dim_s.to_owned(),
+                dim_s.to_owned().extend_with_strings(
                     variable_dimensions.entry.iter().map(|&(name, _value)| name),
                 )
             })
@@ -691,7 +747,7 @@ pub use metrique_writer_core::config::{AllowSplitEntries, EntryDimensions};
 struct EntryWriter<'a> {
     validation_map: hashbrown::HashMap<SCow<'a>, LineData>,
     state: &'a mut State,
-    entry_dimensions: Option<Vec<String>>,
+    entry_dimensions: Option<Vec<JsonEncodedArray>>,
     validations: &'a Validation,
     timestamp: Option<SystemTime>,
     multiplicity: Option<u64>,
@@ -763,14 +819,14 @@ impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
             // FIXME: this does a bunch of allocations. If there are performance problems here, it's probably
             // good to do some caching since there are probably not many EntryDimensions values (one for
             // every metric "shape", of which I expect to be O(1)).
-            let dimensions: Vec<String> = self
+            let dimensions: Vec<JsonEncodedArray> = self
                 .state
                 .each_dimensions_str
                 .iter()
                 .flat_map(|d| {
                     dimensions
                         .dim_sets()
-                        .map(|e| extend_dimensions(d.clone(), e))
+                        .map(|e| d.clone().to_owned().extend_with_strings(e))
                 })
                 .collect();
             self.entry_dimensions = Some(dimensions);
@@ -807,26 +863,26 @@ impl EntryWriter<'_> {
         self.error.build()?;
         self.state
             .decl_buf
-            .push_str(r#"],"Timestamp":"#)
-            .push_str(timestamp_str);
-        self.state.string_fields_buf.push_str("}\n");
+            .push_raw_str(r#"],"Timestamp":"#)
+            .push_raw_str(timestamp_str); // safe because timestamp_str is a number
+        self.state.string_fields_buf.push_raw_str("}\n");
 
         let mut emitted_any_dimension_metrics = false;
 
         for entry in self.state.dimension_set_map.values_mut() {
-            entry.metrics_buf.push_str("]}");
+            entry.metrics_buf.push_raw_str("]}");
             let metrics_len = entry.metrics_buf.as_str().len();
             for namespace in &self.state.namespaces[1..] {
                 entry
                     .metrics_buf
-                    .push_str(r#",{"Namespace":"#)
-                    .push_str(namespace)
+                    .push_raw_str(r#",{"Namespace":"#)
+                    .push_json_safe_string(namespace)
                     .extend_from_within_range(entry.after_namespace_index, metrics_len);
             }
             entry
                 .metrics_buf
-                .push_str(r#"],"Timestamp":"#)
-                .push_str(timestamp_str);
+                .push_raw_str(r#"],"Timestamp":"#)
+                .push_raw_str(timestamp_str); // safe because timestamp_str is a number
             let buf: SmallVec<[_; 3]> = smallvec![
                 entry.metrics_buf.as_ref(),
                 entry.fields_buf.as_ref(),
@@ -854,18 +910,21 @@ impl EntryWriter<'_> {
                 if !mem::replace(&mut first, false) {
                     self.state.dimensions_buf.push(',');
                 }
-                self.state.dimensions_buf.push_str(dimension);
+                self.state.dimensions_buf.push_json_safe_array(dimension);
             }
-            self.state.metrics_buf.push_str("]}");
+            self.state.metrics_buf.push_raw_str("]}");
             let metrics_len = self.state.metrics_buf.as_str().len();
             for namespace in &self.state.namespaces[1..] {
                 self.state
                     .metrics_buf
-                    .push_str(r#",{"Namespace":"#)
-                    .push_str(namespace)
-                    .push_str(
+                    .push_raw_str(r#",{"Namespace":"#)
+                    .push_json_safe_string(namespace)
+                    // safe because dimensions_buf[after_namespace_index..]
+                    // contains valid dimensions
+                    .push_raw_str(
                         &self.state.dimensions_buf.as_str()[self.state.after_namespace_index..],
                     )
+                    // safe because this is valid JSON
                     .extend_from_within_range(0, metrics_len);
             }
             // it's OK to write each line with a separate call to `write_all_vectored`,
@@ -909,7 +968,8 @@ impl ValueWriter<'_, '_> {
         if v.is_finite() {
             let mut dtoa_buf = dtoa::Buffer::new();
             let as_str = dtoa_buf.format_finite(v);
-            buf.push_str(as_str.strip_suffix(".0").unwrap_or(as_str));
+            // injection-safe since this is a number
+            buf.push_raw_str(as_str.strip_suffix(".0").unwrap_or(as_str));
             Ok(())
         } else {
             Err(ValidationError::invalid(
@@ -971,11 +1031,12 @@ impl ValueWriter<'_, '_> {
             }
             (first, second) => {
                 let counts = counts_buf;
-                buf.push_str(r#"{"Values":["#);
+                buf.push_raw_str(r#"{"Values":["#);
+                counts.clear(); // clear before to make sure there is no risk
                 match Self::write_observation(buf, counts, first, multiplicity) {
                     Ok(()) => {}
                     Err(e) => {
-                        counts.clear();
+                        counts.clear(); // clear after to ensure this is not too big
                         return Err(e);
                     }
                 }
@@ -985,14 +1046,15 @@ impl ValueWriter<'_, '_> {
                     match Self::write_observation(buf, counts, observation, multiplicity) {
                         Ok(()) => {}
                         Err(e) => {
-                            counts.clear();
+                            counts.clear(); // clear after to ensure this is not too big
                             return Err(e);
                         }
                     }
                 }
-                buf.push_str(counts.as_str());
-                counts.clear();
-                buf.push_str("]}");
+                // injection-safe because this is a comma-separated list of numbers
+                buf.push_raw_str(counts.as_str());
+                counts.clear(); // clear after to ensure this is not too big
+                buf.push_raw_str("]}");
             }
         }
 
@@ -1038,16 +1100,18 @@ impl ValueWriter<'_, '_> {
         if !metrics_buf.is_empty() {
             metrics_buf.push(',');
         }
-        metrics_buf.push_str(r#"{"Name":"#).json_string(name);
+        metrics_buf.push_raw_str(r#"{"Name":"#).json_string(name);
         if unit != Unit::None {
-            metrics_buf.push_str(r#","Unit":"#).json_string(unit.name());
+            metrics_buf
+                .push_raw_str(r#","Unit":"#)
+                .json_string(unit.name());
         }
         if let Some(EmfOptions {
             storage_mode: StorageMode::HighStorageResolution,
             ..
         }) = flags
         {
-            metrics_buf.push_str(r#","StorageResolution":1}"#);
+            metrics_buf.push_raw_str(r#","StorageResolution":1}"#);
         } else {
             metrics_buf.push('}');
         }
