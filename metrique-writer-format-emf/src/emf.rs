@@ -16,7 +16,7 @@ use metrique_writer_core::{
 use rand::rngs::ThreadRng;
 use rand::{Rng, RngCore};
 use std::any::Any;
-use std::fmt::Write;
+use std::fmt::{Display, Write};
 use std::mem;
 use std::num::NonZero;
 use std::ops::Deref;
@@ -148,8 +148,8 @@ pub struct Emf {
 
 #[derive(Clone)]
 struct State {
-    namespaces: Vec<String>,
-    each_dimensions_str: Vec<String>,
+    namespaces: Vec<JsonEscapedString>,
+    each_dimensions_str: Vec<JsonEscapedArray>,
     dimension_set_map: hashbrown::HashMap<DimensionSet, MetricsForDimensionSet>,
 
     // buf that string fields can be added to
@@ -197,6 +197,41 @@ pub struct MetricDefinition<'a> {
 pub enum StorageResolution {
     Second = 1,
     Minute = 60,
+}
+
+/// Contains a string that has been JSON-escaped
+#[derive(Clone)]
+struct JsonEscapedString(String);
+
+impl Display for JsonEscapedString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Contains an array that has been JSON-escaped
+#[derive(Clone)]
+struct JsonEscapedArray(String);
+
+impl Display for JsonEscapedArray {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+trait PushJsonSafeString {
+    fn push_json_safe_string<'a>(&'a mut self, s: &JsonEscapedString) -> &'a mut Self;
+    fn push_json_safe_array<'a>(&'a mut self, s: &JsonEscapedArray) -> &'a mut Self;
+}
+
+impl PushJsonSafeString for PrefixedStringBuf {
+    fn push_json_safe_string<'a>(&'a mut self, s: &JsonEscapedString) -> &'a mut Self {
+        self.push_str(&s.0)
+    }
+
+    fn push_json_safe_array<'a>(&'a mut self, s: &JsonEscapedArray) -> &'a mut Self {
+        self.push_str(&s.0)
+    }
 }
 
 impl serde::Serialize for StorageResolution {
@@ -388,17 +423,19 @@ impl EmfBuilder {
             "must publish to at least 1 namespace"
         );
 
-        let each_dimensions_str: Vec<String> = self
+        let each_dimensions_str: Vec<JsonEscapedArray> = self
             .default_dimensions
             .iter()
-            .map(|x| serde_json::to_string(x).expect("everything here is valid"))
+            .map(|x| JsonEscapedArray(serde_json::to_string(x).expect("everything here is valid")))
             .collect();
-        let namespaces: Vec<String> = self
+        let namespaces: Vec<JsonEscapedString> = self
             .namespaces
             .iter()
-            .map(|ns| serde_json::to_string(ns).expect("everything here is valid"))
+            .map(|ns| {
+                JsonEscapedString(serde_json::to_string(ns).expect("everything here is valid"))
+            })
             .collect();
-        let first_ns: &String = &namespaces[0];
+        let first_ns: &JsonEscapedString = &namespaces[0];
         let dimensions_after_ns = r#","Dimensions":["#;
         let dimensions_prefix = &format!(
             r#"{{"_aws":{{"CloudWatchMetrics":[{{"Namespace":{first_ns}{dimensions_after_ns}"#
@@ -429,6 +466,7 @@ impl EmfBuilder {
     /// you have a metric that appears only in some entries it is OK to emit a directive for it.
     pub fn directive(mut self, directive: MetricDirective) -> Self {
         self.extra_directives.push(',');
+        // injection-safe because this is pushing directly after serialization
         self.extra_directives
             .push_str(&serde_json::to_string(&directive).expect("nothing that can fail here"));
         self
@@ -626,7 +664,11 @@ struct MetricsForDimensionSet {
     index: NonZero<usize>,
 }
 
-fn extend_dimensions<'a>(mut dim_s: String, extend_with: impl Iterator<Item = &'a str>) -> String {
+fn extend_dimensions<'a>(
+    dim_s: JsonEscapedArray,
+    extend_with: impl Iterator<Item = &'a str>,
+) -> JsonEscapedArray {
+    let mut dim_s = dim_s.0;
     let mut first: bool = dim_s.len() == 2; // []
     dim_s.pop();
     for name in extend_with {
@@ -637,13 +679,13 @@ fn extend_dimensions<'a>(mut dim_s: String, extend_with: impl Iterator<Item = &'
         dim_s.json_string(name);
     }
     dim_s.push(']');
-    dim_s
+    JsonEscapedArray(dim_s)
 }
 
 impl MetricsForDimensionSet {
     fn new(
-        namespace_str: &str,
-        each_dimensions_str: &[String],
+        namespace_str: &JsonEscapedString,
+        each_dimensions_str: &[JsonEscapedArray],
         variable_dimensions: &DimensionSetKey<'_>,
         index: NonZero<usize>,
     ) -> Self {
@@ -691,7 +733,7 @@ pub use metrique_writer_core::config::{AllowSplitEntries, EntryDimensions};
 struct EntryWriter<'a> {
     validation_map: hashbrown::HashMap<SCow<'a>, LineData>,
     state: &'a mut State,
-    entry_dimensions: Option<Vec<String>>,
+    entry_dimensions: Option<Vec<JsonEscapedArray>>,
     validations: &'a Validation,
     timestamp: Option<SystemTime>,
     multiplicity: Option<u64>,
@@ -763,7 +805,7 @@ impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
             // FIXME: this does a bunch of allocations. If there are performance problems here, it's probably
             // good to do some caching since there are probably not many EntryDimensions values (one for
             // every metric "shape", of which I expect to be O(1)).
-            let dimensions: Vec<String> = self
+            let dimensions: Vec<JsonEscapedArray> = self
                 .state
                 .each_dimensions_str
                 .iter()
@@ -808,7 +850,7 @@ impl EntryWriter<'_> {
         self.state
             .decl_buf
             .push_str(r#"],"Timestamp":"#)
-            .push_str(timestamp_str);
+            .push_str(timestamp_str); // safe because timestamp_str is a number
         self.state.string_fields_buf.push_str("}\n");
 
         let mut emitted_any_dimension_metrics = false;
@@ -820,13 +862,13 @@ impl EntryWriter<'_> {
                 entry
                     .metrics_buf
                     .push_str(r#",{"Namespace":"#)
-                    .push_str(namespace)
+                    .push_json_safe_string(namespace)
                     .extend_from_within_range(entry.after_namespace_index, metrics_len);
             }
             entry
                 .metrics_buf
                 .push_str(r#"],"Timestamp":"#)
-                .push_str(timestamp_str);
+                .push_str(timestamp_str); // safe because timestamp_str is a number
             let buf: SmallVec<[_; 3]> = smallvec![
                 entry.metrics_buf.as_ref(),
                 entry.fields_buf.as_ref(),
@@ -854,7 +896,7 @@ impl EntryWriter<'_> {
                 if !mem::replace(&mut first, false) {
                     self.state.dimensions_buf.push(',');
                 }
-                self.state.dimensions_buf.push_str(dimension);
+                self.state.dimensions_buf.push_json_safe_array(dimension);
             }
             self.state.metrics_buf.push_str("]}");
             let metrics_len = self.state.metrics_buf.as_str().len();
@@ -862,10 +904,13 @@ impl EntryWriter<'_> {
                 self.state
                     .metrics_buf
                     .push_str(r#",{"Namespace":"#)
-                    .push_str(namespace)
+                    .push_json_safe_string(namespace)
+                    // safe because dimensions_buf[after_namespace_index..]
+                    // contains valid dimensions
                     .push_str(
                         &self.state.dimensions_buf.as_str()[self.state.after_namespace_index..],
                     )
+                    // safe because this is valid JSON
                     .extend_from_within_range(0, metrics_len);
             }
             // it's OK to write each line with a separate call to `write_all_vectored`,
@@ -909,6 +954,7 @@ impl ValueWriter<'_, '_> {
         if v.is_finite() {
             let mut dtoa_buf = dtoa::Buffer::new();
             let as_str = dtoa_buf.format_finite(v);
+            // injection-safe since this is a number
             buf.push_str(as_str.strip_suffix(".0").unwrap_or(as_str));
             Ok(())
         } else {
@@ -990,6 +1036,7 @@ impl ValueWriter<'_, '_> {
                         }
                     }
                 }
+                // injection-safe because this is a comma-separated list of numbers
                 buf.push_str(counts.as_str());
                 counts.clear();
                 buf.push_str("]}");
