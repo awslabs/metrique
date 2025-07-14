@@ -21,7 +21,7 @@ use super::{
 #[derive(Default)]
 pub struct FlushImmediatelyBuilder {
     metric_name: Option<String>,
-    metric_recorder: Option<Box<dyn MetricRecorder + Send>>,
+    metric_recorder: Option<Box<dyn MetricRecorder>>,
 }
 
 impl FlushImmediatelyBuilder {
@@ -44,7 +44,7 @@ impl FlushImmediatelyBuilder {
     ///
     /// The following metrics exist:
     /// 1. `metrique_flush_time_ms` - histogram of flush operation times in milliseconds
-    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder + Send>>) -> Self {
+    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
         self.metric_recorder = recorder;
         self
     }
@@ -169,7 +169,7 @@ impl FlushImmediatelyBuilder {
 struct SinkState<S> {
     stream: S,
     name: String,
-    recorder: Option<Box<dyn MetricRecorder + Send>>,
+    recorder: Option<Box<dyn MetricRecorder>>,
 }
 
 impl<S: EntryIoStream> SinkState<S> {
