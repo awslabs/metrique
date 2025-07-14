@@ -28,7 +28,7 @@ use crate::json_string::JsonString as _;
 
 use super::buf::{PrefixedStringBuf, write_all_vectored};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Validation {
     // validations are on-when-false to make Default enable all validations
     skip_validate_unique: bool,
@@ -139,12 +139,14 @@ struct Validation {
 ///
 /// [CloudWatch Agent]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html
 /// [PutLogEvents]: https://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
+#[derive(Clone)]
 pub struct Emf {
     state: State,
     validation: Validation,
     validation_map_base: hashbrown::HashMap<SCow<'static>, LineData>,
 }
 
+#[derive(Clone)]
 struct State {
     namespaces: Vec<String>,
     each_dimensions_str: Vec<String>,
@@ -521,7 +523,7 @@ struct LineData {
     kind: LineKind,
 }
 
-#[derive(Hash, PartialEq, Eq, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 struct DimensionSet {
     entry: SmallVec<[(String, String); 2]>,
 }
@@ -615,6 +617,7 @@ impl From<&'_ DimensionSetKey<'_>> for DimensionSet {
     }
 }
 
+#[derive(Clone)]
 struct MetricsForDimensionSet {
     fields_buf: PrefixedStringBuf,
     metrics_buf: PrefixedStringBuf,
