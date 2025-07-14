@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Defines callbacks for recording metrics
-pub trait MetricRecorder {
+pub trait MetricRecorder: Send + Sync {
     /// Records a histogram entry. metric is used to define the metric, sink to define the sink, value the histogram value
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32);
     /// Increments a histogram entry. metric is used to define the metric, sink to define the sink, value the histogram value
@@ -49,7 +49,7 @@ impl MetricRecorder for GlobalMetricsRs024Bridge {
 pub(crate) struct LocalMetricsRs024Bridge<R>(pub(crate) R);
 
 #[cfg(feature = "metrics_rs_024")]
-impl<R: metrics::Recorder> MetricRecorder for LocalMetricsRs024Bridge<R> {
+impl<R: metrics::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bridge<R> {
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32) {
         self.0
             .register_histogram(
@@ -112,7 +112,7 @@ impl<R: metrics::Recorder> MetricRecorder for LocalMetricsRs024Bridge<R> {
 }
 
 pub(crate) trait GlobalRecorderVersion {
-    fn recorder() -> impl MetricRecorder + Send + 'static;
+    fn recorder() -> impl MetricRecorder + 'static;
     fn describe(metrics: &[DescribedMetric]);
 }
 
@@ -172,15 +172,15 @@ pub struct DescribedMetric {
 }
 
 pub trait LocalRecorderVersion<R> {
-    fn recorder(recorder: R) -> impl MetricRecorder + Send + 'static;
+    fn recorder(recorder: R) -> impl MetricRecorder + 'static;
 }
 
 #[cfg(feature = "metrics_rs_024")]
 impl<R> LocalRecorderVersion<R> for dyn metrics::Recorder
 where
-    R: metrics::Recorder + Send + 'static,
+    R: metrics::Recorder + Send + Sync + 'static,
 {
-    fn recorder(recorder: R) -> impl MetricRecorder + Send + 'static {
+    fn recorder(recorder: R) -> impl MetricRecorder + 'static {
         LocalMetricsRs024Bridge(recorder)
     }
 }

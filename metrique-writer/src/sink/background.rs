@@ -26,7 +26,7 @@ pub struct BackgroundQueueBuilder {
     capacity: usize,
     thread_name: String,
     metric_name: Option<String>,
-    metric_recorder: Option<Box<dyn MetricRecorder + Send>>,
+    metric_recorder: Option<Box<dyn MetricRecorder>>,
     flush_interval: Duration,
     shutdown_timeout: Duration,
 }
@@ -77,6 +77,12 @@ pub const BACKGROUND_QUEUE_METRICS: &[DescribedMetric] = &[
         r#type: MetricsRsType::Counter,
         description: "Number of metric validation errors when emitting from this queue",
     },
+    DescribedMetric {
+        name: "metrique_queue_overflows",
+        unit: MetricsRsUnit::Count,
+        r#type: MetricsRsType::Counter,
+        description: "Number of metrics lost due to the queue being full",
+    },
 ];
 
 impl BackgroundQueueBuilder {
@@ -120,6 +126,7 @@ impl BackgroundQueueBuilder {
     /// 3. `metrique_metrics_emitted` - the count of metrics emitted.
     /// 4. `metrique_io_errors` - the amount of IO errors encountered emitting metrics.
     /// 5. `metrique_validation_errors` - the amount of validation errors encountered emitting metrics.
+    /// 6. `metrique_queue_overflows` - the count of metrics being lost due to a full queue.
     ///
     /// To avoid breakage, this function intentionally does not depend on metrics-rs. To allow for
     /// bridging, you can use the [BackgroundQueueBuilder::metrics_recorder_global] or
@@ -132,7 +139,7 @@ impl BackgroundQueueBuilder {
     ///
     /// For the metrics.rs recorder, you can use something like [crate::metrics] to emit these metrics via
     /// a Metrique sink, or of course any other metrics.rs backend.
-    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder + Send>>) -> Self {
+    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
         self.metric_recorder = recorder;
         self
     }
@@ -312,9 +319,11 @@ impl BackgroundQueueBuilder {
         let unparker = parker.unparker().clone();
         let (flush_queue_sender, flush_queue_receiver) = std::sync::mpsc::channel();
         let inner = Arc::new(Inner {
+            name: self.metric_name.unwrap_or_else(|| self.thread_name.clone()),
             queue: ArrayQueue::new(self.capacity),
             unparker: unparker.clone(),
             flush_queue_sender,
+            recorder: self.metric_recorder,
         });
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
@@ -322,9 +331,7 @@ impl BackgroundQueueBuilder {
             metrics_emitted: 0,
             metric_validation_errors: 0,
             metric_io_errors: 0,
-            name: self.metric_name.unwrap_or_else(|| self.thread_name.clone()),
             stream,
-            recorder: self.metric_recorder,
             inner: Arc::clone(&inner),
             flush_interval: self.flush_interval,
             shutdown_timeout: self.shutdown_timeout,
@@ -369,6 +376,7 @@ struct FlushSignal {
 }
 
 struct Inner<E> {
+    name: String,
     // Note we use crossbeam's ArrayQueue rather than std::sync::mpsc because we want ring buffer behavior. That is, the
     // oldest entries should be dropped when the queue is full.
     queue: ArrayQueue<E>,
@@ -376,6 +384,8 @@ struct Inner<E> {
     flush_queue_sender: std::sync::mpsc::Sender<FlushSignal>,
     // The unparker allows appending threads to cheaply wake up the background writing thread
     unparker: Unparker,
+    // metric recorder
+    recorder: Option<Box<dyn MetricRecorder>>,
 }
 
 /// Guard handle that, when dropped, will block until all already appended entries are written to the output stream.
@@ -431,6 +441,9 @@ impl<E> Inner<E> {
         // force_push causes the oldest entry to be dropped if the queue is full. We want this since the more recent
         // metrics are more valuable when describing the state of the service!
         if self.queue.force_push(entry).is_some() {
+            if let Some(recorder) = self.recorder.as_ref() {
+                recorder.increment_counter("metrique_queue_overflows", &self.name, 1);
+            }
             rate_limited!(
                 Duration::from_secs(1),
                 tracing::error!(
@@ -455,7 +468,6 @@ impl<E> Inner<E> {
 
 // Background thread struct that receives entries from the shared queue.
 struct Receiver<S, E> {
-    name: String,
     metrics_emitted: u64,
     metric_validation_errors: u64,
     metric_io_errors: u64,
@@ -464,7 +476,6 @@ struct Receiver<S, E> {
     flush_interval: Duration,
     shutdown_timeout: Duration,
     shutdown_signal: Arc<AtomicBool>,
-    recorder: Option<Box<dyn MetricRecorder + Send>>,
     // Utility to notice wakeup events when an appender thread has appended something to the queue.
     parker: Parker,
 }
@@ -560,8 +571,7 @@ impl WakerTracker {
 
 impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
     fn run(mut self, flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>) {
-        let span =
-            tracing::span!(tracing::Level::TRACE, "metrics background queue", sink=?self.name);
+        let span = tracing::span!(tracing::Level::TRACE, "metrics background queue", sink=?self.inner.name);
         let _enter = span.enter();
         let mut waker_tracker = WakerTracker::new(flush_queue_receiver);
         let inner = self.inner.clone();
@@ -592,7 +602,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 if !waker_tracker.will_progress_on_drained_queue() {
                     let park_start = Instant::now();
                     self.parker.park_deadline(next_flush);
-                    if self.recorder.is_some() {
+                    if self.inner.recorder.is_some() {
                         idle_duration += park_start.elapsed();
                     }
                 }
@@ -605,7 +615,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             }
 
             self.flush_stream();
-            if let Some(recorder) = &self.recorder {
+            if let Some(recorder) = &self.inner.recorder {
                 let queue_len = self.inner.queue.len().try_into().unwrap_or(u32::MAX);
                 let total_duration = loop_start.elapsed();
                 let idle_percent: u32 = idle_duration
@@ -615,8 +625,8 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                     .unwrap_or(100)
                     .try_into()
                     .unwrap_or(100);
-                recorder.record_histogram("metrique_idle_percent", &self.name, idle_percent);
-                recorder.record_histogram("metrique_queue_len", &self.name, queue_len);
+                recorder.record_histogram("metrique_idle_percent", &self.inner.name, idle_percent);
+                recorder.record_histogram("metrique_queue_len", &self.inner.name, queue_len);
             }
             if self.shutdown_signal.load(Ordering::Relaxed) {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
@@ -678,7 +688,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             )
         }
 
-        if let Some(recorder) = &self.recorder {
+        if let Some(recorder) = &self.inner.recorder {
             // intentionally use the metric macros here, so if a new global recorder is
             // installed after the background queue is created, [most] metrics won't be lost
             //
@@ -686,17 +696,17 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             // [yes, this allocates, but it's only done once every X seconds, when flushing]
             recorder.increment_counter(
                 "metrique_metrics_emitted",
-                &self.name,
+                &self.inner.name,
                 std::mem::take(&mut self.metrics_emitted),
             );
             recorder.increment_counter(
                 "metrique_io_errors",
-                &self.name,
+                &self.inner.name,
                 std::mem::take(&mut self.metric_io_errors),
             );
             recorder.increment_counter(
                 "metrique_validation_errors",
-                &self.name,
+                &self.inner.name,
                 std::mem::take(&mut self.metric_validation_errors),
             );
         }
@@ -1043,6 +1053,7 @@ mod tests {
                         snapshot[&key(Counter, "metrique_validation_errors")],
                         (Some(Unit::Count), Some(metrics::SharedString::from("Number of metric validation errors when emitting from this queue")), DebugValue::Counter(0)),
                     );
+                    assert!(!snapshot.contains_key(&key(Counter, "metrique_queue_overflows")));
                     let (idle_percent_unit, idle_percent_desc, idle_percent_hist) = &snapshot[&key(Histogram, "metrique_idle_percent")];
                     assert_eq!(*idle_percent_unit, Some(Unit::Percent));
                     assert!(idle_percent_desc.is_some());
@@ -1126,6 +1137,12 @@ mod tests {
                                 panic!("queue len contains over-long entry {entry}");
                             }
                         }
+                        // entries will be lost, since this test overfills the queue
+                        let (_unit, _descr, lost_count) = &snapshot[&key(metrics_util::MetricKind::Counter, "metrique_queue_overflows")];
+                        match lost_count {
+                            metrics_util::debugging::DebugValue::Counter(c) if *c > 0 => {},
+                            _ => panic!("bad lost count {lost_count:?}"),
+                        };
                         have_queue_size_at_least_half
                     }
                     #[cfg(not(feature = "metrics_rs_024"))]
