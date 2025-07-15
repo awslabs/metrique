@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![deny(missing_docs)]
-
-//! This crate contains the traits for the `metrique` set of libraries. Generally, you
-//! should not depend on this crate directly. Instead, use `metrique`
+#![doc = include_str!("../README.md")]
 
 use metrique_writer_core::{EntryWriter, entry::SampleGroupElement};
 
