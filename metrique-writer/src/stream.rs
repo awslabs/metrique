@@ -13,6 +13,11 @@ pub use metrique_writer_core::{EntryIoStream, IoStreamError};
 pub trait EntryIoStreamExt: EntryIoStream {
     /// [Merge](`Entry::merge_by_ref`) every entry written to this stream with the contents of `globals`.
     ///
+    /// There is intentionally both a [`EntryIoStreamExt::merge_globals`] and a
+    /// [`FormatExt::merge_globals`],  which implement exactly the same functionality,
+    /// to allow using in interfaces that accept an [`EntryIoStream`] as well as interfaces
+    /// that accept a [`Format`].
+    ///
     /// This helps users avoid having to store global, constant field values on every metric [`Entry`],
     /// for example "devops dimensions" like AvailabilityZone.
     /// ```
@@ -36,6 +41,8 @@ pub trait EntryIoStreamExt: EntryIoStream {
     ///         })
     /// }
     /// ```
+    ///
+    /// [`FormatExt::merge_globals`]: crate::format::FormatExt::merge_globals
     fn merge_globals<G>(self, globals: G) -> MergeGlobals<Self, G>
     where
         Self: Sized,
@@ -48,6 +55,11 @@ pub trait EntryIoStreamExt: EntryIoStream {
 
     /// Adds a set of global dimensions to every metric of an entry except for those included in the
     /// `global_dimensions_denylist` as (class, instance) pairs.
+    ///
+    /// There is intentionally both a [`EntryIoStreamExt::merge_global_dimensions`] and a
+    /// [`FormatExt::merge_global_dimensions`],  which implement exactly the same functionality,
+    /// to allow using in interfaces that accept an [`EntryIoStream`] as well as interfaces
+    /// that accept a [`Format`].
     ///
     /// ```
     /// # use metrique_writer::{
@@ -70,6 +82,8 @@ pub trait EntryIoStreamExt: EntryIoStream {
     ///         .merge_global_dimensions(global_dimensions, Some(global_dimensions_denylist))
     /// }
     /// ```
+    ///
+    /// [`FormatExt::merge_global_dimensions`]: crate::format::FormatExt::merge_global_dimensions
     fn merge_global_dimensions<const N: usize>(
         self,
         global_dimensions: SmallVec<[(CowStr, CowStr); N]>,
@@ -152,10 +166,13 @@ impl<S1: EntryIoStream, S2: EntryIoStream> EntryIoStream for Tee<S1, S2> {
     }
 }
 
-/// See [`EntryIoStream::merge_globals`].
+/// See [`EntryIoStreamExt::merge_globals`] or [`FormatExt::merge_globals`].
+///
+/// [`FormatExt::merge_globals`]: crate::format::FormatExt::merge_globals
+#[derive(Clone)]
 pub struct MergeGlobals<S, G> {
-    stream: S,
-    globals: G,
+    pub(crate) stream: S,
+    pub(crate) globals: G,
 }
 
 impl<S: EntryIoStream, G: Entry> EntryIoStream for MergeGlobals<S, G> {
@@ -168,11 +185,14 @@ impl<S: EntryIoStream, G: Entry> EntryIoStream for MergeGlobals<S, G> {
     }
 }
 
-/// See [`EntryIoStream::merge_global_dimensions`].
+/// See [`EntryIoStream::merge_global_dimensions`] or [`FormatExt::merge_global_dimensions`].
+///
+/// [`FormatExt::merge_global_dimensions`]: crate::format::FormatExt::merge_global_dimensions
+#[derive(Clone)]
 pub struct MergeGlobalDimensions<S, const N: usize> {
-    stream: S,
-    global_dimensions: SmallVec<[(CowStr, CowStr); N]>,
-    global_dimensions_denylist: HashSet<CowStr>,
+    pub(crate) stream: S,
+    pub(crate) global_dimensions: SmallVec<[(CowStr, CowStr); N]>,
+    pub(crate) global_dimensions_denylist: HashSet<CowStr>,
 }
 
 impl<S: EntryIoStream, const N: usize> EntryIoStream for MergeGlobalDimensions<S, N> {
