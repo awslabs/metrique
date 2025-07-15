@@ -173,10 +173,14 @@ struct State {
 /// Serde declaration of EMF's MetricDirective type
 #[derive(serde::Serialize, Clone, Debug)]
 pub struct MetricDirective<'a> {
+    /// A DimensionSet array containing the dimension sets this metric will be emitted at
     #[serde(rename = "Dimensions")]
     pub dimensions: Vec<Vec<&'a str>>,
+    /// The list of metrics to be emitted. This array MUST NOT contain more than
+    /// 100 MetricDefinition objects.
     #[serde(rename = "Metrics")]
     pub metrics: Vec<MetricDefinition<'a>>,
+    /// The namespace of the metrics to be emitted
     #[serde(rename = "Namespace")]
     pub namespace: &'a str,
 }
@@ -184,18 +188,27 @@ pub struct MetricDirective<'a> {
 /// Serde declaration of EMF's MetricDefinition type
 #[derive(serde::Serialize, Copy, Clone, Debug)]
 pub struct MetricDefinition<'a> {
+    /// The name of the metric to be emitted
     #[serde(rename = "Name")]
     pub name: &'a str,
+    /// The unit of the metric to be emitted
     #[serde(rename = "Unit")]
     pub unit: Unit,
+    /// The storage resolution of the metric to be emitted
+    ///
+    /// If None, the metrics will be stored at the default resolution
+    /// of 1/minute
     #[serde(rename = "StorageResolution")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub storage_resolution: Option<StorageResolution>,
 }
 
 /// Serde declaration of EMF's Unit type
 #[derive(Copy, Clone, Debug)]
 pub enum StorageResolution {
+    /// Store the metric at a high storage resolution of 1/second
     Second = 1,
+    /// Store the metric at a standard storage resolution of 1/minute. This is the default.
     Minute = 60,
 }
 
@@ -435,6 +448,8 @@ impl Emf {
     }
 }
 
+/// Builder for [`Emf`]
+#[derive(Clone)]
 pub struct EmfBuilder {
     default_dimensions: Vec<Vec<String>>,
     extra_directives: String,
@@ -444,6 +459,63 @@ pub struct EmfBuilder {
 }
 
 impl EmfBuilder {
+    /// Build an [`Emf`] for formatting metrics with the input configuration
+    ///
+    /// ## Example
+    ///
+    /// This will publish the metrics to both the `MyApp` and the `MyApp2` namespaces,
+    /// under the dimension sets [["Operation"], ["Operation", "Status"]]:
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::time::{Duration, SystemTime};
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct MyMetrics {
+    ///     #[entry(timestamp)]
+    ///     start: SystemTime,
+    ///     my_field: u32,
+    ///     operation: &'static str,
+    ///     status: &'static str,
+    /// }
+    ///
+    /// let dimension_sets = vec![
+    ///     vec!["Operation".into()],
+    ///     vec!["Operation".into(), "Status".into()]
+    /// ];
+    /// let mut emf = Emf::builder("MyApp".to_string(), dimension_sets)
+    ///     .add_namespace("MyApp2".to_string())
+    ///     .build();
+    /// let mut output = Vec::new();
+    ///
+    /// emf.format(&MyMetrics {
+    ///     start: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
+    ///     my_field: 4,
+    ///     operation: "Foo",
+    ///     status: "200",
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [
+    ///                  {"Namespace": "MyApp", "Dimensions": [["Operation"], ["Operation", "Status"]], "Metrics": [{"Name": "MyField"}]},
+    ///                  {"Namespace": "MyApp2", "Dimensions": [["Operation"], ["Operation", "Status"]], "Metrics": [{"Name": "MyField"}]},
+    ///             ],
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "MyField": 4,
+    ///         "Operation": "Foo",
+    ///         "Status": "200",
+    ///     })
+    /// );
+    /// ```
     pub fn build(self) -> Emf {
         let mut validation_map = hashbrown::HashMap::new();
         for dimension_set in &self.default_dimensions {
@@ -495,8 +567,86 @@ impl EmfBuilder {
 
     /// Adds a custom EMF directive, to allow emitting specific metrics with custom dimensions.
     ///
+    /// This function is intended to allow emitting the precise desired metric directive, and
+    /// currently everything has to be specified manually.
+    ///
     /// Note that EMF skips metric definitions that refer to metrics that don't exist, so if
     /// you have a metric that appears only in some entries it is OK to emit a directive for it.
+    ///
+    /// ## Example
+    ///
+    /// This will publish all metrics with dimensions `["Operation"]`, and will also publish
+    /// the `time_taken` field with dimensions `["Operation", "MachineType"]`.
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// #    unit::{Unit, NegativeScale},
+    /// # };
+    /// # use metrique_writer_format_emf::{
+    /// #     Emf, MetricDefinition,
+    /// #     MetricDirective, StorageResolution,
+    /// # };
+    /// # use std::time::{Duration, SystemTime};
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct MyMetrics {
+    ///     #[entry(timestamp)]
+    ///     start: SystemTime,
+    ///     my_field: u32,
+    ///     time_taken: Duration,
+    ///     operation: &'static str,
+    ///     machine_type: &'static str,
+    /// }
+    ///
+    /// let dimension_sets = vec![vec!["Operation".into()]];
+    /// let mut emf = Emf::builder("MyApp".to_string(), dimension_sets)
+    ///     .directive(MetricDirective {
+    ///         dimensions: vec![vec!["Operation", "MachineType"]],
+    ///         metrics: vec![MetricDefinition {
+    ///             name: "TimeTaken",
+    ///             // there is no "unit rescaling" done, you must get the correct unit used,
+    ///             // which for Duration is milliseconds
+    ///             unit: Unit::Second(NegativeScale::Milli),
+    ///             storage_resolution: None,
+    ///         }],
+    ///         namespace: "MyApp",
+    ///     })
+    ///     .build();
+    /// let mut output = Vec::new();
+    ///
+    /// emf.format(&MyMetrics {
+    ///     start: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
+    ///     my_field: 4,
+    ///     time_taken: Duration::from_micros(1_200),
+    ///     operation: "Foo",
+    ///     machine_type: "r7g.2xlarge",
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [
+    ///                  {"Namespace": "MyApp", "Dimensions": [["Operation"]], "Metrics": [
+    ///                      {"Name": "MyField"},
+    ///                      {"Name": "TimeTaken", "Unit": "Milliseconds"}
+    ///                  ]},
+    ///                  {"Namespace": "MyApp", "Dimensions": [["Operation", "MachineType"]], "Metrics": [
+    ///                      {"Name": "TimeTaken", "Unit": "Milliseconds"}
+    ///                  ]},
+    ///             ],
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "MyField": 4,
+    ///         "TimeTaken": 1.2,
+    ///         "Operation": "Foo",
+    ///         "MachineType": "r7g.2xlarge",
+    ///     })
+    /// );
+    /// ```
     pub fn directive(mut self, directive: MetricDirective) -> Self {
         self.extra_directives.push(',');
         // injection-safe because this is pushing directly after serialization
@@ -1277,8 +1427,9 @@ enum StorageMode {
     NoMetric,
 }
 
+/// The [MetricOptions] for [Emf] formatters.
 #[derive(Debug)]
-pub struct EmfOptions {
+struct EmfOptions {
     storage_mode: StorageMode,
 }
 
