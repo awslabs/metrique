@@ -26,6 +26,7 @@ pub struct WithDimensions<V, const N: usize> {
 }
 
 impl<V, const N: usize> WithDimensions<V, N> {
+    /// Map the value within this [WithDimensions]
     pub fn map_value<U>(self, f: impl Fn(V) -> U) -> WithDimensions<U, N> {
         WithDimensions {
             value: f(self.value),
@@ -111,19 +112,19 @@ impl<V, const N: usize> WithDimensions<V, N> {
         }
     }
 
+    /// The set of dimensions that this [WithDimensions] will add
     pub fn dimensions(&self) -> &[(CowStr, CowStr)] {
         &self.dimensions
     }
 
-    pub fn add_dimension(
-        &mut self,
-        class: impl Into<CowStr>,
-        instance: impl Into<CowStr>,
-    ) -> &mut Self {
-        self.dimensions.push((class.into(), instance.into()));
+    /// Add a `(key, value)` to this [WithDimensions]
+    pub fn add_dimension(&mut self, key: impl Into<CowStr>, value: impl Into<CowStr>) -> &mut Self {
+        self.dimensions.push((key.into(), value.into()));
         self
     }
 
+    /// Clear the dimensions in this [WithDimensions]. You can add
+    /// new dimensions afterwards by using [Self::add_dimension].
     pub fn clear_dimensions(&mut self) {
         self.dimensions.clear()
     }

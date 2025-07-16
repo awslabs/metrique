@@ -255,6 +255,8 @@ impl<T: Entry, S: EntryIoStream> FlushImmediately<T, S> {
 }
 
 impl<S: EntryIoStream + Send + Sync + 'static> FlushImmediately<BoxEntry, S> {
+    /// Create a new [`FlushImmediately`] that outputs to a given stream,
+    /// boxed within a [`BoxEntrySink`].
     pub fn new_boxed(stream: S) -> BoxEntrySink {
         FlushImmediatelyBuilder::new().build_boxed(stream)
     }
@@ -319,6 +321,19 @@ pub const IMMEDIATE_FLUSH_METRICS: &[DescribedMetric] = &[DescribedMetric {
     description: "Percent of time the background sink is idle",
 }];
 
+/// Does describe_metrics for this global recorder, which makes your units visible.
+/// Call it with a recorder type, to allow it to autodetect your metrics.rs version
+///
+/// This function should be called once per metric recorder, since some metric
+/// recorders are not idempotent in describe. The recorders in [metrique_writer::metrics] are
+/// however idempotent with describes, so when using that feel free to call this function
+/// multiple times.
+///
+/// [metrique_writer::metrics]: crate::metrics
+///
+/// ```no_run
+/// metrique_writer::sink::describe_immediate_flush_metrics::<dyn metrics::Recorder>();
+/// ```
 #[allow(private_bounds)]
 pub fn describe_immediate_flush_metrics<V: GlobalRecorderVersion + ?Sized>() {
     V::describe(IMMEDIATE_FLUSH_METRICS);

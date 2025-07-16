@@ -86,6 +86,7 @@ pub const BACKGROUND_QUEUE_METRICS: &[DescribedMetric] = &[
 ];
 
 impl BackgroundQueueBuilder {
+    /// Create a new [`BackgroundQueueBuilder`] with the default configuration.
     pub fn new() -> Self {
         Self::default()
     }
@@ -388,9 +389,11 @@ struct Inner<E> {
     recorder: Option<Box<dyn MetricRecorder>>,
 }
 
-/// Guard handle that, when dropped, will block until all already appended entries are written to the output stream.
+/// Guard handle that, when dropped, will shut down the background queue (making it drop all further entries),
+/// then block until all already appended entries are written to the output stream.
 ///
 /// This ensures that all metric entries are written from the buffered background queue during service shutdown.
+#[must_use = "dropping this will shut down the background queue, making it drop all entries"]
 pub struct BackgroundQueueJoinHandle {
     handle: Option<thread::JoinHandle<()>>,
     shutdown_signal: Arc<AtomicBool>,
@@ -728,8 +731,11 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
 /// Call it with a recorder type, to allow it to autodetect your metrics.rs version
 ///
 /// This function should be called once per metric recorder, since some metric
-/// recorders are not idempotent in describe. Rust-MetricExperimental is however
-/// idempotent with describes, so when using that feel free to call this function multiple times.
+/// recorders are not idempotent in describe. The recorders in [metrique_writer::metrics] are
+/// however idempotent with describes, so when using that feel free to call this function
+/// multiple times.
+///
+/// [metrique_writer::metrics]: crate::metrics
 ///
 /// ```no_run
 /// metrique_writer::sink::describe_sink_metrics::<dyn metrics::Recorder>();

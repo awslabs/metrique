@@ -1,6 +1,38 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains utilities for attaching [Unit]s (such as percents, kilobytes,
+//! or seconds) to metrics. Conversion between different units is
+//! handled by [Convert].
+//!
+//! Most metric systems have some way of attaching units to the uploaded
+//! metrics, to make it obvious in which units of measue the uploaded
+//! metrics are stored in.
+//!
+//! # Usage
+//!
+//! This is normally used via the [`WithUnit`] [Value]-wrapper.  For readability, prefer the
+//! `As{Unit}` type aliases, like [`AsSeconds<T>`](`AsSeconds`) rather than
+//! `WithUnit<T, Second>`.
+//!
+//! ```
+//! # use metrique_writer::unit::{AsSeconds, AsBytes};
+//! # use metrique_writer::Entry;
+//! # use std::time::Duration;
+//!
+//! #[derive(Entry)]
+//! struct MyEntry {
+//!     my_timer: AsSeconds<Duration>,
+//!     request_size: AsBytes<u64>,
+//! }
+//!
+//! // `WithUnit` (and the aliases) implement `From`, initialize them like this:
+//! MyEntry {
+//!     my_timer: Duration::from_secs(2).into(),
+//!     request_size: 2u64.into(),
+//! };
+//! ```
+
 use std::{
     cmp::Ordering,
     fmt::{self, Debug, Display},
@@ -18,15 +50,31 @@ use crate::{MetricValue, Observation, ValidationError, Value, ValueWriter, value
 #[non_exhaustive]
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Unit {
+    /// No Unit
     #[default]
     None,
+    /// Count
     Count,
+    /// Percent
     Percent,
+    /// Seconds with a scale prefix
     Second(NegativeScale),
+    /// Bytes with a scale prefix
     Byte(PositiveScale),
+    /// Bytes/second with a scale prefix
     BytePerSecond(PositiveScale),
+    /// Bits with a scale prefix
     Bit(PositiveScale),
+    /// Bits/second with a scale prefix
     BitPerSecond(PositiveScale),
+    /// Custom unit
+    ///
+    /// This is an escape hatch for units your format supports that
+    /// are not in this enum
+    ///
+    /// Formatters will generally send the unit string
+    /// directly to the metric format, so make sure the
+    /// unit you put here is supported by your metric format.
     Custom(&'static str),
 }
 
@@ -157,6 +205,7 @@ impl PositiveScale {
 ///
 /// See [`crate::MetricValue`].
 pub trait UnitTag {
+    /// The [Unit] in the [UnitTag]
     const UNIT: Unit;
 }
 
@@ -175,14 +224,28 @@ pub trait UnitTag {
 ///
 /// ```compile_fail
 /// # use metrique_writer_core::{Convert, Observation, unit::{Second, Megabyte}};
-/// let seconds = Observation::Float(42.0);
+/// let seconds = Observation::Floating(42.0);
 /// let mbs = <Second as Convert<Megabyte>>::convert(seconds);
 /// ```
 ///
 /// Values with unit [`unit::None`](`None`) can be converted to any other unit with a ratio of `1.0`.
+///
+/// ```
+/// # use metrique_writer_core::{Convert, Observation, unit::{self, Second, Millisecond}};
+/// let seconds = Observation::Floating(42.0);
+/// let as_second = <unit::None as Convert<Second>>::convert(seconds);
+/// assert_eq!(as_second, Observation::Floating(42.0));
+///
+/// // and also this:
+/// let seconds = Observation::Floating(42.0);
+/// let as_millisecond = <unit::None as Convert<Millisecond>>::convert(seconds);
+/// assert_eq!(as_millisecond, Observation::Floating(42.0));
+/// ```
 pub trait Convert<U: UnitTag>: UnitTag {
+    /// Ratio to convert from `Self` to `U`
     const RATIO: f64;
 
+    /// Convert an [Observation] in units `Self` to an [Observation] in units `U`
     fn convert(observation: Observation) -> Observation {
         // Avoid any u64 => f64 conversions if the value doesn't change
         if Self::RATIO == 1.0 {
@@ -331,12 +394,21 @@ bit_unit_tag! {
 /// For readability, prefer the `As{Unit}` type aliases, like [`AsSeconds<T>`](`AsSeconds`) rather than
 /// `WithUnit<T, Second>`.
 /// ```
-/// # use metrique_writer_core::unit::{AsSeconds, AsBytes};
+/// # use metrique_writer::unit::{AsSeconds, AsBytes};
+/// # use metrique_writer::Entry;
 /// # use std::time::Duration;
-/// struct Entry {
+///
+/// #[derive(Entry)]
+/// struct MyEntry {
 ///     my_timer: AsSeconds<Duration>,
 ///     request_size: AsBytes<u64>,
 /// }
+///
+/// // `WithUnit` (and the aliases) implement `From`, initialize them like this:
+/// MyEntry {
+///     my_timer: Duration::from_secs(2).into(),
+///     request_size: 2u64.into(),
+/// };
 /// ```
 pub struct WithUnit<V, U> {
     value: V,
@@ -353,6 +425,7 @@ impl<V: MetricValue, U> From<V> for WithUnit<V, U> {
 }
 
 impl<V, U> WithUnit<V, U> {
+    /// Return the wrapped value
     pub fn into_inner(self) -> V {
         self.value
     }

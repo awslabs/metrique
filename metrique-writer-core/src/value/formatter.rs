@@ -7,6 +7,7 @@ use super::ValueWriter;
 
 /// A trait for a function that formats a value in a custom way.
 pub trait ValueFormatter<V: ?Sized> {
+    /// Write `value` to `writer`
     fn format_value(writer: impl ValueWriter, value: &V);
 }
 

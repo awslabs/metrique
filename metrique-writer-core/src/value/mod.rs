@@ -1,6 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! A [Value] is something that can be written to a given metric field.
+//!
+//! This includes both numeric ([Observation], so scalar or distribution) values,
+//! as well as string properties.
+
 mod dimensions;
 mod flags;
 mod formatter;
@@ -70,12 +75,20 @@ pub trait ValueWriter: Sized {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub enum Observation {
+    /// A numeric observation
     Unsigned(u64),
     /// Note that most formats do not support `NaN`, negative, or infinite floating point values.
     Floating(f64),
     /// The result of summing `occurrences` into a single `total`. See [`ValueWriter::metric()`].
+    ///
+    /// It is fine for `occurrences` to be 0, and should not result in a validation
+    /// error or a panic. If `occurrences` is 0 and `total` is not 0, the formatter behavior
+    /// might not be what you expect (for example, the EMF formatter will ignore the
+    /// `total`), but it should not cause an error or panic.
     Repeated {
+        /// The total sum of occurrences
         total: f64,
+        /// The number of occurrences
         occurrences: u64,
     },
 }
@@ -94,6 +107,7 @@ impl MetricValue for Observation {
 ///
 /// Implementations that invoke [`ValueWriter::metric`] with a different unit may trigger a [`ValidationError`].
 pub trait MetricValue: Value {
+    /// The [UnitTag] the metric will be emitted at
     type Unit: UnitTag;
 
     /// Convert this value to the given [`Unit`] when being written.
@@ -105,18 +119,14 @@ pub trait MetricValue: Value {
         self.into()
     }
 
-    /// Add a dimension `(class, instance)` when being written.
+    /// Add a dimension `(key, value)` when being written.
     ///
     /// This does *not* clear any existing dimensions.
-    fn with_dimension(
-        self,
-        class: impl Into<CowStr>,
-        instance: impl Into<CowStr>,
-    ) -> WithDimension<Self>
+    fn with_dimension(self, key: impl Into<CowStr>, value: impl Into<CowStr>) -> WithDimension<Self>
     where
         Self: Sized,
     {
-        WithDimension::new(self, class, instance)
+        WithDimension::new(self, key, value)
     }
 
     /// Add a series of dimensions when being written.

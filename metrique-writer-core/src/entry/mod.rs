@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! This module contains the [Entry] trait, which represents an entry that can be written to
+//! an [EntryWriter] in order to emit metrics
+
 use std::{any::Any, borrow::Cow, sync::Arc, time::SystemTime};
 
 mod boxed;
@@ -15,33 +18,91 @@ use crate::Value;
 
 /// The core trait to be implemented by application data structures holding metric values.
 ///
+/// Implementations of [`Entry`] should generally be pure functions, emitting the same metric values
+/// independent of the environment. External dependencies, such as metrics that are relative to
+/// the current time, or metrics that refer to the value behind a mutex or atomic, should be resolved
+/// before creating an [`Entry`].
+///
 /// It's analogous to the [`std::fmt::Display`] trait that works with a [`std::fmt::Formatter`] to display a value as a
 /// string. In this case, the implementer of `Entry` contains the metric data and works with an [`EntryWriter`] to write
 /// the data as a metric entry in some format. The `EntryWriter` trait abstracts away the different formatting logic
 /// from the `Entry` implementer, just like `Formatter` does for `Display` implementers.
 ///
-/// Multiple entries can be merged or flattened into a single written entry by invoking [`Entry::write()`] multiple
-/// times with the same [`EntryWriter`]. This makes nesting separate structs easy.
+/// ## Creating Entries
+///
+/// The `metrique` crate provides abstractions for easily creating an [`Entry`] while resolving
+/// external dependencies.
+///
+/// If your [`Entry`] does not contain external dependencies and you are not using `metrique`,
+/// the easiest way of creating an [`Entry`] is by using `derive(Entry)`, for example:
+///
+/// ```
+/// # use std::time::{Duration, SystemTime};
+/// # use metrique_writer::Entry;
+/// # use metrique_writer::unit::{AsBytes, AsMicroseconds};
+///
+/// #[derive(Entry, Debug)]
+/// #[entry(rename_all = "PascalCase")]
+/// struct RequestMetrics {
+///     #[entry(timestamp)]
+///     request_start: SystemTime,
+///     // emitted as `0` or `1`
+///     success: bool,
+///     // will be skipped if `None`
+///     optional_value: Option<u32>,
+///     byte_size: AsBytes<u64>,
+///     // An `Entry` can nest inner `Entry` structs
+///     #[entry(flatten)]
+///     subprocess: SubprocessMetrics,
+/// }
+///
+/// #[derive(Entry, Default, Debug)]
+/// #[entry(rename_all = "PascalCase")]
+/// struct SubprocessMetrics {
+///     counter: u32,
+///     // this Duration will be emitted as milliseconds (the default)
+///     duration: Duration,
+///     // this Duration will be emitted as microseconds
+///     duration_microseconds: AsMicroseconds<Duration>,
+/// }
+/// ```
+///
+/// You can also implement the [`Entry`] trait manually (this does the same as the
+/// macro-using code above):
 ///
 /// ```no_run
 /// # use metrique_writer_core::{Entry, EntryWriter};
 /// # use std::time::{Duration, SystemTime};
+/// # use metrique_writer::unit::{AsBytes, AsMicroseconds};
 ///
 /// struct RequestMetrics {
 ///     request_start: SystemTime,
+///     // emitted as `0` or `1`
 ///     success: bool,
+///     // will be skipped if `None`
+///     optional_value: Option<u32>,
+///     byte_size: AsBytes<u64>,
+///     // Multiple entries can be merged or flattened into a single written entry by
+///     // invoking [`Entry::write()`] multiple times with the same `EntryWriter`.
+///     // This makes nesting separate structs easy.
 ///     subprocess: SubprocessMetrics,
 /// }
 ///
 /// struct SubprocessMetrics {
 ///     counter: u32,
+///     // this Duration will be emitted as milliseconds (the default
+///     // of `impl Value for Duration` and `impl MetricValue for Duration`).
 ///     duration: Duration,
+///     // this Duration will be emitted as microseconds
+///     duration_microseconds: AsMicroseconds<Duration>,
 /// }
 ///
 /// impl Entry for RequestMetrics {
 ///     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
 ///         writer.timestamp(self.request_start);
 ///         writer.value("Success", &self.success);
+///         writer.value("OptionalValue", &self.optional_value);
+///         writer.value("ByteSize", &self.byte_size);
 ///         self.subprocess.write(writer);
 ///     }
 /// }
@@ -50,6 +111,7 @@ use crate::Value;
 ///     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
 ///         writer.value("Counter", &self.counter);
 ///         writer.value("Duration", &self.duration);
+///         writer.value("DurationMicroseconds", &self.duration_microseconds);
 ///     }
 /// }
 /// ```
@@ -97,7 +159,7 @@ pub trait Entry {
     /// assert_eq!(&sample_group["Operation"], "Foo");
     /// assert_eq!(&sample_group["Result"], "ValidationError");
     /// ```
-    fn sample_group(&self) -> impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)> {
+    fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         [].into_iter()
     }
 
@@ -127,6 +189,7 @@ pub trait Entry {
     }
 }
 
+/// A `(key, value)` pair, part of a sample group
 pub type SampleGroupElement = (Cow<'static, str>, Cow<'static, str>);
 
 /// [`Entry`] that will write no fields.

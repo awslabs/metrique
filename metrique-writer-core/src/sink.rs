@@ -1,6 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains the [`EntrySink`] trait, which provides sinks into which metric entries
+//! can be written. Unlike [`EntryIoStream`], these can be asynchronous.
+//!
+//! [`EntryIoStream`]: crate::stream::EntryIoStream
+
 use std::{
     ops::{Deref, DerefMut},
     pin::Pin,
@@ -10,6 +15,12 @@ use std::{
 use crate::{Entry, entry::BoxEntry};
 
 /// Stores entries in an in-memory buffer until they can be written to the destination.
+///
+/// Implementations of this trait normally manage a queueing policy, then pass the [`Entry`]
+/// to an [`EntryIoStream`] (in `metrique-writer`, there is `FlushImmediately` with a trivial queueing
+/// policy, and `BackgroundQueue` which flushes entries via a queue).
+///
+/// [`EntryIoStream`]: crate::stream::EntryIoStream
 pub trait EntrySink<E: Entry> {
     /// Append the `entry` to the in-memory buffer. Unless this is explicitly a test sink, the `append()` call must
     /// never block and must never panic. Test sinks are encouraged to immediately panic on invalid entries. Production
@@ -76,6 +87,7 @@ pub trait AnyEntrySink {
     /// wait for this future to complete.
     fn flush_async(&self) -> FlushWait;
 
+    /// Returns a [`BoxEntrySink`] that is a type-erased version of this entry sink
     fn boxed(self) -> BoxEntrySink
     where
         Self: Sized + Send + Sync + 'static,
@@ -94,6 +106,8 @@ impl<T: AnyEntrySink, E: Entry + Send + 'static> EntrySink<E> for T {
     }
 }
 
+/// A type-erased [`EntrySink`], that can sink a [`BoxEntry`] (which can contain
+/// an arbitrary [`Entry`]).
 #[derive(Clone)]
 pub struct BoxEntrySink(Arc<Box<dyn EntrySink<BoxEntry> + Send + Sync + 'static>>);
 
@@ -108,6 +122,7 @@ impl AnyEntrySink for BoxEntrySink {
 }
 
 impl BoxEntrySink {
+    /// Create a new [BoxEntrySink]
     pub fn new(sink: impl EntrySink<BoxEntry> + Send + Sync + 'static) -> Self {
         Self(Arc::new(Box::new(sink)))
     }
@@ -137,6 +152,7 @@ impl FlushWait {
         })))
     }
 
+    /// Create a FlushWait that returns when a future is ready
     pub fn from_future(f: impl std::future::Future<Output = ()> + 'static) -> Self {
         Self(Box::pin(f))
     }
@@ -167,6 +183,8 @@ impl<E: Entry, Q: EntrySink<E>> Drop for AppendOnDrop<E, Q> {
 }
 
 impl<E: Entry, Q: EntrySink<E>> AppendOnDrop<E, Q> {
+    /// Take and return the entry out of this [AppendOnDrop], without
+    /// appending it to the sink
     pub fn into_entry(mut self) -> E {
         self.entry.take().unwrap()
     }

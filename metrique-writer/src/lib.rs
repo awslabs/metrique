@@ -1,6 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#![deny(missing_docs)]
+#![doc = include_str!("../README.md")]
+
 pub use metrique_writer_core::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use metrique_writer_core::global::GlobalEntrySink;
 pub use metrique_writer_core::sink::{AnyEntrySink, BoxEntrySink, EntrySink};

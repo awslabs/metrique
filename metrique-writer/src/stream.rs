@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains various utilities for working with [EntryIoStream]
+
 use std::{collections::HashSet, io};
 
 use metrique_writer_core::Entry;
@@ -10,6 +12,8 @@ use crate::{CowStr, entry::WithGlobalDimensions};
 
 pub use metrique_writer_core::{EntryIoStream, IoStreamError};
 
+/// Extension trait for [`EntryIoStream`]. This adds methods that use types not
+/// present within [`metrique_writer_core`].
 pub trait EntryIoStreamExt: EntryIoStream {
     /// [Merge](`Entry::merge_by_ref`) every entry written to this stream with the contents of `globals`.
     ///
