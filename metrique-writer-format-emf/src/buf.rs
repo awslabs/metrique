@@ -65,6 +65,11 @@ impl PrefixedStringBuf {
     pub fn as_str(&self) -> &str {
         &self.buf
     }
+
+    pub fn truncate(&mut self, combined_len: usize) {
+        assert!(combined_len >= self.prefix_len);
+        self.buf.truncate(combined_len);
+    }
 }
 
 impl crate::json_string::JsonString for PrefixedStringBuf {
@@ -154,5 +159,14 @@ mod test {
             .extend_from_within_range(2, 8)
             .extend_from_within_range(0, 0);
         assert_eq!(buf.as_str(), "0123456701234567");
+    }
+
+    #[test]
+    fn test_truncate() {
+        let mut buf = PrefixedStringBuf::from_prefix("0123".into());
+        buf.push_raw_str("4567").truncate(4);
+        assert_eq!(buf.as_str(), "0123");
+        buf.push_raw_str("89ab").truncate(5);
+        assert_eq!(buf.as_str(), "01238");
     }
 }
