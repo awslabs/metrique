@@ -1,4 +1,4 @@
-# amzn-timesource
+# metrique-timesource
 
 A flexible time source abstraction for Rust applications that allows for easy testing and mocking of time-dependent code.
 
