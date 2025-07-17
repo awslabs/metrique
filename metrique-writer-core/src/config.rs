@@ -72,6 +72,23 @@ impl<'a> Iterator for DimensionsIterator<'a> {
 /// }
 /// ```
 ///
+/// Note that if you are using the `metrique` library, you can also get a similar effect
+/// with the `#[metrics]` proc macro, at least for the `EntryDimensions` config:
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics(emf::dimension_sets = [[], ["AWSAccountId"]])]
+/// struct MyEntry {
+///     #[metrics(name = "AWSAccountId")]
+///     aws_account_id: String,
+///     #[metrics(name = "API")]
+///     api: String,
+///     string_prop: String,
+///     some_field: u32,
+/// }
+/// ```
+///
 /// Assuming your `Emf` was created as follows with configured ("dev-ops")
 /// dimensions `[[], ["AWSAccountID"]]`:
 ///
@@ -81,7 +98,8 @@ impl<'a> Iterator for DimensionsIterator<'a> {
 /// # ;
 /// ```
 ///
-/// Then the emitted metric will be emitted under these 4 dimension sets:
+/// Then, both when implementing [`Entry`] directly or when using `metrique`,
+/// the emitted metric will be emitted under these 4 dimension sets:
 ///
 /// ```notrust
 /// ["API"],

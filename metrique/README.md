@@ -62,17 +62,52 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
     )
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     tracing_subscriber::fmt::init();
-    initialize_metrics("my/metrics/dir".into());
+    let _join = initialize_metrics("my/metrics/dir".into());
     // ...
     // call count_ducks
+    // for example
+    count_ducks().await;
 }
+```
+
+That code will create a single metric line (your timestamp and `OperationTime` may vary).
+
+```json
+{"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"NumberOfDucks"},{"Name":"OperationTime","Unit":"Milliseconds"}]}],"Timestamp":1752774958378},"NumberOfDucks":5,"OperationTime":0.003024,"Operation":"CountDucks"}
 ```
 
 ## Getting Started (Libraries)
 
-Library operations should normally return a struct implementing `CloseEntry` that contains the metrics for their operation.
+Library operations should normally return a struct implementing `CloseEntry` that contains the metrics for their operation. Generally, the best way of getting that is by just using the `#[metrics]` macro:
+
+```rust
+use metrique::instrument::Instrumented;
+use metrique::timers::Timer;
+use metrique::unit::Millisecond;
+use metrique::unit_of_work::metrics;
+use std::io;
+
+#[derive(Default)]
+#[metrics(subfield)]
+struct MyLibraryOperation {
+    #[metrics(unit = Millisecond)]
+    my_library_operation_time: Timer,
+    my_library_count_of_ducks: usize,
+}
+
+async fn my_operation() -> Instrumented<Result<usize, io::Error>, MyLibraryOperation> {
+    Instrumented::instrument_async(MyLibraryOperation::default(), async |metrics| {
+        let count_of_ducks = 1;
+        metrics.my_library_count_of_ducks = count_of_ducks;
+        Ok(count_of_ducks)
+    }).await
+}
+```
+
+Note that we do not use `rename_all` - the application should be able to choose the naming style.
 
 Read docs/usage_in_libraries.md for more details
 
@@ -100,7 +135,7 @@ There are 2 *main* places where this can happen:
 If your application's security relies on metric entries not being dropped (for example,
 if you use metric entries to track user log-in operations, and your application relies on log-in operations not being dropped), it is your responsibility to engineer your application to avoid the metrics being dropped.
 
-In that case, you should not be using `BackgroundQueue` or sampling. It is probably fine to use the `Format` implementations in that case, but I would recommend trying to find ways to test and audit your use-case to make sure nothing is being missed.
+In that case, you should not be using `BackgroundQueue` or sampling. It is probably fine to use the `Format` implementations in that case, but it is recommended to test and audit your use-case to make sure nothing is being missed.
 
 ### Use of exporters
 

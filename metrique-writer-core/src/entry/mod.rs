@@ -30,10 +30,10 @@ use crate::Value;
 ///
 /// ## Creating Entries
 ///
-/// The `metrique` crate provides abstractions for easily creating an [`Entry`] while resolving
-/// external dependencies.
+/// The `metrique` crate provides abstractions for easily creating an [`Entry`] while having a step
+/// where dependencies of the metric on external value can be resolved.
 ///
-/// If your [`Entry`] does not contain external dependencies and you are not using `metrique`,
+/// If your [`Entry`] does not need to contain external dependencies and you are not using `metrique`,
 /// the easiest way of creating an [`Entry`] is by using `derive(Entry)`, for example:
 ///
 /// ```

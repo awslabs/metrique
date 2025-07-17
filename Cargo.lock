@@ -668,6 +668,7 @@ version = "0.1.0"
 dependencies = [
  "assert-json-diff",
  "itertools",
+ "metrique",
  "metrique-writer",
  "metrique-writer-format-emf",
  "serde",
