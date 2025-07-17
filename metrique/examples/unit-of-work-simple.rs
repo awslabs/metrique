@@ -36,7 +36,7 @@ struct RequestMetrics {
     #[metrics(flatten)]
     keys: Keys,
 
-    // a simple count field (you can add units. Units are defined in `amzn_metrics::unit`).
+    // a simple count field (you can add units. Units are defined in `metrique::unit`).
     // It is also possible to define your own.
     #[metrics(unit = Count)]
     number_of_ducks: usize,

@@ -625,7 +625,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-timesource"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "metrique-timesource",
  "tokio",
