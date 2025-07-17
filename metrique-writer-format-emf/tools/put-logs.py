@@ -3,6 +3,9 @@
 # dependencies = ["boto3"]
 # ///
 
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 import boto3
 import argparse
 import json
