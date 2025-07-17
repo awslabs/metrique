@@ -2,6 +2,10 @@
 name = "metrique-core"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
+description = "Library for working with unit of work metrics - core traits"
+repository = "https://github.com/awslabs/metrique"
+readme = "README.md"
 
 [dependencies]
 metrique-writer-core = { path = "../metrique-writer-core" }
