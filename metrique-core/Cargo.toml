@@ -8,7 +8,7 @@ repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
 [dependencies]
-metrique-writer-core = { path = "../metrique-writer-core" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.0" }
 itertools = { workspace = true }
 
 [dev-dependencies]

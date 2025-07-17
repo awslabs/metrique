@@ -19,8 +19,8 @@ rand = { workspace = true }
 hashbrown = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
-metrique-writer-core = { path = "../metrique-writer-core" }
-metrique-writer = { path = "../metrique-writer" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.0" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.0" }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }
