@@ -13,7 +13,7 @@ test-util = []
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
-metrique-writer-core = { path = "../metrique-writer-core" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.0" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.0" }
 metrique-core = { path = "../metrique-core", version = "0.1.0" }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.0" }

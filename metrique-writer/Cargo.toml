@@ -23,8 +23,8 @@ metrics-util = { workspace = true, optional = true }
 futures = { workspace = true, default-features = false, optional = true }
 pin-project = { workspace = true, optional = true }
 histogram = { workspace = true, optional = true }
-metrique-writer-core = { path = "../metrique-writer-core" }
-metrique-writer-macro = { path = "../metrique-writer-macro" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.0" }
+metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.0" }
 
 [dev-dependencies]
 enum-map = { workspace = true }
