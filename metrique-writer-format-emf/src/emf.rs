@@ -20,11 +20,13 @@ use std::fmt::{Display, Write};
 use std::mem;
 use std::num::NonZero;
 use std::ops::Deref;
+use std::time::Duration;
 use std::{borrow::Cow, io, time::SystemTime};
 
 use smallvec::{SmallVec, smallvec};
 
 use crate::json_string::JsonString as _;
+use crate::rate_limit::rate_limited;
 
 use super::buf::{PrefixedStringBuf, write_all_vectored};
 
@@ -94,6 +96,15 @@ struct Validation {
 ///
 /// [sampling]: Emf::with_sampling
 /// [CloudWatch Logs Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/AnalyzingLogData.html
+///
+/// ## Handling of non-finite floating-point values
+///
+/// Floating-point infinities are clamped (replaced with +f64::MAX or -f64::MAX).
+///
+/// NaN observations are skipped. If a metric has only NaN observations, it will be skipped.
+/// In these cases, a rate-limited [`tracing`] error will be generated.
+///
+/// All observations other than the ones containing the NaN will be emitted as usual.
 ///
 /// ## Examples
 ///
@@ -1108,32 +1119,49 @@ impl EntryWriter<'_> {
     }
 }
 
+struct FiniteFloat(f64);
+
+fn clamp_to_finite(float: f64, name_for_log: &str) -> Option<FiniteFloat> {
+    let float = float.clamp(-f64::MAX, f64::MAX);
+    if !float.is_finite() {
+        rate_limited!(
+            Duration::from_secs(1),
+            tracing::error!(
+                message="skipping emitting metric with NaN value",
+                metric=%name_for_log,
+            )
+        );
+        None
+    } else {
+        Some(FiniteFloat(float))
+    }
+}
+
+struct MetricSkipped;
+
 struct ValueWriter<'a, 'e> {
     name: SCow<'e>,
     entry: &'a mut EntryWriter<'e>,
 }
 
 impl ValueWriter<'_, '_> {
-    fn write_float(buf: &mut PrefixedStringBuf, v: f64) -> Result<(), ValidationError> {
-        if v.is_finite() {
-            let mut dtoa_buf = dtoa::Buffer::new();
-            let as_str = dtoa_buf.format_finite(v);
-            // injection-safe since this is a number
-            buf.push_raw_str(as_str.strip_suffix(".0").unwrap_or(as_str));
-            Ok(())
-        } else {
-            Err(ValidationError::invalid(
-                "metric values can't be NaN or infinite",
-            ))
-        }
+    fn write_float(buf: &mut PrefixedStringBuf, v: FiniteFloat) {
+        assert!(v.0.is_finite(), "should be checked by the caller");
+        let mut dtoa_buf = dtoa::Buffer::new();
+        let as_str = dtoa_buf.format_finite(v.0);
+        // injection-safe since this is a number
+        buf.push_raw_str(as_str.strip_suffix(".0").unwrap_or(as_str));
     }
 
+    // return Err(MetricSkipped) if the observation has been skipped due to being NaN
     fn write_observation(
         buf: &mut PrefixedStringBuf,
         counts: &mut PrefixedStringBuf,
         observation: Observation,
         multiplicity: Option<u64>,
-    ) -> Result<(), ValidationError> {
+        // used purely for logging if there is a NaN
+        name_for_log: &str,
+    ) -> Result<(), MetricSkipped> {
         let multiplicity = multiplicity.unwrap_or(1);
         match observation {
             Observation::Unsigned(v) => {
@@ -1142,26 +1170,45 @@ impl ValueWriter<'_, '_> {
                 Ok(())
             }
             Observation::Floating(v) => {
-                Self::write_float(buf, v)?;
-                counts.push_integer(multiplicity);
-                Ok(())
+                if let Some(v) = clamp_to_finite(v, name_for_log) {
+                    Self::write_float(buf, v);
+                    counts.push_integer(multiplicity);
+                    Ok(())
+                } else {
+                    Err(MetricSkipped)
+                }
             }
             Observation::Repeated { total, occurrences } => {
-                Self::write_float(
-                    buf,
-                    if occurrences == 0 {
-                        0.0
-                    } else {
-                        total / occurrences as f64
-                    },
-                )?;
-                counts.push_integer(occurrences.saturating_mul(multiplicity));
-                Ok(())
+                let mean = if occurrences == 0 {
+                    0.0
+                } else {
+                    total / occurrences as f64
+                };
+                if let Some(mean) = clamp_to_finite(mean, name_for_log) {
+                    Self::write_float(buf, mean);
+                    counts.push_integer(occurrences.saturating_mul(multiplicity));
+                    Ok(())
+                } else {
+                    Err(MetricSkipped)
+                }
             }
-            _ => Err(ValidationError::invalid("unknown observation type")),
+            _ => {
+                // shouldn't actually happen unless there is a version mismatch,
+                // but Observation is `#[non_exhaustive]`. Do something reasonable.
+                rate_limited!(
+                    Duration::from_secs(1),
+                    tracing::error!(
+                        message="skipping emitting metric due to unknown observation type",
+                        metric=%name_for_log,
+                    )
+                );
+                Err(MetricSkipped)
+            }
         }
     }
 
+    // return Err(MetricSkipped) and writes only to `buf` and `counts_buf`
+    // (not touching `fields_buf`) if the metric is NaN
     fn write_metric_value(
         name: &str,
         fields_buf: &mut PrefixedStringBuf,
@@ -1169,46 +1216,50 @@ impl ValueWriter<'_, '_> {
         first: Observation,
         mut distribution: impl Iterator<Item = Observation>,
         multiplicity: Option<u64>,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), MetricSkipped> {
         let buf: &mut PrefixedStringBuf = fields_buf;
         buf.push(',').json_string(name).push(':');
         match (first, distribution.next()) {
             (Observation::Unsigned(v), None) if multiplicity.is_none() => {
                 buf.push_integer(v);
+                Ok(())
             }
             (Observation::Floating(v), None) if multiplicity.is_none() => {
-                Self::write_float(buf, v)?;
+                if let Some(v) = clamp_to_finite(v, name) {
+                    Self::write_float(buf, v);
+                    Ok(())
+                } else {
+                    Err(MetricSkipped)
+                }
             }
             (first, second) => {
                 let counts = counts_buf;
                 buf.push_raw_str(r#"{"Values":["#);
+                let mut wrote_anything = false;
                 counts.clear(); // clear before to make sure there is no risk
-                match Self::write_observation(buf, counts, first, multiplicity) {
-                    Ok(()) => {}
-                    Err(e) => {
-                        counts.clear(); // clear after to ensure this is not too big
-                        return Err(e);
-                    }
-                }
+                let mut wrote =
+                    Self::write_observation(buf, counts, first, multiplicity, name).is_ok();
+                wrote_anything |= wrote;
                 for observation in second.into_iter().chain(distribution) {
-                    buf.push(',');
-                    counts.push(',');
-                    match Self::write_observation(buf, counts, observation, multiplicity) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            counts.clear(); // clear after to ensure this is not too big
-                            return Err(e);
-                        }
+                    if wrote {
+                        buf.push(',');
+                        counts.push(',');
                     }
+                    wrote = Self::write_observation(buf, counts, observation, multiplicity, name)
+                        .is_ok();
+                    wrote_anything |= wrote;
                 }
                 // injection-safe because this is a comma-separated list of numbers
                 buf.push_raw_str(counts.as_str());
                 counts.clear(); // clear after to ensure this is not too big
                 buf.push_raw_str("]}");
+                if wrote_anything {
+                    Ok(())
+                } else {
+                    Err(MetricSkipped)
+                }
             }
         }
-
-        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1227,14 +1278,27 @@ impl ValueWriter<'_, '_> {
             return Ok(()); // skip metric with no observations
         };
 
-        Self::write_metric_value(
+        // If write_metric_value skips a NaN metric, it will have already
+        // written the metric name, so the buffer looks like
+        //                                        `...,"MetricName":
+        //                                           /             ^
+        // buffer is at the comma before the truncation  | buffer is at the : when it detects the NaN
+        //
+        // There is always a comma, since `fields_buf` always contains at least the `}`
+        // that closes the `_aws` block (and possibly other fields).
+        let fields_buf_index = fields_buf.as_str().len();
+        if let Err(MetricSkipped) = Self::write_metric_value(
             name,
             fields_buf,
             counts_buf,
             first,
             distribution,
             multiplicity,
-        )?;
+        ) {
+            // skipping this metric, truncate the metric name
+            fields_buf.truncate(fields_buf_index);
+            return Ok(()); // skip metric with only NaN observations
+        }
 
         let flags = flags.downcast();
 
@@ -1247,6 +1311,7 @@ impl ValueWriter<'_, '_> {
             return Ok(());
         }
 
+        // (*) comma-adding logic
         if !metrics_buf.is_empty() {
             metrics_buf.push(',');
         }
@@ -1653,11 +1718,9 @@ mod tests {
                 writer.value("MyDimension", &2u64);
                 writer.value("Metric", &2u64);
                 writer.value("Metric", &3u64);
-                writer.value("MetricInf", &f64::INFINITY);
-                writer.value(
-                    "MetricNaN2",
-                    &Distribution::<_, 2>::from_iter([0.0, f64::NAN]),
-                );
+                // check that metrics can't be duplicated even if they are NAN
+                writer.value("NaNMetric", &f64::NAN);
+                writer.value("NaNMetric", &1.0);
                 writer
                     .config(const { &EntryDimensions::new(Cow::Borrowed(&[Cow::Borrowed(&[])])) });
             }
@@ -1678,10 +1741,9 @@ mod tests {
         assert!(errors.contains("for `_aws`: name can't be `_aws`"));
         assert!(errors.contains("for ``: name can't be empty"));
         assert!(errors.contains("for `Metric`: duplicate field"));
+        assert!(errors.contains("for `NaNMetric`: duplicate field"));
         assert!(errors.contains("for `MyDimension`: can't use metric in dimension field"));
         assert!(errors.contains("for `MyOtherDimension`: missing dimension"));
-        assert!(errors.contains("for `MetricInf`: metric values can't be NaN or infinite"));
-        assert!(errors.contains("for `MetricNaN2`: metric values can't be NaN or infinite"));
         assert!(errors.contains("entry dimensions cannot be empty"));
         assert!(errors.contains(
             "entry dimensions must be configured before emitting a metric with custom dimensions"
@@ -1974,6 +2036,8 @@ mod tests {
                 writer.timestamp(
                     SystemTime::UNIX_EPOCH + Duration::from_secs_f64(1749475336.0157819),
                 );
+                // test that a NaN works even if it's the first field
+                writer.value("NaN", &f64::NAN);
                 writer.value("AWSAccountId", "012345678901");
                 writer.value("API", "MyAPI");
                 writer.value("StringProp", "some string value");
@@ -2007,6 +2071,21 @@ mod tests {
                         Mean::<Second>::from_iter([1u8, 2, 3]),
                         [("Ignored", "X")],
                     ),
+                );
+                writer.value(
+                    "DistributionWithNonFinite",
+                    &Distribution::<f64>::from_iter([
+                        f64::NAN,
+                        f64::INFINITY,
+                        -f64::INFINITY,
+                        f64::NAN,
+                        1.0,
+                    ]),
+                );
+                writer.value("OtherNaN", &f64::NAN);
+                writer.value(
+                    "DistributionWithOnlyNaN",
+                    &Distribution::<f64>::from_iter([f64::NAN, f64::NAN]),
                 );
                 writer.value(
                     "ComplexDistribution",
@@ -2053,7 +2132,8 @@ mod tests {
                 "RepeatedDuration": {"Values":[0.01, 0.17], "Counts": [1, 1]},
                 "SomeDuration": 12345.678,
                 "SomeRepeatedDuration": {"Values":[2], "Counts":[3]},
-                "Nothing": {"Values":[0], "Counts":[0]},"#,
+                "Nothing": {"Values":[0], "Counts":[0]},
+                "DistributionWithNonFinite": {"Values":[1.7976931348623157e308,-1.7976931348623157e308,1], "Counts":[1,1,1]},"#,
                         Some(1) =>
                             r#"
             {
@@ -2067,7 +2147,8 @@ mod tests {
                 "RepeatedDuration": {"Values": [0.01, 0.17], "Counts": [1, 1]},
                 "SomeDuration": {"Values": [12345.678], "Counts": [1]},
                 "SomeRepeatedDuration": {"Values": [2], "Counts": [3]},
-                "Nothing": {"Values": [0], "Counts": [0]},"#,
+                "Nothing": {"Values": [0], "Counts": [0]},
+                "DistributionWithNonFinite": {"Values":[1.7976931348623157e308,-1.7976931348623157e308,1], "Counts":[1,1,1]},"#,
                         Some(2) =>
                             r#"
             {
@@ -2081,7 +2162,8 @@ mod tests {
                 "RepeatedDuration": {"Values": [0.01, 0.17], "Counts": [2, 2]},
                 "SomeDuration": {"Values": [12345.678], "Counts": [2]},
                 "SomeRepeatedDuration": {"Values": [2], "Counts": [6]},
-                "Nothing": {"Values": [0], "Counts": [0]},"#,
+                "Nothing": {"Values": [0], "Counts": [0]},
+                "DistributionWithNonFinite": {"Values":[1.7976931348623157e308,-1.7976931348623157e308,1], "Counts":[2,2,2]},"#,
                         _ => panic!("unknown sample rate"),
                     },
                     r#"
@@ -2132,6 +2214,9 @@ mod tests {
                                 {
                                     "Name": "MeanValue",
                                     "Unit": "Seconds"
+                                },
+                                {
+                                    "Name": "DistributionWithNonFinite"
                                 },
                                 {
                                     "Name": "ComplexDistribution",
@@ -2864,6 +2949,7 @@ mod tests {
                 assert_eq!(output.pop().unwrap(), b"");
                 assert_eq!(output.len(), 1);
                 output.sort();
+                eprintln!("{}", str::from_utf8(&output[0]).unwrap());
                 let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
 
                 let expected = r#"

@@ -7,6 +7,7 @@
 mod buf;
 mod emf;
 mod json_string;
+mod rate_limit;
 
 pub use emf::{
     AllowSplitEntries, Emf, EmfBuilder, EntryDimensions, HighStorageResolution,

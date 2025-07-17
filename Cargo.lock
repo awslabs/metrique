@@ -698,6 +698,7 @@ dependencies = [
  "smallvec",
  "test-case",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
