@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![doc = include_str!("../README.md")]
+#![deny(missing_docs)]
 
 pub use crate::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use crate::global::GlobalEntrySink;

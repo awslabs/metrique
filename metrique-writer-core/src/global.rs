@@ -1,6 +1,19 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains the [`global_entry_sink`] macro, which can be used to define [`GlobalEntrySink`]s
+//! which are a rendezvous points between metric sources and metric sinks.
+//!
+//! Note that [`GlobalEntrySink`]s involve boxing, since the types of the [`Entry`]
+//! and the [`EntrySink`] are kept separate until run-time. This is implemented in a fairly
+//! high-performance manner.
+//!
+//! However, applications with a very high metric emission rate might prefer to have their
+//! high-rate metrics go directly to an [`EntrySink`] without any boxing - and as high-rate
+//! metrics are often the per-request metrics from the data plane of a service, and it is
+//! often a good idea to separate these from other service metrics for many reasons, even
+//! ignoring the boxing performance issue.
+
 use std::any::Any;
 
 use crate::{
@@ -131,6 +144,7 @@ pub trait GlobalEntrySink {
 
 /// A [`GlobalEntrySink`] that can do nothing until it is attached to an output stream or sink.
 pub trait AttachGlobalEntrySink {
+    /// Returns whether there's already a sink attached to this global entry sink
     fn is_attached() -> bool {
         Self::try_sink().is_some()
     }
@@ -200,9 +214,18 @@ impl<Q: AttachGlobalEntrySink> GlobalEntrySink for Q {
     }
 }
 
-/// Define a new global [`EntrySink`] that can be referenced by type name in all threads.
+/// Define a new global [`AttachGlobalEntrySink`] that can be referenced by type name in all threads.
 ///
 /// # Usage
+///
+/// To use it, you can attach an [`EntrySink`] (or a [`EntryIoStream`] by using
+/// `attach_to_stream`, which uses a `BackgroundQueue`) to the global entry sink,
+/// and then you can append metrics into it.
+///
+/// [`EntryIoStream`]: crate::stream::EntryIoStream
+///
+/// ## Example
+///
 /// ```
 /// # use metrique_writer::{
 /// #    AttachGlobalEntrySinkExt,

@@ -333,6 +333,7 @@ impl Recorder for MetricRecorder {
 #[derive(Clone)]
 pub struct SharedRecorder(Arc<dyn Recorder + Send + Sync>);
 impl SharedRecorder {
+    /// Creates a new [SharedRecorder]
     pub fn new(recorder: Arc<dyn Recorder + Send + Sync>) -> Self {
         Self(recorder)
     }

@@ -68,9 +68,11 @@ fn midpoint(range: RangeInclusive<u64>) -> u64 {
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
+/// A histogram bucket
 pub struct Bucket {
     /// Value is the midpoint of the bucket
     pub value: u32,
+    /// Counts of entries within the bucket
     pub count: u32,
 }
 

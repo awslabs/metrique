@@ -14,7 +14,38 @@ use crate::{
 
 use super::{MetricFlags, MetricValue, Value};
 
+/// A trait for functions that return a [`MetricFlags<'static>`][MetricFlags]
+///
+/// <div id="doc-warning-1" class="warning">
+/// The API for defining new flags is currently not covered by semver,
+/// and might break in new versions of this library.
+/// </div>
+///
+/// If you want to implement your own metric flag, and you want to
+/// be able to use it with [`ForceFlag`], you can create a [`FlagConstructor`]
+/// for your flag:
+///
+/// ```
+/// # use metrique_writer::MetricFlags;
+/// # use metrique_writer::value::{FlagConstructor, ForceFlag};
+///
+/// #[derive(Debug)]
+/// pub struct MyFlagOpt;
+///
+/// pub struct MyFlagCtor;
+///
+/// impl FlagConstructor for MyFlagCtor {
+///     fn construct() -> MetricFlags<'static> {
+///         MetricFlags::upcast(&MyFlagOpt)
+///     }
+/// }
+///
+/// impl metrique_writer::value::MetricOptions for MyFlagOpt {}
+///
+/// pub type MyFlag<T> = ForceFlag<T, MyFlagCtor>;
+/// ```
 pub trait FlagConstructor {
+    /// Return the desired flag
     fn construct() -> MetricFlags<'static>;
 }
 
@@ -46,6 +77,7 @@ impl<T, FLAGS: FlagConstructor> DerefMut for ForceFlag<T, FLAGS> {
 }
 
 impl<T, FLAGS: FlagConstructor> ForceFlag<T, FLAGS> {
+    /// Return the value contained within this [ForceFlag]
     pub fn into_inner(self) -> T {
         self.0
     }

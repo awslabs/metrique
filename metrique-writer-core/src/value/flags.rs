@@ -30,6 +30,7 @@ pub trait MetricOptions: Any + Debug {
 pub struct MetricFlags<'a>(Option<&'a dyn MetricOptions>);
 
 impl<'a> MetricFlags<'a> {
+    /// Create an empty set of [MetricFlags]
     pub const fn empty() -> Self {
         Self(None)
     }
@@ -46,6 +47,8 @@ impl<'a> MetricFlags<'a> {
         other
     }
 
+    /// Merge this set of flags with another set of flags. Panics if the flags
+    /// can't be merged.
     pub fn try_merge(&self, other: MetricFlags<'a>) -> Self {
         match (self.0, other.0) {
             (None, None) => Self::empty(),
@@ -58,6 +61,7 @@ impl<'a> MetricFlags<'a> {
         }
     }
 
+    /// Downcast this set of flags to a particular flag type
     pub fn downcast<T: MetricOptions>(&self) -> Option<&'a T> {
         self.0.and_then(|x| (x as &dyn Any).downcast_ref())
     }

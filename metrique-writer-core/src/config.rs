@@ -38,6 +38,75 @@ impl<'a> Iterator for DimensionsIterator<'a> {
     }
 }
 
+/// Putting this config on an entry will make supporting formatters extend
+/// their dimension-sets with the specified dimensions. Currently, this is supported
+/// by the EMF formatter by cartesian-producting the dimensions in this struct
+/// with its configured ("dev-ops") dimensions.
+///
+/// This is useful when some of your [`Entry`] members have different dimensions than others.
+///
+/// ## Example
+///
+/// ```
+/// # use std::borrow::Cow;
+/// # use metrique_writer_core::config::EntryDimensions;
+/// # use metrique_writer_core::{Entry, EntryWriter};
+///
+/// struct MyEntry;
+/// impl Entry for MyEntry {
+///     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+///         writer.value("AWSAccountId", "012345678901");
+///         writer.value("API", "MyAPI");
+///         writer.value("StringProp", "some string value");
+///         writer.value("SomeField", &2u32);
+///         writer.config(
+///             const {
+///                 &EntryDimensions::new(Cow::Borrowed(&[
+///                     Cow::Borrowed(&[Cow::Borrowed("API")]),
+///                     Cow::Borrowed(&[Cow::Borrowed("API"), Cow::Borrowed("StringProp")]),
+///                 ]))
+///             },
+///         );
+///         // ...
+///     }
+/// }
+/// ```
+///
+/// Note that if you are using the `metrique` library, you can also get a similar effect
+/// with the `#[metrics]` proc macro, at least for the `EntryDimensions` config:
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics(emf::dimension_sets = [[], ["AWSAccountId"]])]
+/// struct MyEntry {
+///     #[metrics(name = "AWSAccountId")]
+///     aws_account_id: String,
+///     #[metrics(name = "API")]
+///     api: String,
+///     string_prop: String,
+///     some_field: u32,
+/// }
+/// ```
+///
+/// Assuming your `Emf` was created as follows with configured ("dev-ops")
+/// dimensions `[[], ["AWSAccountID"]]`:
+///
+/// ```
+/// # use metrique_writer_format_emf::Emf;
+/// Emf::all_validations("MyNS".to_string(), vec![vec![], vec!["AWSAccountId".to_string()]])
+/// # ;
+/// ```
+///
+/// Then, both when implementing [`Entry`] directly or when using `metrique`,
+/// the emitted metric will be emitted under these 4 dimension sets:
+///
+/// ```notrust
+/// ["API"],
+/// ["API", "StringProp"],
+/// ["AWSAccountId", "API"],
+/// ["AWSAccountId", "API", "StringProp"],
+/// ```
 #[derive(Clone, Debug)]
 pub struct EntryDimensions {
     dimensions: Cow<'static, [Cow<'static, [Cow<'static, str>]>]>,

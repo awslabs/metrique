@@ -14,6 +14,7 @@ use smallvec::SmallVec;
 use super::{DefaultRng, SampledFormat};
 
 #[derive(Debug)]
+/// A builder for [CongressSample]
 pub struct CongressSampleBuilder {
     interval: Duration,
     target_observed: u32,
@@ -31,11 +32,16 @@ impl Default for CongressSampleBuilder {
 }
 
 impl CongressSampleBuilder {
-    /// Wrap the given `format` that supports sampling with the congressional sampling behavior.
+    /// Wrap the given [`Format`] that supports sampling with the congressional sampling behavior,
+    /// using the [DefaultRng].
     pub fn build<F>(self, format: F) -> CongressSample<F> {
         Self::build_with_rng(self, format, Default::default())
     }
 
+    /// Create a new [CongressSampleBuilder] that wraps a [`Format`], allowing
+    /// you to specify the random number generator. This is useful if you
+    /// want to manually seed the RNG to allow for deterministic tests,
+    /// but normally you should be using the [DefaultRng] in production.
     pub fn build_with_rng<F, R>(self, format: F, rng: R) -> CongressSample<F, R> {
         CongressSample {
             format,

@@ -11,6 +11,7 @@ serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }
+metrique = { path = "../metrique", features = [] }
 metrique-writer = { path = "../metrique-writer", features = ["tracing_subscriber_03"] }
 tracing-appender = { workspace = true }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }

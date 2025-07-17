@@ -1,11 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Defines the [`SampledFormat`] trait, which allows for formats that can be sampled.
+
 use std::io;
 
 use crate::{Entry, IoStreamError, format::Format};
 
-// [NEW DOC]
 /// Allows for sampleable formats, with a "sample rate" that will automatically compensate for entries that
 /// were sampled by that fraction. This allow services to trade a lower-accuracy metric for reduced time emitting and
 /// processing metrics.

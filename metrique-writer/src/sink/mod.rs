@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains various utilities for working with [EntrySink]
+
 use std::sync::{Arc, Mutex};
 
 use crate::Entry;
@@ -24,6 +26,8 @@ pub use metrique_writer_core::{
     global::AttachGlobalEntrySink, global::AttachHandle, global_entry_sink,
 };
 
+/// Extension trait for `AttachGlobalEntrySink`, containing functions that use
+/// types that are not present in [`metrique_writer_core`].
 pub trait AttachGlobalEntrySinkExt: AttachGlobalEntrySink {
     /// Attach the given output stream to a default [`BackgroundQueue`] and then to this
     /// global queue reference.
@@ -78,10 +82,17 @@ impl<E: Entry> EntrySink<E> for VecEntrySink<E> {
 }
 
 impl<E> VecEntrySink<E> {
+    /// Create a new, empty [VecEntrySink]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Create a new [`VecEntrySink`] using initial capacity for entries, to avoid
+    /// unnecessary reallocations.
+    ///
+    /// The between this function and [`VecEntrySink::new`] is purely performance,
+    /// in both cases, the [`VecEntrySink`] will resize itself if needed to hold
+    /// a number of entries limited only by available memory.
     pub fn with_capacity(capacity: usize) -> Self {
         Self(Arc::new(Mutex::new(Vec::with_capacity(capacity))))
     }

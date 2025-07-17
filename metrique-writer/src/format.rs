@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains various utilities for [`Format`]
+
 use std::{collections::HashSet, io};
 
 use metrique_writer_core::{
@@ -17,8 +19,42 @@ use crate::{
     stream::{MergeGlobalDimensions, MergeGlobals},
 };
 
+/// Extension trait for [`Format`]. This adds methods that use types not
+/// present within [`metrique_writer_core`].
 pub trait FormatExt: Format {
     /// Bind the format to an `output` IO destination to create an [`EntryIoStream`].
+    ///
+    /// This is the way to get an [`EntryIoStream`] from a [`Format`]
+    /// and an [`impl std::io::Write`][std::io::Write].
+    ///
+    /// ## Example
+    ///
+    /// This example sets up a global entry sink named `ServiceMetrics` that outputs to stdout
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry,
+    /// #    GlobalEntrySink,
+    /// #    sink::{AttachGlobalEntrySinkExt, global_entry_sink},
+    /// #    format::{FormatExt as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # let log_dir = tempfile::tempdir().unwrap();
+    ///
+    /// global_entry_sink! { ServiceMetrics }
+    ///
+    /// let _join = ServiceMetrics::attach_to_stream(Emf::all_validations("MyApp".into(), vec![vec![]])
+    ///     .output_to(std::io::stdout()));
+    ///
+    /// // and then, for example:
+    /// #[derive(Entry, Default)]
+    /// struct MyMetrics {
+    ///  field: usize
+    /// }
+    ///
+    /// let metric_base = MyMetrics { field: 0 };
+    /// let mut metric = ServiceMetrics::append_on_drop(metric_base);
+    /// ```
     fn output_to<O>(self, output: O) -> FormattedEntryIoStream<Self, O>
     where
         Self: Sized,
@@ -39,6 +75,39 @@ pub trait FormatExt: Format {
     ///
     /// There are several nice tracing-subscriber writers that implement MakeWriter, including
     /// tracing-appender's rolling writer.
+    ///
+    /// ## Example
+    ///
+    /// This example sets up a global entry sink named `ServiceMetrics` that outputs to
+    /// a rotating file
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry,
+    /// #    GlobalEntrySink,
+    /// #    sink::{AttachGlobalEntrySinkExt, global_entry_sink},
+    /// #    format::{FormatExt as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # let log_dir = tempfile::tempdir().unwrap();
+    /// use tracing_appender::rolling::{RollingFileAppender, Rotation};
+    /// global_entry_sink! { ServiceMetrics }
+    ///
+    /// let _join = ServiceMetrics::attach_to_stream(Emf::all_validations("MyApp".into(), vec![vec![]])
+    ///     .output_to_makewriter(
+    ///          RollingFileAppender::new(Rotation::HOURLY, log_dir, "prefix.log")
+    ///     )
+    /// );
+    ///
+    /// // and then, for example:
+    /// #[derive(Entry, Default)]
+    /// struct MyMetrics {
+    ///  field: usize
+    /// }
+    ///
+    /// let metric_base = MyMetrics { field: 0 };
+    /// let mut metric = ServiceMetrics::append_on_drop(metric_base);
+    /// ```
     #[cfg(feature = "tracing_subscriber_03")]
     fn output_to_makewriter<O>(self, output: O) -> FormattedMakeWriterEntryIoStream<Self, O>
     where
@@ -139,6 +208,8 @@ pub trait FormatExt: Format {
 }
 impl<T: Format + ?Sized> FormatExt for T {}
 
+/// This struct combines a [Format] and an [std::io::Write]
+/// to get an [EntryIoStream].
 #[derive(Debug)]
 pub struct FormattedEntryIoStream<F, O> {
     format: F,
@@ -187,6 +258,8 @@ impl<F: Format, const N: usize> Format for MergeGlobalDimensions<F, N> {
 
 #[derive(Debug)]
 #[cfg(feature = "tracing_subscriber_03")]
+/// This struct combines a [Format] and an [tracing_subscriber::fmt::MakeWriter]
+/// to get an [EntryIoStream].
 pub struct FormattedMakeWriterEntryIoStream<F, O> {
     format: F,
     output: O,

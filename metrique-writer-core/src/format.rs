@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains the [`Format`] trait.
+
 use crate::{Entry, stream::IoStreamError};
 use std::io;
 

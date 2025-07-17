@@ -175,19 +175,26 @@ impl<V: Debug, const N: usize> fmt::Debug for Distribution<V, N> {
 }
 
 impl<V: MetricValue, const N: usize> Distribution<V, N> {
+    /// Return the list of values in this distribution
     pub fn values(&self) -> &[V] {
         &self.values
     }
 
+    /// Add a a value to the distribution
     pub fn add(&mut self, value: V) -> &mut Self {
         self.values.push(value);
         self
     }
 
+    /// Clear the values in this distribution, making it empty
     pub fn clear(&mut self) {
         self.values.clear()
     }
 
+    /// Try to return turn this distribution into a [Mean], which will
+    /// be recorded as a total / occurrences pair.
+    ///
+    /// See validation rules in [Mean::try_new]
     pub fn try_to_mean(&self) -> Result<Mean<V::Unit>, ValidationError> {
         Mean::try_new(self.values())
     }
@@ -251,6 +258,8 @@ impl<U: UnitTag, V: Into<f64>> FromIterator<V> for Mean<U> {
 impl<U: UnitTag> Mean<U> {
     /// Compute the mean from a distribution of [`MetricValue`]s.
     ///
+    /// An empty [Mean] is fine, and will lead to no metric being recorded.
+    ///
     /// Each value in the distribution must have the same [`Unit`] and must not record any dimensions. Dimensions are
     /// unsupported because it's unclear what to write if different values have different dimensions. To add dimensions
     /// to the entire distribution, instead use
@@ -268,10 +277,12 @@ impl<U: UnitTag> Mean<U> {
         Ok(mean)
     }
 
+    /// Return the total sum of observations
     pub fn total(self) -> f64 {
         self.total
     }
 
+    /// Return the number of occurrences recorded
     pub fn occurrences(self) -> u64 {
         self.occurrences
     }
@@ -284,6 +295,7 @@ impl<U: UnitTag> Mean<U> {
         }
     }
 
+    /// Record a new observation into this [Mean].
     pub fn record(&mut self, f: impl Into<f64>) {
         self.total += f.into();
         self.occurrences += 1;

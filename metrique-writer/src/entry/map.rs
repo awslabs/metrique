@@ -53,10 +53,12 @@ where
 }
 
 impl<E> EnumMapEntry<E> {
+    /// Create a new `EnumMapEntry`
     pub fn new(map: E) -> Self {
         Self(map)
     }
 
+    /// Return the inner value contained within an `EnumMapEntry`
     pub fn into_inner(self) -> E {
         self.0
     }

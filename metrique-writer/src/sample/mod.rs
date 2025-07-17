@@ -1,6 +1,26 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Contains samplers that can be used to sample metrics to avoid
+//! performance impact when the metric rate is high.
+//!
+//! The samplers in this module upweight sampled metrics, to ensure
+//! that the aggregate statistics are not biased by sampling (for
+//! example, if a datapoint is sampled with probability 10%, the
+//! samplers will give it a weight of 10x - of course, the mechanism
+//! of weighting entries is format-specific).
+//!
+//! Currently, contains the following samplers:
+//!
+//! 1. [FixedFractionSample], which samples metrics by a fixed sample.
+//! 2. [CongressSample], which maintains a bounded rate of metric emission,
+//!    and also tries to ensure that a reasonable amount of entries for
+//!    every [sample group] is sampled.
+//!
+//! [sample group]: Entry::sample_group
+//!
+//! See the [SampledFormat] and [SampledFormatExt] traits for more details.
+
 use std::{io, marker::PhantomData, time::Duration};
 
 use metrique_writer_core::{Entry, IoStreamError, format::Format};
