@@ -1119,7 +1119,9 @@ impl EntryWriter<'_> {
     }
 }
 
-fn clamp_to_finite(float: f64, name_for_log: &str) -> Option<f64> {
+struct FiniteFloat(f64);
+
+fn clamp_to_finite(float: f64, name_for_log: &str) -> Option<FiniteFloat> {
     let float = float.clamp(-f64::MAX, f64::MAX);
     if !float.is_finite() {
         rate_limited!(
@@ -1131,7 +1133,7 @@ fn clamp_to_finite(float: f64, name_for_log: &str) -> Option<f64> {
         );
         None
     } else {
-        Some(float)
+        Some(FiniteFloat(float))
     }
 }
 
@@ -1143,15 +1145,15 @@ struct ValueWriter<'a, 'e> {
 }
 
 impl ValueWriter<'_, '_> {
-    fn write_float(buf: &mut PrefixedStringBuf, v: f64) {
-        assert!(v.is_finite(), "should be checked by the caller");
+    fn write_float(buf: &mut PrefixedStringBuf, v: FiniteFloat) {
+        assert!(v.0.is_finite(), "should be checked by the caller");
         let mut dtoa_buf = dtoa::Buffer::new();
-        let as_str = dtoa_buf.format_finite(v);
+        let as_str = dtoa_buf.format_finite(v.0);
         // injection-safe since this is a number
         buf.push_raw_str(as_str.strip_suffix(".0").unwrap_or(as_str));
     }
 
-    // return false if the observation has been skipped due to being nan/inf
+    // return Err(MetricSkipped) if the observation has been skipped due to being NaN
     fn write_observation(
         buf: &mut PrefixedStringBuf,
         counts: &mut PrefixedStringBuf,
@@ -1169,7 +1171,7 @@ impl ValueWriter<'_, '_> {
             }
             Observation::Floating(v) => {
                 if let Some(v) = clamp_to_finite(v, name_for_log) {
-                    Self::write_float(buf, v.clamp(f64::MIN, f64::MAX));
+                    Self::write_float(buf, v);
                     counts.push_integer(multiplicity);
                     Ok(())
                 } else {
@@ -1192,7 +1194,7 @@ impl ValueWriter<'_, '_> {
             }
             _ => {
                 // shouldn't actually happen unless there is a version mismatch,
-                // but Observation is `#{non_exhaustive]`. Do something reasonable.
+                // but Observation is `#[non_exhaustive]`. Do something reasonable.
                 rate_limited!(
                     Duration::from_secs(1),
                     tracing::error!(
@@ -1276,6 +1278,14 @@ impl ValueWriter<'_, '_> {
             return Ok(()); // skip metric with no observations
         };
 
+        // If write_metric_value skips a NaN metric, it will have already
+        // written the metric name, so the buffer looks like
+        //                                        `...,"MetricName":
+        //                                           /             ^
+        // buffer is at the comma before the truncation  | buffer is at the : when it detects the NaN
+        //
+        // There is always a comma, since `fields_buf` always contains at least the `}`
+        // that closes the `_aws` block (and possibly other fields).
         let fields_buf_index = fields_buf.as_str().len();
         if let Err(MetricSkipped) = Self::write_metric_value(
             name,
@@ -1285,6 +1295,7 @@ impl ValueWriter<'_, '_> {
             distribution,
             multiplicity,
         ) {
+            // skipping this metric, truncate the metric name
             fields_buf.truncate(fields_buf_index);
             return Ok(()); // skip metric with only NaN observations
         }
@@ -1300,6 +1311,7 @@ impl ValueWriter<'_, '_> {
             return Ok(());
         }
 
+        // (*) comma-adding logic
         if !metrics_buf.is_empty() {
             metrics_buf.push(',');
         }
