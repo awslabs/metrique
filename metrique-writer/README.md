@@ -56,19 +56,19 @@ It is also possible to implement `Entry` manually (see the docs for [`Entry`]).
 ## Emitting Metrics
 
 This library currently only comes with `metrique-writer-format-emf`,
-which formats to [Amazon CloudWatch Embedded Metric Format (EMF)],
+which formats to [Amazon CloudWatch Embedded Metric Format (EMF)][emf-docs],
 but more formatters might be added in the future.
 
 Entries are sent to an [`EntrySink`] in order to be written to a destination.
 
 You can either thread the [`EntrySink`] manually in your code, or register
-a global entry sink by using the [`global_entry_sink`] macro.
+a global entry sink by using the [`sink::global_entry_sink`] macro.
 
 The [`EntrySink`] generally has these 3 components:
 
 1. A [`Format`] that is used to format the metrics to be emitted.
 2. Some output file, which turns the [`Format`] to an [`EntryIoStream`]
-3. Some queueing policy ([`BackgroundQueue`] or [`FlushImmediately`]).
+3. Some queueing policy ([`sink::BackgroundQueue`] or [`sink::FlushImmediately`]).
 
 One example way of setting up metrics would be to do the following:
 
@@ -228,6 +228,5 @@ let mut metric = MyMetrics::default();
 queue.append_any(metric);
 ```
 
-[Amzon CloudWatch Embedded Metric Format (EMF)]
-: htps://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
-
+[emf-docs]: htps://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
+[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
