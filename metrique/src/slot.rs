@@ -85,6 +85,9 @@ impl<T: CloseValue> LazySlot<T> {
 
 /// Controls behavior when a parent metric record is dropped before a slot is closed.
 ///
+/// This doesn't actually change the behavior of the [`Slot`] itself in any way, it just
+/// provides a convenient way to hold a [`FlushGuard`] until the slot is closed.
+///
 /// This enum determines what happens when a parent metric record containing a `Slot`
 /// is dropped before the `SlotGuard` for that slot is dropped.
 pub enum OnParentDrop {
@@ -204,12 +207,6 @@ pub struct SlotGuard<T: CloseValue> {
     parent_drop_mode: OnParentDrop,
 }
 
-impl OnParentDrop {
-    fn flush(&mut self) {
-        *self = OnParentDrop::Discard;
-    }
-}
-
 impl<T: CloseValue> SlotGuard<T> {
     /// Check if the `Slot` is still open
     ///
@@ -268,8 +265,6 @@ impl<T: CloseValue> Drop for SlotGuard<T> {
         if let SlotI::Writable { value, tx } = std::mem::replace(&mut self.slot, SlotI::Dropped) {
             // send the value back to the parent
             let _ = tx.send(value.close());
-            // flush the drop guard
-            self.parent_drop_mode.flush();
         } else {
             unreachable!("move out of slot must only occur during drop")
         }
