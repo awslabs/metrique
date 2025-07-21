@@ -1,10 +1,12 @@
 metrique is a crate to emit unit-of-work metrics
 
+- [`#[metrics]` macro reference](https://docs.rs/metrique/0.1/metrique/unit_of_work/attr.metrics.html)
+
 ## Getting Started (Applications)
 
 Most metrics your application records will be "unit of work" metrics. These are typically tied to the request/response scope. You declare a struct the represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`
 
-This library exposes a wrapper `<MetricName>Guard` type that implicitly appends to a global queue when the struct is dropped. This wrapper in turn exposes other APIs to further tune behavior.
+This library exposes a wrapper `<MetricName>Guard` type (a type alias to [`AppendAndCloseOnDrop`]) that implicitly appends to a global queue when the struct is dropped. This wrapper in turn exposes other APIs to further tune behavior.
 
 ```rust
 use std::path::PathBuf;
@@ -212,10 +214,37 @@ the data - `metrique` provides `Instrument` to standardize this - or pass a
 
 This is the recommended approach. It has minimal performance overhead and makes your metrics very predictable.
 
-### Merging metrics with complex lifetimes
+### Metrics with complex lifetimes
 
 Sometimes, managing metrics with a simple ownership and mutable reference pattern does not work well. The
 `metrique` crate provides some tools to help more complex situations
+
+#### Controlling the point of metric emission
+
+Sometimes, your code does not have a single exit point at which you want to report your metrics = maybe
+your operation spawns some post-processing tasks, and you want your metric entry to include information
+from all of them.
+
+You don't want to wrap your parent metric in an `Arc`, as that will prevent you from having mutable access
+to metric fields, but you still want to delay metric emission.
+
+To allow for that, the [`AppendAndCloseOnDrop`] guard (which is what the `<MetricName>Guard` aliases point to)
+has `flush_guard` and `force_flush_guard` functions. The flush guards are type-erased (they have
+types `FlushGuard` and `ForceFlushGuard`, which don't mention the type of the metric entry).
+
+The metric will then be emitted when either:
+
+1. The owner handle of the metric and *all* the `FlushGuard`s have been dropped
+2. The owner handle of the metric and *any* of the `ForceFlushGuard`s have been dropped.
+
+This makes `force_flush_guard` useful to emit a metric via a timeout even if some
+of the downstream tasks have not completed, which is useful since you normally
+want metrics even (maybe *especially*) when things are stuck (the downstream tasks
+presumably have access to the metric struct via an [`Arc`](#using-atomics)
+or [`Slot`](#using-slots-to-send-values), which if they eventually finish,
+will let them safely write a value to the now-dead metric).
+
+See the examples below to see how the flush guards are used.
 
 #### Using `Slot`s to send values
 
@@ -227,8 +256,9 @@ In that case, you can use `Slot`, which creates a oneshot channel, over which th
 Note that `Slot` by itself does not delay the parent metric entry's emission in any way. If your metric entry
 is emitted (for example, when your request is finished) before the slot is filled, the metric entry will just
 skip the metrics behind the `Slot`. One option is to make your request wait for the slot
-to be filled - either by [`join`]ing your subtask or by using `Slot::wait_for_data`. Another option
-is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission).
+to be filled - either by [`join`]ing your subtask or by using `Slot::wait_for_data`.
+
+Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission) - to make that easy, `Slot::open` has a `OnParentDrop::Wait` mode, that holds on to a `FlushGuard` until the slot is closed.
 
 ```rust
 use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
@@ -263,7 +293,7 @@ struct DownstreamMetrics {
     number_of_ducks: usize
 }
 
-async fn handle_request() {
+async fn handle_request_discard() {
     let mut metrics = RequestMetrics::init("DoSomething");
     let downstream_metrics = metrics.downstream_operation.open(OnParentDrop::Discard).unwrap();
 
@@ -277,15 +307,26 @@ async fn handle_request() {
     metrics.downstream_operation.wait_for_data().await;
 }
 
+async fn handle_request_on_parent_wait() {
+    let mut metrics = RequestMetrics::init("DoSomething");
+    let guard = metrics.flush_guard();
+    let downstream_metrics = metrics.downstream_operation.open(OnParentDrop::Wait(guard)).unwrap();
+
+    // NOTE: if `downstream_metrics` is not dropped before `metrics` (the parent object),
+    // no data associated with `downstream_metrics` will be emitted
+    tokio::task::spawn(async move {
+        call_downstream_service(downstream_metrics)
+    });
+
+    // The metric will be emitted when the downstream service finishes
+}
+
+
 async fn call_downstream_service(mut metrics: SlotGuard<DownstreamMetrics>) {
     // can mutate the struct directly w/o using atomics.
     metrics.number_of_ducks += 1
 }
 ```
-
-#### Controlling the point of metric emission
-
-FIXME
 
 #### Using Atomics
 
@@ -300,6 +341,8 @@ For further usage of atomics for concurrent metric updates, see [the fanout exam
 use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
 use metrique::unit_of_work::metrics;
 use metrique::Counter;
+
+use std::sync::Arc;
 
 global_entry_sink! { ServiceMetrics }
 
@@ -445,6 +488,85 @@ struct PrefixedMetrics {
 }
 ```
 
+## Types in metrics
+
+Example of a metrics struct:
+
+```rust
+use metrique::{Counter, Slot};
+use metrique::timers::{EpochSeconds, Timer, Timestamp, TimestampOnClose};
+use metrique::unit::{Byte, Second};
+use metrique::unit_of_work::metrics;
+
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+#[metrics(subfield)]
+struct NestedMetrics {
+    nested_metric: f64,
+}
+
+#[metrics]
+struct MyMetrics {
+    integer_value: u32,
+
+    floating_point_value: f64,
+
+    // emitted as f64 with unit of bytes
+    #[metrics(unit = Byte)]
+    floating_point_value_bytes: f64,
+
+    // emitted as 0 if false, 1 if true
+    boolean: bool,
+
+    // emitted as a Duration (default is as milliseconds)
+    duration: Duration,
+
+    // emitted as a Duration in seconds
+    #[metrics(unit = Second)]
+    duration_seconds: Duration,
+
+    // timer, emitted as a duration
+    timer: Timer,
+
+    // optional value - emitted only if present
+    optional: Option<u64>,
+
+    // use of Formatter
+    #[metrics(format = EpochSeconds)]
+    end_timestamp: TimestampOnClose,
+
+    // use of Formatter behind Option
+    #[metrics(format = EpochSeconds)]
+    end_timestamp_opt: Option<Timestamp>,
+
+    // you can also have values that are atomics
+    counter: Counter,
+    // or behind an Arc
+    counter_behind_arc: Arc<Counter>,
+
+    // or Slots
+    #[metrics(unit = Byte)]
+    value_behind_slot: Slot<f64>,
+
+    // or just values that are behind an Arc<Mutex>
+    #[metrics(unit = Byte)]
+    value_behind_arc_mutex: Arc<Mutex<f64>>,
+
+    // you can have nested subfields
+    #[metrics(flatten)]
+    nested: NestedMetrics,
+}
+```
+
+Ordinary fields in metrics need to implement [`CloseValue`]`<Output: `[`metric_writer::Value`]`>`.
+
+If you use a formatter (`#[metrics(format)]`), your field needs to implement [`CloseValue`],
+and its output needs to be supported by the [formatter](#custom-valueformatters) instead of
+implementing [`metric_writer::Value`].
+
+Nested fields (`#[metrics(flatten)]`) need to implement [`CloseEntry`].
+
 ## Customization
 
 If the standard primitives in `metrique` don't serve your needs, there's a good
@@ -553,6 +675,19 @@ fn test_metrics () {
     let entries = inspector.entries();
     assert_eq!(entries[0].values["Operation"], "SayHello");
     assert_eq!(entries[0].metrics["NumberOfDucks"].as_u64(), 10);
+}
+```
+
+## Debugging common issues
+
+### No entries in the log
+
+If you see empty files e.g. "service_log.{date}.log", this is could be because your entries are invalid and being dropped by `metrique-writer`. This will occur if your entry is invalid (e.g. if you have two fields with the same name). Enable tracing logs to see the errors.
+
+```rust
+# #[allow(clippy::needless_doctest_main)]
+fn main() {
+    tracing_subscriber::fmt::init();
 }
 ```
 
