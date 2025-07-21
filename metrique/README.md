@@ -140,10 +140,6 @@ For more complex examples, see the [examples folder].
    is controlled solely by the formatter) by setting
    `#[metrics(format = ...)]` to one of [`EpochSeconds`], [`EpochMillis`]
    (the default), or [`EpochMicros`].
-
-   You can control also the unit with `#[metrics(unit = ...)]`. The supported
-   units are `Second`, `Millisecond` and `Microsecond`. However,
-   that will not work for timestamps that are [optional](#types-in-metrics).
  * [`TimestampOnClose`]: records the timestamp when the record is closed.
 
 Usage example:
