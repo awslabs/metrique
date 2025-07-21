@@ -143,7 +143,7 @@ For more complex examples, see the [examples folder].
 
    You can control also the unit with `#[metrics(unit = ...)]`. The supported
    units are `Second`, `Millisecond` and `Microsecond`. However,
-   that will not work for timestamps that are [optional][TODO].
+   that will not work for timestamps that are [optional](#types-in-metrics).
  * [`TimestampOnClose`]: records the timestamp when the record is closed.
 
 Usage example:
@@ -579,7 +579,7 @@ implement [`CloseValue`] or [`CloseValueRef`] yourself ([`CloseValueRef`]
 does not take ownership and will also also work behind smart pointers,
 for example for `Arc<YourValue>`).
 
-For instance, here is an example for adding a custom timer type that calculates the time from when it was created, to when it finished, on close.
+For instance, here is an example for adding a custom timer type that calculates the time from when it was created, to when it finished, on close (it doesn't do anything that `timers::Timer` doesn't do, but is useful as an example).
 
 ```rust
 use std::time::{Duration, Instant};
@@ -615,26 +615,24 @@ An example use would look like the following:
 use metrique::unit_of_work::metrics;
 
 use std::time::SystemTime;
+use chrono::{DateTime, Utc};
 
-struct MyAsEpochSeconds;
+/// Format a SystemTime as UTC time
+struct AsUtcDate;
 
-// observe that `format_value` is a static method, so `MyAsEpochSeconds`
+// observe that `format_value` is a static method, so `AsUtcDate`
 // is never initialized.
 
-impl metrique_writer::value::ValueFormatter<SystemTime> for MyAsEpochSeconds {
+impl metrique_writer::value::ValueFormatter<SystemTime> for AsUtcDate {
     fn format_value(writer: impl metrique_writer::ValueWriter, value: &SystemTime) {
-        // or whatever
-        let epoch_seconds = value
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
-        writer.string(&epoch_seconds.to_string());
+        let datetime: DateTime<Utc> = (*value).into();
+        writer.string(&datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     }
 }
 
 #[metrics]
 struct MyMetric {
-    #[metrics(format = MyAsEpochSeconds)]
+    #[metrics(format = AsUtcDate)]
     my_field: SystemTime,
 }
 ```
