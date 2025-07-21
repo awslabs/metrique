@@ -8,7 +8,7 @@ use std::{
     time::{Duration, UNIX_EPOCH},
 };
 
-use metrique_core::{CloseValue, CloseValueRef};
+use metrique_core::CloseValue;
 use metrique_timesource::{Instant, SystemTime, TimeSource, time_source};
 use metrique_writer_core::{
     Value,
@@ -62,11 +62,19 @@ impl Timestamp {
     }
 }
 
-impl CloseValueRef for Timestamp {
+impl CloseValue for &'_ Timestamp {
     type Closed = TimestampValue;
 
-    fn close_ref(&self) -> Self::Closed {
+    fn close(self) -> Self::Closed {
         TimestampValue::new(&self.time)
+    }
+}
+
+impl CloseValue for Timestamp {
+    type Closed = TimestampValue;
+
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
     }
 }
 
@@ -291,14 +299,21 @@ impl Timer {
     }
 }
 
-impl CloseValueRef for Timer {
+impl CloseValue for &'_ Timer {
     type Closed = Duration;
 
-    fn close_ref(&self) -> Self::Closed {
+    fn close(self) -> Self::Closed {
         self.duration.unwrap_or_else(|| self.start.elapsed())
     }
 }
 
+impl CloseValue for Timer {
+    type Closed = Duration;
+
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}
 /// A guard that stops a timer when dropped.
 ///
 /// This guard is returned by [`Stopwatch::start()`] and will add the elapsed time
@@ -803,10 +818,10 @@ impl Stopwatch {
     }
 }
 
-impl CloseValueRef for Stopwatch {
+impl CloseValue for &'_ Stopwatch {
     type Closed = Option<Duration>;
 
-    fn close_ref(&self) -> Self::Closed {
+    fn close(self) -> Self::Closed {
         match &self.duration {
             MaybeGuardedDuration::Exclusive(Some(duration)) => Some(*duration),
             MaybeGuardedDuration::Shared(mutex) => {
@@ -820,12 +835,19 @@ impl CloseValueRef for Stopwatch {
         }
     }
 }
+impl CloseValue for Stopwatch {
+    type Closed = Option<Duration>;
+
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}
 
 #[cfg(test)]
 mod test {
     use std::time::{Duration, UNIX_EPOCH};
 
-    use metrique_core::CloseValueRef;
+    use metrique_core::CloseValue;
     use metrique_timesource::{TimeSource, set_time_source};
 
     use crate::timers::Stopwatch;
@@ -837,11 +859,11 @@ mod test {
         let guard = stopwatch.start();
         tokio::time::advance(Duration::from_secs(1)).await;
         drop(guard);
-        assert_eq!(stopwatch.close_ref(), Some(Duration::from_secs(1)));
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(1)));
         let guard = stopwatch.start();
         tokio::time::advance(Duration::from_secs(3)).await;
         drop(guard);
-        assert_eq!(stopwatch.close_ref(), Some(Duration::from_secs(4)));
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(4)));
     }
 
     #[tokio::test(start_paused = true)]
@@ -860,7 +882,7 @@ mod test {
         let guard = stopwatch.start();
         tokio::time::advance(Duration::from_secs(1)).await;
         drop(guard);
-        assert_eq!(stopwatch.close_ref(), Some(Duration::from_secs(1)));
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(1)));
     }
 
     #[tokio::test(start_paused = true)]

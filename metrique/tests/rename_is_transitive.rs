@@ -19,7 +19,7 @@ struct NestedA {
     this_is_a_field: usize,
 }
 
-#[metrics(prefix = "prefix_")]
+#[metrics(subfield, prefix = "prefix_")]
 #[derive(Default)]
 struct NestedB {
     this_is_b_field: usize,

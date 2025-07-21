@@ -1,16 +1,20 @@
-error[E0277]: CloseValueRef is not implemented for ChildMetrics
+error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:8:5
   |
 8 |     child: ChildMetrics,
   |     ^^^^^ the trait `CloseValue` is not implemented for `ChildMetrics`
   |
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValueRef` directly.
+  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
   = help: the following other types implement trait `CloseValue`:
-            Cow<'static, str>
-            LazySlot<T>
-            RootMetrics
-            String
-            TimestampOnClose
+            &&'static str
+            &'static str
+            &AtomicBool
+            &AtomicU16
+            &AtomicU32
+            &AtomicU64
+            &AtomicU8
+            &AtomicUsize
+          and $N others
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:7:8
@@ -20,11 +24,15 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
   |
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
   = help: the following other types implement trait `CloseValue`:
-            Cow<'static, str>
-            LazySlot<T>
-            RootMetrics
-            String
-            TimestampOnClose
+            &&'static str
+            &'static str
+            &AtomicBool
+            &AtomicU16
+            &AtomicU32
+            &AtomicU64
+            &AtomicU8
+            &AtomicUsize
+          and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8
   |
@@ -44,11 +52,15 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
   |
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
   = help: the following other types implement trait `CloseValue`:
-            Cow<'static, str>
-            LazySlot<T>
-            RootMetrics
-            String
-            TimestampOnClose
+            &&'static str
+            &'static str
+            &AtomicBool
+            &AtomicU16
+            &AtomicU32
+            &AtomicU64
+            &AtomicU8
+            &AtomicUsize
+          and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8
   |
@@ -65,11 +77,15 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
   |
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
   = help: the following other types implement trait `CloseValue`:
-            Cow<'static, str>
-            LazySlot<T>
-            RootMetrics
-            String
-            TimestampOnClose
+            &&'static str
+            &'static str
+            &AtomicBool
+            &AtomicU16
+            &AtomicU32
+            &AtomicU64
+            &AtomicU8
+            &AtomicUsize
+          and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8
   |
@@ -83,17 +99,46 @@ note: required by a bound in `EntrySink`
   |                        ^^^^^ required by this bound in `EntrySink`
   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0277]: CloseValueRef is not implemented for ChildMetrics
+error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:6:1
   |
 6 | #[metrics(rename_all = "snake_case")]
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CloseValue` is not implemented for `ChildMetrics`
   |
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValueRef` directly.
+  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
   = help: the following other types implement trait `CloseValue`:
-            Cow<'static, str>
-            LazySlot<T>
-            RootMetrics
-            String
-            TimestampOnClose
+            &&'static str
+            &'static str
+            &AtomicBool
+            &AtomicU16
+            &AtomicU32
+            &AtomicU64
+            &AtomicU8
+            &AtomicUsize
+          and $N others
+  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: CloseValue is not implemented for ChildMetrics
+ --> tests/ui/fail/subfield_no_metric.rs:6:1
+  |
+6 | #[metrics(rename_all = "snake_case")]
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  |
+  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = help: the following other types implement trait `CloseValue`:
+            &&'static str
+            &'static str
+            &AtomicBool
+            &AtomicU16
+            &AtomicU32
+            &AtomicU64
+            &AtomicU8
+            &AtomicUsize
+          and $N others
+note: required because it appears within the type `RootMetricsEntry`
+ --> tests/ui/fail/subfield_no_metric.rs:7:8
+  |
+7 | struct RootMetrics {
+  |        ^^^^^^^^^^^
+  = note: structs must have a statically known size to be initialized
   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)

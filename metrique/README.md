@@ -549,6 +549,10 @@ struct MyMetrics {
     #[metrics(unit = Byte)]
     value_behind_arc_mutex: Arc<Mutex<f64>>,
 
+    // ..and also an Option
+    #[metrics(unit = Byte)]
+    value_behind_opt_arc_mutex: Arc<Mutex<Option<f64>>>,
+
     // you can have nested subfields
     #[metrics(flatten)]
     nested: NestedMetrics,
@@ -578,8 +582,8 @@ for example for `Arc<YourValue>`).
 For instance, here is an example for adding a custom timer type that calculates the time from when it was created, to when it finished, on close (it doesn't do anything that `timers::Timer` doesn't do, but is useful as an example).
 
 ```rust
+use metrique::CloseValue;
 use std::time::{Duration, Instant};
-use metrique::CloseValueRef;
 
 struct MyTimer(Instant);
 impl Default for MyTimer {
@@ -588,11 +592,19 @@ impl Default for MyTimer {
     }
 }
 
-// this does not take ownership, and therefore can use `CloseValueRef`
-impl CloseValueRef for MyTimer {
+// this does not take ownership, and therefore should implement `CloseValue` for both &T and T
+impl CloseValue for &'_ MyTimer {
     type Closed = Duration;
 
-    fn close_ref(&self) -> Self::Closed {
+    fn close(self) -> Self::Closed {
+        self.0.elapsed()
+    }
+}
+
+impl CloseValue for MyTimer {
+    type Closed = Duration;
+
+    fn close(self) -> Self::Closed {
         self.0.elapsed()
     }
 }

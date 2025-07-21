@@ -16,10 +16,16 @@ use crate::{CloseValue, CloseValueRef};
 macro_rules! close_value_ref {
     ($($type:ty),+) => {
         $(
-            impl $crate::CloseValueRef for $type {
+            impl $crate::CloseValue for &'_ $type {
                 type Closed = $type;
-                fn close_ref(&self) -> Self::Closed {
+                fn close(self) -> Self::Closed {
                     *self
+                }
+            }
+            impl $crate::CloseValue for $type {
+                type Closed = $type;
+                fn close(self) -> Self::Closed {
+                    self
                 }
             }
         )+
@@ -63,51 +69,74 @@ close_value!(
 );
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValueRef for Arc<T> {
-    type Closed = T::Closed;
+impl<T, C> CloseValue for &'_ Arc<T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = C;
 
-    fn close_ref(&self) -> Self::Closed {
-        self.as_ref().close_ref()
-    }
-}
-
-#[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValueRef for MutexGuard<'_, T> {
-    type Closed = T::Closed;
-
-    fn close_ref(&self) -> Self::Closed {
+    fn close(self) -> Self::Closed {
         T::close_ref(self)
     }
 }
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValueRef for Arc<Mutex<Option<T>>> {
-    type Closed = Option<T::Closed>;
+impl<T, C> CloseValue for Arc<T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = C;
 
-    fn close_ref(&self) -> Self::Closed {
-        self.as_ref()
-            .lock()
-            .ok()?
-            .as_ref()
-            .map(CloseValueRef::close_ref)
+    fn close(self) -> Self::Closed {
+        T::close_ref(&self)
     }
 }
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValueRef for MutexGuard<'_, Option<T>> {
-    type Closed = Option<T::Closed>;
+impl<T, C> CloseValue for &'_ MutexGuard<'_, T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = C;
 
-    fn close_ref(&self) -> Self::Closed {
-        self.as_ref().map(CloseValueRef::close_ref)
+    fn close(self) -> Self::Closed {
+        T::close_ref(self)
     }
 }
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValueRef for Arc<Mutex<T>> {
-    type Closed = Option<T::Closed>;
+impl<T, C> CloseValue for MutexGuard<'_, T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = C;
 
-    fn close_ref(&self) -> Self::Closed {
-        Some(self.as_ref().lock().ok()?.close())
+    fn close(self) -> Self::Closed {
+        T::close_ref(&self)
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<T, C> CloseValue for Mutex<T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = Option<C>;
+
+    fn close(self) -> Self::Closed {
+        self.close_ref()
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<T, C> CloseValue for &'_ Mutex<T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = Option<C>;
+
+    fn close(self) -> Self::Closed {
+        Some(self.lock().ok()?.close())
     }
 }
 
@@ -121,6 +150,18 @@ impl<T: CloseValue> CloseValue for Option<T> {
 }
 
 #[diagnostic::do_not_recommend]
+impl<T> CloseValue for &'_ Option<T>
+where
+    T: CloseValueRef,
+{
+    type Closed = Option<T::Closed>;
+
+    fn close(self) -> Self::Closed {
+        self.as_ref().map(|v| v.close_ref())
+    }
+}
+
+#[diagnostic::do_not_recommend]
 impl<T: CloseValue, const N: usize> CloseValue for WithDimensions<T, N> {
     type Closed = WithDimensions<T::Closed, N>;
 
@@ -128,6 +169,8 @@ impl<T: CloseValue, const N: usize> CloseValue for WithDimensions<T, N> {
         self.map_value(|v| v.close())
     }
 }
+
+// no by-ref impl for WithDimensions due to not wanting to implicitly clone the dimensions
 
 #[diagnostic::do_not_recommend]
 impl<T: CloseValue, F: FlagConstructor> CloseValue for ForceFlag<T, F> {
@@ -138,19 +181,36 @@ impl<T: CloseValue, F: FlagConstructor> CloseValue for ForceFlag<T, F> {
     }
 }
 
+#[diagnostic::do_not_recommend]
+impl<T: CloseValueRef, F: FlagConstructor> CloseValue for &'_ ForceFlag<T, F> {
+    type Closed = ForceFlag<T::Closed, F>;
+
+    fn close(self) -> Self::Closed {
+        self.map_value_ref(|v| v.close_ref())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
 
     use metrique_writer_core::value::WithDimensions;
 
-    use crate::{CloseValue, CloseValueRef};
+    use crate::CloseValue;
 
     struct Closeable;
-    impl CloseValueRef for Closeable {
+    impl CloseValue for Closeable {
         type Closed = usize;
 
-        fn close_ref(&self) -> Self::Closed {
+        fn close(self) -> Self::Closed {
+            42
+        }
+    }
+
+    impl CloseValue for &'_ Closeable {
+        type Closed = usize;
+
+        fn close(self) -> Self::Closed {
             42
         }
     }

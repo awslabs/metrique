@@ -120,8 +120,14 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
     base_token_stream.into()
 }
 
+#[derive(Copy, Clone, Debug)]
+enum TraitToImplement {
+    CloseValueRef,
+    CloseValue,
+}
+
 #[derive(Debug, Default, FromMeta)]
-struct RootAttributes {
+struct RawRootAttributes {
     prefix: Option<String>,
 
     #[darling(default)]
@@ -131,6 +137,44 @@ struct RootAttributes {
     emf_dimensions: Option<DimensionSets>,
 
     subfield: Flag,
+    #[darling(rename = "subfield_owned")]
+    subfield_owned: Flag,
+}
+
+#[derive(Debug)]
+enum SubfieldStyle {
+    Subfield,
+    SubfieldOwned,
+}
+
+#[derive(Debug, Default)]
+struct RootAttributes {
+    prefix: Option<String>,
+
+    rename_all: NameStyle,
+
+    emf_dimensions: Option<DimensionSets>,
+
+    subfield_style: Option<SubfieldStyle>,
+}
+
+impl RawRootAttributes {
+    fn validate(self) -> darling::Result<RootAttributes> {
+        let mut out: Option<(SubfieldStyle, &'static str)> = None;
+        out = set_exclusive(|_| SubfieldStyle::Subfield, "subfield", out, &self.subfield)?;
+        out = set_exclusive(
+            |_| SubfieldStyle::SubfieldOwned,
+            "subfield_owned",
+            out,
+            &self.subfield_owned,
+        )?;
+        Ok(RootAttributes {
+            prefix: self.prefix,
+            rename_all: self.rename_all,
+            emf_dimensions: self.emf_dimensions,
+            subfield_style: out.map(|(s, _)| s),
+        })
+    }
 }
 
 impl RootAttributes {
@@ -159,6 +203,13 @@ impl RootAttributes {
                 .push(quote! { __config__: ::metrique::__plumbing_entry_dimensions!(dims: #dims) })
         }
         fields
+    }
+
+    fn trait_to_implement(&self) -> TraitToImplement {
+        match self.subfield_style {
+            None | Some(SubfieldStyle::SubfieldOwned) => TraitToImplement::CloseValue,
+            Some(SubfieldStyle::Subfield) => TraitToImplement::CloseValueRef,
+        }
     }
 }
 
@@ -209,12 +260,12 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
 }
 
 // Set metrics to `new`, enforcing the fact that this field is exclusive and cannot be combined
-fn set_exclusive(
-    new: impl Fn(Span) -> MetricsFieldAttrs,
+fn set_exclusive<T>(
+    new: impl Fn(Span) -> T,
     name: &'static str,
-    existing: Option<(MetricsFieldAttrs, &'static str)>,
+    existing: Option<(T, &'static str)>,
     flag: &Flag,
-) -> darling::Result<Option<(MetricsFieldAttrs, &'static str)>> {
+) -> darling::Result<Option<(T, &'static str)>> {
     match (flag.is_present(), &existing) {
         (true, Some((_, other))) => Err(darling::Error::custom(format!(
             "Cannot combine {other} with {name}"
@@ -307,7 +358,7 @@ enum MetricsFieldAttrs {
 
 fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
     let nested_meta = NestedMeta::parse_meta_list(attr.into())?;
-    Ok(RootAttributes::from_list(&nested_meta)?)
+    Ok(RawRootAttributes::from_list(&nested_meta)?.validate()?)
 }
 
 fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
@@ -355,7 +406,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
         generate_close_value_impl(struct_name, &entry_name, &parsed_fields, &root_attributes);
     let vis = &input.vis;
 
-    let root_entry_specifics = if root_attributes.subfield.is_present() {
+    let root_entry_specifics = if root_attributes.subfield_style.is_some() {
         quote! {}
     } else {
         // Generate the on_drop_wrapper implementation
@@ -440,10 +491,22 @@ fn generate_close_value_impl(
     let fields = fields
         .iter()
         .filter(|f| !matches!(f.attrs, MetricsFieldAttrs::Ignore(_)))
-        .map(|f| f.close_value());
+        .map(|f| f.close_value(root_attrs.trait_to_implement()));
     let config = root_attrs.create_configuration();
+    let (metrics_struct_ty, strong) = match root_attrs.trait_to_implement() {
+        TraitToImplement::CloseValue => (quote!(#metrics_struct), quote!()),
+        TraitToImplement::CloseValueRef => (
+            quote!(&'_ #metrics_struct),
+            quote!(impl metrique::CloseValue for #metrics_struct {
+                type Closed = #entry;
+                fn close(self) -> Self::Closed {
+                    <&Self>::close(&self)
+                }
+            }),
+        ),
+    };
     quote! {
-        impl metrique::CloseValue for #metrics_struct {
+        impl metrique::CloseValue for #metrics_struct_ty {
             type Closed = #entry;
             fn close(self) -> Self::Closed {
                 #[allow(deprecated)]
@@ -453,6 +516,8 @@ fn generate_close_value_impl(
                 }
             }
         }
+
+        #strong
     }
 }
 
@@ -574,14 +639,17 @@ impl MetricsField {
         }
     }
 
-    fn close_value(&self) -> Ts2 {
+    fn close_value(&self, trait_to_implement: TraitToImplement) -> Ts2 {
         let ident = &self.ident;
+        let field_expr = match trait_to_implement {
+            TraitToImplement::CloseValue => quote_spanned! {ident.span()=> self.#ident },
+            TraitToImplement::CloseValueRef => quote_spanned! {ident.span()=> &self.#ident },
+        };
         let base = if let MetricsFieldAttrs::FlattenEntry(_) = self.attrs {
-            quote_spanned! { ident.span() => self.#ident }
+            field_expr
         } else {
-            let mut base = quote_spanned! {
-                ident.span() => metrique::CloseValue::close(self.#ident)
-            };
+            let mut base =
+                quote_spanned! {ident.span()=> metrique::CloseValue::close(#field_expr) };
 
             if let Some(unit) = self.unit() {
                 base = quote_spanned! { unit.span() =>
@@ -663,7 +731,7 @@ mod tests {
     use quote::quote;
     use syn::{parse_quote, parse2};
 
-    use crate::RootAttributes;
+    use crate::{RawRootAttributes, RootAttributes};
 
     // Helper function to convert proc_macro::TokenStream to proc_macro2::TokenStream
     // This allows us to test the macro without needing to use the proc_macro API directly
@@ -676,12 +744,14 @@ mod tests {
     #[test]
     fn test_darling_root_attrs() {
         use darling::FromMeta;
-        RootAttributes::from_meta(&parse_quote! {
+        RawRootAttributes::from_meta(&parse_quote! {
             metrics(
                 rename_all = "PascalCase",
                 emf::dimension_sets = [["bar"]]
             )
         })
+        .unwrap()
+        .validate()
         .unwrap();
     }
 
