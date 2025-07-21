@@ -15,9 +15,7 @@ use metrique_writer_core::{
     unit::{Millisecond, Second},
 };
 use metrique_writer_core::{unit::Microsecond, value::ValueFormatter};
-use timestamp_to_str::{TimestampToStr, TimestampValueOld};
-
-use crate::unit::AttachUnit;
+use timestamp_to_str::TimestampToStr;
 
 /// Timestamp of a metric entry
 ///
@@ -156,17 +154,6 @@ impl From<TimestampValue> for std::time::SystemTime {
     }
 }
 
-impl AttachUnit for TimestampValue {
-    type Output<U> = TimestampValueOld<U>;
-
-    fn make<U>(self) -> Self::Output<U> {
-        TimestampValueOld {
-            time: UNIX_EPOCH + self.duration_since_epoch,
-            unit: Default::default(),
-        }
-    }
-}
-
 #[doc(hidden)]
 pub struct TimestampFormat<Unit> {
     u: PhantomData<Unit>,
@@ -180,33 +167,9 @@ impl<U: TimestampToStr> ValueFormatter<TimestampValue> for TimestampFormat<U> {
 
 /// Timestamps must be formatted as strings
 mod timestamp_to_str {
-    use std::{
-        marker::PhantomData,
-        time::{Duration, UNIX_EPOCH},
-    };
+    use std::time::Duration;
 
-    use metrique_writer_core::{
-        Value,
-        unit::{Microsecond, Millisecond, Second},
-    };
-
-    use crate::unit::AttachUnit;
-
-    use super::TimestampValue;
-
-    /// The value produced when a `Timestamp` is closed.
-    pub struct TimestampValueOld<Unit> {
-        pub(crate) time: std::time::SystemTime,
-        pub(crate) unit: PhantomData<Unit>,
-    }
-
-    impl<U> Clone for TimestampValueOld<U> {
-        fn clone(&self) -> Self {
-            *self
-        }
-    }
-
-    impl<U> Copy for TimestampValueOld<U> {}
+    use metrique_writer_core::unit::{Microsecond, Millisecond, Second};
 
     pub(super) trait TimestampToStr {
         fn to_str(value: Duration, f: impl FnOnce(&str));
@@ -240,39 +203,6 @@ mod timestamp_to_str {
             let mut buf = itoa::Buffer::new();
             let value = buf.format(value.as_micros());
             f(value)
-        }
-    }
-
-    impl<Ignore> From<TimestampValueOld<Ignore>> for std::time::SystemTime {
-        fn from(value: TimestampValueOld<Ignore>) -> Self {
-            value.time
-        }
-    }
-
-    impl<U: TimestampToStr> Value for TimestampValueOld<U> {
-        fn write(&self, writer: impl metrique_writer_core::ValueWriter) {
-            U::to_str(
-                self.time.duration_since(UNIX_EPOCH).unwrap_or_default(),
-                |v| writer.string(v),
-            );
-        }
-    }
-
-    impl From<TimestampValue> for TimestampValueOld<Second> {
-        fn from(value: TimestampValue) -> Self {
-            value.make()
-        }
-    }
-
-    impl From<TimestampValue> for TimestampValueOld<Microsecond> {
-        fn from(value: TimestampValue) -> Self {
-            value.make()
-        }
-    }
-
-    impl From<TimestampValue> for TimestampValueOld<Millisecond> {
-        fn from(value: TimestampValue) -> Self {
-            value.make()
         }
     }
 }

@@ -8,7 +8,7 @@ use metrique::{
     timers::{
         EpochMicros, EpochMillis, EpochSeconds, Stopwatch, Timer, Timestamp, TimestampOnClose,
     },
-    unit::{Microsecond, Millisecond, Second},
+    unit::{Millisecond, Second},
     unit_of_work::metrics,
 };
 use metrique_timesource::{
@@ -19,7 +19,7 @@ use metrique_writer::test_util::{Inspector, TestEntrySink, test_entry_sink, to_t
 
 #[metrics(rename_all = "PascalCase")]
 #[derive(Default)]
-struct RequstMetrics {
+struct RequestMetrics {
     #[metrics(timestamp)]
     timestamp: Timestamp,
     #[metrics(unit = Second)]
@@ -28,8 +28,7 @@ struct RequstMetrics {
     #[metrics(unit = Millisecond)]
     explicit_time: Stopwatch,
 
-    // validate that this keeps working. It will be removed soon.
-    #[metrics(unit = Millisecond)]
+    #[metrics(format = EpochMillis)]
     start_ts_millis: Timestamp,
 
     #[metrics(format = EpochMicros)]
@@ -66,16 +65,16 @@ struct TimestampFormats {
 #[metrics(prefix = "subevent_")]
 #[derive(Default)]
 struct Subevent {
-    #[metrics(unit = Microsecond)]
+    #[metrics(format = EpochMicros)]
     start_ts: Timestamp,
 
-    #[metrics(unit = Microsecond)]
+    #[metrics(format = EpochMicros)]
     end_ts: TimestampOnClose,
 }
 
-impl RequstMetrics {
-    pub fn init(sink: BoxEntrySink) -> RequstMetricsGuard {
-        RequstMetrics::default().append_on_drop(sink)
+impl RequestMetrics {
+    pub fn init(sink: BoxEntrySink) -> RequestMetricsGuard {
+        RequestMetrics::default().append_on_drop(sink)
     }
 }
 
@@ -90,11 +89,11 @@ async fn metrics_flush_with_configurable_timestamp() {
     assert_eq!(inspector.entries()[0].timestamp, Some(start_timestamp()));
 }
 
-fn setup_with_tokio() -> (RequstMetricsGuard, Inspector, ThreadLocalTimeSourceGuard) {
+fn setup_with_tokio() -> (RequestMetricsGuard, Inspector, ThreadLocalTimeSourceGuard) {
     tokio::time::pause();
     let _guard = set_time_source(TimeSource::tokio(start_timestamp()));
     let TestEntrySink { inspector, sink } = test_entry_sink();
-    let metric = RequstMetrics::init(sink);
+    let metric = RequestMetrics::init(sink);
     (metric, inspector, _guard)
 }
 
