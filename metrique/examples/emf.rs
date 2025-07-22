@@ -8,15 +8,17 @@ use metrique_writer::{
     AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
     sink::global_entry_sink,
 };
-use metrique_writer_format_emf::Emf;
+use metrique_writer_format_emf::{Emf, HighStorageResolution, NoMetric};
 
 global_entry_sink! { ServiceMetrics }
 
+#[derive(Debug)]
 #[metrics(
     emf::dimension_sets = [
         ["Status", "Operation"],
         ["Operation"]
-    ]
+    ],
+    rename_all = "PascalCase"
 )]
 struct RequestMetrics {
     #[metrics(timestamp)]
@@ -24,6 +26,8 @@ struct RequestMetrics {
     operation: &'static str,
     status: &'static str,
     number_of_ducks: usize,
+    no_metric: NoMetric<usize>,
+    high_storage_resolution: HighStorageResolution<usize>,
 }
 
 impl RequestMetrics {
@@ -33,6 +37,8 @@ impl RequestMetrics {
             operation,
             status: "INCOMPLETE",
             number_of_ducks: 0,
+            no_metric: (0).into(),
+            high_storage_resolution: (0).into(),
         }
         .append_on_drop(ServiceMetrics::sink())
     }
@@ -45,23 +51,27 @@ struct Globals {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let globals = Globals {
         // Generally, this is usually sourced from CLI args or the environment
         region: "us-east-1".to_string(),
     };
 
     let _handle = ServiceMetrics::attach_to_stream(
-        Emf::all_validations("MyApp".to_string(), vec![vec!["region".to_string()]])
+        Emf::all_validations("MyApp".to_string(), vec![vec!["Region".to_string()]])
             .output_to(std::io::stdout())
             // All entries will contain `region` as a dimension
             .merge_globals(globals),
     );
     let mut request = RequestMetrics::init("CountDucks");
     request.number_of_ducks += 10;
+    *request.no_metric += 1;
+    *request.high_storage_resolution += 1;
     request.status = "SUCCESS";
 
     /*
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"MyApp","Dimensions":[["region","Status","Operation"],["region","Operation"]],"Metrics":[{"Name":"NumberOfDucks"}]}],"Timestamp":1744396038208},"NumberOfDucks":10,"Region":"us-east-1","Operation":"CountDucks","Status":"Ok"}
+    {"_aws":{"CloudWatchMetrics":[{"Namespace":"MyApp","Dimensions":[["Region","Status","Operation"],["Region","Operation"]],"Metrics":[{"Name":"NumberOfDucks"},{"Name":"HighStorageResolution","StorageResolution":1}]}],"Timestamp":1753189090887},"NumberOfDucks":10,"NoMetric":1,"HighStorageResolution":1,"Region":"us-east-1","Operation":"CountDucks","Status":"SUCCESS"}
     */
 }
 
