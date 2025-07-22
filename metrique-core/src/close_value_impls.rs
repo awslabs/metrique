@@ -63,28 +63,50 @@ close_value!(
 );
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValue for Arc<T> {
+impl<T: CloseValueRef> CloseValueRef for Arc<T> {
     type Closed = T::Closed;
 
-    fn close(self) -> Self::Closed {
+    fn close_ref(&self) -> Self::Closed {
         self.as_ref().close_ref()
     }
 }
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValue for MutexGuard<'_, T> {
+impl<T: CloseValueRef> CloseValueRef for MutexGuard<'_, T> {
     type Closed = T::Closed;
 
-    fn close(self) -> Self::Closed {
-        CloseValueRef::close_ref(&*self)
+    fn close_ref(&self) -> Self::Closed {
+        T::close_ref(self)
     }
 }
 
 #[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValue for Arc<Mutex<T>> {
+impl<T: CloseValueRef> CloseValueRef for Arc<Mutex<Option<T>>> {
     type Closed = Option<T::Closed>;
 
-    fn close(self) -> Self::Closed {
+    fn close_ref(&self) -> Self::Closed {
+        self.as_ref()
+            .lock()
+            .ok()?
+            .as_ref()
+            .map(CloseValueRef::close_ref)
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<T: CloseValueRef> CloseValueRef for MutexGuard<'_, Option<T>> {
+    type Closed = Option<T::Closed>;
+
+    fn close_ref(&self) -> Self::Closed {
+        self.as_ref().map(CloseValueRef::close_ref)
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<T: CloseValueRef> CloseValueRef for Arc<Mutex<T>> {
+    type Closed = Option<T::Closed>;
+
+    fn close_ref(&self) -> Self::Closed {
         Some(self.as_ref().lock().ok()?.close())
     }
 }
