@@ -7,6 +7,8 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
+use derive_where::derive_where;
+
 use crate::{
     Entry, EntryIoStream, EntryWriter, IoStreamError, Observation, Unit, ValidationError,
     ValueWriter,
@@ -53,8 +55,15 @@ pub trait FlagConstructor {
 ///
 /// This is intentionally "punned" to work with [Entry], [Value], and [EntryIoStream] to
 /// avoid duplication of the format-specific flag types like `HighStorageResolution`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive_where(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash; T)]
 pub struct ForceFlag<T, FLAGS: FlagConstructor>(T, PhantomData<FLAGS>);
+
+impl<V, FLAGS: FlagConstructor> ForceFlag<V, FLAGS> {
+    /// Map the value within this [ForceFlag]
+    pub fn map_value<U>(self, f: impl Fn(V) -> U) -> ForceFlag<U, FLAGS> {
+        ForceFlag(f(self.0), PhantomData)
+    }
+}
 
 impl<T, FLAGS: FlagConstructor> From<T> for ForceFlag<T, FLAGS> {
     fn from(value: T) -> Self {
@@ -141,7 +150,7 @@ impl<'a, W: EntryWriter<'a>, FLAGS: FlagConstructor> EntryWriter<'a>
         self.writer.value(name, &ForceFlag::<_, FLAGS>::from(value))
     }
 
-    fn config(&mut self, config: &'a dyn metrique_writer_core::EntryConfig) {
+    fn config(&mut self, config: &'a dyn crate::EntryConfig) {
         self.writer.config(config);
     }
 }

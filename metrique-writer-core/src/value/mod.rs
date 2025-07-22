@@ -8,10 +8,12 @@
 
 mod dimensions;
 mod flags;
+mod force;
 mod formatter;
 mod primitive;
 
 pub use dimensions::{WithDimension, WithDimensions, WithVecDimensions};
+pub use force::{FlagConstructor, ForceFlag};
 pub use formatter::{FormattedValue, ValueFormatter};
 use std::{borrow::Cow, sync::Arc};
 

@@ -12,6 +12,7 @@ readme = "README.md"
 smallvec = { workspace = true, features = ["union", "const_generics", "const_new"] }
 itertools = { workspace = true, default-features = false }
 serde = { workspace = true, optional = true }
+derive-where = { workspace = true }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }

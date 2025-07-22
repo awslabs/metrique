@@ -9,6 +9,7 @@ use std::time::SystemTime;
 use std::{borrow::Cow, sync::Mutex};
 
 use metrique_writer_core::value::WithDimensions;
+use metrique_writer_core::value::{FlagConstructor, ForceFlag};
 
 use crate::{CloseValue, CloseValueRef};
 
@@ -100,6 +101,15 @@ impl<T: CloseValue> CloseValue for Option<T> {
 #[diagnostic::do_not_recommend]
 impl<T: CloseValue, const N: usize> CloseValue for WithDimensions<T, N> {
     type Closed = WithDimensions<T::Closed, N>;
+
+    fn close(self) -> Self::Closed {
+        self.map_value(|v| v.close())
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<T: CloseValue, F: FlagConstructor> CloseValue for ForceFlag<T, F> {
+    type Closed = ForceFlag<T::Closed, F>;
 
     fn close(self) -> Self::Closed {
         self.map_value(|v| v.close())
