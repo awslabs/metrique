@@ -121,9 +121,9 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 }
 
 #[derive(Copy, Clone, Debug)]
-enum TraitToImplement {
-    CloseValueRef,
-    CloseValue,
+enum OwnershipKind {
+    ByRef,
+    ByValue,
 }
 
 #[derive(Debug, Default, FromMeta)]
@@ -205,10 +205,10 @@ impl RootAttributes {
         fields
     }
 
-    fn trait_to_implement(&self) -> TraitToImplement {
+    fn ownership_kind(&self) -> OwnershipKind {
         match self.subfield_style {
-            None | Some(SubfieldStyle::SubfieldOwned) => TraitToImplement::CloseValue,
-            Some(SubfieldStyle::Subfield) => TraitToImplement::CloseValueRef,
+            None | Some(SubfieldStyle::SubfieldOwned) => OwnershipKind::ByValue,
+            Some(SubfieldStyle::Subfield) => OwnershipKind::ByRef,
         }
     }
 }
@@ -491,12 +491,13 @@ fn generate_close_value_impl(
     let fields = fields
         .iter()
         .filter(|f| !matches!(f.attrs, MetricsFieldAttrs::Ignore(_)))
-        .map(|f| f.close_value(root_attrs.trait_to_implement()));
+        .map(|f| f.close_value(root_attrs.ownership_kind()));
     let config = root_attrs.create_configuration();
-    let (metrics_struct_ty, strong) = match root_attrs.trait_to_implement() {
-        TraitToImplement::CloseValue => (quote!(#metrics_struct), quote!()),
-        TraitToImplement::CloseValueRef => (
+    let (metrics_struct_ty, proxy_impl) = match root_attrs.ownership_kind() {
+        OwnershipKind::ByValue => (quote!(#metrics_struct), quote!()),
+        OwnershipKind::ByRef => (
             quote!(&'_ #metrics_struct),
+            // for a by-ref ownership, also add a proxy impl for by-value
             quote!(impl metrique::CloseValue for #metrics_struct {
                 type Closed = #entry;
                 fn close(self) -> Self::Closed {
@@ -517,7 +518,7 @@ fn generate_close_value_impl(
             }
         }
 
-        #strong
+        #proxy_impl
     }
 }
 
@@ -639,11 +640,11 @@ impl MetricsField {
         }
     }
 
-    fn close_value(&self, trait_to_implement: TraitToImplement) -> Ts2 {
+    fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
         let ident = &self.ident;
-        let field_expr = match trait_to_implement {
-            TraitToImplement::CloseValue => quote_spanned! {ident.span()=> self.#ident },
-            TraitToImplement::CloseValueRef => quote_spanned! {ident.span()=> &self.#ident },
+        let field_expr = match ownership_kind {
+            OwnershipKind::ByValue => quote_spanned! {ident.span()=> self.#ident },
+            OwnershipKind::ByRef => quote_spanned! {ident.span()=> &self.#ident },
         };
         let base = if let MetricsFieldAttrs::FlattenEntry(_) = self.attrs {
             field_expr

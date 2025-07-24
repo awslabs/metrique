@@ -582,7 +582,7 @@ for example for `Arc<YourValue>`).
 For instance, here is an example for adding a custom timer type that calculates the time from when it was created, to when it finished, on close (it doesn't do anything that `timers::Timer` doesn't do, but is useful as an example).
 
 ```rust
-use metrique::CloseValue;
+use metrique::{CloseValue, CloseValueRef};
 use std::time::{Duration, Instant};
 
 struct MyTimer(Instant);
@@ -605,7 +605,7 @@ impl CloseValue for MyTimer {
     type Closed = Duration;
 
     fn close(self) -> Self::Closed {
-        self.0.elapsed()
+        self.close_ref() /* this proxies to the by-ref implementation */
     }
 }
 ```
