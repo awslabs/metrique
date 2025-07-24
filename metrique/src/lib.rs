@@ -352,7 +352,7 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
     type Closed = Option<T::Closed>;
 
     fn close(self) -> Self::Closed {
-        Arc::into_inner(self.0).close()
+        Arc::into_inner(self.0).map(|t| t.close())
     }
 }
 

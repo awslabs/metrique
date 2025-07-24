@@ -41,7 +41,8 @@ struct RequestMetrics {
     #[metrics(flatten)]
     // a slot can be optional, which is cheaper if possibly never opened
     // than `Slot<Option<T>>` inside a slot.
-    post_response_data: Option<Slot<PostResponseData>>,
+    // FIXME: ???
+    post_response_data: Slot<Option<PostResponseData>>,
 }
 
 impl RequestMetrics {
@@ -81,7 +82,7 @@ struct MoreResponseData {
     another_response_time: Duration,
 }
 
-#[metrics]
+#[metrics(subfield)]
 #[derive(Default)]
 struct PostResponseData {
     post_response_success: bool,
@@ -117,7 +118,6 @@ async fn handle_request() {
         // if written as `Option<Slot<T>>`
         let post_response_metrics = metrics
             .post_response_data
-            .get_or_insert_default()
             .open(OnParentDrop::Discard)
             .unwrap();
         call_downstream_service_conditional(post_response_metrics).await;
@@ -150,6 +150,6 @@ async fn call_downstream_service_in_background(mut metrics: SlotGuard<MoreRespon
     metrics.another_response_time = start.elapsed()
 }
 
-async fn call_downstream_service_conditional(mut metrics: SlotGuard<PostResponseData>) {
-    metrics.post_response_success = true;
+async fn call_downstream_service_conditional(mut metrics: SlotGuard<Option<PostResponseData>>) {
+    metrics.get_or_insert_default().post_response_success = true;
 }

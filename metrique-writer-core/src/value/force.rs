@@ -63,6 +63,11 @@ impl<V, FLAGS: FlagConstructor> ForceFlag<V, FLAGS> {
     pub fn map_value<U>(self, f: impl Fn(V) -> U) -> ForceFlag<U, FLAGS> {
         ForceFlag(f(self.0), PhantomData)
     }
+
+    /// Map the value within this [ForceFlag] by reference
+    pub fn map_value_ref<U>(&self, f: impl Fn(&V) -> U) -> ForceFlag<U, FLAGS> {
+        ForceFlag(f(&self.0), PhantomData)
+    }
 }
 
 impl<T, FLAGS: FlagConstructor> From<T> for ForceFlag<T, FLAGS> {

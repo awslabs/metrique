@@ -49,7 +49,7 @@ type DefaultTimestampFormat = EpochMicros;
 
 // By implementing the `ValueFormatter` trait, you can also define your own entirely custom formats.
 
-#[metrics(prefix = "subevent_", subfield)]
+#[metrics(prefix = "subevent_", subfield_owned)]
 #[derive(Default)]
 struct Subevent {
     #[metrics(format = DefaultTimestampFormat)]

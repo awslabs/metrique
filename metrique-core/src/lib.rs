@@ -17,6 +17,25 @@ pub use namestyle::NameStyle;
 /// Close a given value
 ///
 /// This gives an opportunity do things like stopping timers, collecting fanned-in data, etc.
+///
+/// If possible, implement this trait for both `&MyValue` and `MyValue`, as this will allow
+/// use via smart pointers (e.g. on Arc<MyValue>).
+///
+/// ```
+/// use metrique::{CloseValue, CloseValueRef};
+///
+/// struct MyValue;
+///
+/// impl CloseValue for &'_ MyValue {
+///     type Closed = u32;
+///     fn close(self) -> Self::Closed { 42 }
+/// }
+///
+/// impl CloseValue for MyValue {
+///     type Closed = u32;
+///     fn close(self) -> Self::Closed { self.close_ref() /* delegate to by-ref implementation */ }
+/// }
+/// ```
 #[diagnostic::on_unimplemented(
     message = "CloseValue is not implemented for {Self}",
     note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly."
@@ -27,6 +46,58 @@ pub trait CloseValue {
 
     /// Close the value
     fn close(self) -> Self::Closed;
+}
+
+mod private {
+    pub trait Sealed {}
+}
+
+/// Close a value without taking ownership
+///
+/// This trait is meant to be used for [`CloseValue`] impls for smart-pointer-like
+/// types, as in
+///
+/// ```
+/// use metrique::{CloseValue, CloseValueRef};
+///
+/// struct Smaht<T>(T);
+///
+/// impl<T: CloseValueRef> CloseValue for &'_ Smaht<T> {
+///     type Closed = T::Closed;
+///     fn close(self) -> T::Closed { self.0.close_ref() }
+/// }
+///
+/// impl<T: CloseValueRef> CloseValue for Smaht<T> {
+///     type Closed = T::Closed;
+///     fn close(self) -> T::Closed { self.0.close_ref() }
+/// }
+/// ```
+///
+/// This trait is not to be implemented or called directly. It mostly exists
+/// because it makes trait inference a bit smarter (it's also not a full
+/// trait alias due to trait inference reasons).
+#[diagnostic::on_unimplemented(
+    message = "CloseValueRef is not implemented for {Self}",
+    note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValueRef` directly."
+)]
+pub trait CloseValueRef: private::Sealed {
+    /// The type produced by closing this value
+    type Closed;
+
+    /// Close the value
+    fn close_ref(&self) -> Self::Closed;
+}
+
+impl<C, T> private::Sealed for T where for<'a> &'a Self: CloseValue<Closed = C> {}
+
+impl<C, T> CloseValueRef for T
+where
+    for<'a> &'a Self: CloseValue<Closed = C>,
+{
+    type Closed = C;
+    fn close_ref(&self) -> Self::Closed {
+        <&Self>::close(self)
+    }
 }
 
 /// An object that can be closed into an [InflectableEntry]. This is the
@@ -105,33 +176,5 @@ pub trait InflectableEntry<NS: namestyle::NameStyle = namestyle::Identity> {
     /// Sample group
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         vec![].into_iter()
-    }
-}
-
-/// Close a value without taking ownership
-///
-/// This trait is not to be *called directly*, and it will also not be called
-/// directly by the `#[metrics]` macro. It is instead used by the following blanket impls:
-/// 1. impl `CloseValue` for `T where T: CloseValueRef`
-/// 2. impl `CloseValue` for `Smart<T> where T: CloseValueRef` for various
-///    smart pointer types.
-#[diagnostic::on_unimplemented(
-    message = "CloseValueRef is not implemented for {Self}",
-    note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValueRef` directly."
-)]
-pub trait CloseValueRef {
-    /// The type produced by closing this value
-    type Closed;
-    /// Close the value
-    fn close_ref(&self) -> Self::Closed;
-}
-
-#[diagnostic::do_not_recommend]
-impl<T: CloseValueRef> CloseValue for T {
-    type Closed = <Self as CloseValueRef>::Closed;
-
-    /// Close the value
-    fn close(self) -> Self::Closed {
-        self.close_ref()
     }
 }
