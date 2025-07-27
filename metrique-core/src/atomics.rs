@@ -3,12 +3,12 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize};
 
-use crate::CloseValueRef;
+use crate::CloseValue;
 
 /// A thin wrapper around `AtomicU64` that implements [`CloseValue`](crate::CloseValue).
 ///
 /// This is provided for convenience to avoid the need to specify an ordering. However,
-/// all other atomics also implement [`CloseValueRef`] and can be used directly.
+/// all other atomics also implement [`CloseValue`] and can be used directly.
 #[derive(Default, Debug)]
 pub struct Counter(pub AtomicU64);
 impl Counter {
@@ -33,20 +33,36 @@ impl Counter {
     }
 }
 
-impl CloseValueRef for Counter {
+impl CloseValue for &'_ Counter {
     type Closed = u64;
 
-    fn close_ref(&self) -> Self::Closed {
-        self.0.close_ref()
+    fn close(self) -> Self::Closed {
+        <&AtomicU64>::close(&self.0)
+    }
+}
+
+impl CloseValue for Counter {
+    type Closed = u64;
+
+    fn close(self) -> Self::Closed {
+        self.0.close()
     }
 }
 
 macro_rules! close_value_atomic {
     (atomic: $atomic: ty, inner: $inner: ty) => {
-        impl $crate::CloseValueRef for $atomic {
+        impl $crate::CloseValue for &'_ $atomic {
             type Closed = $inner;
 
-            fn close_ref(&self) -> Self::Closed {
+            fn close(self) -> Self::Closed {
+                self.load(std::sync::atomic::Ordering::Relaxed)
+            }
+        }
+
+        impl $crate::CloseValue for $atomic {
+            type Closed = $inner;
+
+            fn close(self) -> Self::Closed {
                 self.load(std::sync::atomic::Ordering::Relaxed)
             }
         }
