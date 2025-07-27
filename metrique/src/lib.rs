@@ -5,6 +5,7 @@
 #![doc = include_str!("../README.md")]
 
 pub mod emf;
+pub mod flex;
 pub mod instrument;
 mod keep_alive;
 
@@ -46,6 +47,8 @@ use metrique_writer_core::Entry;
 use metrique_writer_core::EntryWriter;
 use metrique_writer_core::entry::SampleGroupElement;
 pub use slot::{FlushGuard, ForceFlushGuard, LazySlot, OnParentDrop, Slot, SlotGuard};
+
+pub use flex::Flex;
 
 use core::ops::Deref;
 use core::ops::DerefMut;
