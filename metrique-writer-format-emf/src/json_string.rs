@@ -19,7 +19,7 @@ impl JsonString for String {
 
 #[test]
 fn test_json_string() {
-    let mut s = format!("\"x\",");
+    let mut s = "\"x\",".to_string();
     s.json_string("\u{3b1}\"\u{00}\u{0e}");
     assert_eq!(s, "\"x\",\"\u{3b1}\\\"\\u0000\\u000e\"");
 }

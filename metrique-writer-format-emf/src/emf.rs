@@ -2021,9 +2021,7 @@ mod tests {
             .as_i64()
             .unwrap();
         // more than 1 billion milliseconds difference = probably not a flaky test
-        if now.abs_diff(json_now) > 1_000_000_000 {
-            assert!(false, "time is not sane {now} {json_now}");
-        }
+        assert!(now.abs_diff(json_now) < 1_000_000_000, "time is not sane {now} {json_now}");
     }
 
     #[test_case(None; "sample_rate_None")]
@@ -2341,7 +2339,7 @@ mod tests {
                 assert_eq!(output.pop().unwrap(), b"");
                 assert_eq!(output.len(), 4);
                 output.sort();
-                let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[0]).unwrap();
 
                 let expected = r#"
                 {
@@ -2380,10 +2378,10 @@ mod tests {
                 "#;
                 assert_json_diff::assert_json_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
 
-                let json: serde_json::Value = serde_json::from_slice(&output[1]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[1]).unwrap();
                 let expected: &str = r#"
             {
                 "API": "MyAPI",
@@ -2422,7 +2420,7 @@ mod tests {
             "#;
                 assert_json_diff::assert_json_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
                 let expected: &str = r#"
             {
@@ -2456,11 +2454,11 @@ mod tests {
                 }
             }
             "#;
-                let json: serde_json::Value = serde_json::from_slice(&output[2]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[2]).unwrap();
 
                 assert_json_diff::assert_json_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
 
                 let expected = format!(
@@ -2502,7 +2500,7 @@ mod tests {
             }
             "#
                 );
-                let json: serde_json::Value = serde_json::from_slice(&output[3]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[3]).unwrap();
                 assert_json_diff::assert_json_eq!(
                     json,
                     serde_json::from_str::<serde_json::Value>(&expected).unwrap()
@@ -2639,11 +2637,11 @@ mod tests {
                 }
             }
             "#;
-                let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[0]).unwrap();
 
                 assert_json_diff::assert_json_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
 
                 let expected = format!(
@@ -2683,7 +2681,7 @@ mod tests {
             }
             "#
                 );
-                let json: serde_json::Value = serde_json::from_slice(&output[1]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[1]).unwrap();
                 assert_json_diff::assert_json_eq!(
                     json,
                     serde_json::from_str::<serde_json::Value>(&expected).unwrap()
@@ -2826,11 +2824,11 @@ mod tests {
             }
             "#;
                     let json: serde_json::Value =
-                        serde_json::from_slice(&output.remove(0)).unwrap();
+                        serde_json::from_slice(output.remove(0)).unwrap();
 
                     assert_json_diff::assert_json_eq!(
                         json,
-                        serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                        serde_json::from_str::<serde_json::Value>(expected).unwrap()
                     );
                 }
                 let expected = format!(
@@ -2865,7 +2863,7 @@ mod tests {
             }
             "#
                 );
-                let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[0]).unwrap();
                 assert_json_diff::assert_json_eq!(
                     json,
                     serde_json::from_str::<serde_json::Value>(&expected).unwrap()
@@ -2949,8 +2947,8 @@ mod tests {
                 assert_eq!(output.pop().unwrap(), b"");
                 assert_eq!(output.len(), 1);
                 output.sort();
-                eprintln!("{}", str::from_utf8(&output[0]).unwrap());
-                let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
+                eprintln!("{}", str::from_utf8(output[0]).unwrap());
+                let json: serde_json::Value = serde_json::from_slice(output[0]).unwrap();
 
                 let expected = r#"
                 {
@@ -2984,7 +2982,7 @@ mod tests {
                 "#;
                 assert_json_diff::assert_json_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
             }
         }
@@ -3031,7 +3029,7 @@ mod tests {
                 assert_eq!(output.pop().unwrap(), b"");
                 assert_eq!(output.len(), 1);
                 output.sort();
-                let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[0]).unwrap();
 
                 let expected = r#"
                 {
@@ -3060,7 +3058,7 @@ mod tests {
                 "#;
                 assert_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
             }
         }
@@ -3099,7 +3097,7 @@ mod tests {
                 assert_eq!(output.pop().unwrap(), b"");
                 assert_eq!(output.len(), 1);
                 output.sort();
-                let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
+                let json: serde_json::Value = serde_json::from_slice(output[0]).unwrap();
 
                 let expected = r#"
                 {
@@ -3117,7 +3115,7 @@ mod tests {
                 "#;
                 assert_json_diff::assert_json_eq!(
                     json,
-                    serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+                    serde_json::from_str::<serde_json::Value>(expected).unwrap()
                 );
             }
         }
@@ -3127,10 +3125,10 @@ mod tests {
         check(Emf::all_validations("TestNS".to_string(), vec![vec![]]));
     }
 
-    const STORAGE_HIRES: &'static EmfOptions = &EmfOptions {
+    const STORAGE_HIRES: &EmfOptions = &EmfOptions {
         storage_mode: StorageMode::HighStorageResolution,
     };
-    const STORAGE_NO_METRIC: &'static EmfOptions = &EmfOptions {
+    const STORAGE_NO_METRIC: &EmfOptions = &EmfOptions {
         storage_mode: StorageMode::NoMetric,
     };
 
@@ -3278,7 +3276,7 @@ mod tests {
         "#;
         assert_json_diff::assert_json_eq!(
             json,
-            serde_json::from_str::<serde_json::Value>(&expected).unwrap()
+            serde_json::from_str::<serde_json::Value>(expected).unwrap()
         );
     }
 }
