@@ -16,6 +16,7 @@ tokio = { workspace = true, features = ["sync"] }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.0" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.0" }
 metrique-core = { path = "../metrique-core", version = "0.1.0" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.0" }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.0" }
 ryu = { workspace = true }
 itoa = { workspace = true }
@@ -25,9 +26,16 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
-metrique-timesource = { path = "../metrique-timesource", version = "0.1.0", features = ["custom-timesource", "tokio", "test-util"] }
-metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
-metrique-writer-format-emf = { path = "../metrique-writer-format-emf", features = [] }
+metrique-timesource = { path = "../metrique-timesource", version = "0.1.0", features = [
+    "custom-timesource",
+    "tokio",
+    "test-util",
+] }
+metrique-writer-core = { path = "../metrique-writer-core", features = [
+    "private-test-util",
+] }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf", features = [
+] }
 tracing = { workspace = true }
 tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
