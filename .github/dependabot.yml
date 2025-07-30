@@ -4,3 +4,7 @@ updates:
     directory: "."
     schedule:
       interval: "weekly"
+    ignore:
+      # For all packages, ignore all patch/minor updates. Cargo will consume these versions automatically and metrique does not pin dependencies.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch", "version-update:semver-minor"]
