@@ -12,7 +12,7 @@ The log entries being structured means that you can easily use problem-specific 
 
 Most metrics your application records will be "unit of work" metrics. In a classic HTTP server, these are typically tied to the request/response scope.
 
-You declare a struct the represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`. That will make them implement the [`CloseEntry`] trait, which represents an entry that can be "closed" into an [`InflectableEntry`]. The macro will also expose a wrapper `<MetricName>Guard` type (a type alias to [`AppendAndCloseOnDrop`]) that implicitly appends to a sink when the struct is dropped.
+You declare a struct that represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`. That makes it possible to write it to a `Sink`. Rather than writing to the sink directly, you typically use `append_on_drop(sink)` to obtain a guard that will automatically write to the sink when dropped.
 
 The simplest way to emit the entry is by emitting it to a global entry sink, defined by using the [`metrique_writer::sink::global_entry_sink`] macro. That will create a global rendezvous point - you can attach a destination by using [`attach`] or [`attach_to_stream`], and then write to it by using the [`sink`] method (you must attach a destination before calling [`sink`], otherwise you will encounter a panic!).
 
