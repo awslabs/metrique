@@ -8,8 +8,9 @@ use metrique::unit::{Percent, Second};
 use metrique::unit_of_work::metrics;
 use metrique_writer::Unit;
 use metrique_writer::sink::VecEntrySink;
-use metrique_writer::test_util;
+use metrique_writer::test_util::{self, TestFlag};
 use metrique_writer::unit::{PositiveScale, UnitTag};
+use metrique_writer::value::WithDimensions;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -28,6 +29,12 @@ struct Metrics {
     entry: MyEntry,
 }
 
+#[metrics(subfield)]
+#[derive(Default, Clone)]
+struct MySubfield {
+    f: u32,
+}
+
 #[metrics]
 #[derive(Default, Clone)]
 /// A doc comment
@@ -39,6 +46,9 @@ struct Nested {
 
     d: Arc<bool>,
     e: Cow<'static, str>,
+
+    #[metrics(flatten)]
+    sub: TestFlag<WithDimensions<MySubfield, 1>>,
     // NOTE: currently not possible. Not sure why you'd do this though.
     // box: Box<bool>,
 }
@@ -102,6 +112,7 @@ fn flatten_flush_as_expected() {
     metric.entry.foo = 1;
     metric.optional_closed = Some(Nested {
         b: true,
+        sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
         ..Default::default()
     });
     drop(metric);
@@ -111,6 +122,14 @@ fn flatten_flush_as_expected() {
     assert_eq!(entry.metrics["foo"].as_u64(), 1);
     // but nested can be
     assert_eq!(entry.metrics["B"].as_u64(), 1);
+    assert_eq!(entry.metrics["B"].test_flag, false);
+
+    assert_eq!(entry.metrics["F"].as_u64(), 0);
+    assert_eq!(
+        entry.metrics["F"].dimensions,
+        vec![("Foo".to_string(), "Bar".to_string())]
+    );
+    assert_eq!(entry.metrics["F"].test_flag, true)
 }
 
 #[test]
