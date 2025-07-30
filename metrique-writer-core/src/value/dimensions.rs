@@ -1,15 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::ops::{Deref, DerefMut};
+use std::{
+    borrow::Cow,
+    ops::{Deref, DerefMut},
+    time::SystemTime,
+};
 
 use smallvec::SmallVec;
 
 use crate::{
-    CowStr, MetricFlags, MetricValue, Observation, Unit, ValidationError, Value, ValueWriter,
+    CowStr, Entry, EntryConfig, EntryWriter, MetricFlags, MetricValue, Observation, Unit,
+    ValidationError, Value, ValueWriter,
 };
 
-/// Adds a set of dimensions to a value as (class, instance) pairs.
+/// Adds a set of dimensions to a [Value] or [Entry] as (class, instance) pairs.
 ///
 /// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
 /// except for time-based metrics.
@@ -128,47 +133,88 @@ impl<V, const N: usize> WithDimensions<V, N> {
     pub fn clear_dimensions(&mut self) {
         self.dimensions.clear()
     }
+
+    /// Allow wrapping an [EntryWriter]
+    pub fn entry_writer_wrapper<'a, 'b, W: EntryWriter<'b>>(
+        &'a self,
+        writer: W,
+    ) -> impl EntryWriter<'b> + use<'a, 'b, W, V, N> {
+        Wrapper {
+            value: writer,
+            dimensions: &self.dimensions,
+        }
+    }
 }
 
-impl<V: MetricValue, const N: usize> Value for WithDimensions<V, N> {
+struct Wrapper<'a, V> {
+    value: V,
+    dimensions: &'a [(CowStr, CowStr)],
+}
+
+impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for Wrapper<'_, W> {
+    fn timestamp(&mut self, timestamp: SystemTime) {
+        self.value.timestamp(timestamp);
+    }
+
+    fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
+        self.value.value(
+            name,
+            &Wrapper {
+                value,
+                dimensions: self.dimensions,
+            },
+        )
+    }
+
+    fn config(&mut self, config: &'a dyn EntryConfig) {
+        self.value.config(config);
+    }
+}
+
+impl<V: Value> Value for Wrapper<'_, V> {
     fn write(&self, writer: impl ValueWriter) {
-        struct Wrapper<'a, W> {
-            writer: W,
-            dimensions: &'a [(CowStr, CowStr)],
-        }
-
-        impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
-            fn string(self, _value: &str) {
-                self.invalid("can't apply dimensions to a string value");
-            }
-
-            fn metric<'a>(
-                self,
-                distribution: impl IntoIterator<Item = Observation>,
-                unit: Unit,
-                dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
-                flags: MetricFlags<'_>,
-            ) {
-                #[allow(clippy::map_identity)]
-                // https://github.com/rust-lang/rust-clippy/issues/9280
-                self.writer.metric(
-                    distribution,
-                    unit,
-                    dimensions
-                        .into_iter()
-                        .map(|(k, v)| (k, v)) // reborrow to align lifetimes
-                        .chain(self.dimensions.iter().map(|(c, i)| (&**c, &**i))),
-                    flags,
-                )
-            }
-
-            fn error(self, error: ValidationError) {
-                self.writer.error(error)
-            }
-        }
-
         self.value.write(Wrapper {
-            writer,
+            value: writer,
+            dimensions: self.dimensions,
+        })
+    }
+}
+
+impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
+    fn string(self, value: &str) {
+        // dimensions are ignored for strings
+        self.value.string(value);
+    }
+
+    fn metric<'a>(
+        self,
+        distribution: impl IntoIterator<Item = Observation>,
+        unit: Unit,
+        dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        flags: MetricFlags<'_>,
+    ) {
+        #[allow(clippy::map_identity)]
+        // https://github.com/rust-lang/rust-clippy/issues/9280
+        self.value.metric(
+            distribution,
+            unit,
+            dimensions
+                .into_iter()
+                .map(|(k, v)| (k, v)) // reborrow to align lifetimes
+                .chain(self.dimensions.iter().map(|(c, i)| (&**c, &**i))),
+            flags,
+        )
+    }
+
+    fn error(self, error: ValidationError) {
+        self.value.error(error)
+    }
+}
+
+impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
+    fn write(&self, writer: impl ValueWriter) {
+        self.value.write(Wrapper {
+            value: writer,
             dimensions: self.dimensions(),
         })
     }
@@ -178,16 +224,23 @@ impl<V: MetricValue, const N: usize> MetricValue for WithDimensions<V, N> {
     type Unit = V::Unit;
 }
 
+impl<E: Entry, const N: usize> Entry for WithDimensions<E, N> {
+    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+        self.value.write(&mut self.entry_writer_wrapper(writer))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime};
 
-    use crate::{
-        ValidationError, Value,
+    use metrique_writer::{
+        Entry, EntryConfig, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
+        ValueWriter,
         unit::{Millisecond, UnitTag as _},
+        value::MetricValue,
+        value::{WithDimension, WithDimensions},
     };
-
-    use super::*;
 
     #[test]
     fn adds_dimensions() {
@@ -218,6 +271,55 @@ mod tests {
         }
 
         WithDimension::new(Duration::from_millis(42), "foo", "bar").write(Writer);
+    }
+
+    #[test]
+    fn runs_on_entries() {
+        #[derive(Entry)]
+        struct TestEntry {
+            #[entry(timestamp)]
+            ts: SystemTime,
+
+            #[entry(flatten)]
+            config: TestConfigEntry,
+
+            f1: Duration,
+            f2: Duration,
+        }
+
+        #[derive(Debug)]
+        struct TestConfig;
+        impl EntryConfig for TestConfig {}
+        struct TestConfigEntry;
+        impl Entry for TestConfigEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.config(&TestConfig);
+            }
+        }
+
+        let entry = WithDimensions::new(
+            TestEntry {
+                ts: SystemTime::UNIX_EPOCH,
+                config: TestConfigEntry,
+                f1: Duration::from_millis(42),
+                f2: Duration::from_millis(43),
+            },
+            "foo",
+            "bar",
+        );
+
+        let entry = metrique_writer::test_util::to_test_entry(&entry);
+        assert_eq!(entry.metrics["f1"].as_u64(), 42);
+        assert_eq!(
+            entry.metrics["f1"].dimensions,
+            vec![("foo".to_string(), "bar".to_string())]
+        );
+        assert_eq!(entry.metrics["f2"].as_u64(), 43);
+        assert_eq!(
+            entry.metrics["f2"].dimensions,
+            vec![("foo".to_string(), "bar".to_string())]
+        );
+        assert!(entry.timestamp.is_some());
     }
 
     #[test]

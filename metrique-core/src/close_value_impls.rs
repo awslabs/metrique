@@ -4,14 +4,16 @@
 //! All default implementations of CloseValue, grouped for clarity
 
 use core::time::Duration;
+use std::marker::PhantomData;
 use std::sync::{Arc, MutexGuard};
 use std::time::SystemTime;
 use std::{borrow::Cow, sync::Mutex};
 
+use metrique_writer_core::EntryWriter;
 use metrique_writer_core::value::WithDimensions;
 use metrique_writer_core::value::{FlagConstructor, ForceFlag};
 
-use crate::{CloseValue, CloseValueRef};
+use crate::{CloseValue, CloseValueRef, InflectableEntry};
 
 macro_rules! close_value_ref {
     ($($type:ty),+) => {
@@ -181,12 +183,61 @@ impl<T: CloseValue, F: FlagConstructor> CloseValue for ForceFlag<T, F> {
     }
 }
 
+struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
+    writer: &'a mut W,
+    phantom: PhantomData<FLAGS>,
+}
+
+impl<'a, W: EntryWriter<'a>, FLAGS: FlagConstructor> EntryWriter<'a>
+    for ForceFlagEntryWriter<'_, W, FLAGS>
+{
+    fn timestamp(&mut self, timestamp: std::time::SystemTime) {
+        self.writer.timestamp(timestamp)
+    }
+
+    fn value(
+        &mut self,
+        name: impl Into<std::borrow::Cow<'a, str>>,
+        value: &(impl metrique_writer_core::Value + ?Sized),
+    ) {
+        self.writer.value(name, &ForceFlag::<_, FLAGS>::from(value))
+    }
+
+    fn config(&mut self, config: &'a dyn metrique_writer_core::EntryConfig) {
+        self.writer.config(config);
+    }
+}
+
 #[diagnostic::do_not_recommend]
 impl<T: CloseValueRef, F: FlagConstructor> CloseValue for &'_ ForceFlag<T, F> {
     type Closed = ForceFlag<T::Closed, F>;
 
     fn close(self) -> Self::Closed {
         self.map_value_ref(|v| v.close_ref())
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<NS: crate::NameStyle, T: InflectableEntry<NS>, F: FlagConstructor> InflectableEntry<NS>
+    for ForceFlag<T, F>
+{
+    fn write<'a>(&'a self, writer: &mut impl metrique_writer_core::EntryWriter<'a>) {
+        <T as InflectableEntry<NS>>::write(
+            self,
+            &mut ForceFlagEntryWriter {
+                writer,
+                phantom: PhantomData::<F>,
+            },
+        );
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<NS: crate::NameStyle, T: InflectableEntry<NS>, const N: usize> InflectableEntry<NS>
+    for WithDimensions<T, N>
+{
+    fn write<'a>(&'a self, writer: &mut impl metrique_writer_core::EntryWriter<'a>) {
+        <T as InflectableEntry<NS>>::write(self, &mut self.entry_writer_wrapper(writer))
     }
 }
 

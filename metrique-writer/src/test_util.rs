@@ -13,9 +13,32 @@ use std::{
     time::SystemTime,
 };
 
+use metrique_writer_core::{
+    MetricFlags,
+    value::{FlagConstructor, ForceFlag, MetricOptions},
+};
+
 use crate::{
     AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter, sink::FlushWait,
 };
+
+#[derive(Debug)]
+struct TestFlagOpt;
+
+impl MetricOptions for TestFlagOpt {}
+
+/// Flag constructor for setting a test flag. This is merely reflected
+/// in TestEntry to allow seeing that flags are set.
+pub struct TestFlagCtor;
+
+impl FlagConstructor for TestFlagCtor {
+    fn construct() -> MetricFlags<'static> {
+        MetricFlags::upcast(&TestFlagOpt)
+    }
+}
+
+/// ForceFlag wrapper for [TestFlagOpt]
+pub type TestFlag<T> = ForceFlag<T, TestFlagCtor>;
 
 /// A test representation of a metric entry.
 ///
@@ -57,6 +80,7 @@ impl TestEntry {
 ///
 /// This requires that the `test-util` feature be enabled.
 #[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
 pub struct Metric {
     /// The distribution of observations for this metric.
     pub distribution: Vec<Observation>,
@@ -64,6 +88,8 @@ pub struct Metric {
     pub unit: Unit,
     /// The dimensions associated with this metric as key-value pairs.
     pub dimensions: Vec<(String, String)>,
+    /// True if the [TestFlag] is set on this metric
+    pub test_flag: bool,
 }
 
 impl Metric {
@@ -205,7 +231,7 @@ impl ValueWriter for TestValueWriter<'_> {
         distribution: impl IntoIterator<Item = Observation>,
         unit: Unit,
         dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
-        _flags: metrique_writer_core::MetricFlags<'_>,
+        flags: metrique_writer_core::MetricFlags<'_>,
     ) {
         *self.inner = TestValue::Metric(Metric {
             distribution: distribution.into_iter().collect(),
@@ -214,6 +240,7 @@ impl ValueWriter for TestValueWriter<'_> {
                 .into_iter()
                 .map(|(a, b)| (a.to_string(), b.to_string()))
                 .collect(),
+            test_flag: flags.downcast::<TestFlagOpt>().is_some(),
         })
     }
 
