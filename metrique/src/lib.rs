@@ -126,6 +126,10 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// This struct holds a metric entry and a sink. When the struct is dropped,
 /// it closes the entry and appends it to the sink.
 ///
+/// The `#[metrics]` macro generates a type alias to this type
+/// named `<metric struct name>Guard`, you should normally mention that instead
+/// of mentioning `AppendAndCloseOnDrop` directly.
+///
 /// This is typically created using the `append_on_drop` method on a metrics struct
 /// or through the `append_and_close` function.
 ///
@@ -133,8 +137,6 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// ```
 /// # use metrique::unit_of_work::metrics;
 /// # use metrique_writer::{sink::global_entry_sink, GlobalEntrySink};
-/// #
-///
 /// global_entry_sink! { ServiceMetrics }
 ///
 /// #[metrics]
@@ -143,7 +145,7 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// }
 ///
 /// # fn example() {
-/// let metrics = MyMetrics {
+/// let metrics: MyMetricsGuard /* type alias */ = MyMetrics {
 ///     operation: "example",
 /// }.append_on_drop(ServiceMetrics::sink());
 /// // When `metrics` is dropped, it will be closed and appended to the sink

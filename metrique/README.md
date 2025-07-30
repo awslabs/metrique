@@ -2,11 +2,26 @@ metrique is a crate to emit unit-of-work metrics
 
 - [`#[metrics]` macro reference](https://docs.rs/metrique/0.1/metrique/unit_of_work/attr.metrics.html)
 
+Unlike many popular metric frameworks that are based on the concept of your application having a fixed-ish set of counters and gauges, which are periodically updated to a central place, metrique is based on the concept of structured **metric records**. Your application emits a series of metric records - that are essentially structured log entries - to an observability service such as [Amazon CloudWatch], and the observability service allows you to view and alarm on complex aggregations of the metrics.
+
+The log entries being structured means that you can easily use problem-specific aggregations to track down the cause of issues, rather than only observing the symptoms.
+
+[Amazon CloudWatch]: https://docs.aws.amazon.com/AmazonCloudWatch
+
 ## Getting Started (Applications)
 
-Most metrics your application records will be "unit of work" metrics. These are typically tied to the request/response scope. You declare a struct the represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`
+Most metrics your application records will be "unit of work" metrics. In a classic HTTP server, these are typically tied to the request/response scope.
 
-This library exposes a wrapper `<MetricName>Guard` type (a type alias to [`AppendAndCloseOnDrop`]) that implicitly appends to a global queue when the struct is dropped. This wrapper in turn exposes other APIs to further tune behavior.
+You declare a struct that represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`. That makes it possible to write it to a `Sink`. Rather than writing to the sink directly, you typically use `append_on_drop(sink)` to obtain a guard that will automatically write to the sink when dropped.
+
+The simplest way to emit the entry is by emitting it to a global entry sink, defined by using the [`metrique_writer::sink::global_entry_sink`] macro. That will create a global rendezvous point - you can attach a destination by using [`attach`] or [`attach_to_stream`], and then write to it by using the [`sink`] method (you must attach a destination before calling [`sink`], otherwise you will encounter a panic!).
+
+The example below will write the metrics to an [`tracing_appender::rolling::RollingFileAppender`]
+in EMF format.
+
+[`sink`]: metrique_writer::GlobalEntrySink::sink
+[`attach`]: metrique_writer::AttachGlobalEntrySink::attach
+[`attach_to_stream`]: metrique_writer::AttachGlobalEntrySinkExt::attach_to_stream
 
 ```rust
 use std::path::PathBuf;
@@ -19,8 +34,10 @@ use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
 use metrique_writer_format_emf::Emf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
+// define our global entry sink
 global_entry_sink! { ServiceMetrics }
 
+// define our metrics struct
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     operation: &'static str,
@@ -53,6 +70,8 @@ async fn count_ducks() {
 
 
 fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
+    // attach an EMF-formatted rolling file appender to `ServiceMetrics`
+    // which will write the metrics asynchronously.
     ServiceMetrics::attach_to_stream(
         Emf::builder("Ns".to_string(), vec![vec![]])
             .build()
@@ -66,6 +85,8 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 #[tokio::main]
 async fn main() {
+    // not strictly needed, but metrique will emit tracing errors
+    // when entries are invalid and it's best to be able to see them.
     tracing_subscriber::fmt::init();
     let _join = initialize_metrics("my/metrics/dir".into());
     // ...
