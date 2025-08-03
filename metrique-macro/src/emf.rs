@@ -63,28 +63,3 @@ impl ToTokens for DimensionSets {
         quote! { [#(#sets),*]}.to_tokens(tokens)
     }
 }
-
-#[allow(clippy::enum_variant_names)] // "Case" is part of the name...
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, FromMeta)]
-pub(crate) enum NameStyle {
-    #[darling(rename = "PascalCase")]
-    PascalCase,
-    #[darling(rename = "snake_case")]
-    SnakeCase,
-    #[darling(rename = "kebab-case")]
-    KebabCase,
-    #[default]
-    Preserve,
-}
-
-impl NameStyle {
-    pub(crate) fn apply(self, name: &str) -> String {
-        use inflector::Inflector;
-        match self {
-            NameStyle::PascalCase => name.to_pascal_case(),
-            NameStyle::SnakeCase => name.to_snake_case(),
-            NameStyle::Preserve => name.to_string(),
-            NameStyle::KebabCase => name.to_kebab_case(),
-        }
-    }
-}

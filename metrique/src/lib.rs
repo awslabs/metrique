@@ -59,6 +59,7 @@ use metrique_writer_core::EntrySink;
 use std::sync::Arc;
 
 pub use metrique_core::{CloseValue, CloseValueRef, Counter, InflectableEntry, NameStyle};
+pub use metrique_writer::{Value, ValueWriter};
 
 /// Unit types and utilities for metrics.
 ///

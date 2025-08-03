@@ -14,9 +14,14 @@ Applications will define a metrics struct that they annotate with `#[metrics]`:
 ```rust
 use metrique::unit_of_work::metrics;
 
+#[metrics(value(string))]
+enum Operation {
+     CountDucks,
+}
+
 #[metrics]
 struct RequestMetrics {
-    operation: &'static str,
+    operation: Operation, /* you can use `operation: &'static str` if you prefer */
     #[metrics(timestamp)]
     timestamp: Timestamp,
     number_of_ducks: usize,
@@ -30,7 +35,7 @@ On its own, this is just a normal struct, there is no magic. To use it as a metr
 impl RequestMetrics {
     // It is generally a good practice to expose a single initializer that sets up
     // append on drop.
-    fn init(operation: &'static str) -> RequestMetricsGuard {
+    fn init(operation: Operation) -> RequestMetricsGuard {
         RequestMetrics {
             timestamp: Timestamp::now(),
             operation,
@@ -44,7 +49,7 @@ impl RequestMetrics {
 The `guard` object can still be mutated via `DerefMut` impl:
 ```rust
 async fn count_ducks() {
-    let mut metrics = RequestMetrics::init("CountDucks");
+    let mut metrics = RequestMetrics::init(Operation::CountDucks);
     metrics.number_of_ducks = 5;
     // metrics flushes as scope drops
     // timer records the total time until scope exits

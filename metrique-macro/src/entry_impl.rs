@@ -5,7 +5,7 @@ use proc_macro2::TokenStream as Ts2;
 use quote::{quote, quote_spanned};
 use syn::Ident;
 
-use crate::{MetricsField, MetricsFieldAttrs, NameStyle, RootAttributes};
+use crate::{MetricsField, MetricsFieldAttrs, NameStyle, RootAttributes, inflect::metric_name};
 
 /// Generate the implementation of the Entry trait directly instead of using derive(Entry).
 /// This gives us more control over the generated code and improves compile-time errors.
@@ -81,14 +81,10 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                 continue;
             }
             MetricsFieldAttrs::Field { format, .. } => {
-                let name_ident =
-                    metric_name(field, &NameStyle::Preserve, root_attrs.prefix.as_deref());
-                let name_pascal =
-                    metric_name(field, &NameStyle::PascalCase, root_attrs.prefix.as_deref());
-                let name_snake =
-                    metric_name(field, &NameStyle::SnakeCase, root_attrs.prefix.as_deref());
-                let name_kebab =
-                    metric_name(field, &NameStyle::KebabCase, root_attrs.prefix.as_deref());
+                let name_ident = metric_name(root_attrs, NameStyle::Preserve, field);
+                let name_pascal = metric_name(root_attrs, NameStyle::PascalCase, field);
+                let name_snake = metric_name(root_attrs, NameStyle::SnakeCase, field);
+                let name_kebab = metric_name(root_attrs, NameStyle::KebabCase, field);
                 let formatted = |field| {
                     if let Some(format) = format {
                         quote_spanned! { field_span=> &::metrique::format::FormattedValue::<_, #format>::new(#field)}
@@ -107,21 +103,6 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
     }
 
     writes
-}
-
-fn metric_name(field: &MetricsField, name_style: &NameStyle, prefix: Option<&str>) -> String {
-    let prefix = prefix.unwrap_or_default();
-
-    if let MetricsFieldAttrs::Field {
-        name: Some(name), ..
-    } = &field.attrs
-    {
-        return name.to_owned();
-    };
-    let base = &field.ident.to_string();
-    let prefixed_base = format!("{prefix}{base}");
-
-    name_style.apply(&prefixed_base)
 }
 
 fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Ts2 {
