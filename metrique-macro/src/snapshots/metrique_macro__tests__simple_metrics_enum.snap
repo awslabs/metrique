@@ -1,0 +1,41 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+enum Foo {
+    Bar,
+}
+#[doc(hidden)]
+pub enum FooValue {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Bar,
+}
+impl ::metrique::Value for FooValue {
+    fn write(&self, writer: impl ::metrique::ValueWriter) {
+        writer
+            .string(
+                #[allow(deprecated)]
+                match self {
+                    FooValue::Bar => "Bar",
+                },
+            );
+    }
+}
+impl metrique::CloseValue for &'_ Foo {
+    type Closed = FooValue;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        match self {
+            Foo::Bar => FooValue::Bar,
+        }
+    }
+}
+impl metrique::CloseValue for Foo {
+    type Closed = FooValue;
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}

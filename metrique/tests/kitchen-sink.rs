@@ -25,7 +25,7 @@ struct Metrics {
     /// A doc comment on _this_ field
     #[metrics(flatten)]
     optional_closed: Option<Nested>,
-    #[metrics(flatten_entry)]
+    #[metrics(flatten_entry, no_close)]
     entry: MyEntry,
 }
 
@@ -47,10 +47,21 @@ struct Nested {
     d: Arc<bool>,
     e: Cow<'static, str>,
 
+    #[metrics(no_close)]
+    no_close: ValueWithNoClose,
+
     #[metrics(flatten)]
     sub: TestFlag<WithDimensions<MySubfield, 1>>,
     // NOTE: currently not possible. Not sure why you'd do this though.
     // box: Box<bool>,
+}
+
+#[derive(Clone, Default)]
+struct ValueWithNoClose;
+impl metrique::Value for ValueWithNoClose {
+    fn write(&self, writer: impl metrique::ValueWriter) {
+        writer.string("no_close");
+    }
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -129,7 +140,9 @@ fn flatten_flush_as_expected() {
         entry.metrics["F"].dimensions,
         vec![("Foo".to_string(), "Bar".to_string())]
     );
-    assert_eq!(entry.metrics["F"].test_flag, true)
+    assert_eq!(entry.metrics["F"].test_flag, true);
+
+    assert_eq!(entry.values["NoClose"], "no_close");
 }
 
 #[test]

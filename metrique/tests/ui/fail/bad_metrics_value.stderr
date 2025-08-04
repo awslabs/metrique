@@ -1,0 +1,65 @@
+error: the only supported value option is value(string)
+ --> tests/ui/fail/bad_metrics_value.rs:3:1
+  |
+3 | #[metrics(value)]
+  | ^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Only structs are supported for entries
+ --> tests/ui/fail/bad_metrics_value.rs:4:1
+  |
+4 | / enum Foo {
+5 | | }
+  | |_^
+
+error: Only enums are supported for values
+ --> tests/ui/fail/bad_metrics_value.rs:8:1
+  |
+8 | / struct Bar {
+9 | | }
+  | |_^
+
+error: the only supported value option is value(string)
+  --> tests/ui/fail/bad_metrics_value.rs:11:1
+   |
+11 | #[metrics(value)]
+   | ^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Unknown field: `p`
+  --> tests/ui/fail/bad_metrics_value.rs:17:15
+   |
+17 |     #[metrics(p="q")]
+   |               ^
+
+error: Cannot combine subfield with value
+  --> tests/ui/fail/bad_metrics_value.rs:21:17
+   |
+21 | #[metrics(value(string), subfield)]
+   |                 ^^^^^^
+
+error: Only structs are supported for entries
+  --> tests/ui/fail/bad_metrics_value.rs:22:1
+   |
+22 | / enum Multi {
+23 | |     X
+24 | | }
+   | |_^
+
+error: value does not make sense with dimension-sets
+  --> tests/ui/fail/bad_metrics_value.rs:26:1
+   |
+26 | #[metrics(value(string), emf::dimension_sets = [["X"]])]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: Only structs are supported for entries
+  --> tests/ui/fail/bad_metrics_value.rs:27:1
+   |
+27 | / enum Multi2 {
+28 | |     X
+29 | | }
+   | |_^

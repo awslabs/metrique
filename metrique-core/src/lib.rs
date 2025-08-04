@@ -161,7 +161,7 @@ impl<T: ?Sized + CloseValue<Closed: InflectableEntry>> CloseEntry for T {}
 ///
 /// #[metrics]
 /// struct MyMetric {
-///     #[metrics(flatten_entry)]
+///     #[metrics(flatten_entry, no_close)]
 ///     field: MyCustomEntry,
 /// }
 /// ```

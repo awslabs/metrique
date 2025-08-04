@@ -37,10 +37,17 @@ use tracing_appender::rolling::{RollingFileAppender, Rotation};
 // define our global entry sink
 global_entry_sink! { ServiceMetrics }
 
+// define operation as an enum (you can also define operation as a &'static str)
+#[metrics(value(string))]
+#[derive(Copy, Clone)]
+enum Operation {
+    CountDucks,
+}
+
 // define our metrics struct
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
-    operation: &'static str,
+    operation: Operation,
     #[metrics(timestamp)]
     timestamp: Timestamp,
     number_of_ducks: usize,
@@ -51,7 +58,7 @@ struct RequestMetrics {
 impl RequestMetrics {
     // It is generally a good practice to expose a single initializer that sets up
     // append on drop.
-    fn init(operation: &'static str) -> RequestMetricsGuard {
+    fn init(operation: Operation) -> RequestMetricsGuard {
         RequestMetrics {
             timestamp: Timestamp::now(),
             operation,
@@ -62,7 +69,7 @@ impl RequestMetrics {
 }
 
 async fn count_ducks() {
-    let mut metrics = RequestMetrics::init("CountDucks");
+    let mut metrics = RequestMetrics::init(Operation::CountDucks);
     metrics.number_of_ducks = 5;
     // metrics flushes as scope drops
     // timer records the total time until scope exits
