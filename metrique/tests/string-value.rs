@@ -11,12 +11,20 @@ enum Foo {
     BarBaz,
 }
 
+#[metrics(value)]
+struct NestedValue(u32);
+
+#[metrics(value)]
+struct Empty {}
+
 #[metrics]
 struct Metrics {
     f1: Foo,
     f2: Foo,
     f3: Foo,
     f4: Foo,
+    nested: NestedValue,
+    empty: Empty,
 }
 
 #[test]
@@ -26,10 +34,13 @@ fn string_value() {
         f2: Foo::Bar,
         f3: Foo::Baz,
         f4: Foo::BarBaz,
+        nested: NestedValue(4),
+        empty: Empty {},
     };
     let entry = test_util::to_test_entry(RootEntry::new(metrics.close()));
     assert_eq!(entry.values["f1"], "foo");
     assert_eq!(entry.values["f2"], "bar");
     assert_eq!(entry.values["f3"], "ZAB");
     assert_eq!(entry.values["f4"], "bar_baz");
+    assert_eq!(entry.metrics["nested"].as_u64(), 4);
 }

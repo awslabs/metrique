@@ -55,7 +55,7 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
 
     for field in fields {
         let field_ident = &field.ident;
-        let field_span = field_ident.span();
+        let field_span = field.span;
         let ns = make_ns(root_attrs.rename_all, field_span);
 
         match &field.attrs.kind {
@@ -117,7 +117,7 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
 
         match &field.attrs.kind {
             MetricsFieldKind::Flatten(span) => {
-                let ns = make_ns(root_attrs.rename_all, field.ident.span());
+                let ns = make_ns(root_attrs.rename_all, field.span);
                 sample_group_fields.push(quote_spanned! {*span=>
                     ::metrique::InflectableEntry::<#ns>::sample_group(&self.#field_ident)
                 });

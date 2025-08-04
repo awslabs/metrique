@@ -59,7 +59,6 @@ use metrique_writer_core::EntrySink;
 use std::sync::Arc;
 
 pub use metrique_core::{CloseValue, CloseValueRef, Counter, InflectableEntry, NameStyle};
-pub use metrique_writer::{Value, ValueWriter};
 
 /// Unit types and utilities for metrics.
 ///
@@ -364,7 +363,7 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
 
 #[doc(hidden)]
 pub mod __writer {
-    pub use metrique_writer_core::{Entry, EntrySink, EntryWriter};
+    pub use metrique_writer_core::{Entry, EntrySink, EntryWriter, Value, ValueWriter};
 }
 
 /// "Roots" an [`InflectableEntry`] to turn it into an [`Entry`] that can be passed

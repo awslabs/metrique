@@ -37,7 +37,7 @@ pub fn metric_name(
     if let Some(name_override) = field.name_override() {
         return name_override.to_owned();
     };
-    let base = &field.ident().to_string();
+    let base = field.name();
     let prefixed_base = format!("{prefix}{base}");
 
     name_style.apply(&prefixed_base)
@@ -45,7 +45,7 @@ pub fn metric_name(
 
 pub trait HasInflectableName {
     fn name_override(&self) -> Option<&str>;
-    fn ident(&self) -> &syn::Ident;
+    fn name(&self) -> String;
 }
 
 impl HasInflectableName for MetricsField {
@@ -60,8 +60,8 @@ impl HasInflectableName for MetricsField {
         }
     }
 
-    fn ident(&self) -> &syn::Ident {
-        &self.ident
+    fn name(&self) -> String {
+        self.name.clone().expect("name must be set here")
     }
 }
 
@@ -70,7 +70,7 @@ impl HasInflectableName for MetricsVariant {
         self.attrs.name.as_deref()
     }
 
-    fn ident(&self) -> &syn::Ident {
-        &self.ident
+    fn name(&self) -> String {
+        self.ident.to_string()
     }
 }
