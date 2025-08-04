@@ -28,6 +28,9 @@ struct MetricsWithInvalidUnit {
 
     #[metrics(name = "a b")]
     bad_name_3: usize,
+
+    #[metrics(ignore, no_close)]
+    ignore_no_close: usize,
 }
 
 #[metrics(rename_all = "snake_case")]

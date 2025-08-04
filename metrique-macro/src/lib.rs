@@ -43,8 +43,9 @@ use crate::inflect::metric_name;
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
-/// | `flatten` | Flag | Flattens nested `CloseValue` metric structs | `#[metrics(flatten)]` |
-/// | `flatten_entry` | Flag | Flattens nested `Entry` metric structs | `#[metrics(flatten_entry)]` |
+/// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
+/// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs | `#[metrics(flatten_entry)]` |
+/// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 ///
 /// # Variant Attributes
@@ -280,6 +281,8 @@ struct RawMetricsFieldAttrs {
 
     flatten_entry: Flag,
 
+    no_close: Flag,
+
     timestamp: Flag,
 
     ignore: Flag,
@@ -346,7 +349,7 @@ fn set_exclusive<T>(
 // retrieve the value for a field, enforcing the fact that unit/name cannot be combined with other options
 fn get_field_option<'a, T>(
     field_name: &'static str,
-    existing: &Option<(MetricsFieldAttrs, &'static str)>,
+    existing: &Option<(MetricsFieldKind, &'static str)>,
     span: &'a Option<SpannedKv<T>>,
 ) -> darling::Result<Option<&'a T>> {
     match (span, &existing) {
@@ -369,32 +372,41 @@ impl RawMetricsVariantAttrs {
 
 impl RawMetricsFieldAttrs {
     fn validate(self) -> darling::Result<MetricsFieldAttrs> {
-        let mut out: Option<(MetricsFieldAttrs, &'static str)> = None;
-        out = set_exclusive(MetricsFieldAttrs::Flatten, "flatten", out, &self.flatten)?;
+        let mut out: Option<(MetricsFieldKind, &'static str)> = None;
+        out = set_exclusive(MetricsFieldKind::Flatten, "flatten", out, &self.flatten)?;
         out = set_exclusive(
-            MetricsFieldAttrs::FlattenEntry,
+            MetricsFieldKind::FlattenEntry,
             "flatten_entry",
             out,
             &self.flatten_entry,
         )?;
         out = set_exclusive(
-            MetricsFieldAttrs::Timestamp,
+            MetricsFieldKind::Timestamp,
             "timestamp",
             out,
             &self.timestamp,
         )?;
-        out = set_exclusive(MetricsFieldAttrs::Ignore, "ignore", out, &self.ignore)?;
+        out = set_exclusive(MetricsFieldKind::Ignore, "ignore", out, &self.ignore)?;
 
         let name = self.name.map(validate_name).transpose()?;
         let name = get_field_option("name", &out, &name)?;
         let unit = get_field_option("unit", &out, &self.unit)?;
         let format = get_field_option("format", &out, &self.format)?;
-        Ok(match out {
-            Some((out, _)) => out,
-            None => MetricsFieldAttrs::Field {
-                name: name.cloned(),
-                unit: unit.cloned(),
-                format: format.cloned(),
+        let close = !self.no_close.is_present();
+        if let (false, Some((MetricsFieldKind::Ignore(span), _))) = (close, &out) {
+            return Err(
+                darling::Error::custom("Cannot combine ignore with no_close").with_span(span),
+            );
+        }
+        Ok(MetricsFieldAttrs {
+            close,
+            kind: match out {
+                Some((out, _)) => out,
+                None => MetricsFieldKind::Field {
+                    name: name.cloned(),
+                    unit: unit.cloned(),
+                    format: format.cloned(),
+                },
             },
         })
     }
@@ -424,7 +436,13 @@ struct MetricsVariantAttrs {
 }
 
 #[derive(Debug, Clone)]
-enum MetricsFieldAttrs {
+struct MetricsFieldAttrs {
+    close: bool,
+    kind: MetricsFieldKind,
+}
+
+#[derive(Debug, Clone)]
+enum MetricsFieldKind {
     Ignore(Span),
     Flatten(Span),
     FlattenEntry(Span),
@@ -484,7 +502,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     Ok(output)
 }
 
-fn generate_value_impl(
+fn generate_value_impl_for_enum(
     root_attrs: &RootAttributes,
     value_name: &Ident,
     parsed_variants: &[MetricsVariant],
@@ -525,7 +543,7 @@ fn generate_metrics_for_enum(
     let value_enum =
         generate_value_enum(&value_name, &input.generics, &parsed_variants, &root_attrs)?;
 
-    let value_impl = generate_value_impl(&root_attrs, &value_name, &parsed_variants);
+    let value_impl = generate_value_impl_for_enum(&root_attrs, &value_name, &parsed_variants);
 
     let variants_map = parsed_variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
@@ -715,7 +733,7 @@ fn generate_close_value_impls_for_struct(
 ) -> Ts2 {
     let fields = fields
         .iter()
-        .filter(|f| !matches!(f.attrs, MetricsFieldAttrs::Ignore(_)))
+        .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)))
         .map(|f| f.close_value(root_attrs.ownership_kind()));
     let config: Vec<Ts2> = root_attrs.create_configuration();
     generate_close_value_impls(
@@ -902,16 +920,15 @@ impl MetricsField {
 
     fn entry_field(&self) -> Option<Ts2> {
         let ident_span = self.ident.span();
-        if let MetricsFieldAttrs::Ignore(_span) = self.attrs {
+        if let MetricsFieldKind::Ignore(_span) = self.attrs.kind {
             return None;
         }
         let &MetricsField { ident, ty, .. } = &self;
-        let mut base_type = quote_spanned! { ident_span=>
-            <#ty as metrique::CloseValue>::Closed
+        let mut base_type = if self.attrs.close {
+            quote_spanned! { ident_span=> <#ty as metrique::CloseValue>::Closed }
+        } else {
+            quote_spanned! { ident_span=>#ty }
         };
-        if let MetricsFieldAttrs::FlattenEntry(_) = self.attrs {
-            base_type = quote_spanned! { ident_span=>#ty };
-        }
         if let Some(expr) = self.unit() {
             base_type = quote_spanned! { expr.span()=>
                 <#base_type as ::metrique::unit::AttachUnit>::Output<#expr>
@@ -925,8 +942,8 @@ impl MetricsField {
     }
 
     fn unit(&self) -> Option<&syn::Path> {
-        match &self.attrs {
-            MetricsFieldAttrs::Field { unit, .. } => unit.as_ref(),
+        match &self.attrs.kind {
+            MetricsFieldKind::Field { unit, .. } => unit.as_ref(),
             _ => None,
         }
     }
@@ -937,18 +954,17 @@ impl MetricsField {
             OwnershipKind::ByValue => quote_spanned! {ident.span()=> self.#ident },
             OwnershipKind::ByRef => quote_spanned! {ident.span()=> &self.#ident },
         };
-        let base = if let MetricsFieldAttrs::FlattenEntry(_) = self.attrs {
-            field_expr
+        let base = if self.attrs.close {
+            quote_spanned! {ident.span()=> metrique::CloseValue::close(#field_expr) }
         } else {
-            let mut base =
-                quote_spanned! {ident.span()=> metrique::CloseValue::close(#field_expr) };
+            field_expr
+        };
 
-            if let Some(unit) = self.unit() {
-                base = quote_spanned! { unit.span() =>
-                    #base.into()
-                }
+        let base = if let Some(unit) = self.unit() {
+            quote_spanned! { unit.span() =>
+                #base.into()
             }
-
+        } else {
             base
         };
 

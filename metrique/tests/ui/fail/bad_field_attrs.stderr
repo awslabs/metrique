@@ -51,3 +51,9 @@ error: invalid name: name must not contain spaces
    |
 29 |     #[metrics(name = "a b")]
    |                      ^^^^^
+
+error: Cannot combine ignore with no_close
+  --> tests/ui/fail/bad_field_attrs.rs:32:15
+   |
+32 |     #[metrics(ignore, no_close)]
+   |               ^^^^^^

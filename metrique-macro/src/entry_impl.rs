@@ -5,7 +5,7 @@ use proc_macro2::TokenStream as Ts2;
 use quote::{quote, quote_spanned};
 use syn::Ident;
 
-use crate::{MetricsField, MetricsFieldAttrs, NameStyle, RootAttributes, inflect::metric_name};
+use crate::{MetricsField, MetricsFieldKind, NameStyle, RootAttributes, inflect::metric_name};
 
 /// Generate the implementation of the Entry trait directly instead of using derive(Entry).
 /// This gives us more control over the generated code and improves compile-time errors.
@@ -58,8 +58,8 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
         let field_span = field_ident.span();
         let ns = make_ns(root_attrs.rename_all, field_span);
 
-        match &field.attrs {
-            MetricsFieldAttrs::Timestamp(span) => {
+        match &field.attrs.kind {
+            MetricsFieldKind::Timestamp(span) => {
                 writes.push(quote_spanned! {*span=>
                     #[allow(clippy::useless_conversion)]
                     {
@@ -67,20 +67,20 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                     }
                 });
             }
-            MetricsFieldAttrs::FlattenEntry(span) => {
+            MetricsFieldKind::FlattenEntry(span) => {
                 writes.push(quote_spanned! {*span=>
                     ::metrique::__writer::Entry::write(&self.#field_ident, writer);
                 });
             }
-            MetricsFieldAttrs::Flatten(span) => {
+            MetricsFieldKind::Flatten(span) => {
                 writes.push(quote_spanned! {*span=>
                     ::metrique::InflectableEntry::<#ns>::write(&self.#field_ident, writer);
                 });
             }
-            MetricsFieldAttrs::Ignore(_) => {
+            MetricsFieldKind::Ignore(_) => {
                 continue;
             }
-            MetricsFieldAttrs::Field { format, .. } => {
+            MetricsFieldKind::Field { format, .. } => {
                 let name_ident = metric_name(root_attrs, NameStyle::Preserve, field);
                 let name_pascal = metric_name(root_attrs, NameStyle::PascalCase, field);
                 let name_snake = metric_name(root_attrs, NameStyle::SnakeCase, field);
@@ -109,14 +109,14 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
     let mut sample_group_fields = Vec::new();
 
     for field in fields {
-        if let MetricsFieldAttrs::Ignore(_) = field.attrs {
+        if let MetricsFieldKind::Ignore(_) = field.attrs.kind {
             continue;
         }
 
         let field_ident = &field.ident;
 
-        match &field.attrs {
-            MetricsFieldAttrs::Flatten(span) => {
+        match &field.attrs.kind {
+            MetricsFieldKind::Flatten(span) => {
                 let ns = make_ns(root_attrs.rename_all, field.ident.span());
                 sample_group_fields.push(quote_spanned! {*span=>
                     ::metrique::InflectableEntry::<#ns>::sample_group(&self.#field_ident)

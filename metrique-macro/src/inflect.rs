@@ -1,6 +1,6 @@
 use darling::FromMeta;
 
-use crate::{MetricsField, MetricsFieldAttrs, MetricsVariant, RootAttributes};
+use crate::{MetricsField, MetricsFieldKind, MetricsVariant, RootAttributes};
 
 #[allow(clippy::enum_variant_names)] // "Case" is part of the name...
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, FromMeta)]
@@ -50,9 +50,9 @@ pub trait HasInflectableName {
 
 impl HasInflectableName for MetricsField {
     fn name_override(&self) -> Option<&str> {
-        if let MetricsFieldAttrs::Field {
+        if let MetricsFieldKind::Field {
             name: Some(name), ..
-        } = &self.attrs
+        } = &self.attrs.kind
         {
             Some(name)
         } else {
