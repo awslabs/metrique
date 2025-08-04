@@ -23,7 +23,7 @@ in EMF format.
 [`attach`]: metrique_writer::AttachGlobalEntrySink::attach
 [`attach_to_stream`]: metrique_writer::AttachGlobalEntrySinkExt::attach_to_stream
 
-```rust
+```rust,no_run
 use std::path::PathBuf;
 
 use metrique::unit_of_work::metrics;
@@ -93,6 +93,18 @@ async fn main() {
     // call count_ducks
     // for example
     count_ducks().await;
+}
+
+#[cfg(test)]
+mod test {
+    #[tokio::test]
+    async fn my_metrics_are_emitted() {
+        let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
+        let _guard = crate::ServiceMetrics::set_test_sink(sink);
+        super::count_ducks().await;
+        let entry = inspector.get(0);
+        assert_eq!(entry.metrics["NumberOfDucks"], 5);
+    }
 }
 ```
 
@@ -703,6 +715,21 @@ fn test_metrics () {
     assert_eq!(entries[0].values["Operation"], "SayHello");
     assert_eq!(entries[0].metrics["NumberOfDucks"].as_u64(), 10);
 }
+```
+
+There are two ways to control the queue:
+1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init`
+2. Use the test-queue functionality provided out-of-the-box by global entry queues:
+```rust
+use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
+use metrique_writer::test_util::{self, TestEntrySink};
+
+global_entry_sink! { ServiceMetrics }
+
+let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
+// only works in tests:
+#[cfg(test)]
+let _guard = ServiceMetrics::set_test_sink(sink);
 ```
 
 ## Debugging common issues

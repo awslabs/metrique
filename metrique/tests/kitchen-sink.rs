@@ -6,11 +6,12 @@ use core::sync::atomic::{
 };
 use metrique::unit::{Percent, Second};
 use metrique::unit_of_work::metrics;
-use metrique_writer::Unit;
 use metrique_writer::sink::VecEntrySink;
-use metrique_writer::test_util::{self, TestFlag};
+use metrique_writer::test_util::{self, TestEntrySink, TestFlag, test_entry_sink};
 use metrique_writer::unit::{PositiveScale, UnitTag};
 use metrique_writer::value::WithDimensions;
+use metrique_writer::{GlobalEntrySink, Unit};
+use metrique_writer_core::global_entry_sink;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -180,4 +181,35 @@ fn arc_atomics_flush_as_expected() {
     assert_eq!(entry.metrics["E"].as_u64(), 5);
     // For boolean values, we need to check if it's 1 (true)
     assert_eq!(entry.metrics["F"].as_u64(), 1);
+}
+
+#[test]
+fn global_sinks() {
+    global_entry_sink! { MetricsA };
+    let TestEntrySink {
+        inspector: inspector1,
+        sink,
+    } = test_entry_sink();
+    let _guard1 = MetricsA::set_test_sink(sink);
+    let mut e1 = Metrics::default().append_on_drop(MetricsA::sink());
+    e1.entry.foo = 10;
+    let TestEntrySink {
+        inspector: inspector2,
+        sink,
+    } = test_entry_sink();
+    // why would you do this? who knows. but it works.
+    let _guard2 = MetricsA::set_test_sink(sink);
+    let e2 = Metrics::default().append_on_drop(MetricsA::sink());
+    drop(_guard2);
+
+    let mut e3 = Metrics::default().append_on_drop(MetricsA::sink());
+    e3.entry.foo = 30;
+
+    drop(e1);
+    drop(e2);
+    drop(e3);
+
+    // the inner layer captures the inner entry, the outer layer captures entries 1 and 3
+    assert_eq!(inspector1.entries().len(), 2);
+    assert_eq!(inspector2.entries().len(), 1);
 }
