@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating unit of work metrics"
@@ -13,11 +13,11 @@ test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.0" }
-metrique-macro = { path = "../metrique-macro", version = "0.1.0" }
-metrique-core = { path = "../metrique-core", version = "0.1.0" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.0" }
-metrique-timesource = { path = "../metrique-timesource", version = "0.1.0" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.1" }
+metrique-macro = { path = "../metrique-macro", version = "0.1.1" }
+metrique-core = { path = "../metrique-core", version = "0.1.1" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.1" }
+metrique-timesource = { path = "../metrique-timesource", version = "0.1.2" }
 ryu = { workspace = true }
 itoa = { workspace = true }
 
@@ -26,7 +26,7 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber = { workspace = true }
 tracing-appender = { workspace = true }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
-metrique-timesource = { path = "../metrique-timesource", version = "0.1.0", features = [
+metrique-timesource = { path = "../metrique-timesource", version = "0.1.2", features = [
     "custom-timesource",
     "tokio",
     "test-util",
