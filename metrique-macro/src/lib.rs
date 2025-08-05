@@ -35,7 +35,7 @@ use crate::inflect::metric_name;
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
 /// | `subfield` | Flag | When set, this metric can only be used when nested within other metrics, and can be consumed by reference (has both `impl CloseValue for &MyStruct` and `impl CloseValue for MyStruct`). It cannot be added to a sink directly. | `#[metrics(subfield)]` |
 /// | `subfield_owned` | Flag | When set, this metric can only be used when nested within other metrics. It cannot be added to a sink directly. | `#[metrics(subfield_owned)]` |
-/// | `value` | Flag | Used for *structs*. Makes the struct a value newtype. Currently does not work well with units. | `#[metrics(value)]` |
+/// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. | `#[metrics(value(string))]` |
 ///
 /// # Field Attributes
@@ -61,7 +61,7 @@ use crate::inflect::metric_name;
 /// ```rust,ignore
 /// use metrique::unit_of_work::metrics;
 /// use metrique::timers::{Timestamp, Timer};
-/// use metrique::unit::Millisecond;
+/// use metrique::unit::{Count, Millisecond};
 /// use metrique_writer::{GlobalEntrySink, ServiceMetrics};
 /// use std::time::SystemTime;
 ///
@@ -71,7 +71,7 @@ use crate::inflect::metric_name;
 /// }
 ///
 /// #[metrics(value)]
-/// struct RequestCount(usize);
+/// struct RequestCount(#[metrics(unit=Count)] usize);
 ///
 /// #[metrics(rename_all = "PascalCase")]
 /// struct RequestMetrics {

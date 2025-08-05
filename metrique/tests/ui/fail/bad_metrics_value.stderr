@@ -19,18 +19,6 @@ error: multiple non-ignored fields for #[metrics(value)]
    |     ^
 
 error: only plain fields are supported in #[metrics(value)]
-  --> tests/ui/fail/bad_metrics_value.rs:20:5
-   |
-20 |     x: u32,
-   |     ^
-
-error: only plain fields are supported in #[metrics(value)]
-  --> tests/ui/fail/bad_metrics_value.rs:26:5
-   |
-26 |     x: u32,
-   |     ^
-
-error: only plain fields are supported in #[metrics(value)]
   --> tests/ui/fail/bad_metrics_value.rs:33:5
    |
 33 |     u32,
@@ -83,3 +71,35 @@ error: Only structs are supported for entries
 58 | |     X
 59 | | }
    | |_^
+
+error[E0412]: cannot find type `Second` in this scope
+  --> tests/ui/fail/bad_metrics_value.rs:19:22
+   |
+19 |     #[metrics(unit = Second)]
+   |                      ^^^^^^
+  --> $RUST/core/src/marker.rs
+   |
+   = note: similarly named trait `Send` defined here
+   |
+help: a trait with a similar name exists
+   |
+19 -     #[metrics(unit = Second)]
+19 +     #[metrics(unit = Send)]
+   |
+help: consider importing one of these structs
+   |
+1  + use metrique::unit::Second;
+   |
+1  + use metrique_writer::unit::Second;
+   |
+1  + use metrique_writer_core::unit::Second;
+   |
+
+error[E0277]: the trait bound `Foo: metrique_writer_core::value::formatter::ValueFormatter<u32>` is not satisfied
+  --> tests/ui/fail/bad_metrics_value.rs:26:5
+   |
+26 |     x: u32,
+   |     ^ the trait `metrique_writer_core::value::formatter::ValueFormatter<u32>` is not implemented for `Foo`
+   |
+   = help: the trait `metrique_writer_core::value::formatter::ValueFormatter<TimestampValue>` is implemented for `TimestampFormat<U>`
+   = note: required for `FormattedValue<'_, u32, Foo>` to implement `Value`
