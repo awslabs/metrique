@@ -95,6 +95,14 @@ pub mod format {
     pub use metrique_writer_core::value::FormattedValue;
 }
 
+/// Test utilities for metrique
+#[cfg(feature = "test-util")]
+pub mod test_util {
+    pub use metrique_writer::test_util::{
+        Inspector, Metric, TestEntry, TestEntrySink, test_entry_sink, to_test_entry,
+    };
+}
+
 /// Unit of work metrics macros and utilities.
 ///
 /// This module provides the `metrics` macro for defining unit of work metrics structs.

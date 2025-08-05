@@ -178,6 +178,41 @@ pub struct AttachHandle {
     join: Option<fn()>,
 }
 
+/// Guard that manages the lifecycle of a thread-local test sink override.
+///
+/// When created, this guard installs a thread-local test sink that takes precedence
+/// over the global sink for the current thread. When dropped, it automatically
+/// restores the previous sink state.
+///
+/// This functionality is only available when the `test-util` feature is enabled
+/// and enables isolated testing of metrics without affecting other tests or global state.
+#[cfg(feature = "test-util")]
+#[must_use = "if unused the thread-local test sink will be immediately restored"]
+pub struct ThreadLocalTestSinkGuard {
+    // Function pointer to clear the guard when dropped
+    // This is set by the macro-generated code
+    clear_fn: fn(),
+}
+
+#[cfg(feature = "test-util")]
+impl ThreadLocalTestSinkGuard {
+    /// Create a new guard with the previous sink state and restore function.
+    ///
+    /// This is intended to be called by the macro-generated code after
+    /// installing the thread-local sink override.
+    #[doc(hidden)]
+    pub fn new(clear_fn: fn()) -> Self {
+        Self { clear_fn }
+    }
+}
+
+#[cfg(feature = "test-util")]
+impl Drop for ThreadLocalTestSinkGuard {
+    fn drop(&mut self) {
+        (self.clear_fn)();
+    }
+}
+
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(join) = self.join.take() {
@@ -207,6 +242,7 @@ impl<Q: AttachGlobalEntrySink> GlobalEntrySink for Q {
         Q::try_sink().expect("sink must be `attach()`ed before use")
     }
 
+    #[track_caller]
     fn append(entry: impl Entry + Send + 'static) {
         if Q::try_append(entry).is_err() {
             panic!("sink must be `attach()`ed before appending")
@@ -224,7 +260,7 @@ impl<Q: AttachGlobalEntrySink> GlobalEntrySink for Q {
 ///
 /// [`EntryIoStream`]: crate::stream::EntryIoStream
 ///
-/// ## Example
+/// ## Examples
 ///
 /// ```
 /// # use metrique_writer::{
@@ -238,7 +274,6 @@ impl<Q: AttachGlobalEntrySink> GlobalEntrySink for Q {
 /// # let log_dir = tempfile::tempdir().unwrap();
 /// # #[derive(Entry)]
 /// # struct MyMetrics { }
-///
 /// use tracing_appender::rolling::{RollingFileAppender, Rotation};
 ///
 /// global_entry_sink! {
@@ -257,6 +292,31 @@ impl<Q: AttachGlobalEntrySink> GlobalEntrySink for Q {
 ///
 /// // When dropped, _join will flush all appended metrics and detach the output stream.
 /// ```
+///
+/// ### Testing
+///
+/// Global entry sinks support thread-local test overrides for isolated testing.
+/// This functionality is only available when the `test-util` feature is enabled
+/// and is compiled out when the feature is not enabled.
+///
+/// ```rust
+/// # use metrique_writer::sink::global_entry_sink;
+/// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
+/// # use metrique_writer::GlobalEntrySink;
+/// global_entry_sink! { MyMetrics }
+///
+/// #[test]
+/// fn test_metrics() {
+///     let TestEntrySink { inspector, sink } = test_entry_sink();
+///     let _guard = MyMetrics::set_test_sink(sink);
+///
+///     // Code that uses MyMetrics::append() will now go to test sink
+///     // Guard automatically restores when dropped
+///
+///     let entries = inspector.entries();
+///     // Assert on captured metrics...
+/// }
+/// ```
 #[macro_export]
 macro_rules! global_entry_sink {
     ($(#[$attr:meta])* $name:ident) => {
@@ -270,6 +330,36 @@ macro_rules! global_entry_sink {
 
             const NAME: &'static str = ::std::stringify!($name);
             static SINK: RwLock<Option<(BoxEntrySink, Box<dyn Send + Sync + 'static>)>> = RwLock::new(None);
+
+            $crate::__test_util! {
+                use ::std::cell::RefCell;
+
+                thread_local! {
+                    static THREAD_LOCAL_TEST_SINK: RefCell<Option<BoxEntrySink>> = const { RefCell::new(None) };
+                }
+
+                fn get_test_sink() -> Option<BoxEntrySink> {
+                    THREAD_LOCAL_TEST_SINK.with(|cell| {
+                        cell.borrow().clone()
+                    })
+                }
+
+                #[track_caller]
+                fn set_test_sink(sink: Option<BoxEntrySink>) {
+                    let should_panic = THREAD_LOCAL_TEST_SINK.with(|cell| {
+                        let mut borrowed = cell.borrow_mut();
+                        let should_panic = borrowed.is_some() && sink.is_some();
+                        if !should_panic {
+                            *borrowed = sink;
+                        }
+                        should_panic
+                    });
+
+                    if should_panic {
+                        panic!("A test sink was previously installed. You can only install one test sink at a time.");
+                    }
+                }
+            }
 
             impl AttachGlobalEntrySink for $name {
                 fn attach(
@@ -286,12 +376,25 @@ macro_rules! global_entry_sink {
                 }
 
                 fn try_sink() -> Option<BoxEntrySink> {
+                    $crate::__test_util! {
+                        if let Some(test_sink) = get_test_sink() {
+                            return Some(test_sink);
+                        }
+                    }
+
                     let read = SINK.read().unwrap();
                     let (sink, _handle) = read.as_ref()?;
                     Some(sink.clone())
                 }
 
                 fn try_append<E: Entry + Send + 'static>(entry: E) -> Result<(), E> {
+                    $crate::__test_util! {
+                        if let Some(test_sink) = get_test_sink() {
+                            test_sink.append(entry);
+                            return Ok(());
+                        }
+                    }
+
                     let read = SINK.read().unwrap();
                     if let Some((sink, _handle)) = read.as_ref() {
                         sink.append(entry);
@@ -301,6 +404,65 @@ macro_rules! global_entry_sink {
                     }
                 }
             }
+
+            // Test-only methods for thread-local sink management
+            $crate::__test_util! {
+                const _: () = {
+                    impl $name {
+                        /// Install a thread-local test sink that takes precedence over the global sink.
+                        ///
+                        /// Returns a guard that will automatically restore the previous sink state when dropped.
+                        /// Only available when the `test-util` feature is enabled.
+                        ///
+                        /// # Example
+                        /// ```rust
+                        /// # use metrique_writer::sink::global_entry_sink;
+                        /// # use metrique_writer::test_util::test_entry_sink;
+                        /// # global_entry_sink! { TestSink }
+                        /// let (inspector, sink) = test_entry_sink();
+                        /// let _guard = TestSink::set_test_sink(sink);
+                        ///
+                        /// // All appends now go to the thread-local test sink
+                        /// // Guard automatically restores previous state when dropped
+                        /// ```
+                        #[track_caller]
+                        pub fn set_test_sink(sink: BoxEntrySink) -> $crate::global::ThreadLocalTestSinkGuard {
+                            set_test_sink(Some(sink));
+                            $crate::global::ThreadLocalTestSinkGuard::new(|| {
+                                set_test_sink(None);
+                            })
+                        }
+
+                        /// Temporarily install a thread-local test sink for the duration of the closure.
+                        ///
+                        /// This is a convenience method that automatically manages the guard lifecycle.
+                        /// Only available when the `test-util` feature is enabled.
+                        ///
+                        /// # Example
+                        /// ```rust
+                        /// # use metrique_writer::sink::global_entry_sink;
+                        /// # use metrique_writer::test_util::test_entry_sink;
+                        /// # global_entry_sink! { TestSink }
+                        /// let (inspector, sink) = test_entry_sink();
+                        ///
+                        /// let result = TestSink::with_test_sink(sink, || {
+                        ///     // All appends in this closure go to the thread-local test sink
+                        ///     42
+                        /// });
+                        ///
+                        /// assert_eq!(result, 42);
+                        /// // Thread-local sink is automatically restored
+                        /// ```
+                        pub fn with_test_sink<F, R>(sink: BoxEntrySink, f: F) -> R
+                        where
+                            F: FnOnce() -> R,
+                        {
+                            let _guard = Self::set_test_sink(sink);
+                            f()
+                        }
+                    }
+                };
+            }
         };
     };
 }
@@ -309,8 +471,10 @@ pub use global_entry_sink;
 #[cfg(test)]
 mod tests {
     use crate::test_stream::TestSink;
+    use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
     use metrique_writer::{
-        AttachGlobalEntrySinkExt as _, Entry, EntryWriter, GlobalEntrySink, format::FormatExt as _,
+        AttachGlobalEntrySink, AttachGlobalEntrySinkExt as _, Entry, EntryWriter, GlobalEntrySink,
+        format::FormatExt as _, sink::FlushImmediately,
     };
     use metrique_writer_format_emf::{Emf, EntryDimensions};
     use std::{
@@ -320,28 +484,26 @@ mod tests {
 
     metrique_writer::sink::global_entry_sink! { ServiceMetrics }
 
-    #[test]
-    fn dummy() {
-        struct TestEntry;
-        impl Entry for TestEntry {
-            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-                writer.timestamp(
-                    SystemTime::UNIX_EPOCH + Duration::from_secs_f64(1749475336.0157819),
-                );
-                writer.config(
+    struct TestEntry;
+    impl Entry for TestEntry {
+        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.timestamp(SystemTime::UNIX_EPOCH + Duration::from_secs_f64(1749475336.0157819));
+            writer.config(
                     const {
                         &EntryDimensions::new_static(&[Cow::Borrowed(&[Cow::Borrowed(
                             "Operation",
                         )])])
                     },
                 );
-                writer.value("Time", &Duration::from_millis(42));
-                writer.value("Operation", "MyOperation");
-                writer.value("StringProp", "some string value");
-                writer.value("BasicIntCount", &1234u64);
-            }
+            writer.value("Time", &Duration::from_millis(42));
+            writer.value("Operation", "MyOperation");
+            writer.value("StringProp", "some string value");
+            writer.value("BasicIntCount", &1234u64);
         }
+    }
 
+    #[test]
+    fn dummy() {
         let output = TestSink::default();
         {
             let _attached = ServiceMetrics::attach_to_stream(
@@ -372,4 +534,120 @@ mod tests {
             })
         )
     }
+
+    #[test]
+    fn thread_local_sink_capture_raw_data() {
+        use crate::test_stream::TestSink;
+
+        // Set up thread-local test sink
+        let thread_local_output = TestSink::default();
+        let formatter = Emf::all_validations("ThreadLocalApp".into(), vec![vec![]])
+            .output_to(thread_local_output.clone());
+        let sink = FlushImmediately::new_boxed(formatter);
+
+        let content = {
+            let _guard = ServiceMetrics::set_test_sink(sink);
+
+            // This should go to the thread-local sink
+            ServiceMetrics::append(TestEntry);
+
+            // Verify thread-local sink received the entry
+            let content = thread_local_output.dump();
+            assert!(content.contains("Time"));
+            assert!(content.contains("42"));
+            assert!(content.contains("ThreadLocalApp")); // Verify it went to the right namespace
+            content
+        };
+        assert_eq!(
+            content,
+            r#"{"_aws":{"CloudWatchMetrics":[{"Namespace":"ThreadLocalApp","Dimensions":[["Operation"]],"Metrics":[{"Name":"Time","Unit":"Milliseconds"},{"Name":"BasicIntCount"}]}],"Timestamp":1749475336015},"Time":42,"BasicIntCount":1234,"Operation":"MyOperation","StringProp":"some string value"}
+"#
+        );
+    }
+
+    #[test]
+    fn thread_local_sink_capture_entry() {
+        use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+
+        let _guard = ServiceMetrics::set_test_sink(sink);
+
+        // This should go to the thread-local sink
+        ServiceMetrics::append(TestEntry);
+        assert_eq!(inspector.entries()[0].metrics["BasicIntCount"], 1234);
+    }
+
+    #[test]
+    fn with_test_sink() {
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+
+        ServiceMetrics::with_test_sink(sink, || {
+            // This should go to the thread-local sink
+            ServiceMetrics::append(TestEntry);
+            assert_eq!(inspector.entries()[0].metrics["BasicIntCount"], 1234);
+        });
+    }
+
+    #[test]
+    #[should_panic]
+    fn duplicate_install_panics() {
+        let TestEntrySink {
+            inspector: _outer_inspector,
+            sink,
+        } = test_entry_sink();
+        let _outer_guard = ServiceMetrics::set_test_sink(sink);
+        ServiceMetrics::append(TestEntry);
+        let TestEntrySink {
+            inspector: _inner_inspector,
+            sink,
+        } = test_entry_sink();
+        ServiceMetrics::append(TestEntry);
+        let _inner_guard = ServiceMetrics::set_test_sink(sink);
+    }
+
+    #[test]
+    fn after_guard_dropped_use_global_queue() {
+        let TestEntrySink {
+            inspector: global_inspector,
+            sink,
+        } = test_entry_sink();
+        let _handle = ();
+        let _handle = ServiceMetrics::attach((sink, _handle));
+        // this goes global
+        ServiceMetrics::append(TestEntry);
+        let TestEntrySink {
+            inspector: thread_local_inspector,
+            sink,
+        } = test_entry_sink();
+
+        {
+            let _tl = ServiceMetrics::set_test_sink(sink);
+            // local
+            ServiceMetrics::append(TestEntry);
+        }
+
+        assert_eq!(global_inspector.entries().len(), 1);
+        // one more back to global
+        ServiceMetrics::append(TestEntry);
+        assert_eq!(global_inspector.entries().len(), 2);
+        assert_eq!(thread_local_inspector.entries().len(), 1);
+    }
+}
+// Helper macro that conditionally expands based on the test-util feature
+// This is checked at macro expansion time in the metrique-writer-core crate
+
+/// Expands the given block of code when `metrique-writer-core` is compiled with the `test-util` feature.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(feature = "test-util")]
+macro_rules! __test_util {
+    ($($tt:tt)*) => { $($tt)* };
+}
+
+/// Does not expand the given block of code when `metrique-writer-core` is compiled without the `test-util` feature.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "test-util"))]
+macro_rules! __test_util {
+    ($($tt:tt)*) => {};
 }
