@@ -10,7 +10,37 @@ struct Bar {
 
 #[metrics(value)]
 struct Baz {
+    x: u32,
+    y: u32,
 }
+
+#[metrics(value)]
+struct Baz2 {
+    #[metrics(unit = Second)]
+    x: u32,
+}
+
+#[metrics(value)]
+struct Baz3 {
+    #[metrics(format = Foo)]
+    x: u32,
+}
+
+
+#[metrics(value)]
+struct Baz4 (
+    #[metrics(name = "Bar")]
+    u32,
+);
+
+#[metrics(value)]
+struct Baz5 {
+    #[metrics(p = q)]
+    x: u32,
+}
+
+#[metrics(value)]
+struct Unit; /* not supported right now */
 
 #[metrics(value(string))]
 enum Bad {

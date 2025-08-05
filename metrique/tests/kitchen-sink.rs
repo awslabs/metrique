@@ -58,8 +58,8 @@ struct Nested {
 
 #[derive(Clone, Default)]
 struct ValueWithNoClose;
-impl metrique::Value for ValueWithNoClose {
-    fn write(&self, writer: impl metrique::ValueWriter) {
+impl metrique::__writer::Value for ValueWithNoClose {
+    fn write(&self, writer: impl metrique::__writer::ValueWriter) {
         writer.string("no_close");
     }
 }

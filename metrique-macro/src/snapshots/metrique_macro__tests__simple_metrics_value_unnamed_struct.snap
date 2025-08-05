@@ -2,39 +2,31 @@
 source: metrique-macro/src/lib.rs
 expression: parsed_file
 ---
-enum Foo {
-    Bar,
-}
+struct RequestValue(u32, u32);
 #[doc(hidden)]
-pub enum FooValue {
+pub struct RequestValueValue(
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    Bar,
-}
-impl ::metrique::__writer::Value for FooValue {
+    <u32 as metrique::CloseValue>::Closed,
+);
+impl ::metrique::__writer::Value for RequestValueValue {
     fn write(&self, writer: impl ::metrique::__writer::ValueWriter) {
-        writer
-            .string(
-                #[allow(deprecated)]
-                match self {
-                    FooValue::Bar => "Bar",
-                },
-            );
+        #[allow(deprecated)] { ::metrique::__writer::Value::write(&self.1, writer) }
     }
 }
-impl metrique::CloseValue for &'_ Foo {
-    type Closed = FooValue;
+impl metrique::CloseValue for &'_ RequestValue {
+    type Closed = RequestValueValue;
     fn close(self) -> Self::Closed {
         #[allow(deprecated)]
-        match self {
-            Foo::Bar => FooValue::Bar,
+        RequestValueValue {
+            1: metrique::CloseValue::close(&self.1),
         }
     }
 }
-impl metrique::CloseValue for Foo {
-    type Closed = FooValue;
+impl metrique::CloseValue for RequestValue {
+    type Closed = RequestValueValue;
     fn close(self) -> Self::Closed {
         <&Self>::close(&self)
     }
