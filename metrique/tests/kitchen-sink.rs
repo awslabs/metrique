@@ -184,8 +184,9 @@ fn arc_atomics_flush_as_expected() {
 }
 
 #[test]
-fn global_sinks() {
+fn multiple_sinks() {
     global_entry_sink! { MetricsA };
+    global_entry_sink! { MetricsB };
     let TestEntrySink {
         inspector: inspector1,
         sink,
@@ -198,8 +199,8 @@ fn global_sinks() {
         sink,
     } = test_entry_sink();
     // why would you do this? who knows. but it works.
-    let _guard2 = MetricsA::set_test_sink(sink);
-    let e2 = Metrics::default().append_on_drop(MetricsA::sink());
+    let _guard2 = MetricsB::set_test_sink(sink);
+    let e2 = Metrics::default().append_on_drop(MetricsB::sink());
     drop(_guard2);
 
     let mut e3 = Metrics::default().append_on_drop(MetricsA::sink());
