@@ -2,7 +2,7 @@ use crate::{
     MetricsField, MetricsFieldKind, MetricsVariant, NameStyle, RootAttributes, metric_name,
 };
 
-use proc_macro2::TokenStream as Ts2;
+use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{quote, quote_spanned};
 use syn::Ident;
 
@@ -64,6 +64,14 @@ pub fn validate_value_impl_for_struct(
     Ok(())
 }
 
+pub(crate) fn format_value(format: &Option<syn::Path>, span: Span, field: Ts2) -> Ts2 {
+    if let Some(format) = format {
+        quote_spanned! { span=> &::metrique::format::FormattedValue::<_, #format>::new(#field)}
+    } else {
+        field
+    }
+}
+
 pub(crate) fn generate_value_impl_for_struct(
     _root_attrs: &RootAttributes,
     value_name: &Ident,
@@ -74,10 +82,11 @@ pub(crate) fn generate_value_impl_for_struct(
         .iter()
         .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)));
     let body: Vec<Ts2> = non_ignore_fields.map(|field| {
-        match field.attrs.kind {
-            MetricsFieldKind::Field { unit: None, name: None, format: None } => {
+        match &field.attrs.kind {
+            MetricsFieldKind::Field { unit: _, name: None, format } => {
                 let ident = &field.ident;
-                Ok(quote_spanned!{field.span=> ::metrique::__writer::Value::write(&self.#ident, writer) })
+                let value = format_value(format, field.span, quote! { &self.#ident });
+                Ok(quote_spanned!{field.span=> ::metrique::__writer::Value::write(#value, writer) })
             }
             _ => {
                 Err(syn::Error::new(field.span, "only plain fields are supported in #[metrics(value)]"))

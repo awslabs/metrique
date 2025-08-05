@@ -5,7 +5,10 @@ use proc_macro2::TokenStream as Ts2;
 use quote::{quote, quote_spanned};
 use syn::Ident;
 
-use crate::{MetricsField, MetricsFieldKind, NameStyle, RootAttributes, inflect::metric_name};
+use crate::{
+    MetricsField, MetricsFieldKind, NameStyle, RootAttributes, inflect::metric_name,
+    value_impl::format_value,
+};
 
 /// Generate the implementation of the Entry trait directly instead of using derive(Entry).
 /// This gives us more control over the generated code and improves compile-time errors.
@@ -85,14 +88,7 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                 let name_pascal = metric_name(root_attrs, NameStyle::PascalCase, field);
                 let name_snake = metric_name(root_attrs, NameStyle::SnakeCase, field);
                 let name_kebab = metric_name(root_attrs, NameStyle::KebabCase, field);
-                let formatted = |field| {
-                    if let Some(format) = format {
-                        quote_spanned! { field_span=> &::metrique::format::FormattedValue::<_, #format>::new(#field)}
-                    } else {
-                        field
-                    }
-                };
-                let value = formatted(quote! { &self.#field_ident });
+                let value = format_value(format, field_span, quote! { &self.#field_ident });
                 writes.push(quote_spanned! {field_span=>
                     ::metrique::__writer::EntryWriter::value(writer,
                         <#ns as ::metrique::NameStyle>::inflect_name(#name_ident, #name_pascal, #name_snake, #name_kebab)
