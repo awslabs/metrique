@@ -29,8 +29,9 @@ metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.0" }
 [dev-dependencies]
 enum-map = { workspace = true }
 strum_macros = { workspace = true }
-metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
+metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util", "test-util"] }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
+metrique-writer = { path = ".", features = ["test-util"] }
 metrics-util = { workspace = true, features = ["debugging"] }
 futures = { workspace = true, features = ["executor"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }

@@ -18,6 +18,7 @@ derive-where = { workspace = true }
 assert-json-diff = { workspace = true }
 metrique = { path = "../metrique", features = [] }
 metrique-writer = { path = "../metrique-writer", features = ["tracing_subscriber_03", "test-util"] }
+metrique-writer-core = { path = ".", features = ["test-util"] }
 tracing-appender = { workspace = true }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 serde_json = { workspace = true }
@@ -26,5 +27,7 @@ tempfile = { workspace = true }
 [features]
 default = ["serde"]
 serde = ["dep:serde"]
+# Test utilities for testing metrics in applications
+test-util = []
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
 private-test-util = []

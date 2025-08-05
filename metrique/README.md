@@ -167,7 +167,7 @@ For more complex examples, see the [examples folder].
    `#[metrics(timestamp)]`, it will be written as the canonical timestamp field for whatever format
    is in use. Otherwise, it will report its value as a string property containing the duration
    since the Unix Epoch.
-   
+
    You can control the formatting of a `Timestamp` (that is not used
    as a `#[metrics(timestamp)]` - the formatting of the canonical timestamp
    is controlled solely by the formatter) by setting
@@ -687,12 +687,14 @@ struct MyMetric {
 
 `metrique` provides `test_entry` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the `TestEntrySink` to test that you are emitting the metrics that you expect:
 
+> Note: enable the `test-util` feature of `metrique` to enable test utility features.
+
 ```rust
 # #[allow(clippy::test_attr_in_doctest)]
 
 use metrique::unit_of_work::metrics;
 
-use metrique_writer::test_util::{self, TestEntrySink};
+use metrique::test_util::{self, TestEntrySink};
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
@@ -718,19 +720,19 @@ fn test_metrics () {
 ```
 
 There are two ways to control the queue:
-1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init`
+1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
 2. Use the test-queue functionality provided out-of-the-box by global entry queues:
 ```rust
 use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
-use metrique_writer::test_util::{self, TestEntrySink};
+use metrique::test_util::{self, TestEntrySink};
 
 global_entry_sink! { ServiceMetrics }
 
 let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
-// only works in tests:
-#[cfg(test)]
 let _guard = ServiceMetrics::set_test_sink(sink);
 ```
+
+See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detailed examples.
 
 ## Debugging common issues
 

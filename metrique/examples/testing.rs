@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+/// Example of testing where the queue is provided directly. For a matching example that works with global queues,
+/// see `examples/testing-global-queues.rs`
 use std::{sync::Arc, time::Duration};
 
 use metrique::{

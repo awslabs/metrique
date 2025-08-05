@@ -9,7 +9,7 @@ readme = "README.md"
 
 [features]
 default = []
-test-util = []
+test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
@@ -33,6 +33,7 @@ metrique-timesource = { path = "../metrique-timesource", version = "0.1.0", feat
 ] }
 metrique-writer-core = { path = "../metrique-writer-core", features = [
     "private-test-util",
+    "test-util",
 ] }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf", features = [
 ] }

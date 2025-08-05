@@ -91,8 +91,8 @@ async fn main() {
 mod test {
     use std::time::UNIX_EPOCH;
 
+    use metrique::test_util::{self, TestEntrySink};
     use metrique_timesource::{TimeSource, set_time_source};
-    use metrique_writer::test_util::{self, TestEntrySink};
 
     // If you want the times produced by tokio to exactly line up, you need start_paused=true
     #[tokio::test(start_paused = true)]
