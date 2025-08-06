@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.87"                                                                 # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
 license = "Apache-2.0"
@@ -29,7 +29,7 @@ metrics-util = { workspace = true, optional = true }
 futures = { workspace = true, default-features = false, optional = true }
 pin-project = { workspace = true, optional = true }
 histogram = { workspace = true, optional = true }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.1" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.2" }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.0" }
 
 [dev-dependencies]

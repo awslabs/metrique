@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer-format-emf"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
 license = "Apache-2.0"
@@ -19,8 +19,8 @@ rand = { workspace = true }
 hashbrown = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.1" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.1" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.2" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.2" }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }

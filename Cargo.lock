@@ -657,7 +657,7 @@ dependencies = [
 
 [[package]]
 name = "metrique"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "itertools",
  "metrique",
@@ -713,7 +713,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ahash",
  "assert-json-diff",
@@ -745,7 +745,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "assert-json-diff",
  "derive-where",
@@ -763,7 +763,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-emf"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "assert-json-diff",
  "assert_approx_eq",
