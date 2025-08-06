@@ -71,7 +71,7 @@ fn spawn_metric_reporter(
         // Shutdown the background publisher for metrics and flush all data to disk.
         match shutdown_handle {
             ShutdownHandle::SyncHandle(shutdown) => {
-                if let Err(e) = task::spawn_blocking(|| (shutdown)()).await {
+                if let Err(e) = task::spawn_blocking(shutdown).await {
                     // TODO: recovering the panic message here is not trivial.
                     tracing::error!(
                         "A panic occured while shutting down the background queue: {:?}",
@@ -207,6 +207,28 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
     /// Write metrics to an [`AnyEntrySink`]
     ///
     /// This API is setup so that you can use it directly in the output of the attach function of a global entry queue
+    ///
+    /// # Examples
+    /// ```rust,no_run
+    /// use metrique_writer::{
+    ///    Entry,
+    ///    BoxEntry,
+    ///    AnyEntrySink,
+    ///    format::FormatExt as _,
+    ///    sink::BackgroundQueueBuilder,
+    ///    unit::AsCount,
+    ///    metrics::MetricReporter
+    /// };
+    /// use metrique_writer_format_emf::Emf;
+    /// use tracing_appender::rolling::{RollingFileAppender, Rotation};
+    /// let sink = BackgroundQueueBuilder::new().build_boxed(
+    ///    Emf::all_validations("MyApp".into(), vec![vec![]])
+    ///        .output_to_makewriter(
+    ///            RollingFileAppender::new(Rotation::HOURLY, "my/logs", "prefix.log")
+    ///        )
+    ///    );
+    /// let reporter = MetricReporter::builder().metrics_sink(sink).build_and_install();
+    /// ```
     pub fn metrics_sink(
         self,
         sink: (
@@ -306,7 +328,8 @@ impl MetricReporter {
                 (
                     sink,
                     ShutdownHandle::SyncHandle(Box::new(move || {
-                        let _ = handle;
+                        tracing::debug!("shutting down the background queue");
+                        handle.shut_down();
                     })),
                 )
             }
