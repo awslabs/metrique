@@ -7,6 +7,7 @@
 //! [`EntryIoStream`]: crate::stream::EntryIoStream
 
 use std::{
+    fmt::Debug,
     ops::{Deref, DerefMut},
     pin::Pin,
     sync::Arc,
@@ -110,6 +111,12 @@ impl<T: AnyEntrySink, E: Entry + Send + 'static> EntrySink<E> for T {
 /// an arbitrary [`Entry`]).
 #[derive(Clone)]
 pub struct BoxEntrySink(Arc<Box<dyn EntrySink<BoxEntry> + Send + Sync + 'static>>);
+
+impl Debug for BoxEntrySink {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("BoxEntrySink").finish()
+    }
+}
 
 impl AnyEntrySink for BoxEntrySink {
     fn append_any(&self, entry: impl Entry + Send + 'static) {
