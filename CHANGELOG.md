@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/arielb1/metrique-fork/compare/metrique-core-v0.1.1...metrique-core-v0.1.2) - 2025-08-06
+
+### Added
+
+- update the reporters for metrics.rs to accept `AnyEntrySink` as well as `impl EntryIoStream`
+
+### Fixes
+
+- fixed a bug in the macro-generated doctests of `global_entry_sink`
+
 ## [0.1.1](https://github.com/awslabs/metrique/compare/metrique-writer-core-v0.1.0...metrique-writer-core-v0.1.1) - 2025-08-05
 
 ### Added

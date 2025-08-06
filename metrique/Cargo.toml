@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating unit of work metrics"
@@ -13,10 +13,10 @@ test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.1" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.2" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.1" }
-metrique-core = { path = "../metrique-core", version = "0.1.1" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.1" }
+metrique-core = { path = "../metrique-core", version = "0.1.2" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.2" }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.2" }
 ryu = { workspace = true }
 itoa = { workspace = true }
