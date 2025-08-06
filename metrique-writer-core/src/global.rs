@@ -417,9 +417,9 @@ macro_rules! global_entry_sink {
                         /// # Example
                         /// ```rust
                         /// # use metrique_writer::sink::global_entry_sink;
-                        /// # use metrique_writer::test_util::test_entry_sink;
+                        /// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
                         /// # global_entry_sink! { TestSink }
-                        /// let (inspector, sink) = test_entry_sink();
+                        /// let TestEntrySink { inspector, sink } = test_entry_sink();
                         /// let _guard = TestSink::set_test_sink(sink);
                         ///
                         /// // All appends now go to the thread-local test sink
@@ -443,7 +443,7 @@ macro_rules! global_entry_sink {
                         /// # use metrique_writer::sink::global_entry_sink;
                         /// # use metrique_writer::test_util::test_entry_sink;
                         /// # global_entry_sink! { TestSink }
-                        /// let (inspector, sink) = test_entry_sink();
+                        /// let TestEntrySink { inspector, sink } = test_entry_sink();
                         ///
                         /// let result = TestSink::with_test_sink(sink, || {
                         ///     // All appends in this closure go to the thread-local test sink
