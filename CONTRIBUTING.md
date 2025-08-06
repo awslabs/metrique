@@ -42,6 +42,53 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any ['help wanted'](https://github.com/awslabs/metrique/labels/help%20wanted) issues is a great place to start.
 
+## Doing releases
+
+There is a `.github/workflows/release.yml` workflow that will attempt to use a crates.io release every time the version in the Cargo.toml changes. That is the sanctioned way of doing releases. The `release.yml` workflow is authorized to publish releases to the metrique crates via [trusted publishing], no further authorization is needed or desired for normal release publishing.
+
+[trusted publishing]: https://rust-lang.github.io/rfcs/3691-trusted-publishing-cratesio.html
+
+To update the `Cargo.toml` and changelog, use [conventional commits], and in a clean git repo, run the following commands:
+```
+cargo install release-plz
+git checkout main && release-plz update
+# before committing, make sure that CHANGELOG.md contains an appropriate changelog
+git commit -a
+```
+
+Then make a new PR for the release and get it approved.
+
+The automated release PR generation functionality is not used here.
+
+[conventional commits]: https://www.conventionalcommits.org/en/v1.0.0/
+
+### Publishing a new crate
+
+trusted publishing is unable to publish new crates. If you want to add a new crate to the metrique family, you should:
+
+1. create a branch that contains the crate you are publishing (it should
+   be in the root `Cargo.toml`'s `workspace.members`, and in a publishable state).
+2. add an entry to `release-plz.toml` of the form
+   ```
+   [[package]]
+   name = "<package>"
+   changelog_path = "CHANGELOG.md"
+   ```
+3. run `cargo publish -p <package> --dry-run`
+4. get a temporary crates.io token just for the publishing
+5. run `cargo login` with that token
+6. run `cargo publish -p <package>`
+7. set up trusted publishing via the crates.io WebUI to the following state:
+   ```
+   Publisher: Github
+   Repository: awslabs/metrique
+   Workflow: release.yml
+   Environment: release
+   ```
+8. revoke the temporary crates.io token
+
+Further publishing should happen via release-plz, without needing to manually work with tokens.
+
 ## Code of Conduct
 
 This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).
