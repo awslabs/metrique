@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "metrique", "metrique-core", "metrique-macro", "metrique-timesource", "metrique-writer","metrique-writer-core", "metrique-writer-format-emf", "metrique-writer-macro"]
+members = [ "metrique", "metrique-service-metrics", "metrique-core", "metrique-macro", "metrique-timesource", "metrique-writer","metrique-writer-core", "metrique-writer-format-emf", "metrique-writer-macro"]
 
 [workspace.dependencies]
 ahash = "0.8.6"

@@ -60,7 +60,7 @@ But when it drops, it will be appended to the queue to be formatted and flushed.
 
 To control how it is written, when you start your application, you must configure a queue:
 ```rust
-global_entry_sink! { ServiceMetrics }
+pub use metrique::ServiceMetrics;
 
 fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
     ServiceMetrics::attach_to_stream(

@@ -143,9 +143,9 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 ///
 /// Example:
 /// ```
+/// # use metrique::ServiceMetrics;
 /// # use metrique::unit_of_work::metrics;
-/// # use metrique_writer::{sink::global_entry_sink, GlobalEntrySink};
-/// global_entry_sink! { ServiceMetrics }
+/// # use metrique_writer::GlobalEntrySink;
 ///
 /// #[metrics]
 /// struct MyMetrics {
@@ -285,10 +285,8 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
 ///
 /// # Example
 /// ```
-/// # use metrique::{append_and_close, unit_of_work::metrics};
-/// # use metrique_writer::{sink::global_entry_sink, GlobalEntrySink, FormatExt};
-/// #
-/// global_entry_sink! { ServiceMetrics }
+/// # use metrique::{append_and_close, unit_of_work::metrics, ServiceMetrics};
+/// # use metrique_writer::{GlobalEntrySink, FormatExt};
 ///
 /// #[metrics]
 /// struct MyMetrics {
@@ -371,6 +369,7 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
 
 #[doc(hidden)]
 pub mod __writer {
+    // Contains imports used by the #[metrics] macro
     pub use metrique_writer_core::{Entry, EntrySink, EntryWriter, Value, ValueWriter};
 }
 
@@ -398,3 +397,6 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
         self.metric.sample_group()
     }
 }
+
+#[cfg(feature = "service-metrics")]
+pub use metrique_service_metrics::ServiceMetrics;

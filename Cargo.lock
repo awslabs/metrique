@@ -665,6 +665,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-macro",
+ "metrique-service-metrics",
  "metrique-timesource",
  "metrique-writer",
  "metrique-writer-core",
@@ -701,6 +702,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "metrique-service-metrics"
+version = "0.1.2"
+dependencies = [
+ "metrique",
+ "metrique-writer",
+ "metrique-writer-format-emf",
+ "tracing-appender",
 ]
 
 [[package]]

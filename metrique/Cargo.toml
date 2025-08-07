@@ -8,8 +8,9 @@ repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
 [features]
-default = []
+default = ["service-metrics"]
 test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
+service-metrics = ["dep:metrique-service-metrics"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
@@ -17,6 +18,7 @@ metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.2" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.1" }
 metrique-core = { path = "../metrique-core", version = "0.1.2" }
 metrique-writer = { path = "../metrique-writer", version = "0.1.2" }
+metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.2", optional = true }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.2" }
 ryu = { workspace = true }
 itoa = { workspace = true }
