@@ -3,6 +3,8 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
+// not bumping the MSRV for collapsible_if
+#![allow(clippy::collapsible_if)]
 
 pub mod emf;
 pub mod flex;
