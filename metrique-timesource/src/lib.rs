@@ -536,7 +536,7 @@ impl Eq for SystemTime {}
 
 impl PartialOrd for SystemTime {
     fn partial_cmp(&self, other: &SystemTime) -> Option<std::cmp::Ordering> {
-        Some(self.value.cmp(&other.value))
+        Some(self.cmp(other))
     }
 }
 

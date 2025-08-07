@@ -29,6 +29,7 @@ There are two ways you define dimensions with `metrique`:
 
    ```rust
    use std::io::BufWriter;
+   use metrique::ServiceMetrics;
    use metrique_writer::{
        FormatExt,
        AttachGlobalEntrySinkExt,
@@ -37,8 +38,6 @@ There are two ways you define dimensions with `metrique`:
        sink::global_entry_sink,
    };
    use metrique_writer_format_emf::Emf;
-
-   global_entry_sink! { ServiceMetrics }
 
    #[derive(Entry)]
    struct Globals {
@@ -214,14 +213,12 @@ There are three destinations typically used:
     ```rust,no_run
     use std::path::PathBuf;
 
+    use metrique::ServiceMetrics;
     use metrique_writer::{
         FormatExt,
         sink::{AttachGlobalEntrySink, AttachHandle},
-        sink::global_entry_sink,
     };
     use metrique_writer_format_emf::Emf;
-
-    global_entry_sink! { ServiceMetrics }
     use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
     # let service_log_dir = std::path::PathBuf::default();

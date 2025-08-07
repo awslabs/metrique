@@ -29,13 +29,11 @@ use std::path::PathBuf;
 use metrique::unit_of_work::metrics;
 use metrique::timers::{Timestamp, Timer};
 use metrique::unit::Millisecond;
-use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
+use metrique::ServiceMetrics;
+use metrique_writer::GlobalEntrySink;
 use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
 use metrique_writer_format_emf::Emf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
-
-// define our global entry sink
-global_entry_sink! { ServiceMetrics }
 
 // define operation as an enum (you can also define operation as a &'static str)
 #[metrics(value(string))]
@@ -75,8 +73,19 @@ async fn count_ducks() {
     // timer records the total time until scope exits
 }
 
-
 fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
+    // `metrique::ServiceMetrics` is a single global metric sink
+    // defined by `metrique` that can be used by your application.
+    //
+    // If you want to have more than 1 stream of metrics in your
+    // application (for example, to have separate streams of
+    // metrics for your application's control and data planes),
+    // you can define your own global entry sink (which will
+    // behave exactly like `ServiceMetrics`) by using the
+    // `metrique_writer::sink::global_entry_sink!` macro.
+    //
+    // See the examples in metrique/examples for that.
+
     // attach an EMF-formatted rolling file appender to `ServiceMetrics`
     // which will write the metrics asynchronously.
     ServiceMetrics::attach_to_stream(
@@ -297,11 +306,9 @@ to be filled - either by [`join`]ing your subtask or by using `Slot::wait_for_da
 Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission) - to make that easy, `Slot::open` has a `OnParentDrop::Wait` mode, that holds on to a `FlushGuard` until the slot is closed.
 
 ```rust
-use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
+use metrique_writer::GlobalEntrySink;
 use metrique::unit_of_work::metrics;
-use metrique::{SlotGuard, Slot, OnParentDrop};
-
-global_entry_sink! { ServiceMetrics }
+use metrique::{ServiceMetrics, SlotGuard, Slot, OnParentDrop};
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
@@ -374,13 +381,11 @@ Anything that implements `CloseValue` can be used as a field. `metrique` provide
 For further usage of atomics for concurrent metric updates, see [the fanout example][unit-of-work-fanout].
 
 ```rust
-use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
+use metrique_writer::GlobalEntrySink;
 use metrique::unit_of_work::metrics;
-use metrique::Counter;
+use metrique::{Counter, ServiceMetrics};
 
 use std::sync::Arc;
-
-global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
@@ -730,10 +735,9 @@ There are two ways to control the queue:
 1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
 2. Use the test-queue functionality provided out-of-the-box by global entry queues:
 ```rust
-use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
+use metrique_writer::GlobalEntrySink;
+use metrique::ServiceMetrics;
 use metrique::test_util::{self, TestEntrySink};
-
-global_entry_sink! { ServiceMetrics }
 
 let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
 let _guard = ServiceMetrics::set_test_sink(sink);
