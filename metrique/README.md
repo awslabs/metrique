@@ -465,7 +465,7 @@ Supported case styles include: `"PascalCase"`, `"camelCase"`, `"snake_case"`.
 
 #### Add a prefix to all fields
 
-Use the `prefix` attribute to add a consistent prefix to all fields:
+Use the `prefix` attribute on structs to add a consistent prefix to all fields:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -477,6 +477,30 @@ struct ApiMetrics {
     latency: usize,
     // Will appear as "ApiErrors" in metrics output
     errors: usize
+}
+```
+
+#### Add a prefix to all metrics in a subfield
+
+Use the `prefix` attribute on `flatten` to add a consistent prefix to fields of the
+included struct:
+
+```rust
+use metrique::unit_of_work::metrics;
+
+#[metrics(subfield)]
+struct DownstreamMetrics {
+    // our downstream calls their metric just "success", so we don't know who succeedded
+    success: bool,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct MyMetrics {
+    // This is our success field, will appear as "Success" in metrics output
+    success: bool,
+    // Their success field will appear as "DownstreamSuccess" in metrics output
+    #[metrics(flatten, prefix="Downstream")]
+    downstream: DownstreamMetrics,
 }
 ```
 
@@ -514,16 +538,16 @@ struct Metrics {
     overridden_field: &'static str,
 
     // Nested metrics can have their own renaming rules
-    #[metrics(flatten)]
+    #[metrics(flatten, prefix="his-")]
     nested: PrefixedMetrics,
 }
 
 #[metrics(rename_all = "PascalCase", prefix = "api_")]
 struct PrefixedMetrics {
-    // Will appear as "ApiLatency" in metrics output (explicit rename_all overrides the parent)
+    // Will appear as "his-ApiLatency" in metrics output (explicit rename_all overrides the parent)
     latency: usize,
 
-    // Will appear as "exact_name" in metrics output (overrides both prefix and case)
+    // Will appear as "his-exact_name" in metrics output (overrides both struct prefix and case, but not external prefix)
     #[metrics(name = "exact_name")]
     response_time: usize,
 }

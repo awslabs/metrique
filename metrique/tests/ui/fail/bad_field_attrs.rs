@@ -31,6 +31,9 @@ struct MetricsWithInvalidUnit {
 
     #[metrics(ignore, no_close)]
     ignore_no_close: usize,
+
+    #[metrics(prefix = "foo")]
+    prefix_no_flatten: usize,
 }
 
 #[metrics(rename_all = "snake_case")]

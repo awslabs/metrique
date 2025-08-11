@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use proc_macro2::TokenStream as Ts2;
-use quote::{quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned};
 use syn::Ident;
 
 use crate::{
@@ -75,8 +75,26 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                     ::metrique::__writer::Entry::write(&self.#field_ident, writer);
                 });
             }
-            MetricsFieldKind::Flatten(span) => {
+            MetricsFieldKind::Flatten { span, prefix } => {
+                let (extra, ns) = match prefix {
+                    None => (quote!(), ns),
+                    Some(prefix) => {
+                        let (extra, prefix) = make_inflect(
+                            &ns,
+                            format_ident!("InflectAffix", span = field_span),
+                            |style| style.apply_prefix(prefix),
+                            field,
+                        );
+                        (
+                            extra,
+                            quote_spanned! {field.span=>
+                                <#ns as ::metrique::NameStyle>::AppendPrefix<#prefix>
+                            },
+                        )
+                    }
+                };
                 writes.push(quote_spanned! {*span=>
+                    #extra
                     ::metrique::InflectableEntry::<#ns>::write(&self.#field_ident, writer);
                 });
             }
@@ -84,14 +102,19 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                 continue;
             }
             MetricsFieldKind::Field { format, .. } => {
-                let name_ident = metric_name(root_attrs, NameStyle::Preserve, field);
-                let name_pascal = metric_name(root_attrs, NameStyle::PascalCase, field);
-                let name_snake = metric_name(root_attrs, NameStyle::SnakeCase, field);
-                let name_kebab = metric_name(root_attrs, NameStyle::KebabCase, field);
+                let (extra, name) = make_inflect(
+                    &ns,
+                    format_ident!("Inflect", span = field_span),
+                    |style| metric_name(root_attrs, style, field),
+                    field,
+                );
                 let value = format_value(format, field_span, quote! { &self.#field_ident });
                 writes.push(quote_spanned! {field_span=>
                     ::metrique::__writer::EntryWriter::value(writer,
-                        <#ns as ::metrique::NameStyle>::inflect_name(#name_ident, #name_pascal, #name_snake, #name_kebab)
+                        {
+                            #extra
+                            ::metrique::concat::const_str_value::<#name>()
+                        }
                         , #value);
                 });
             }
@@ -99,6 +122,55 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
     }
 
     writes
+}
+
+fn make_inflect(
+    ns: &Ts2,
+    inflect: syn::Ident,
+    mut name: impl FnMut(NameStyle) -> String,
+    field: &MetricsField,
+) -> (Ts2, Ts2) {
+    let name_ident = const_str_struct_name(NameStyle::Preserve, field);
+    let name_kebab = const_str_struct_name(NameStyle::KebabCase, field);
+    let name_pascal = const_str_struct_name(NameStyle::PascalCase, field);
+    let name_snake = const_str_struct_name(NameStyle::SnakeCase, field);
+
+    let extra_preserve = const_str(&name_ident, &name(NameStyle::Preserve));
+    let extra_kebab = const_str(&name_kebab, &name(NameStyle::KebabCase));
+    let extra_pascal = const_str(&name_pascal, &name(NameStyle::PascalCase));
+    let extra_snake = const_str(&name_snake, &name(NameStyle::SnakeCase));
+
+    (
+        quote!(
+            #extra_preserve
+            #extra_kebab
+            #extra_pascal
+            #extra_snake
+
+        ),
+        quote!(
+            <#ns as ::metrique::NameStyle>::#inflect<#name_ident, #name_pascal, #name_snake, #name_kebab>
+        ),
+    )
+}
+
+pub fn const_str(ident: &syn::Ident, value: &str) -> Ts2 {
+    quote_spanned! {ident.span()=>
+        #[allow(non_camel_case_types)]
+        struct #ident;
+        impl ::metrique::concat::ConstStr for #ident {
+            const VAL: &'static str = #value;
+        }
+    }
+}
+
+fn const_str_struct_name(name_style: NameStyle, field: &MetricsField) -> syn::Ident {
+    format_ident!(
+        "{}{}",
+        field.ident.to_string(),
+        name_style.to_word(),
+        span = field.span
+    )
 }
 
 fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Ts2 {
@@ -112,7 +184,7 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
         let field_ident = &field.ident;
 
         match &field.attrs.kind {
-            MetricsFieldKind::Flatten(span) => {
+            MetricsFieldKind::Flatten { span, prefix: _ } => {
                 let ns = make_ns(root_attrs.rename_all, field.span);
                 sample_group_fields.push(quote_spanned! {*span=>
                     ::metrique::InflectableEntry::<#ns>::sample_group(&self.#field_ident)
