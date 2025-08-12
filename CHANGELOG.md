@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/awslabs/metrique/compare/metrique-core-v0.1.2...metrique-core-v0.1.3) - 2025-08-12
+
+### Added
+
+- Added global `metrique::ServiceMetrics` entry sink
+
+### Breaking Fixes
+
+- mark ThreadLocalTestSinkGuard as !Send + !Sync
+
 ## [0.1.2](https://github.com/arielb1/metrique-fork/compare/metrique-core-v0.1.1...metrique-core-v0.1.2) - 2025-08-06
 
 ### Added
