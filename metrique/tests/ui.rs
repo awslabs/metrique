@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // The UI tests need to be specific to a rustc version, since error output
-// changes between versions. Currently, this should be testing a version
-// that is explicitly tested in our CI rather than merely being the latest
-// stable, to ensure the test does not "vanish" when Rust releases a new version.
-#[rustversion::attr(not(stable(1.88.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
+// changes between versions.
+//
+// WARNING: This should be testing a version that is explicitly tested in our CI
+// rather than merely being the latest stable, to ensure the test does not "vanish"
+// when Rust releases a new version. So, MAKE SURE THAT THIS RUSTC VERSION IS IN SYNC
+// WITH AN EXPLICIT RUSTC VERSION IN `.github/workflows/build.yml` (TYPICALLY THE
+// MSRV), OTHERWISE THE UI TESTS WILL BE SKIPPED IN CI.
+#[rustversion::attr(not(stable(1.87.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
 #[allow(dead_code)]
 fn matching_rust_version() -> bool {
-    rustversion::cfg!(stable(1.88.0))
+    rustversion::cfg!(stable(1.87.0))
 }
 
 #[test]
