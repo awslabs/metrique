@@ -589,11 +589,12 @@ struct PrefixedMetrics {
 Example of a metrics struct:
 
 ```rust
-use metrique::{Counter, Slot};
+use metrique::{Counter, FormatDisplay, Slot};
 use metrique::timers::{EpochSeconds, Timer, Timestamp, TimestampOnClose};
 use metrique::unit::{Byte, Second};
 use metrique::unit_of_work::metrics;
 
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -652,6 +653,13 @@ struct MyMetrics {
     // ..and also an Option
     #[metrics(unit = Byte)]
     value_behind_opt_arc_mutex: Arc<Mutex<Option<f64>>>,
+
+    // You can format values that implement Display as strings
+    //
+    // Since IpAddr doesn't implement CloseValue, but rather `Display` directly,
+    // you'll need `no_close`.
+    #[metrics(format = FormatDisplay, no_close)]
+    source_ip_addr: IpAddr,
 
     // you can have nested subfields
     #[metrics(flatten)]

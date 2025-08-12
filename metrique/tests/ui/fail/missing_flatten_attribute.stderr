@@ -13,7 +13,7 @@ error[E0277]: the trait bound `ChildMetricsEntry: Value` is not satisfied
              Box<T>
              Cow<'_, T>
              Duration
-             FormattedValue<'_, V, VF>
+             FormattedValue<'_, V, VF, L>
              Option<T>
              String
            and $N others

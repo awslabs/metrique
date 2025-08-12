@@ -397,7 +397,7 @@ impl FieldSet {
                     Some(format) => {
                         let format = &*format;
                         quote_spanned! {field.binding.span() =>
-                            &::metrique_writer::core::value::FormattedValue::<_, #format>::new(#field)
+                            &::metrique_writer::core::value::FormattedValue::<_, #format, _>::new(#field)
                         }
                     }
                 };
@@ -603,7 +603,7 @@ mod tests {
                                     ::metrique_writer::core::entry::EntryWriter::value(writer, "GREAT_COUNTER", __binding_4);
                                     ::metrique_writer::core::entry::Entry::write(__binding_6, writer);
                                     ::metrique_writer::core::entry::EntryWriter::value(writer, "CustomFormat",
-                                        &::metrique_writer::core::value::FormattedValue::<_, my::Formatter>::new(__binding_7));
+                                        &::metrique_writer::core::value::FormattedValue::<_, my::Formatter, _>::new(__binding_7));
                                 }
                             }
                         }
