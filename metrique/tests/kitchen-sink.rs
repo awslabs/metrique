@@ -9,7 +9,7 @@ use metrique::unit_of_work::metrics;
 use metrique_writer::sink::VecEntrySink;
 use metrique_writer::test_util::{self, TestEntrySink, TestFlag, test_entry_sink};
 use metrique_writer::unit::{PositiveScale, UnitTag};
-use metrique_writer::value::WithDimensions;
+use metrique_writer::value::{FormatDisplay, WithDimensions};
 use metrique_writer::{GlobalEntrySink, Unit};
 use metrique_writer_core::global_entry_sink;
 use std::borrow::Cow;
@@ -47,6 +47,9 @@ struct Nested {
 
     d: Arc<bool>,
     e: Cow<'static, str>,
+
+    #[metrics(format=FormatDisplay)]
+    g: bool,
 
     #[metrics(no_close)]
     no_close: ValueWithNoClose,
@@ -191,6 +194,7 @@ fn flatten_flush_as_expected() {
         vec![("Foo".to_string(), "Bar".to_string())]
     );
     assert_eq!(entry.metrics["F"].test_flag, true);
+    assert_eq!(entry.values["G"], "false");
 
     assert_eq!(entry.metrics["NestedMetric"], 2);
     assert_eq!(entry.metrics["NestedValValue"], 3);

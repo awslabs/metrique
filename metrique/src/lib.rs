@@ -405,3 +405,6 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
 pub use metrique_service_metrics::ServiceMetrics;
 
 pub use metrique_core::concat;
+
+// re-export FormatDisplay
+pub use metrique_writer::value::FormatDisplay;
