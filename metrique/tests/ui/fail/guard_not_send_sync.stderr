@@ -1,0 +1,43 @@
+error[E0277]: `*const ()` cannot be shared between threads safely
+  --> tests/ui/fail/guard_not_send_sync.rs:12:17
+   |
+12 |     assert_sync(&_guard);
+   |     ----------- ^^^^^^^ `*const ()` cannot be shared between threads safely
+   |     |
+   |     required by a bound introduced by this call
+   |
+   = help: within `ThreadLocalTestSinkGuard`, the trait `Sync` is not implemented for `*const ()`
+note: required because it appears within the type `PhantomData<*const ()>`
+  --> $RUST/core/src/marker.rs
+note: required because it appears within the type `ThreadLocalTestSinkGuard`
+  --> $WORKSPACE/metrique-writer-core/src/global.rs
+   |
+   | pub struct ThreadLocalTestSinkGuard {
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `assert_sync`
+  --> tests/ui/fail/guard_not_send_sync.rs:5:19
+   |
+5  | fn assert_sync<S: Sync>(_s: &S) {}
+   |                   ^^^^ required by this bound in `assert_sync`
+
+error[E0277]: `*const ()` cannot be sent between threads safely
+  --> tests/ui/fail/guard_not_send_sync.rs:13:17
+   |
+13 |     assert_send(&_guard);
+   |     ----------- ^^^^^^^ `*const ()` cannot be sent between threads safely
+   |     |
+   |     required by a bound introduced by this call
+   |
+   = help: within `ThreadLocalTestSinkGuard`, the trait `Send` is not implemented for `*const ()`
+note: required because it appears within the type `PhantomData<*const ()>`
+  --> $RUST/core/src/marker.rs
+note: required because it appears within the type `ThreadLocalTestSinkGuard`
+  --> $WORKSPACE/metrique-writer-core/src/global.rs
+   |
+   | pub struct ThreadLocalTestSinkGuard {
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `assert_send`
+  --> tests/ui/fail/guard_not_send_sync.rs:6:19
+   |
+6  | fn assert_send<S: Send>(_s: &S) {}
+   |                   ^^^^ required by this bound in `assert_send`

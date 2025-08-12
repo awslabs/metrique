@@ -15,6 +15,8 @@
 //! ignoring the boxing performance issue.
 
 use std::any::Any;
+#[cfg(feature = "test-util")]
+use std::marker::PhantomData;
 
 use crate::{
     EntrySink,
@@ -192,6 +194,8 @@ pub struct ThreadLocalTestSinkGuard {
     // Function pointer to clear the guard when dropped
     // This is set by the macro-generated code
     clear_fn: fn(),
+    // ThreadLocalTestSinkGuard touches thread-local data and is therefore !Send/!Sync
+    _marker: PhantomData<*const ()>,
 }
 
 #[cfg(feature = "test-util")]
@@ -202,7 +206,10 @@ impl ThreadLocalTestSinkGuard {
     /// installing the thread-local sink override.
     #[doc(hidden)]
     pub fn new(clear_fn: fn()) -> Self {
-        Self { clear_fn }
+        Self {
+            clear_fn,
+            _marker: PhantomData,
+        }
     }
 }
 
