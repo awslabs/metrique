@@ -11,6 +11,10 @@ name = "metrique-macro"
 changelog_path = "CHANGELOG.md"
 
 [[package]]
+name = "metrique-service-metrics"
+changelog_path = "CHANGELOG.md"
+
+[[package]]
 name = "metrique-timesource"
 changelog_path = "CHANGELOG.md"
 
