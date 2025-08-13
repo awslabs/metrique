@@ -6,6 +6,9 @@ inputs:
   toolchain:
     required: true
     description: "the Rust toolchain to use"
+  flags:
+    required: true
+    description: "the flags to pass"
 
 runs:
   using: "composite"
@@ -25,3 +28,7 @@ runs:
       shell: bash
       run: |
           cargo test --verbose ${{ inputs.flags }}
+          if [ "${{ inputs.toolchain }}" == nightly -a "${{ inputs.flags }}" == "--all-features" ]; then
+              # docs use unstable features, run them on nightly
+              RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --verbose ${{ inputs.flags }}
+          fi

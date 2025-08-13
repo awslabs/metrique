@@ -57,6 +57,7 @@ impl From<ValidationError> for IoStreamError {
 /// Flushing may occur at any time, but is required to happen when [`EntryIoStream::flush`] is called.
 ///
 /// [`EntrySink`]: crate::EntrySink
+/// [`Format`]: crate::format::Format
 pub trait EntryIoStream {
     /// Write the next [`Entry`] to the stream.
     ///

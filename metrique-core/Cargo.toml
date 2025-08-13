@@ -14,3 +14,8 @@ itertools = { workspace = true }
 [dev-dependencies]
 metrique = { path = "../metrique" }
 metrique-writer = { path = "../metrique-writer" }
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--cfg", "docsrs"]

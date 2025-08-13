@@ -46,7 +46,7 @@ struct Validation {
 /// [CloudWatch Agent] to upload the logs, but any way of calling [PutLogEvents] will work.
 ///
 /// EMF requires there to be a timestamp in metrics. If your entry has an `#[entry(timestamp)]` field,
-/// (or if you call [`EntryWriter::timestamp()`](`crate::EntryWriter::timestamp`) directly), that will
+/// (or if you call [`EntryWriter::timestamp()`](metrique_writer::EntryWriter::timestamp) directly), that will
 /// be used as the timestamp. Otherwise, a timestamp will be generated from [`SystemTime::now`] when
 /// [`format`] is called.
 ///
@@ -58,7 +58,7 @@ struct Validation {
 /// ## Dimensions
 ///
 /// This formatter creates a single EMF directive, which only has a single dimension-set. Therefore, if metrics are passed with metric-specific dimensions,
-/// for example via [WithDimension](crate::value::WithDimension), there are currently 3 options:
+/// for example via [WithDimension](metrique_writer::value::WithDimension), there are currently 3 options:
 /// 1. An error will occur (this is the default).
 /// 2. If `allow_ignored_dimensions` is used, the metric will be emitted without the extra dimensions,
 ///    with just the `default_dimensions`.
@@ -442,9 +442,9 @@ impl Emf {
     /// that format. Read the [`Emf`] docs for more details.
     ///
     /// [CloudWatch Logs Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/AnalyzingLogData.html
-    /// [`sample_by_congress_at_fixed_entries_per_second`]: SampledFormat::sample_by_congress_at_fixed_entries_per_second
-    /// [`sample_by_fixed_fraction`]: SampledFormat::sample_by_fixed_fraction
-    /// [`CongressSampleBuilder::build_with_rng`]: crate::sample::CongressSampleBuilder::build_with_rng
+    /// [`sample_by_congress_at_fixed_entries_per_second`]: metrique_writer::sample::SampledFormatExt::sample_by_congress_at_fixed_entries_per_second
+    /// [`sample_by_fixed_fraction`]: metrique_writer::sample::SampledFormatExt::sample_by_fixed_fraction
+    /// [`CongressSampleBuilder::build_with_rng`]: metrique_writer::sample::CongressSampleBuilder::build_with_rng
     /// [`with_sampling_and_rng`]: Self::with_sampling_and_rng
     pub fn with_sampling(self) -> SampledEmf {
         Self::with_sampling_and_rng(self, Default::default())
@@ -1513,7 +1513,7 @@ impl MetricOptions for EmfOptions {
     }
 }
 
-/// Creates an [EmfOptions] for high storage resolution
+/// Creates options for high storage resolution
 pub struct HighStorageResolutionCtor;
 
 impl FlagConstructor for HighStorageResolutionCtor {
@@ -1524,7 +1524,7 @@ impl FlagConstructor for HighStorageResolutionCtor {
     }
 }
 
-/// Creates an [EmfOptions] for emitting a value to the JSON but not
+/// Creates options for emitting a value to the JSON but not
 /// emitting EMF metric metadata for it (which will make it readable by
 /// code parsing the JSON, but will prevent it from creating a CloudWatch
 /// metric).

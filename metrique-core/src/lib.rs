@@ -3,6 +3,7 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 use metrique_writer_core::{EntryWriter, entry::SampleGroupElement};
 
@@ -19,7 +20,7 @@ pub use namestyle::NameStyle;
 /// This gives an opportunity do things like stopping timers, collecting fanned-in data, etc.
 ///
 /// If possible, implement this trait for both `&MyValue` and `MyValue`, as this will allow
-/// use via smart pointers (e.g. on Arc<MyValue>).
+/// use via smart pointers (e.g. on `Arc<MyValue>`).
 ///
 /// ```
 /// use metrique::{CloseValue, CloseValueRef};
@@ -111,7 +112,7 @@ where
 /// [close-value]: CloseValue
 /// [`Entry`]: metrique_writer_core::Entry
 /// [`EntrySink`]: metrique_writer_core::EntrySink
-/// [`RootEntry`]: metrique_writer_core::RootEntry
+/// [`RootEntry`]: https://docs.rs/metrique/0.1/metrique/struct.RootEntry.html
 pub trait CloseEntry: CloseValue<Closed: InflectableEntry> {}
 impl<T: ?Sized + CloseValue<Closed: InflectableEntry>> CloseEntry for T {}
 

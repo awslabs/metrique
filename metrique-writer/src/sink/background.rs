@@ -291,7 +291,7 @@ impl BackgroundQueueBuilder {
     ///
     /// This is the right mode for when all of the metric entries for the output stream can be described by a single
     /// type. Note that an enum can be used to allow for multiple kinds of entries even within the single type
-    /// restriction! If a more flexible queue is needed, use [`BackgroundQueueBuilder::build_any`] instead.
+    /// restriction! If a more flexible queue is needed, use [`BackgroundQueueBuilder::build_boxed`] instead.
     pub fn build<T: Entry + Send + 'static>(
         self,
         stream: impl EntryIoStream + Send + 'static,
@@ -647,12 +647,12 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
         // Most write() activites consume < 1us. We don't need to recheck the timeline after every write to still keep
         // a reasonably accurate flush interval. Instead, we'll check the clock every 32 entries if we're still seeing
         // entries remaining in the queue.
-        let mut count = 0;
+        let mut count = 0usize;
         while let Some(entry) = self.inner.queue.pop() {
             self.consume(entry);
 
             count += 1;
-            if count % 32 == 0 && Instant::now() >= deadline {
+            if count.is_multiple_of(32) && Instant::now() >= deadline {
                 return (DrainResult::HitDeadline, count);
             }
         }

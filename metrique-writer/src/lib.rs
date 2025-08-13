@@ -3,6 +3,7 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 pub use metrique_writer_core::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use metrique_writer_core::global::GlobalEntrySink;

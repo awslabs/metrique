@@ -16,6 +16,7 @@ smallvec = { workspace = true, features = [
     "const_new",
 ] }
 tracing-subscriber = { workspace = true, optional = true }
+tracing-appender = { workspace = true, optional = true }
 rand = { workspace = true }
 crossbeam-queue = { workspace = true, optional = true }
 crossbeam-utils = { workspace = true, optional = true }
@@ -59,6 +60,9 @@ default = [
     "metrics_rs_bridge",
 ]
 test-util = []
+# Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
+# dep:tracing-appender is for rustdoc
+private-test-util = ["dep:tracing-appender"]
 metrics_rs_bridge = [
     "dep:pin-project",
     "dep:futures",
@@ -75,3 +79,8 @@ background_queue = [
     "dep:tracing",
 ]
 tracing_subscriber_03 = ["dep:tracing-subscriber"]
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--cfg", "docsrs"]

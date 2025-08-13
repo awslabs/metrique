@@ -769,6 +769,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tempfile",
+ "tracing",
  "tracing-appender",
 ]
 

@@ -187,11 +187,12 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
     ///
     /// For testing, either:
     /// - Do not use a `MetricReporterBuilder`, just use use [`capture_metrics`] to capture metrics without installing a global recorder.
-    /// - Provide a metric writer that points to a [`TestSink`], to write records to an in memory buffer.
+    /// - Use [Self::metrics_sink] to create a reporter that points to a [`TestEntrySink`], to write records to an in memory buffer.
     ///
-    /// [`capture_metrics`]: crate::capture::capture_metrics
-    /// [`TestSink`]: crate::util::TestSink
-    /// [`MetricReporterBuilder`]: crate::reporter::MetricReporterBuilder
+    /// [`capture_metrics`]: crate::metrics::capture::capture_metrics
+    /// [`TestEntrySink`]: crate::test_util::TestEntrySink
+    /// [`MetricReporterBuilder`]: crate::metrics::reporter::MetricReporterBuilder
+    /// [`BackgroundQueue`]: crate::sink::BackgroundQueue
     pub fn metrics_io_stream<S: EntryIoStream + Send + 'static>(
         self,
         stream: S,
@@ -366,7 +367,7 @@ impl MetricReporter {
         AnyEntrySink::flush_async(&self.sink).await
     }
 
-    /// Creates a [builder](crate::MetricReporterBuilder) for [`MetricReporter`]
+    /// Creates a [builder](crate::metrics::MetricReporterBuilder) for [`MetricReporter`]
     pub fn builder() -> MetricReporterBuilder {
         MetricReporterBuilder::new()
     }

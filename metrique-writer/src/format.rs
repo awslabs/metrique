@@ -190,6 +190,7 @@ pub trait FormatExt: Format {
     /// }
     /// ```
     ///
+    /// [`EntryIoStreamExt::merge_global_dimensions`]: crate::stream::EntryIoStreamExt::merge_global_dimensions
     /// [`FormatExt::merge_global_dimensions`]: crate::format::FormatExt::merge_global_dimensions
     fn merge_global_dimensions<const N: usize>(
         self,

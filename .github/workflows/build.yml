@@ -10,6 +10,7 @@ jobs:
         toolchain:
           - "1.87" # Current MSRV due to extend_from_within
           - stable
+          - nightly
         flags:
           - "--all-features"
           - "--no-default-features"
