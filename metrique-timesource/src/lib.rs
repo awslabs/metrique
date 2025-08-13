@@ -7,6 +7,7 @@
 use std::{
     cell::RefCell,
     fmt::Debug,
+    marker::PhantomData,
     ops::Add,
     time::{Duration, Instant as StdInstant, SystemTime as StdSystemTime, SystemTimeError},
 };
@@ -323,6 +324,8 @@ thread_local! {
 #[must_use]
 pub struct ThreadLocalTimeSourceGuard {
     previous: Option<TimeSource>,
+    // mark this as `!Send`, `!Sync` because it accesses a thread local
+    _marker: PhantomData<*const ()>,
 }
 
 impl Drop for ThreadLocalTimeSourceGuard {
@@ -349,7 +352,10 @@ impl Drop for ThreadLocalTimeSourceGuard {
 /// ```
 pub fn set_time_source(time_source: TimeSource) -> ThreadLocalTimeSourceGuard {
     let previous = THREAD_LOCAL_TIME_SOURCE.with(|cell| cell.borrow_mut().replace(time_source));
-    ThreadLocalTimeSourceGuard { previous }
+    ThreadLocalTimeSourceGuard {
+        previous,
+        _marker: PhantomData,
+    }
 }
 
 #[cfg(feature = "custom-timesource")]
