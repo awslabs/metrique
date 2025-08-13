@@ -1,0 +1,54 @@
+error[E0425]: cannot find value `UNIX_EPOCH` in this scope
+ --> tests/ui/fail/timesource_guard_not_send_sync.rs:8:56
+  |
+8 |     let _mock_time = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+  |                                                        ^^^^^^^^^^ not found in this scope
+  |
+help: consider importing this constant
+  |
+1 + use std::time::UNIX_EPOCH;
+  |
+
+error[E0277]: `*const ()` cannot be shared between threads safely
+ --> tests/ui/fail/timesource_guard_not_send_sync.rs:9:17
+  |
+9 |     assert_sync(&_mock_time);
+  |     ----------- ^^^^^^^^^^^ `*const ()` cannot be shared between threads safely
+  |     |
+  |     required by a bound introduced by this call
+  |
+  = help: within `ThreadLocalTimeSourceGuard`, the trait `Sync` is not implemented for `*const ()`
+note: required because it appears within the type `PhantomData<*const ()>`
+ --> $RUST/core/src/marker.rs
+note: required because it appears within the type `ThreadLocalTimeSourceGuard`
+ --> $WORKSPACE/metrique-timesource/src/lib.rs
+  |
+  | pub struct ThreadLocalTimeSourceGuard {
+  |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `assert_sync`
+ --> tests/ui/fail/timesource_guard_not_send_sync.rs:3:19
+  |
+3 | fn assert_sync<S: Sync>(_s: &S) {}
+  |                   ^^^^ required by this bound in `assert_sync`
+
+error[E0277]: `*const ()` cannot be sent between threads safely
+  --> tests/ui/fail/timesource_guard_not_send_sync.rs:10:17
+   |
+10 |     assert_send(&_mock_time);
+   |     ----------- ^^^^^^^^^^^ `*const ()` cannot be sent between threads safely
+   |     |
+   |     required by a bound introduced by this call
+   |
+   = help: within `ThreadLocalTimeSourceGuard`, the trait `Send` is not implemented for `*const ()`
+note: required because it appears within the type `PhantomData<*const ()>`
+  --> $RUST/core/src/marker.rs
+note: required because it appears within the type `ThreadLocalTimeSourceGuard`
+  --> $WORKSPACE/metrique-timesource/src/lib.rs
+   |
+   | pub struct ThreadLocalTimeSourceGuard {
+   |            ^^^^^^^^^^^^^^^^^^^^^^^^^^
+note: required by a bound in `assert_send`
+  --> tests/ui/fail/timesource_guard_not_send_sync.rs:4:19
+   |
+4  | fn assert_send<S: Send>(_s: &S) {}
+   |                   ^^^^ required by this bound in `assert_send`
