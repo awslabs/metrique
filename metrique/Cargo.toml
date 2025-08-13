@@ -9,6 +9,9 @@ readme = "README.md"
 
 [features]
 default = ["service-metrics"]
+# re-exports metrique-writer-format-emf as metrique::emf
+emf = ["dep:metrique-writer-format-emf"]
+# utilities for tests
 test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
 # dep:tracing-appender is for rustdoc
@@ -23,6 +26,7 @@ metrique-core = { path = "../metrique-core", version = "0.1.3" }
 metrique-writer = { path = "../metrique-writer", version = "0.1.3" }
 metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.3", optional = true }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.3" }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.2", optional = true }
 tracing-appender = { workspace = true, optional = true }
 ryu = { workspace = true }
 itoa = { workspace = true }
@@ -41,13 +45,12 @@ metrique-writer-core = { path = "../metrique-writer-core", features = [
     "private-test-util",
     "test-util",
 ] }
-metrique-writer-format-emf = { path = "../metrique-writer-format-emf", features = [
-] }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf", features = [] }
 tracing = { workspace = true }
 tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
-metrique = { path = ".", features = ["test-util"] }
+metrique = { path = ".", features = ["emf", "test-util"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }

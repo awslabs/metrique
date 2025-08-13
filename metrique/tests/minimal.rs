@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use metrique::writer::Entry;
 use metrique::{CloseValue, RootEntry};
 use metrique_macro::metrics;
-use metrique_writer::Entry;
 
 #[metrics(rename_all = "PascalCase")]
 #[derive(Default, Clone)]

@@ -3,8 +3,8 @@
 
 //! Integration tests for the Flex type
 
+use metrique::writer::test_util;
 use metrique::{Flex, unit_of_work::metrics};
-use metrique_writer::test_util;
 use std::time::SystemTime;
 
 #[metrics]

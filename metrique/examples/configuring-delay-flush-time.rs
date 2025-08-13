@@ -3,11 +3,11 @@
 
 use core::time::Duration;
 
+use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt};
+use metrique::writer::{GlobalEntrySink, sink::global_entry_sink};
 use metrique::{Counter, OnParentDrop, Slot, SlotGuard};
-use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt};
-use metrique_writer::{GlobalEntrySink, sink::global_entry_sink};
-use metrique_writer_format_emf::Emf;
 use tokio::task;
 use tokio::time::sleep;
 use tokio_util::task::TaskTracker;

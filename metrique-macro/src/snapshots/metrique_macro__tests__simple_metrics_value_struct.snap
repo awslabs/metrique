@@ -9,7 +9,7 @@ struct RequestValue {
 #[doc(hidden)]
 pub struct RequestValueValue {
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     value: <u32 as metrique::CloseValue>::Closed,

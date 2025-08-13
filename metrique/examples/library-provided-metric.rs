@@ -87,9 +87,9 @@ mod library {
     }
 }
 
+use metrique::emf::Emf;
+use metrique::writer::{FormatExt, sink::FlushImmediately};
 use metrique::{DefaultSink, timers::Timer, unit_of_work::metrics};
-use metrique_writer::{FormatExt, sink::FlushImmediately};
-use metrique_writer_format_emf::Emf;
 
 #[metrics]
 #[derive(Default)]

@@ -3,14 +3,14 @@
 
 use std::time::{Duration, UNIX_EPOCH};
 
+use metrique::emf::Emf;
 use metrique::timers::{EpochMicros, Stopwatch, Timer, Timestamp, TimestampOnClose};
 use metrique::unit::Microsecond;
 use metrique::unit_of_work::metrics;
+use metrique::writer::{AttachGlobalEntrySinkExt, EntryIoStreamExt, FormatExt};
+use metrique::writer::{BoxEntrySink, Entry, GlobalEntrySink, sink::global_entry_sink};
 use metrique::{LazySlot, OnParentDrop, SlotGuard};
 use metrique_timesource::{TimeSource, set_time_source};
-use metrique_writer::{AttachGlobalEntrySinkExt, EntryIoStreamExt, FormatExt};
-use metrique_writer::{BoxEntrySink, Entry, GlobalEntrySink, sink::global_entry_sink};
-use metrique_writer_format_emf::Emf;
 
 global_entry_sink! { ServiceMetrics }
 

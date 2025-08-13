@@ -108,6 +108,6 @@ error[E0277]: the trait bound `FormattedValue<'_, u32, Foo, _>: Value` is not sa
              Baz3Value
              Box<T>
              Cow<'_, T>
+             Distribution<V, N>
              Duration
-             Option<T>
            and $N others

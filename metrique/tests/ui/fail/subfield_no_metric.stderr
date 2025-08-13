@@ -91,7 +91,7 @@ note: required because it appears within the type `RootMetricsEntry`
   |
 7 | struct RootMetrics {
   |        ^^^^^^^^^^^
-  = note: required for `RootEntry<RootMetricsEntry>` to implement `metrique::__writer::Entry`
+  = note: required for `RootEntry<RootMetricsEntry>` to implement `metrique::metrique_writer::Entry`
 note: required by a bound in `EntrySink`
  --> $WORKSPACE/metrique-writer-core/src/sink.rs
   |

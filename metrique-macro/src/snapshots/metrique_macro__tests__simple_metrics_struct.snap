@@ -9,12 +9,12 @@ struct RequestMetrics {
 #[doc(hidden)]
 pub struct RequestMetricsEntry {
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     operation: <&'static str as metrique::CloseValue>::Closed,
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     number_of_ducks: <usize as metrique::CloseValue>::Closed,

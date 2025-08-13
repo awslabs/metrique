@@ -11,11 +11,11 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use metrique::{CloseValue, Counter, SharedChild, Slot, unit_of_work::metrics};
-use metrique_writer::{
+use metrique::emf::Emf;
+use metrique::writer::{
     AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink, sink::global_entry_sink,
 };
-use metrique_writer_format_emf::Emf;
+use metrique::{CloseValue, Counter, SharedChild, Slot, unit_of_work::metrics};
 global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]

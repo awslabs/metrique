@@ -6,16 +6,16 @@ use core::sync::atomic::{
 };
 use metrique::unit::{Percent, Second};
 use metrique::unit_of_work::metrics;
-use metrique_writer::sink::VecEntrySink;
-use metrique_writer::test_util::{self, TestEntrySink, TestFlag, test_entry_sink};
-use metrique_writer::unit::{PositiveScale, UnitTag};
-use metrique_writer::value::{ToString, WithDimensions};
-use metrique_writer::{GlobalEntrySink, Unit};
-use metrique_writer_core::global_entry_sink;
+use metrique::writer::sink::VecEntrySink;
+use metrique::writer::sink::global_entry_sink;
+use metrique::writer::test_util::{self, TestEntrySink, TestFlag, test_entry_sink};
+use metrique::writer::unit::{PositiveScale, UnitTag};
+use metrique::writer::value::{ToString, WithDimensions};
+use metrique::writer::{GlobalEntrySink, Unit};
 use std::borrow::Cow;
 use std::sync::Arc;
 
-#[derive(metrique_writer::Entry, Default, Clone)]
+#[derive(metrique::writer::Entry, Default, Clone)]
 struct MyEntry {
     foo: u32,
 }
@@ -79,8 +79,8 @@ struct Prefix2 {
 
 #[derive(Clone, Default)]
 struct ValueWithNoClose;
-impl metrique::__writer::Value for ValueWithNoClose {
-    fn write(&self, writer: impl metrique::__writer::ValueWriter) {
+impl metrique::writer::Value for ValueWithNoClose {
+    fn write(&self, writer: impl metrique::writer::ValueWriter) {
         writer.string("no_close");
     }
 }
@@ -101,7 +101,7 @@ struct Units {
 // units can also be defined externally
 struct ParsecsPerBit;
 impl UnitTag for ParsecsPerBit {
-    const UNIT: metrique_writer::Unit = Unit::BitPerSecond(PositiveScale::Giga);
+    const UNIT: metrique::writer::Unit = Unit::BitPerSecond(PositiveScale::Giga);
 }
 
 #[metrics(rename_all = "PascalCase")]

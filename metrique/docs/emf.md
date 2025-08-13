@@ -12,7 +12,7 @@ There are two ways you define dimensions with `metrique`:
 1. Global Dimensions: These are set on the [`Emf`] itself. When validations are enabled, **every** entry that is emitted MUST have these set. Global dimensions are set when you construct the builder:
 
    ```rust
-    use metrique_writer_format_emf::Emf;
+    use metrique::emf::Emf;
     let emf = Emf::builder(
        // namespace
         "Ns".to_string(),
@@ -30,14 +30,14 @@ There are two ways you define dimensions with `metrique`:
    ```rust
    use std::io::BufWriter;
    use metrique::ServiceMetrics;
-   use metrique_writer::{
+   use metrique::writer::{
        FormatExt,
        AttachGlobalEntrySinkExt,
        EntryIoStreamExt,
        Entry, EntryIoStream, GlobalEntrySink,
        sink::global_entry_sink,
    };
-   use metrique_writer_format_emf::Emf;
+   use metrique::emf::Emf;
 
    #[derive(Entry)]
    struct Globals {
@@ -120,8 +120,8 @@ Per entry dimensions can be set with the `emf::dimension_sets` attribute when de
 2. There is no compile-time validation on the dimensions that are set. You must validate that that dimension sets are set as you expect. A good way to check this is by invoking the EMF formatter directly with `all_validations` enabled:
 
     ```rust
-    use metrique_writer::format::Format;
-    use metrique_writer_format_emf::Emf;
+    use metrique::writer::format::Format;
+    use metrique::emf::Emf;
     use metrique::unit_of_work::metrics;
 
     #[metrics(
@@ -214,11 +214,11 @@ There are three destinations typically used:
     use std::path::PathBuf;
 
     use metrique::ServiceMetrics;
-    use metrique_writer::{
+    use metrique::writer::{
         FormatExt,
         sink::{AttachGlobalEntrySink, AttachHandle},
     };
-    use metrique_writer_format_emf::Emf;
+    use metrique::emf::Emf;
     use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
     # let service_log_dir = std::path::PathBuf::default();
@@ -230,8 +230,8 @@ There are three destinations typically used:
 3. A TCP Stream
     ```rust,no_run
     use std::net::SocketAddr;
-    use metrique_writer::FormatExt;
-    use metrique_writer_format_emf::Emf;
+    use metrique::writer::FormatExt;
+    use metrique::emf::Emf;
     # async fn initialize_metrics() {
     let emf_port = 1234;
     let addr = SocketAddr::from(([127, 0, 0, 1], emf_port));
@@ -265,12 +265,12 @@ To configure `metrique` to output to a file, use the `RollingFileAppender`:
 ```rust,no_run
 use std::path::PathBuf;
 
-use metrique_writer::{
+use metrique::writer::{
     FormatExt,
     sink::{AttachGlobalEntrySink, AttachHandle},
     sink::global_entry_sink,
 };
-use metrique_writer_format_emf::Emf;
+use metrique::emf::Emf;
 
 # let service_log_dir = std::path::PathBuf::default();
 
@@ -290,8 +290,8 @@ On Lambda, you will generally output to `std::io::stdout()` and use the default 
 On EC2, the standard approach is to use [CloudWatch Agent (CWA)][Cloudwatch Agent]. The Cloudwatch Agent will handle deletion for you. You should configure output to a file using the `RollingFileAppender`.
 
 ```rust,no_run
-use metrique_writer_format_emf::Emf;
-use metrique_writer::FormatExt;
+use metrique::emf::Emf;
+use metrique::writer::FormatExt;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 # let service_log_dir = std::path::PathBuf::default();
 let stream = Emf::all_validations("MyApp".into(), vec![vec![]])
@@ -304,5 +304,5 @@ let stream = Emf::all_validations("MyApp".into(), vec![vec![]])
 [Cloudwatch Agent]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html
 [Cloudwatch Log Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/AnalyzingLogData.html
 [Cloudwatch Contributor Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContributorInsights.html
-[`Emf`]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/struct.Emf.html
+[`Emf`]: metrique_writer_format_emf::Emf
 [`output_to`]: metrique_writer::FormatExt::output_to

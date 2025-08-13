@@ -1,4 +1,4 @@
-error: use of deprecated field `MetricsEntry::public_field`: these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`
+error: use of deprecated field `MetricsEntry::public_field`: these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`
   --> tests/ui/fail/entry_fields_private.rs:15:36
    |
 15 |     println!("{:?}", entry.map(|f| f.public_field));
