@@ -50,7 +50,7 @@ There is a `.github/workflows/release.yml` workflow that will attempt to use a c
 
 To update the `Cargo.toml` and changelog, use [conventional commits], and in a clean git repo, run the following commands:
 ```
-cargo install release-plz
+cargo install release-plz --locked
 git checkout main && release-plz update
 # before committing, make sure that CHANGELOG.md contains an appropriate changelog
 git commit -a
