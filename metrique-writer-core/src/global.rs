@@ -318,7 +318,7 @@ mod _doctest {
 /// This functionality is only available when the `test-util` feature is enabled
 /// and is compiled out when the feature is not enabled.
 ///
-/// ```rust
+/// ```rust,ignore
 /// # use metrique_writer::sink::global_entry_sink;
 /// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
 /// # use metrique_writer::GlobalEntrySink;
