@@ -59,7 +59,7 @@ default = [
     "metrics_rs_024",
     "metrics_rs_bridge",
 ]
-test-util = []
+test-util = ["metrique-writer-core/test-util"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
 # dep:tracing-appender is for rustdoc
 private-test-util = ["dep:tracing-appender"]
