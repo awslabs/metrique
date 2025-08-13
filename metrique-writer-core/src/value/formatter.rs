@@ -11,9 +11,11 @@ mod private {
 
 pub trait Liftability: private::Sealed {}
 
-/// X
+/// Marker for a [ValueFormatter] that is automatically lifted over types such as [Arc] and [Option].
+/// See the [ValueFormatter] docs.
 pub struct Lifted;
-/// X
+
+/// Marker for a [ValueFormatter] that is *not* automatically lifted. See the [ValueFormatter] docs.
 pub struct NotLifted;
 
 impl private::Sealed for Lifted {}
@@ -156,6 +158,7 @@ impl<'a, V, VF, L> FormattedValue<'a, V, VF, L> {
     }
 }
 
+#[diagnostic::do_not_recommend]
 impl<V, VF, L: Liftability> super::Value for FormattedValue<'_, V, VF, L>
 where
     VF: ValueFormatter<V, L>,
