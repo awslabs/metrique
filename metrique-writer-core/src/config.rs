@@ -107,6 +107,8 @@ impl<'a> Iterator for DimensionsIterator<'a> {
 /// ["AWSAccountId", "API"],
 /// ["AWSAccountId", "API", "StringProp"],
 /// ```
+///
+/// [`Entry`]: crate::Entry
 #[derive(Clone, Debug)]
 pub struct EntryDimensions {
     dimensions: Cow<'static, [Cow<'static, [Cow<'static, str>]>]>,

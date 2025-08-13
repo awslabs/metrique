@@ -173,7 +173,7 @@ For more complex examples, see the [examples folder].
 ### Timing Events
 
 `metrique` provides several timing primitives to simplify measuring time. They are all mockable via
-[`metrique-timesource`]:
+[`metrique_timesource`]:
 
  * [`Timer`] / [`Stopwatch`]: Reports a [`Duration`] using the [`Instant`] time-source. It can either be a
    [`Timer`] (in which case it starts as soon as it is created), or a [`Stopwatch`] (in which case you must
@@ -301,7 +301,7 @@ In that case, you can use `Slot`, which creates a oneshot channel, over which th
 Note that `Slot` by itself does not delay the parent metric entry's emission in any way. If your metric entry
 is emitted (for example, when your request is finished) before the slot is filled, the metric entry will just
 skip the metrics behind the `Slot`. One option is to make your request wait for the slot
-to be filled - either by [`join`]ing your subtask or by using `Slot::wait_for_data`.
+to be filled - either by waiting for your subtask to complete or by using `Slot::wait_for_data`.
 
 Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission) - to make that easy, `Slot::open` has a `OnParentDrop::Wait` mode, that holds on to a `FlushGuard` until the slot is closed.
 
@@ -604,11 +604,11 @@ struct MyMetrics {
 }
 ```
 
-Ordinary fields in metrics need to implement [`CloseValue`]`<Output: `[`metric_writer::Value`]`>`.
+Ordinary fields in metrics need to implement [`CloseValue`]`<Output: `[`metrique_writer::Value`]`>`.
 
 If you use a formatter (`#[metrics(format)]`), your field needs to implement [`CloseValue`],
 and its output needs to be supported by the [formatter](#custom-valueformatters) instead of
-implementing [`metric_writer::Value`].
+implementing [`metrique_writer::Value`].
 
 Nested fields (`#[metrics(flatten)]`) need to implement [`CloseEntry`].
 
@@ -655,8 +655,8 @@ impl CloseValue for MyTimer {
 }
 ```
 
-[`CloseValue`]: metrique::CloseValue
-[`CloseValueRef`]: metrique::CloseValueRef
+[`CloseValue`]: https://docs.rs/metrique/0.1/metrique/trait.CloseValue.html
+[`CloseValueRef`]: https://docs.rs/metrique/0.1/metrique/trait.CloseValueRef.html
 
 ### Custom [`ValueFormatter`]s
 

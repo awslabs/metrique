@@ -9,7 +9,7 @@ EMF has the concept of dimensions. When your metrics are ingested to CloudWatch,
 
 There are two ways you define dimensions with `metrique`:
 
-1. Global Dimensions: These are set on the EMF [`Format`](metrique_writer_format_emf::Emf) itself. When validations are enabled, **every** entry that is emitted MUST have these set. Global dimensions are set when you construct the builder:
+1. Global Dimensions: These are set on the [`Emf`] itself. When validations are enabled, **every** entry that is emitted MUST have these set. Global dimensions are set when you construct the builder:
 
    ```rust
     use metrique_writer_format_emf::Emf;
@@ -304,3 +304,5 @@ let stream = Emf::all_validations("MyApp".into(), vec![vec![]])
 [Cloudwatch Agent]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html
 [Cloudwatch Log Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/AnalyzingLogData.html
 [Cloudwatch Contributor Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContributorInsights.html
+[`Emf`]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/struct.Emf.html
+[`output_to`]: metrique_writer::FormatExt::output_to

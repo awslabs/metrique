@@ -46,6 +46,7 @@ pub trait EntryIoStreamExt: EntryIoStream {
     /// }
     /// ```
     ///
+    /// [`Format`]: crate::format::Format
     /// [`FormatExt::merge_globals`]: crate::format::FormatExt::merge_globals
     fn merge_globals<G>(self, globals: G) -> MergeGlobals<Self, G>
     where
@@ -87,6 +88,7 @@ pub trait EntryIoStreamExt: EntryIoStream {
     /// }
     /// ```
     ///
+    /// [`Format`]: crate::format::Format
     /// [`FormatExt::merge_global_dimensions`]: crate::format::FormatExt::merge_global_dimensions
     fn merge_global_dimensions<const N: usize>(
         self,
@@ -189,8 +191,9 @@ impl<S: EntryIoStream, G: Entry> EntryIoStream for MergeGlobals<S, G> {
     }
 }
 
-/// See [`EntryIoStream::merge_global_dimensions`] or [`FormatExt::merge_global_dimensions`].
+/// See [`EntryIoStreamExt::merge_global_dimensions`] or [`FormatExt::merge_global_dimensions`].
 ///
+/// [`EntryIoStreamExt::merge_global_dimensions`]: crate::stream::EntryIoStreamExt::merge_global_dimensions
 /// [`FormatExt::merge_global_dimensions`]: crate::format::FormatExt::merge_global_dimensions
 #[derive(Clone)]
 pub struct MergeGlobalDimensions<S, const N: usize> {

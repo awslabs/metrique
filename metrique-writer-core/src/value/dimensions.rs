@@ -19,8 +19,8 @@ use crate::{
 /// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
 /// except for time-based metrics.
 ///
-/// [EMF]: crate::format::emf
-/// [split entry]: crate::format::emf::AllowSplitEntries
+/// [EMF]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/
+/// [split entry]: crate::config::AllowSplitEntries
 ///
 /// The const `N` defines how many of the pairs will be stored inline with the value before being spilled to the heap.
 /// In most cases, the number of dimensions is known and setting `N` accordingly will avoid an allocation.
@@ -45,8 +45,8 @@ impl<V, const N: usize> WithDimensions<V, N> {
 /// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
 /// except for time-based metrics.
 ///
-/// [EMF]: crate::format::emf
-/// [split entry]: crate::format::emf::AllowSplitEntries
+/// [EMF]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/
+/// [split entry]: crate::config::AllowSplitEntries
 ///
 /// Note that more than one pair can be added, but they will trigger a spill to the heap.
 pub type WithDimension<V> = WithDimensions<V, 1>;
@@ -56,8 +56,8 @@ pub type WithDimension<V> = WithDimensions<V, 1>;
 /// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
 /// except for time-based metrics.
 ///
-/// [EMF]: crate::format::emf
-/// [split entry]: crate::format::emf::AllowSplitEntries
+/// [EMF]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/
+/// [split entry]: crate::config::AllowSplitEntries
 pub type WithVecDimensions<V> = WithDimensions<V, 0>;
 
 impl<V, const N: usize> Deref for WithDimensions<V, N> {

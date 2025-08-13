@@ -124,9 +124,9 @@ pub trait Entry {
     /// The key used to group "similar" entries when sampling. Defaults to the empty group.
     ///
     /// If the output format is unsampled or is using a naive sampling strategy, like a
-    /// [`crate::sample::FixedFractionSample`], this is unused.
+    /// [`FixedFractionSample`], this is unused.
     ///
-    /// For adaptive sampling strategies, like [`crate::sample::CongressSample`], the sample group should reflect
+    /// For adaptive sampling strategies, like [`CongressSample`], the sample group should reflect
     /// representative buckets for the service. A sane starting point for request-reply services would include the API
     /// name and resulting status code. This ensures that less frequent APIs and less frequent status codes aren't lost
     /// in a low sample rate.
@@ -159,6 +159,9 @@ pub trait Entry {
     /// assert_eq!(&sample_group["Operation"], "Foo");
     /// assert_eq!(&sample_group["Result"], "ValidationError");
     /// ```
+    ///
+    /// [`FixedFractionSample`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sample/struct.FixedFractionSample.html
+    /// [`CongressSample`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sample/struct.CongressSample.html
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         [].into_iter()
     }

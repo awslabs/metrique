@@ -5,7 +5,7 @@
 //!
 //! This requires that the `test-util` feature be enabled.
 //!
-//! For usage examples, see [`test_sink`] and `examples/testing.rs`
+//! For usage examples, see [`test_entry_sink`] and `examples/testing.rs`
 
 use std::{
     collections::HashMap,
@@ -22,13 +22,14 @@ use crate::{
     AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter, sink::FlushWait,
 };
 
+/// Test flag. This is merely reflected in [TestEntry] to allow seeing that flags are set.
 #[derive(Debug)]
-struct TestFlagOpt;
+pub struct TestFlagOpt;
 
 impl MetricOptions for TestFlagOpt {}
 
 /// Flag constructor for setting a test flag. This is merely reflected
-/// in TestEntry to allow seeing that flags are set.
+/// in [TestEntry] to allow seeing that flags are set.
 pub struct TestFlagCtor;
 
 impl FlagConstructor for TestFlagCtor {
@@ -251,7 +252,7 @@ impl ValueWriter for TestValueWriter<'_> {
 
 /// Converts an [`Entry`] into a `TestEntry` that can be introspected
 ///
-/// > NOTE: This method is probably not what you want. Use [`test_sink`] instead.
+/// > NOTE: This method is probably not what you want. Use [`test_entry_sink`] instead.
 pub fn to_test_entry(e: impl Entry) -> TestEntry {
     let mut entry = TestEntry::empty();
     e.write(&mut entry);
@@ -272,7 +273,7 @@ pub struct TestEntrySink {
     pub sink: BoxEntrySink,
 }
 
-/// Create a [`TestSink`] and a connected [`BoxEntrysink`] that can be used in your application
+/// Create a [`TestEntrySink`] and a connected [`BoxEntrySink`] that can be used in your application
 ///
 /// This requires that the `test-util` feature be enabled.
 /// # Examples
@@ -311,7 +312,7 @@ pub fn test_entry_sink() -> TestEntrySink {
 
 /// `Inspector` can be used as a sink while making it easy to read the metrics that have been emitted
 ///
-/// See [`test_sink`] for usage examples.
+/// See [`test_entry_sink`] for usage examples.
 #[derive(Default, Clone, Debug)]
 pub struct Inspector {
     entries: Arc<Mutex<Vec<TestEntry>>>,

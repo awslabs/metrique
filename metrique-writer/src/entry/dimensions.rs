@@ -22,7 +22,7 @@ use std::{
 /// The const `N` defines how many of the pairs will be stored inline with the entry before being spilled to the heap.
 /// In most cases, the number of dimensions is known and setting `N` accordingly will avoid an allocation.
 ///
-/// [`WithDimensions`]: metrique_writer_core::WithDimensions
+/// [`WithDimensions`]: metrique_writer_core::value::WithDimensions
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct WithGlobalDimensions<E, const N: usize> {
     entry: E,

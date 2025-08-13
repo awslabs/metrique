@@ -59,7 +59,7 @@ pub trait SampledFormatExt: SampledFormat {
     /// A sample rate of 0.1 will reduce the formatting load by 10x but will come at the cost of lower accuracy. This is
     /// especially noticeable if metrics about different kinds of events are merged into the same format output (e.g.
     /// metrics from different APIs or different results). For a more accurate sample of heterogeneous events, see
-    /// [`SampledFormat::sample_by_congress_at_fixed_entries_per_second`].
+    /// [`SampledFormatExt::sample_by_congress_at_fixed_entries_per_second`].
     fn sample_by_fixed_fraction(self, sample_rate: f32) -> FixedFractionSample<Self>
     where
         Self: Sized,
@@ -92,7 +92,7 @@ pub trait SampledFormatExt: SampledFormat {
 
 impl<T: SampledFormat + ?Sized> SampledFormatExt for T {}
 
-/// See [`SampledFormat::sample_by_fixed_fraction`].
+/// See [`SampledFormatExt::sample_by_fixed_fraction`].
 pub struct FixedFractionSample<F, R = DefaultRng<ThreadRng>> {
     format: F,
     rate: f32,
