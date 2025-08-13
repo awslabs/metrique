@@ -12,8 +12,8 @@ readme = "README.md"
 metrique-writer = { path = "../metrique-writer", version = "0.1.4" }
 
 [dev-dependencies]
-metrique = { path = "../metrique", version = "0.1" }
-metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1" }
+metrique = { path = "../metrique" }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 tracing-appender = { workspace = true }
 
 [package.metadata.docs.rs]
