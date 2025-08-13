@@ -370,12 +370,6 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
     }
 }
 
-#[doc(hidden)]
-pub mod __writer {
-    // Contains imports used by the #[metrics] macro
-    pub use metrique_writer_core::{Entry, EntrySink, EntryWriter, Value, ValueWriter};
-}
-
 /// "Roots" an [`InflectableEntry`] to turn it into an [`Entry`] that can be passed
 /// to an [`EntrySink`].
 ///

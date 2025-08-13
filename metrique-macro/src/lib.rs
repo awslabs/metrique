@@ -724,7 +724,7 @@ fn generate_on_drop_wrapper(
 
         impl #inner {
             #[doc = "Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
-            #vis fn append_on_drop<Q: ::metrique::__writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
+            #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
         }

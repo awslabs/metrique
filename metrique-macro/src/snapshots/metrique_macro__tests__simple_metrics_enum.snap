@@ -13,8 +13,8 @@ pub enum FooValue {
     #[doc(hidden)]
     Bar,
 }
-impl ::metrique::__writer::Value for FooValue {
-    fn write(&self, writer: impl ::metrique::__writer::ValueWriter) {
+impl ::metrique::writer::Value for FooValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
         writer
             .string(
                 #[allow(deprecated)]
