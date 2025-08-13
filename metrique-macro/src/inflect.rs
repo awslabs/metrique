@@ -25,6 +25,37 @@ impl NameStyle {
             NameStyle::KebabCase => name.to_kebab_case(),
         }
     }
+
+    pub(crate) fn apply_prefix(self, name: &str) -> String {
+        use inflector::Inflector;
+        match self {
+            NameStyle::PascalCase => name.to_pascal_case(),
+            NameStyle::SnakeCase => {
+                let mut res = name.to_snake_case();
+                if !res.ends_with("_") {
+                    res.push('_');
+                }
+                res
+            }
+            NameStyle::Preserve => name.to_string(),
+            NameStyle::KebabCase => {
+                let mut res = name.to_kebab_case();
+                if !res.ends_with("-") {
+                    res.push('-');
+                }
+                res
+            }
+        }
+    }
+
+    pub(crate) fn to_word(self) -> &'static str {
+        match self {
+            NameStyle::PascalCase => "Pascal",
+            NameStyle::SnakeCase => "Snake",
+            NameStyle::Preserve => "Preserve",
+            NameStyle::KebabCase => "Kebab",
+        }
+    }
 }
 
 pub fn metric_name(
@@ -72,5 +103,32 @@ impl HasInflectableName for MetricsVariant {
 
     fn name(&self) -> String {
         self.ident.to_string()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::NameStyle;
+
+    #[test]
+    fn test_inflect_prefix() {
+        let kebab = NameStyle::KebabCase;
+        let snake = NameStyle::SnakeCase;
+        let pascal = NameStyle::PascalCase;
+
+        assert_eq!(kebab.apply_prefix("Foo"), "foo-");
+        assert_eq!(kebab.apply_prefix("foo"), "foo-");
+        assert_eq!(kebab.apply_prefix("foo_"), "foo-");
+        assert_eq!(kebab.apply_prefix("foo-"), "foo-");
+
+        assert_eq!(snake.apply_prefix("Foo"), "foo_");
+        assert_eq!(snake.apply_prefix("foo"), "foo_");
+        assert_eq!(snake.apply_prefix("foo_"), "foo_");
+        assert_eq!(snake.apply_prefix("foo-"), "foo_");
+
+        assert_eq!(pascal.apply_prefix("Foo"), "Foo");
+        assert_eq!(pascal.apply_prefix("foo"), "Foo");
+        assert_eq!(pascal.apply_prefix("foo_"), "Foo");
+        assert_eq!(pascal.apply_prefix("foo-"), "Foo");
     }
 }

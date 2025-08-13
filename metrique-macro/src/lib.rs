@@ -46,6 +46,7 @@ use crate::inflect::metric_name;
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
+/// | `prefix` | Flag | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
 /// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs | `#[metrics(flatten_entry)]` |
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
@@ -300,6 +301,9 @@ struct RawMetricsFieldAttrs {
 
     #[darling(default)]
     name: Option<SpannedKv<String>>,
+
+    #[darling(default)]
+    prefix: Option<SpannedKv<String>>,
 }
 
 #[derive(Debug, FromVariant)]
@@ -378,7 +382,12 @@ impl RawMetricsVariantAttrs {
 impl RawMetricsFieldAttrs {
     fn validate(self) -> darling::Result<MetricsFieldAttrs> {
         let mut out: Option<(MetricsFieldKind, &'static str)> = None;
-        out = set_exclusive(MetricsFieldKind::Flatten, "flatten", out, &self.flatten)?;
+        out = set_exclusive(
+            |span| MetricsFieldKind::Flatten { span, prefix: None },
+            "flatten",
+            out,
+            &self.flatten,
+        )?;
         out = set_exclusive(
             MetricsFieldKind::FlattenEntry,
             "flatten_entry",
@@ -402,6 +411,19 @@ impl RawMetricsFieldAttrs {
             return Err(
                 darling::Error::custom("Cannot combine ignore with no_close").with_span(span),
             );
+        }
+        if let Some(prefix_val) = self.prefix {
+            match &mut out {
+                Some((MetricsFieldKind::Flatten { span: _, prefix }, _)) => {
+                    *prefix = Some(prefix_val.value);
+                }
+                _ => {
+                    return Err(
+                        darling::Error::custom("prefix can only be used with flatten")
+                            .with_span(&prefix_val.key_span),
+                    );
+                }
+            }
         }
         Ok(MetricsFieldAttrs {
             close,
@@ -449,7 +471,10 @@ struct MetricsFieldAttrs {
 #[derive(Debug, Clone)]
 enum MetricsFieldKind {
     Ignore(Span),
-    Flatten(Span),
+    Flatten {
+        span: Span,
+        prefix: Option<String>,
+    },
     FlattenEntry(Span),
     Timestamp(Span),
     Field {

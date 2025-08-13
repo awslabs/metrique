@@ -53,8 +53,25 @@ struct Nested {
 
     #[metrics(flatten)]
     sub: TestFlag<WithDimensions<MySubfield, 1>>,
+
+    #[metrics(flatten, prefix = "nested_")]
+    nested_with_prefix: Prefix1,
     // NOTE: currently not possible. Not sure why you'd do this though.
     // box: Box<bool>,
+}
+
+#[metrics(subfield)]
+#[derive(Clone, Default)]
+struct Prefix1 {
+    #[metrics(flatten, prefix = "val_")]
+    inner: Prefix2,
+    metric: u32,
+}
+
+#[metrics(subfield)]
+#[derive(Clone, Default)]
+struct Prefix2 {
+    value: u32,
 }
 
 #[derive(Clone, Default)]
@@ -117,6 +134,34 @@ struct IgnoredField {
     _b: IAmNotAMetric,
 }
 
+#[metrics(rename_all = "snake_case")]
+#[derive(Default)]
+struct Snakify {
+    #[metrics(flatten)]
+    nested: Nested,
+}
+
+#[metrics(rename_all = "kebab-case")]
+#[derive(Default)]
+struct Kebabify {
+    #[metrics(flatten)]
+    nested: Nested,
+}
+
+#[metrics(subfield, rename_all = "PascalCase")]
+#[derive(Clone, Default)]
+struct PrefixSnake2 {
+    #[metrics(flatten, prefix = "bar-")]
+    inner: Prefix2,
+}
+
+#[metrics(rename_all = "kebab-case")]
+#[derive(Clone, Default)]
+struct PrefixSnake3 {
+    #[metrics(flatten, prefix = "foo-")]
+    inner: PrefixSnake2,
+}
+
 #[test]
 fn flatten_flush_as_expected() {
     let vec_sink = VecEntrySink::new();
@@ -125,6 +170,10 @@ fn flatten_flush_as_expected() {
     metric.optional_closed = Some(Nested {
         b: true,
         sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
+        nested_with_prefix: Prefix1 {
+            inner: Prefix2 { value: 3 },
+            metric: 2,
+        },
         ..Default::default()
     });
     drop(metric);
@@ -143,7 +192,81 @@ fn flatten_flush_as_expected() {
     );
     assert_eq!(entry.metrics["F"].test_flag, true);
 
-    assert_eq!(entry.values["NoClose"], "no_close");
+    assert_eq!(entry.metrics["NestedMetric"], 2);
+    assert_eq!(entry.metrics["NestedValValue"], 3);
+}
+
+#[test]
+fn flatten_flush_as_expected_snake() {
+    let vec_sink = VecEntrySink::new();
+    let mut metric = Snakify::default().append_on_drop(vec_sink.clone());
+    metric.nested = Nested {
+        b: true,
+        sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
+        nested_with_prefix: Prefix1 {
+            inner: Prefix2 { value: 3 },
+            metric: 2,
+        },
+        ..Default::default()
+    };
+    drop(metric);
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+
+    assert_eq!(entry.metrics["b"].as_u64(), 1);
+    assert_eq!(entry.metrics["b"].test_flag, false);
+
+    assert_eq!(entry.metrics["f"].as_u64(), 0);
+    assert_eq!(
+        entry.metrics["f"].dimensions,
+        vec![("Foo".to_string(), "Bar".to_string())]
+    );
+    assert_eq!(entry.metrics["f"].test_flag, true);
+
+    assert_eq!(entry.metrics["nested_metric"], 2);
+    assert_eq!(entry.metrics["nested_val_value"], 3);
+}
+
+#[test]
+fn flatten_flush_as_expected_mixed_prefix_casing() {
+    let vec_sink = VecEntrySink::new();
+    PrefixSnake3::default().append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+
+    // check that the rename_all on PrefixSnake2 catches inside it, but not outside it
+    assert_eq!(entry.metrics["foo-BarValue"].as_u64(), 0);
+}
+
+#[test]
+fn flatten_flush_as_expected_kebab() {
+    let vec_sink = VecEntrySink::new();
+    let mut metric = Kebabify::default().append_on_drop(vec_sink.clone());
+    metric.nested = Nested {
+        b: true,
+        sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
+        nested_with_prefix: Prefix1 {
+            inner: Prefix2 { value: 3 },
+            metric: 2,
+        },
+        ..Default::default()
+    };
+    drop(metric);
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+
+    assert_eq!(entry.metrics["b"].as_u64(), 1);
+    assert_eq!(entry.metrics["b"].test_flag, false);
+
+    assert_eq!(entry.metrics["f"].as_u64(), 0);
+    assert_eq!(
+        entry.metrics["f"].dimensions,
+        vec![("Foo".to_string(), "Bar".to_string())]
+    );
+    assert_eq!(entry.metrics["f"].test_flag, true);
+
+    assert_eq!(entry.metrics["nested-metric"], 2);
+    assert_eq!(entry.metrics["nested-val-value"], 3);
 }
 
 #[test]

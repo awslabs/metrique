@@ -57,3 +57,9 @@ error: Cannot combine ignore with no_close
    |
 32 |     #[metrics(ignore, no_close)]
    |               ^^^^^^
+
+error: prefix can only be used with flatten
+  --> tests/ui/fail/bad_field_attrs.rs:35:15
+   |
+35 |     #[metrics(prefix = "foo")]
+   |               ^^^^^^
