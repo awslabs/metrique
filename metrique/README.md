@@ -589,7 +589,7 @@ struct PrefixedMetrics {
 Example of a metrics struct:
 
 ```rust
-use metrique::{Counter, FormatDisplay, Slot};
+use metrique::{Counter, ToString, Slot};
 use metrique::timers::{EpochSeconds, Timer, Timestamp, TimestampOnClose};
 use metrique::unit::{Byte, Second};
 use metrique::unit_of_work::metrics;
@@ -661,7 +661,7 @@ struct MyMetrics {
     //
     // It is also possible to define your own custom formatters. Consult the documentation
     // for `ValueFormatter` for more info.
-    #[metrics(format = FormatDisplay, no_close)]
+    #[metrics(format = ToString, no_close)]
     source_ip_addr: IpAddr,
 
     // you can have nested subfields
