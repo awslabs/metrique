@@ -324,6 +324,7 @@ thread_local! {
 #[must_use]
 pub struct ThreadLocalTimeSourceGuard {
     previous: Option<TimeSource>,
+    // mark this as `!Send`, `!Sync` because it accesses a thread local
     _marker: PhantomData<*const ()>,
 }
 
