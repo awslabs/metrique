@@ -17,8 +17,8 @@ pub(crate) fn generate_value_impl_for_enum(
         quote_spanned!(variant.ident.span()=> #value_name::#variant_ident => #metric_name)
     });
     quote!(
-        impl ::metrique::__writer::Value for #value_name {
-            fn write(&self, writer: impl ::metrique::__writer::ValueWriter) {
+        impl ::metrique::writer::Value for #value_name {
+            fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 writer.string(#[allow(deprecated)] match self {
                     #(#variants_and_strings),*
                 });
@@ -66,7 +66,7 @@ pub fn validate_value_impl_for_struct(
 
 pub(crate) fn format_value(format: &Option<syn::Path>, span: Span, field: Ts2) -> Ts2 {
     if let Some(format) = format {
-        quote_spanned! { span=> &::metrique::format::FormattedValue::<_, #format>::new(#field)}
+        quote_spanned! { span=> &::metrique::format::FormattedValue::<_, #format, _>::new(#field)}
     } else {
         field
     }
@@ -81,22 +81,27 @@ pub(crate) fn generate_value_impl_for_struct(
     let non_ignore_fields = parsed_fields
         .iter()
         .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)));
-    let body: Vec<Ts2> = non_ignore_fields.map(|field| {
-        match &field.attrs.kind {
-            MetricsFieldKind::Field { unit: _, name: None, format } => {
+    let body: Vec<Ts2> = non_ignore_fields
+        .map(|field| match &field.attrs.kind {
+            MetricsFieldKind::Field {
+                unit: _,
+                name: None,
+                format,
+            } => {
                 let ident = &field.ident;
                 let value = format_value(format, field.span, quote! { &self.#ident });
-                Ok(quote_spanned!{field.span=> ::metrique::__writer::Value::write(#value, writer) })
+                Ok(quote_spanned! {field.span=> ::metrique::writer::Value::write(#value, writer) })
             }
-            _ => {
-                Err(syn::Error::new(field.span, "only plain fields are supported in #[metrics(value)]"))
-            }
-        }
-    }).collect::<Result<Vec<_>, _>>()?;
+            _ => Err(syn::Error::new(
+                field.span,
+                "only plain fields are supported in #[metrics(value)]",
+            )),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(quote! {
-        impl ::metrique::__writer::Value for #value_name {
-            fn write(&self, writer: impl ::metrique::__writer::ValueWriter) {
+        impl ::metrique::writer::Value for #value_name {
+            fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 #[allow(deprecated)] {
                     #(#body);*
                 }

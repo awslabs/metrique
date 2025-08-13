@@ -101,7 +101,7 @@ pub mod format {
 /// Test utilities for metrique
 #[cfg(feature = "test-util")]
 pub mod test_util {
-    pub use metrique_writer::test_util::{
+    pub use crate::writer::test_util::{
         Inspector, Metric, TestEntry, TestEntrySink, test_entry_sink, to_test_entry,
     };
 }
@@ -148,7 +148,7 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// ```
 /// # use metrique::ServiceMetrics;
 /// # use metrique::unit_of_work::metrics;
-/// # use metrique_writer::GlobalEntrySink;
+/// # use metrique::writer::GlobalEntrySink;
 ///
 /// #[metrics]
 /// struct MyMetrics {
@@ -289,7 +289,7 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
 /// # Example
 /// ```
 /// # use metrique::{append_and_close, unit_of_work::metrics, ServiceMetrics};
-/// # use metrique_writer::{GlobalEntrySink, FormatExt};
+/// # use metrique::writer::{GlobalEntrySink, FormatExt};
 ///
 /// #[metrics]
 /// struct MyMetrics {
@@ -370,12 +370,6 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
     }
 }
 
-#[doc(hidden)]
-pub mod __writer {
-    // Contains imports used by the #[metrics] macro
-    pub use metrique_writer_core::{Entry, EntrySink, EntryWriter, Value, ValueWriter};
-}
-
 /// "Roots" an [`InflectableEntry`] to turn it into an [`Entry`] that can be passed
 /// to an [`EntrySink`].
 ///
@@ -405,3 +399,5 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
 pub use metrique_service_metrics::ServiceMetrics;
 
 pub use metrique_core::concat;
+
+pub use metrique_writer as writer;

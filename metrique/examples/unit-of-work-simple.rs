@@ -12,15 +12,15 @@
 use core::{default::Default, time::Duration};
 use std::time::SystemTime;
 
+use metrique::emf::Emf;
+use metrique::writer::{
+    AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
+    sink::global_entry_sink,
+};
 use metrique::{
     unit::{Count, Microsecond},
     unit_of_work::metrics,
 };
-use metrique_writer::{
-    AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
-    sink::global_entry_sink,
-};
-use metrique_writer_format_emf::Emf;
 global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]

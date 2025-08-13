@@ -1,17 +1,106 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{borrow::Cow, marker::PhantomData, sync::Arc};
+use std::{borrow::Cow, fmt::Display, marker::PhantomData, sync::Arc};
 
 use super::ValueWriter;
 
-/// A trait for a function that formats a value in a custom way.
-pub trait ValueFormatter<V: ?Sized> {
+mod private {
+    pub trait Sealed {}
+}
+
+pub trait Liftability: private::Sealed {}
+
+/// Marker for a [ValueFormatter] that is automatically lifted over types such as [Arc] and [Option].
+/// See the [ValueFormatter] docs.
+pub struct Lifted;
+
+/// Marker for a [ValueFormatter] that is *not* automatically lifted. See the [ValueFormatter] docs.
+pub struct NotLifted;
+
+impl private::Sealed for Lifted {}
+impl private::Sealed for NotLifted {}
+impl Liftability for Lifted {}
+impl Liftability for NotLifted {}
+
+/// A trait for a function that formats a value in a custom way. Used for
+/// `#[derive(Entry)]`'s `#[entry(format=FORMATTER)]` and `#[metrics]`'s
+/// `#[metrics(format=FORMATTER)]`.
+///
+/// If the liftability is [`Lifted`] (the default), this [`ValueFormatter`] will be lifted over
+/// various types such as [`Arc`] and [`Option`] (so you can format e.g. `Option<Arc<T>>`),
+/// for example:
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use std::time::SystemTime;
+/// # use metrique_writer::Entry;
+/// struct AsEpochSeconds;
+/// impl metrique_writer::value::ValueFormatter<SystemTime> for AsEpochSeconds {
+///     fn format_value(writer: impl metrique_writer::ValueWriter, value: &SystemTime) {
+///         let epoch_seconds = value
+///             .duration_since(SystemTime::UNIX_EPOCH)
+///             .unwrap()
+///             .as_secs();
+///         writer.string(&epoch_seconds.to_string());
+///     }
+/// }
+///
+/// #[derive(Entry)]
+/// struct MyEntry {
+///     #[entry(format=AsEpochSeconds)]
+///     timestamp: Option<Arc<SystemTime>>, // lifting over Arc and Option
+/// }
+/// ```
+///
+/// If liftability would cause a coherence error (if the impl is a blanket impl),
+/// you could implement [`ValueFormatter`] with [`NotLifted`], and that
+/// can be similarly used in the macro, for example:
+///
+/// ```
+/// # use metrique_writer::{Entry, ValueWriter, value::{NotLifted, ValueFormatter}};
+/// # use std::fmt::Display;
+/// pub struct ToString;
+///
+/// impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for ToString {
+///     fn format_value(writer: impl ValueWriter, value: &T) {
+///         writer.string(&value.to_string());
+///     }
+/// }
+///
+/// #[derive(Entry)]
+/// struct MyMetric {
+///     #[entry(format = ToString)]
+///     my_field: bool, // formats as a string, "true" or "false".
+/// }
+/// ```
+pub trait ValueFormatter<V: ?Sized, L: Liftability = Lifted> {
     /// Write `value` to `writer`
     fn format_value(writer: impl ValueWriter, value: &V);
 }
 
-impl<V: ?Sized, F> ValueFormatter<&V> for F
+/// A `ValueFormatter` for values that implement [Display] that formats them as a string.
+///
+/// Example:
+///
+/// ```
+/// # use metrique_writer::Entry;
+/// # use metrique_writer::value::ToString;
+/// #[derive(Entry)]
+/// struct MyMetric {
+///     #[entry(format = ToString)]
+///     my_field: bool, // formats as a string, "true" or "false".
+/// }
+/// ```
+pub struct ToString;
+
+impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for ToString {
+    fn format_value(writer: impl ValueWriter, value: &T) {
+        writer.string(&value.to_string());
+    }
+}
+
+impl<V: ?Sized, F: ?Sized> ValueFormatter<&V> for F
 where
     F: ValueFormatter<V>,
 {
@@ -20,7 +109,7 @@ where
     }
 }
 
-impl<V, F> ValueFormatter<Option<V>> for F
+impl<V, F: ?Sized> ValueFormatter<Option<V>> for F
 where
     F: ValueFormatter<V>,
 {
@@ -31,7 +120,7 @@ where
     }
 }
 
-impl<V: ?Sized, F> ValueFormatter<Box<V>> for F
+impl<V: ?Sized, F: ?Sized> ValueFormatter<Box<V>> for F
 where
     F: ValueFormatter<V>,
 {
@@ -40,7 +129,7 @@ where
     }
 }
 
-impl<V: ?Sized, F> ValueFormatter<Arc<V>> for F
+impl<V: ?Sized, F: ?Sized> ValueFormatter<Arc<V>> for F
 where
     F: ValueFormatter<V>,
 {
@@ -49,7 +138,7 @@ where
     }
 }
 
-impl<V: ToOwned + ?Sized, F> ValueFormatter<Cow<'_, V>> for F
+impl<V: ToOwned + ?Sized, F: ?Sized> ValueFormatter<Cow<'_, V>> for F
 where
     F: ValueFormatter<V>,
 {
@@ -60,18 +149,19 @@ where
 
 #[doc(hidden)]
 /// A wrapper for a value that formats using a [ValueFormatter]
-pub struct FormattedValue<'a, V, VF>(PhantomData<VF>, &'a V);
+pub struct FormattedValue<'a, V, VF, L = Lifted>(PhantomData<(VF, L)>, &'a V);
 
-impl<'a, V, VF> FormattedValue<'a, V, VF> {
+impl<'a, V, VF, L> FormattedValue<'a, V, VF, L> {
     #[doc(hidden)]
     pub fn new(value: &'a V) -> Self {
         Self(PhantomData, value)
     }
 }
 
-impl<V, VF> super::Value for FormattedValue<'_, V, VF>
+#[diagnostic::do_not_recommend]
+impl<V, VF, L: Liftability> super::Value for FormattedValue<'_, V, VF, L>
 where
-    VF: ValueFormatter<V>,
+    VF: ValueFormatter<V, L>,
 {
     fn write(&self, writer: impl ValueWriter) {
         VF::format_value(writer, self.1);

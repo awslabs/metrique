@@ -8,13 +8,13 @@ enum Foo {
 #[doc(hidden)]
 pub enum FooValue {
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     Bar,
 }
-impl ::metrique::__writer::Value for FooValue {
-    fn write(&self, writer: impl ::metrique::__writer::ValueWriter) {
+impl ::metrique::writer::Value for FooValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
         writer
             .string(
                 #[allow(deprecated)]

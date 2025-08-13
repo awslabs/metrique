@@ -95,11 +95,19 @@ help: consider importing one of these structs
 1  + use metrique_writer_core::unit::Second;
    |
 
-error[E0277]: the trait bound `Foo: metrique_writer_core::value::formatter::ValueFormatter<u32>` is not satisfied
+error[E0277]: the trait bound `FormattedValue<'_, u32, Foo, _>: Value` is not satisfied
   --> tests/ui/fail/bad_metrics_value.rs:26:5
    |
 26 |     x: u32,
-   |     ^ the trait `metrique_writer_core::value::formatter::ValueFormatter<u32>` is not implemented for `Foo`
+   |     ^ the trait `Value` is not implemented for `FormattedValue<'_, u32, Foo, _>`
    |
-   = help: the trait `metrique_writer_core::value::formatter::ValueFormatter<TimestampValue>` is implemented for `TimestampFormat<U>`
-   = note: required for `FormattedValue<'_, u32, Foo>` to implement `Value`
+   = help: the following other types implement trait `Value`:
+             &T
+             Arc<T>
+             Baz2Value
+             Baz3Value
+             Box<T>
+             Cow<'_, T>
+             Distribution<V, N>
+             Duration
+           and $N others

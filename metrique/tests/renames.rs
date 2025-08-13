@@ -1,8 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use metrique::writer::test_util;
 use metrique::{CloseValue, RootEntry, unit_of_work::metrics};
-use metrique_writer::test_util;
 
 #[metrics(rename_all = "kebab-case")]
 struct Metrics {

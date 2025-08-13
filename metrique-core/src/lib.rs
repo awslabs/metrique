@@ -151,7 +151,7 @@ impl<T: ?Sized + CloseValue<Closed: InflectableEntry>> CloseEntry for T {}
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;
-/// use metrique_writer::{Entry, EntryWriter};
+/// use metrique::writer::{Entry, EntryWriter};
 ///
 /// struct MyCustomEntry;
 ///

@@ -5,16 +5,16 @@
 /// see `examples/testing-global-queues.rs`
 use std::{sync::Arc, time::Duration};
 
+use metrique::emf::Emf;
+use metrique::writer::{
+    AttachGlobalEntrySinkExt, BoxEntrySink, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
+    sink::global_entry_sink,
+};
 use metrique::{
     timers::{Stopwatch, Timer, Timestamp},
     unit::Millisecond,
     unit_of_work::metrics,
 };
-use metrique_writer::{
-    AttachGlobalEntrySinkExt, BoxEntrySink, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
-    sink::global_entry_sink,
-};
-use metrique_writer_format_emf::Emf;
 global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]
@@ -97,8 +97,8 @@ async fn main() {
 mod test {
     use std::time::UNIX_EPOCH;
 
+    use metrique::writer::test_util::{self, TestEntrySink};
     use metrique_timesource::{TimeSource, set_time_source};
-    use metrique_writer::test_util::{self, TestEntrySink};
 
     // If you want the times produced by tokio to exactly line up, you need start_paused=true
     #[tokio::test(start_paused = true)]

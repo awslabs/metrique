@@ -3,11 +3,11 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use metrique::{CloseValue, RootEntry, unit_of_work::metrics};
-use metrique_writer::{
+use metrique::emf::Emf;
+use metrique::writer::{
     Entry, EntryIoStreamExt, EntrySink, FormatExt, format::Format, sink::BackgroundQueueBuilder,
 };
-use metrique_writer_format_emf::Emf;
+use metrique::{CloseValue, RootEntry, unit_of_work::metrics};
 use serde_json::Value;
 
 #[metrics(

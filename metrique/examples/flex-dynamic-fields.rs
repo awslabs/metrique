@@ -10,12 +10,12 @@
 use std::collections::HashMap;
 use std::time::SystemTime;
 
-use metrique::{flex::Flex, unit::Count, unit_of_work::metrics};
-use metrique_writer::{
+use metrique::emf::Emf;
+use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
     sink::global_entry_sink,
 };
-use metrique_writer_format_emf::Emf;
+use metrique::{flex::Flex, unit::Count, unit_of_work::metrics};
 
 global_entry_sink! { ServiceMetrics }
 
@@ -284,7 +284,7 @@ async fn unset_then_set_example() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use metrique_writer::test_util;
+    use metrique::writer::test_util;
 
     #[test]
     fn test_flex_dynamic_fields() {

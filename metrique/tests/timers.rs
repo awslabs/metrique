@@ -3,6 +3,8 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use metrique::writer::BoxEntrySink;
+use metrique::writer::test_util::{Inspector, TestEntrySink, test_entry_sink, to_test_entry};
 use metrique::{
     CloseValue, LazySlot, OnParentDrop, RootEntry,
     timers::{
@@ -14,8 +16,6 @@ use metrique::{
 use metrique_timesource::{
     ThreadLocalTimeSourceGuard, TimeSource, fakes::StaticTimeSource, set_time_source,
 };
-use metrique_writer::BoxEntrySink;
-use metrique_writer::test_util::{Inspector, TestEntrySink, test_entry_sink, to_test_entry};
 
 #[metrics(rename_all = "PascalCase")]
 #[derive(Default)]

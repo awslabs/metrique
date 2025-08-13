@@ -9,12 +9,12 @@ struct RequestMetrics {
 #[doc(hidden)]
 pub struct RequestMetricsEntry {
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     operation: <&'static str as metrique::CloseValue>::Closed,
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     number_of_ducks: <usize as metrique::CloseValue>::Closed,
@@ -23,8 +23,8 @@ const _: () = {
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestMetricsEntry {
-        fn write<'a>(&'a self, writer: &mut impl ::metrique::__writer::EntryWriter<'a>) {
-            ::metrique::__writer::EntryWriter::value(
+        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            ::metrique::writer::EntryWriter::value(
                 writer,
                 {
                     #[allow(non_camel_case_types)]
@@ -58,7 +58,7 @@ const _: () = {
                 },
                 &self.operation,
             );
-            ::metrique::__writer::EntryWriter::value(
+            ::metrique::writer::EntryWriter::value(
                 writer,
                 {
                     #[allow(non_camel_case_types)]
@@ -123,7 +123,7 @@ type RequestMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCl
 impl RequestMetrics {
     ///Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
     fn append_on_drop<
-        Q: ::metrique::__writer::EntrySink<::metrique::RootEntry<RequestMetricsEntry>>
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<RequestMetricsEntry>>
             + Send + Sync + 'static,
     >(self, sink: Q) -> RequestMetricsGuard<Q> {
         ::metrique::append_and_close(self, sink)

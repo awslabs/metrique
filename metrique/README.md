@@ -30,9 +30,9 @@ use metrique::unit_of_work::metrics;
 use metrique::timers::{Timestamp, Timer};
 use metrique::unit::Millisecond;
 use metrique::ServiceMetrics;
-use metrique_writer::GlobalEntrySink;
-use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
-use metrique_writer_format_emf::Emf;
+use metrique::writer::GlobalEntrySink;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
+use metrique::emf::Emf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 // define operation as an enum (you can also define operation as a &'static str)
@@ -82,7 +82,7 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
     // metrics for your application's control and data planes),
     // you can define your own global entry sink (which will
     // behave exactly like `ServiceMetrics`) by using the
-    // `metrique_writer::sink::global_entry_sink!` macro.
+    // `metrique::writer::sink::global_entry_sink!` macro.
     //
     // See the examples in metrique/examples for that.
 
@@ -306,7 +306,7 @@ to be filled - either by waiting for your subtask to complete or by using `Slot:
 Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission) - to make that easy, `Slot::open` has a `OnParentDrop::Wait` mode, that holds on to a `FlushGuard` until the slot is closed.
 
 ```rust
-use metrique_writer::GlobalEntrySink;
+use metrique::writer::GlobalEntrySink;
 use metrique::unit_of_work::metrics;
 use metrique::{ServiceMetrics, SlotGuard, Slot, OnParentDrop};
 
@@ -381,7 +381,7 @@ Anything that implements `CloseValue` can be used as a field. `metrique` provide
 For further usage of atomics for concurrent metric updates, see [the fanout example][unit-of-work-fanout].
 
 ```rust
-use metrique_writer::GlobalEntrySink;
+use metrique::writer::GlobalEntrySink;
 use metrique::unit_of_work::metrics;
 use metrique::{Counter, ServiceMetrics};
 
@@ -593,7 +593,9 @@ use metrique::{Counter, Slot};
 use metrique::timers::{EpochSeconds, Timer, Timestamp, TimestampOnClose};
 use metrique::unit::{Byte, Second};
 use metrique::unit_of_work::metrics;
+use metrique::writer::value::ToString;
 
+use std::net::IpAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -652,6 +654,16 @@ struct MyMetrics {
     // ..and also an Option
     #[metrics(unit = Byte)]
     value_behind_opt_arc_mutex: Arc<Mutex<Option<f64>>>,
+
+    // You can format values that implement Display as strings
+    //
+    // Since IpAddr doesn't implement CloseValue, but rather `Display` directly,
+    // you'll need `no_close`.
+    //
+    // It is also possible to define your own custom formatters. Consult the documentation
+    // for `ValueFormatter` for more info.
+    #[metrics(format = ToString, no_close)]
+    source_ip_addr: IpAddr,
 
     // you can have nested subfields
     #[metrics(flatten)]
@@ -731,8 +743,8 @@ struct AsUtcDate;
 // observe that `format_value` is a static method, so `AsUtcDate`
 // is never initialized.
 
-impl metrique_writer::value::ValueFormatter<SystemTime> for AsUtcDate {
-    fn format_value(writer: impl metrique_writer::ValueWriter, value: &SystemTime) {
+impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
+    fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) {
         let datetime: DateTime<Utc> = (*value).into();
         writer.string(&datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
     }
@@ -790,7 +802,7 @@ There are two ways to control the queue:
 1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
 2. Use the test-queue functionality provided out-of-the-box by global entry queues:
 ```rust
-use metrique_writer::GlobalEntrySink;
+use metrique::writer::GlobalEntrySink;
 use metrique::ServiceMetrics;
 use metrique::test_util::{self, TestEntrySink};
 

@@ -3,16 +3,16 @@
 
 use std::{sync::Arc, time::Duration};
 
+use metrique::emf::Emf;
+use metrique::writer::{
+    AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
+    sink::global_entry_sink,
+};
 use metrique::{
     timers::{Stopwatch, Timer, Timestamp},
     unit::Millisecond,
     unit_of_work::metrics,
 };
-use metrique_writer::{
-    AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
-    sink::global_entry_sink,
-};
-use metrique_writer_format_emf::Emf;
 
 global_entry_sink! { ServiceMetrics }
 

@@ -4,9 +4,9 @@
 use core::{assert_eq, time::Duration};
 use std::sync::Arc;
 
+use metrique::writer::sink::VecEntrySink;
+use metrique::writer::test_util;
 use metrique::{Counter, OnParentDrop, Slot, unit_of_work::metrics};
-use metrique_writer::sink::VecEntrySink;
-use metrique_writer::test_util;
 use tokio::{task, time::sleep};
 
 #[metrics(rename_all = "PascalCase")]

@@ -3,12 +3,12 @@
 
 use std::time::SystemTime;
 
+use metrique::emf::{Emf, HighStorageResolution, NoMetric};
 use metrique::unit_of_work::metrics;
-use metrique_writer::{
+use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
     sink::global_entry_sink,
 };
-use metrique_writer_format_emf::{Emf, HighStorageResolution, NoMetric};
 
 global_entry_sink! { ServiceMetrics }
 
@@ -78,8 +78,8 @@ fn main() {
 mod rotation_file_destination {
     use std::path::PathBuf;
 
-    use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
-    use metrique_writer_format_emf::Emf;
+    use metrique::emf::Emf;
+    use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
     use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
     #[allow(dead_code)]
@@ -99,8 +99,8 @@ mod rotation_file_destination {
 mod tcp_destination {
     use std::net::SocketAddr;
 
-    use metrique_writer::FormatExt;
-    use metrique_writer_format_emf::Emf;
+    use metrique::emf::Emf;
+    use metrique::writer::FormatExt;
 
     #[allow(dead_code)]
     async fn initialize_metrics() {

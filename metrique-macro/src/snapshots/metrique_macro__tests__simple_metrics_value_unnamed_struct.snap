@@ -6,14 +6,14 @@ struct RequestValue(u32, u32);
 #[doc(hidden)]
 pub struct RequestValueValue(
     #[deprecated(
-        note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`"
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
     <u32 as metrique::CloseValue>::Closed,
 );
-impl ::metrique::__writer::Value for RequestValueValue {
-    fn write(&self, writer: impl ::metrique::__writer::ValueWriter) {
-        #[allow(deprecated)] { ::metrique::__writer::Value::write(&self.1, writer) }
+impl ::metrique::writer::Value for RequestValueValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
+        #[allow(deprecated)] { ::metrique::writer::Value::write(&self.1, writer) }
     }
 }
 impl metrique::CloseValue for &'_ RequestValue {

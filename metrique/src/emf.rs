@@ -3,7 +3,15 @@
 
 #![doc = include_str!("../docs/emf.md")]
 
-use metrique_writer_core::{Entry, config::EntryDimensions};
+use metrique_writer_core::Entry;
+
+pub use metrique_writer_core::config::EntryDimensions;
+
+#[cfg(feature = "emf")]
+pub use metrique_writer_format_emf::{
+    AllowSplitEntries, Emf, EmfBuilder, HighStorageResolution, HighStorageResolutionCtor,
+    MetricDefinition, MetricDirective, NoMetric, NoMetricCtor, SampledEmf, StorageResolution,
+};
 
 /// Add EMF Entry-specific dimensions
 ///
@@ -43,7 +51,7 @@ macro_rules! __plumbing_entry_dimensions {
 mod test {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use metrique_writer::{Entry, format::Format};
+    use metrique::writer::{Entry, format::Format};
 
     use crate::emf::SetEntryDimensions;
 
@@ -72,7 +80,7 @@ mod test {
             ts: UNIX_EPOCH,
         };
 
-        let mut emf_writer = metrique_writer_format_emf::Emf::all_validations(
+        let mut emf_writer = metrique::emf::Emf::all_validations(
             "test".to_string(),
             vec![vec!["field4".to_string()]],
         );

@@ -26,7 +26,7 @@ pub fn generate_entry_impl(
             // The fields of the entry are all marked "deprecated" so that people don't use them directly.
             #[expect(deprecated)]
             impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for #entry_name {
-                fn write<'a>(&'a self, writer: &mut impl ::metrique::__writer::EntryWriter<'a>) {
+                fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
                     #(#writes)*
                 }
 
@@ -52,7 +52,7 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
 
     for field_ident in root_attrs.configuration_field_names() {
         writes.push(quote! {
-            ::metrique::__writer::Entry::write(&self.#field_ident, writer);
+            ::metrique::writer::Entry::write(&self.#field_ident, writer);
         });
     }
 
@@ -66,13 +66,13 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                 writes.push(quote_spanned! {*span=>
                     #[allow(clippy::useless_conversion)]
                     {
-                        ::metrique::__writer::EntryWriter::timestamp(writer, (self.#field_ident).into());
+                        ::metrique::writer::EntryWriter::timestamp(writer, (self.#field_ident).into());
                     }
                 });
             }
             MetricsFieldKind::FlattenEntry(span) => {
                 writes.push(quote_spanned! {*span=>
-                    ::metrique::__writer::Entry::write(&self.#field_ident, writer);
+                    ::metrique::writer::Entry::write(&self.#field_ident, writer);
                 });
             }
             MetricsFieldKind::Flatten { span, prefix } => {
@@ -110,7 +110,7 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                 );
                 let value = format_value(format, field_span, quote! { &self.#field_ident });
                 writes.push(quote_spanned! {field_span=>
-                    ::metrique::__writer::EntryWriter::value(writer,
+                    ::metrique::writer::EntryWriter::value(writer,
                         {
                             #extra
                             ::metrique::concat::const_str_value::<#name>()

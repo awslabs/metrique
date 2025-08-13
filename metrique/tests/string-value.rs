@@ -4,8 +4,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use metrique::timers::{EpochMillis, Timestamp};
 use metrique::unit::Count;
 use metrique::unit_of_work::metrics;
+use metrique::writer::{Unit, test_util};
 use metrique::{CloseValue, RootEntry};
-use metrique_writer::{Unit, test_util};
 
 #[metrics(value(string), rename_all = "snake_case")]
 enum Foo {

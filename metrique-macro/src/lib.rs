@@ -64,7 +64,7 @@ use crate::inflect::metric_name;
 /// use metrique::unit_of_work::metrics;
 /// use metrique::timers::{Timestamp, Timer};
 /// use metrique::unit::{Count, Millisecond};
-/// use metrique_writer::{GlobalEntrySink, ServiceMetrics};
+/// use metrique::writer::{GlobalEntrySink, ServiceMetrics};
 /// use std::time::SystemTime;
 ///
 /// #[metrics(value(string), rename_all = "snake_case")]
@@ -724,7 +724,7 @@ fn generate_on_drop_wrapper(
 
         impl #inner {
             #[doc = "Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
-            #vis fn append_on_drop<Q: ::metrique::__writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
+            #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
         }
@@ -937,7 +937,7 @@ impl MetricsVariant {
         let ident_span = self.ident.span();
         let ident = &self.ident;
         quote_spanned! { ident_span=>
-            #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`")]
+            #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
             #[doc(hidden)]
             #ident
         }
@@ -994,7 +994,7 @@ impl MetricsField {
             quote! { #base_type }
         };
         Some(quote_spanned! { *span=>
-                #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique_writer::test_util::test_entry`")]
+                #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
                 #[doc(hidden)]
                 #inner
         })
