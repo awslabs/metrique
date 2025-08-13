@@ -439,7 +439,13 @@ struct RequestMetrics {
     request_size: usize
 }
 ```
+
 ### Renaming metric fields
+
+> the complex interaction between naming, prefixing, and inflection is deterministic, but sometimes might
+> not do what you expect. It is critical that you add [tests](#testing-emitted-metrics) that validate that
+> the keys being produced match your expectations
+
 You can customize how metric field names appear in the output using several approaches:
 
 #### Rename all fields with a consistent case style
@@ -488,9 +494,24 @@ included struct:
 ```rust
 use metrique::unit_of_work::metrics;
 
+use std::collections::HashMap;
+
 #[metrics(subfield)]
 struct DownstreamMetrics {
     // our downstream calls their metric just "success", so we don't know who succeedded
+    success: bool,
+}
+
+// using `subfield_owned` to allow closing over the `HashMap`
+#[metrics(subfield_owned)]
+struct OtherDownstreamMetrics {
+    // the prefix will be *SKIPPED* within this field, since it is included using `flatten_entry`
+    //
+    // the prefix is skipped since prepending a prefix would require allocating a new String,
+    // and metrique will rather not have code that does that.
+    #[metrics(flatten_entry, no_close)]
+    prefix_skipped: HashMap<String, u32>,
+    // another downstream that calls their metric just "success", so we don't know who succeedded
     success: bool,
 }
 
@@ -501,8 +522,18 @@ struct MyMetrics {
     // Their success field will appear as "DownstreamSuccess" in metrics output
     #[metrics(flatten, prefix="Downstream")]
     downstream: DownstreamMetrics,
+    #[metrics(flatten, prefix="OtherDownstream")]
+    other_downstream: OtherDownstreamMetrics,
 }
 ```
+
+Prefixes will be inflected to the case metrics are emitted in, so if you let `rename_all`
+vary, the inner metric name will be:
+
+ 1. in `rename_all = "Preserve"`, `Downstreamsuccess` / `OtherDownstreamsuccess`
+ 2. in `rename_all = "PascalCase"`, `DownstreamSuccess` / `OtherDownstreamSuccess`
+ 3. in `rename_all = "kebab-case"`, `downstream-success` / `other-downstream-success`
+ 4. in `rename_all = "snake_case"`, `downstream_success` / `other_downstream_success`
 
 #### Rename individual fields
 
