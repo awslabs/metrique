@@ -658,6 +658,9 @@ struct MyMetrics {
     //
     // Since IpAddr doesn't implement CloseValue, but rather `Display` directly,
     // you'll need `no_close`.
+    //
+    // It is also possible to define your own custom formatters. Consult the documentation
+    // for `ValueFormatter` for more info.
     #[metrics(format = FormatDisplay, no_close)]
     source_ip_addr: IpAddr,
 
