@@ -3,7 +3,7 @@
 
 //! Contains various name styles
 
-use std::{borrow::Cow, marker::PhantomData};
+use std::marker::PhantomData;
 
 use crate::concat::{Concatenated, EmptyConstStr, MaybeConstStr};
 
@@ -37,16 +37,6 @@ pub trait NameStyle: private::NameStyleInternal {
     /// Inflect an affix (just inflect, without adding prefixes)
     #[doc(hidden)]
     type InflectAffix<ID: MaybeConstStr, PASCAL: MaybeConstStr, SNAKE: MaybeConstStr, KEBAB: MaybeConstStr>: MaybeConstStr;
-
-    /// In theory this function does not pose a back compat hazard, but it
-    /// is still better if people only call it via the macro
-    #[doc(hidden)]
-    fn inflect_name(
-        identity: &'static str,
-        pascal: &'static str,
-        snake: &'static str,
-        kebab: &'static str,
-    ) -> Cow<'static, str>;
 }
 
 /// Inflects names to the identity case
@@ -69,23 +59,6 @@ impl<PREFIX: MaybeConstStr> NameStyle for Identity<PREFIX> {
         SNAKE: MaybeConstStr,
         KEBAB: MaybeConstStr,
     > = ID;
-
-    #[inline]
-    fn inflect_name(
-        identity: &'static str,
-        _pascal: &'static str,
-        _snake: &'static str,
-        _kebab: &'static str,
-    ) -> Cow<'static, str> {
-        if PREFIX::LEN == 0 {
-            Cow::Borrowed(identity)
-        } else {
-            let mut result = String::with_capacity(PREFIX::LEN + identity.len());
-            PREFIX::extend(&mut result);
-            result.push_str(identity);
-            Cow::Owned(result)
-        }
-    }
 }
 
 /// inflects names to `PascalCase`
@@ -108,23 +81,6 @@ impl<PREFIX: MaybeConstStr> NameStyle for PascalCase<PREFIX> {
         SNAKE: MaybeConstStr,
         KEBAB: MaybeConstStr,
     > = PASCAL;
-
-    #[inline]
-    fn inflect_name(
-        _identity: &'static str,
-        pascal: &'static str,
-        _snake: &'static str,
-        _kebab: &'static str,
-    ) -> Cow<'static, str> {
-        if PREFIX::LEN == 0 {
-            Cow::Borrowed(pascal)
-        } else {
-            let mut result = String::with_capacity(PREFIX::LEN + pascal.len());
-            PREFIX::extend(&mut result);
-            result.push_str(pascal);
-            Cow::Owned(result)
-        }
-    }
 }
 
 /// Inflects names to `snake_case`
@@ -147,23 +103,6 @@ impl<PREFIX: MaybeConstStr> NameStyle for SnakeCase<PREFIX> {
         SNAKE: MaybeConstStr,
         KEBAB: MaybeConstStr,
     > = SNAKE;
-
-    #[inline]
-    fn inflect_name(
-        _identity: &'static str,
-        _pascal: &'static str,
-        snake: &'static str,
-        _kebab: &'static str,
-    ) -> Cow<'static, str> {
-        if PREFIX::LEN == 0 {
-            Cow::Borrowed(snake)
-        } else {
-            let mut result = String::with_capacity(PREFIX::LEN + snake.len());
-            PREFIX::extend(&mut result);
-            result.push_str(snake);
-            Cow::Owned(result)
-        }
-    }
 }
 
 /// Inflects names to `kebab-case`
@@ -186,21 +125,4 @@ impl<PREFIX: MaybeConstStr> NameStyle for KebabCase<PREFIX> {
         SNAKE: MaybeConstStr,
         KEBAB: MaybeConstStr,
     > = KEBAB;
-
-    #[inline]
-    fn inflect_name(
-        _identity: &'static str,
-        _pascal: &'static str,
-        _snake: &'static str,
-        kebab: &'static str,
-    ) -> Cow<'static, str> {
-        if PREFIX::LEN == 0 {
-            Cow::Borrowed(kebab)
-        } else {
-            let mut result = String::with_capacity(PREFIX::LEN + kebab.len());
-            PREFIX::extend(&mut result);
-            result.push_str(kebab);
-            Cow::Owned(result)
-        }
-    }
 }

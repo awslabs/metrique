@@ -1,4 +1,7 @@
 //! Utilities for concatenating strings
+//!
+//! This exists because const generics is insufficiently useful. It should
+//! be greatly simplified once const generics is better.
 
 use std::{borrow::Cow, marker::PhantomData};
 
@@ -32,6 +35,20 @@ impl<T: ConstStr> SealedMaybeConstStr for T {}
 ///
 /// The associated constants are implementation details and
 /// not to be used.
+// The `extend` function will extend the content string (with a known length)
+// into an input buffer.
+//
+// If `HAVE_VAL` is true, then `MAYBE_VAL` contains the same value as the result of
+// extracting this by running:
+// ```
+// let mut buf = String::with_capacity(Self::LEN);
+// Self::extend(&mut buf);
+// &buf[..]
+// ```
+//
+// If `HAVE_VAL` is false, then `MAYBE_VAL` contains garbage.
+//
+// Ideally, const generics would be better and we would not need this hack.
 pub trait MaybeConstStr: SealedMaybeConstStr {
     #[doc(hidden)]
     const MAYBE_VAL: &'static str;
@@ -97,6 +114,16 @@ impl<S: MaybeConstStr, T: MaybeConstStr, const N: usize> SealedMaybeConstStr
 }
 
 impl<S: MaybeConstStr, T: MaybeConstStr> MaybeConstStr for Concatenated<S, T> {
+    // For strings over length 100, `HAVE_VAL = false` so allocate. It is possible
+    // to change the 100 for some other value, you need to change the length of
+    // the match initializing MAYBE_VAL.
+    const HAVE_VAL: bool = S::HAVE_VAL && T::HAVE_VAL && (S::LEN + T::LEN) <= 100;
+    const LEN: usize = S::LEN + T::LEN;
+    fn extend(into: &mut String) {
+        S::extend(into);
+        T::extend(into);
+    }
+    // Hack since const generics are less ideal than we want.
     const MAYBE_VAL: &str = match S::MAYBE_VAL.len() + T::MAYBE_VAL.len() {
         0 => ConcatenatedLen::<S, T, 0>::MAYBE_VAL,
         1 => ConcatenatedLen::<S, T, 1>::MAYBE_VAL,
@@ -201,17 +228,12 @@ impl<S: MaybeConstStr, T: MaybeConstStr> MaybeConstStr for Concatenated<S, T> {
         100 => ConcatenatedLen::<S, T, 100>::MAYBE_VAL,
         _ => "",
     };
-    const HAVE_VAL: bool = S::HAVE_VAL && T::HAVE_VAL && (S::LEN + T::LEN) <= 100;
-    const LEN: usize = S::LEN + T::LEN;
-    fn extend(into: &mut String) {
-        S::extend(into);
-        T::extend(into);
-    }
 }
 impl<S: MaybeConstStr, T: MaybeConstStr> SealedMaybeConstStr for Concatenated<S, T> {}
 
 /// Return the value of a given [MaybeConstStr]. If possible, will return
-/// the value without allocating.
+/// the value without allocating. It might not be always possible due
+/// to const eval limitations.
 pub fn const_str_value<S: MaybeConstStr>() -> Cow<'static, str> {
     if S::HAVE_VAL {
         Cow::Borrowed(S::MAYBE_VAL)
