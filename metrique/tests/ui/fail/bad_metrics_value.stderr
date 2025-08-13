@@ -102,6 +102,6 @@ error[E0277]: the trait bound `Foo: metrique_writer_core::value::formatter::Valu
    |     ^ the trait `metrique_writer_core::value::formatter::ValueFormatter<u32, _>` is not implemented for `Foo`
    |
    = help: the following other types implement trait `metrique_writer_core::value::formatter::ValueFormatter<V, L>`:
-             `FormatDisplay` implements `metrique_writer_core::value::formatter::ValueFormatter<T, metrique_writer_core::value::formatter::NotLifted>`
              `TimestampFormat<U>` implements `metrique_writer_core::value::formatter::ValueFormatter<TimestampValue>`
+             `metrique::ToString` implements `metrique_writer_core::value::formatter::ValueFormatter<T, metrique_writer_core::value::formatter::NotLifted>`
    = note: required for `FormattedValue<'_, u32, Foo, _>` to implement `Value`

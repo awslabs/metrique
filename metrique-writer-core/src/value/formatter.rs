@@ -58,9 +58,9 @@ impl Liftability for NotLifted {}
 /// ```
 /// # use metrique_writer::{Entry, ValueWriter, value::{NotLifted, ValueFormatter}};
 /// # use std::fmt::Display;
-/// pub struct FormatDisplay;
+/// pub struct ToString;
 ///
-/// impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for FormatDisplay {
+/// impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for ToString {
 ///     fn format_value(writer: impl ValueWriter, value: &T) {
 ///         writer.string(&value.to_string());
 ///     }
@@ -68,7 +68,7 @@ impl Liftability for NotLifted {}
 ///
 /// #[derive(Entry)]
 /// struct MyMetric {
-///     #[entry(format = FormatDisplay)]
+///     #[entry(format = ToString)]
 ///     my_field: bool, // formats as a string, "true" or "false".
 /// }
 /// ```
@@ -83,16 +83,16 @@ pub trait ValueFormatter<V: ?Sized, L: Liftability = Lifted> {
 ///
 /// ```
 /// # use metrique_writer::Entry;
-/// # use metrique_writer::value::FormatDisplay;
+/// # use metrique_writer::value::ToString;
 /// #[derive(Entry)]
 /// struct MyMetric {
-///     #[entry(format = FormatDisplay)]
+///     #[entry(format = ToString)]
 ///     my_field: bool, // formats as a string, "true" or "false".
 /// }
 /// ```
-pub struct FormatDisplay;
+pub struct ToString;
 
-impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for FormatDisplay {
+impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for ToString {
     fn format_value(writer: impl ValueWriter, value: &T) {
         writer.string(&value.to_string());
     }
