@@ -14,6 +14,13 @@ pub struct LookupBookMetrics {
     error: bool,
 }
 
+#[metrics]
+#[derive(Default)]
+pub struct TestMetrics {
+    count: usize,
+    success: bool,
+}
+
 #[test]
 fn instrument_on_error() {
     let (is_odd, metrics) = try_odd(3).into_parts();
@@ -56,4 +63,25 @@ fn instrument_write_to() {
     let result = try_odd(4).split_metrics_to(&mut target);
     assert_eq!(target.unwrap().error, true);
     assert_eq!(result, Err(4))
+}
+
+#[test]
+fn instrument_emit() {
+    use metrique_writer::test_util::test_entry_sink;
+
+    let test_sink = test_entry_sink();
+    let metrics = TestMetrics::default().append_on_drop(test_sink.sink);
+
+    let result = Instrumented::instrument(metrics, |m| {
+        m.count = 5;
+        m.success = true;
+        42
+    })
+    .emit();
+
+    assert_eq!(result, 42);
+
+    // Verify metrics were emitted
+    let entries = test_sink.inspector.entries();
+    assert_eq!(entries.len(), 1);
 }

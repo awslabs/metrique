@@ -130,3 +130,48 @@ impl<T, E, U> Instrumented<std::result::Result<T, E>, U> {
         })
     }
 }
+
+impl<T, Entry, Sink> Instrumented<T, crate::AppendAndCloseOnDrop<Entry, Sink>>
+where
+    Entry: crate::CloseEntry,
+    Sink: crate::EntrySink<crate::RootEntry<Entry::Closed>>,
+{
+    /// Emit the metrics and return the value
+    ///
+    /// This is equivalent to calling `into_parts` and dropping the metrics,
+    /// but makes the intent explicit that the metrics should be emitted.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use metrique::unit_of_work::metrics;
+    /// use metrique::instrument::Instrumented;
+    /// use metrique::ServiceMetrics;
+    /// use metrique_writer_core::global::GlobalEntrySink;
+    ///
+    /// #[metrics]
+    /// #[derive(Default)]
+    /// struct EventMetrics {
+    ///     success: bool,
+    ///     error: bool,
+    /// }
+    ///
+    /// fn process_event(input: &str) -> Result<usize, &'static str> {
+    ///     let metrics = EventMetrics::default().append_on_drop(ServiceMetrics::sink());
+    ///     Instrumented::instrument(metrics, |_m| {
+    ///         if input.is_empty() {
+    ///             Err("empty input")
+    ///         } else {
+    ///             Ok(input.len())
+    ///         }
+    ///     })
+    ///     .on_success(|_val, m| m.success = true)
+    ///     .on_error(|_err, m| m.error = true)
+    ///     .emit()
+    /// }
+    /// ```
+    pub fn emit(self) -> T {
+        let (value, metrics) = self.into_parts();
+        drop(metrics); // Explicitly drop to trigger emission
+        value
+    }
+}
