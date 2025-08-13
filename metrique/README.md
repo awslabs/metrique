@@ -589,10 +589,11 @@ struct PrefixedMetrics {
 Example of a metrics struct:
 
 ```rust
-use metrique::{Counter, Slot, ToString};
+use metrique::{Counter, Slot};
 use metrique::timers::{EpochSeconds, Timer, Timestamp, TimestampOnClose};
 use metrique::unit::{Byte, Second};
 use metrique::unit_of_work::metrics;
+use metrique::writer::value::ToString;
 
 use std::net::IpAddr;
 use std::sync::{Arc, Mutex};

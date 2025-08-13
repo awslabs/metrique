@@ -400,7 +400,4 @@ pub use metrique_service_metrics::ServiceMetrics;
 
 pub use metrique_core::concat;
 
-// re-export FormatDisplay
-pub use metrique_writer::value::ToString;
-
 pub use metrique_writer as writer;
