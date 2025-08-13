@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer-core"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2024"
 rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
 license = "Apache-2.0"

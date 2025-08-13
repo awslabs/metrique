@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `metrique` - 0.1.4
+
+### Added
+- Add support for prefixes to flattened fields ([#65](https://github.com/awslabs/metrique/pull/65)). This enables patterns like:
+  ```rust
+  #[metrics]
+  struct RequestMetrics {
+      #[metrics(flatten, prefix = "a_")]
+      operation_a: OperationMetrics,
+      #[metrics(flatten, prefix = "b_")]
+      operation_b: OperationMetrics,
+  }
+
+- `metrique` now re-exports `metrique-writer` behind the `metrique::writer` module. This removes the need to add a separate dependency on `metrique_writer`. ([#76](https://github.com/awslabs/metrique/pull/76))
+- Added an `emit` method on `Instrumented`
+
+## `metrique-writer` - [0.1.4](https://github.com/awslabs/metrique/compare/metrique-writer-v0.1.3...metrique-writer-v0.1.4) - 2025-08-13
+
+### Other
+- Reexport metrique_writer from metrique ([#76](https://github.com/awslabs/metrique/pull/76))
+- Make metrique-writer enable metrique-writer-core test-util ([#80](https://github.com/awslabs/metrique/pull/80))
+- add docsrs cfg and clean docs ([#73](https://github.com/awslabs/metrique/pull/73))
+
+## `metrique-writer-macro` - [0.1.1](https://github.com/awslabs/metrique/compare/metrique-writer-macro-v0.1.0...metrique-writer-macro-v0.1.1) - 2025-08-13
+
+### Other
+- Reexport metrique_writer from metrique ([#76](https://github.com/awslabs/metrique/pull/76))
+- add docsrs cfg and clean docs ([#73](https://github.com/awslabs/metrique/pull/73))
+
+## `metrique-macro` - [0.1.2](https://github.com/awslabs/metrique/compare/metrique-macro-v0.1.1...metrique-macro-v0.1.2) - 2025-08-13
+
+### Other
+- Reexport metrique_writer from metrique ([#76](https://github.com/awslabs/metrique/pull/76))
+- Add support for prefixes to flattened fields ([#65](https://github.com/awslabs/metrique/pull/65))
+- add docsrs cfg and clean docs ([#73](https://github.com/awslabs/metrique/pull/73))
+
+## `metrique-core` - [0.1.4](https://github.com/awslabs/metrique/compare/metrique-core-v0.1.3...metrique-core-v0.1.4) - 2025-08-13
+
+### Other
+- Reexport metrique_writer from metrique ([#76](https://github.com/awslabs/metrique/pull/76))
+- Add support for prefixes to flattened fields ([#65](https://github.com/awslabs/metrique/pull/65))
+- add docsrs cfg and clean docs ([#73](https://github.com/awslabs/metrique/pull/73))
+
+## `metrique-writer-core` - [0.1.4](https://github.com/awslabs/metrique/compare/metrique-writer-core-v0.1.3...metrique-writer-core-v0.1.4) - 2025-08-13
+
+### Fixed
+- try to fix rustdoc ([#78](https://github.com/awslabs/metrique/pull/78))
+
+### Other
+- Reexport metrique_writer from metrique ([#76](https://github.com/awslabs/metrique/pull/76))
+- add docsrs cfg and clean docs ([#73](https://github.com/awslabs/metrique/pull/73))
+
 ## [0.1.3](https://github.com/awslabs/metrique/compare/metrique-core-v0.1.2...metrique-core-v0.1.3) - 2025-08-12
 
 ### Added
