@@ -3,6 +3,7 @@
 
 //! Contains various utilities for working with [EntrySink]
 
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use crate::Entry;
@@ -21,7 +22,7 @@ pub use immediate_flush::{
     describe_immediate_flush_metrics,
 };
 pub use metrique_writer_core::sink::{AnyEntrySink, AppendOnDrop, FlushWait};
-use metrique_writer_core::{EntryIoStream, EntrySink};
+use metrique_writer_core::{BoxEntrySink, EntryIoStream, EntrySink};
 pub use metrique_writer_core::{
     global::AttachGlobalEntrySink, global::AttachHandle, global_entry_sink,
 };
@@ -116,28 +117,58 @@ impl<E> VecEntrySink<E> {
     }
 }
 
+/// An [EntrySink] that drops all entries.
+///
+/// Useful for testing, or when you want to ignore entries.
+#[derive(Copy, Clone, Default)]
+pub struct NullEntrySink {
+    // have a private field
+    _marker: PhantomData<()>,
+}
+
+impl NullEntrySink {
+    /// Return a new [`NullEntrySink`]
+    pub const fn new() -> Self {
+        NullEntrySink {
+            _marker: PhantomData,
+        }
+    }
+
+    /// Return a new [`NullEntrySink`] as a [`BoxEntrySink`]
+    pub fn boxed() -> BoxEntrySink {
+        Self::new().boxed()
+    }
+}
+
+impl AnyEntrySink for NullEntrySink {
+    fn append_any(&self, _entry: impl Entry + Send + 'static) {}
+
+    fn flush_async(&self) -> FlushWait {
+        FlushWait::ready()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::SystemTime;
 
     use super::*;
+    struct TestEntry {
+        timestamp: SystemTime,
+        counter: u32,
+        status: String,
+    }
+
+    impl Entry for TestEntry {
+        fn write<'a>(&'a self, writer: &mut impl crate::EntryWriter<'a>) {
+            writer.timestamp(self.timestamp);
+            writer.value("counter", &self.counter);
+            writer.value("status", &self.status);
+        }
+    }
 
     #[test]
     fn vec_entry_sink_create_update_drain() {
-        struct TestEntry {
-            timestamp: SystemTime,
-            counter: u32,
-            status: String,
-        }
-
-        impl Entry for TestEntry {
-            fn write<'a>(&'a self, writer: &mut impl crate::EntryWriter<'a>) {
-                writer.timestamp(self.timestamp);
-                writer.value("counter", &self.counter);
-                writer.value("status", &self.status);
-            }
-        }
-
         let sink = VecEntrySink::<TestEntry>::new();
 
         sink.append(TestEntry {
@@ -173,5 +204,16 @@ mod tests {
         assert!(!sink.contains_entry(|e| e.status == "ERR"));
         assert!(!sink.contains_entry(|e| e.status == "OK" && e.counter != 0));
         assert!(!sink.contains_entry(|_| true));
+    }
+
+    #[test]
+    fn test_null_entry_sink() {
+        let sink = NullEntrySink::new();
+        sink.append(TestEntry {
+            timestamp: SystemTime::now(),
+            counter: 1,
+            status: "OK".into(),
+        });
+        futures::executor::block_on(EntrySink::<TestEntry>::flush_async(&sink));
     }
 }

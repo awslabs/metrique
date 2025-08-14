@@ -424,7 +424,7 @@ macro_rules! global_entry_sink {
                         /// Only available when the `test-util` feature is enabled.
                         ///
                         /// # Example
-                        /// ```rust
+                        #[doc = $crate::__macro_doctest!()]
                         /// # use metrique_writer::sink::global_entry_sink;
                         /// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
                         /// # global_entry_sink! { TestSink }
@@ -433,6 +433,21 @@ macro_rules! global_entry_sink {
                         ///
                         /// // All appends now go to the thread-local test sink
                         /// // Guard automatically restores previous state when dropped
+                        /// ```
+                        ///
+                        /// If you want to ignore metrics, you can attach a thread-local NullEntrySink:
+                        #[doc = $crate::__macro_doctest!()]
+                        /// # use metrique_writer::sink::{NullEntrySink, global_entry_sink};
+                        /// # use metrique_writer::GlobalEntrySink;
+                        /// global_entry_sink! { TestSink }
+                        ///
+                        /// #[test]
+                        /// fn test_metrics() {
+                        ///     let _guard = TestSink::set_test_sink(NullEntrySink::boxed());
+                        ///
+                        ///     // Code that uses TestSink::append() will drop entries
+                        ///     // Guard automatically restores when dropped
+                        /// }
                         /// ```
                         #[track_caller]
                         pub fn set_test_sink(sink: BoxEntrySink) -> $crate::global::ThreadLocalTestSinkGuard {
@@ -448,7 +463,7 @@ macro_rules! global_entry_sink {
                         /// Only available when the `test-util` feature is enabled.
                         ///
                         /// # Example
-                        /// ```rust
+                        #[doc = $crate::__macro_doctest!()]
                         /// # use metrique_writer::sink::global_entry_sink;
                         /// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
                         /// # global_entry_sink! { TestSink }
@@ -659,4 +674,29 @@ macro_rules! __test_util {
 #[cfg(not(feature = "test-util"))]
 macro_rules! __test_util {
     ($($tt:tt)*) => {};
+}
+
+// the __macro_doctest attribute is used to make sure our doctests are not compiled
+// in customer crates, since customer crates getting compilation errors on our doctests is
+// very annoying.
+
+/// Expands to ```rust to run doctests the given block of code when `metrique-writer-core`
+/// is compiled with the `private-test-util` feature, for our internal testing
+#[doc(hidden)]
+#[macro_export]
+#[cfg(feature = "private-test-util")]
+macro_rules! __macro_doctest {
+    () => {
+        "```rust"
+    };
+}
+
+/// Does not expand the given block of code when `metrique-writer-core` is compiled without the `test-util` feature.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "private-test-util"))]
+macro_rules! __macro_doctest {
+    () => {
+        "```rust,ignore"
+    };
 }
