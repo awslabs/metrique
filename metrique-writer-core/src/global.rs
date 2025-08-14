@@ -435,15 +435,15 @@ macro_rules! global_entry_sink {
                         /// // Guard automatically restores previous state when dropped
                         /// ```
                         ///
-                        /// If you want to ignore metrics, you can attach a thread-local NullEntrySink:
+                        /// If you want to ignore metrics, you can attach a thread-local DevNullSink:
                         #[doc = $crate::__macro_doctest!()]
-                        /// # use metrique_writer::sink::{NullEntrySink, global_entry_sink};
+                        /// # use metrique_writer::sink::{DevNullSink, global_entry_sink};
                         /// # use metrique_writer::GlobalEntrySink;
                         /// global_entry_sink! { TestSink }
                         ///
                         /// #[test]
                         /// fn test_metrics() {
-                        ///     let _guard = TestSink::set_test_sink(NullEntrySink::boxed());
+                        ///     let _guard = TestSink::set_test_sink(DevNullSink::boxed());
                         ///
                         ///     // Code that uses TestSink::append() will drop entries
                         ///     // Guard automatically restores when dropped

@@ -3,7 +3,6 @@
 
 //! Contains various utilities for working with [EntrySink]
 
-use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 
 use crate::Entry;
@@ -121,26 +120,22 @@ impl<E> VecEntrySink<E> {
 ///
 /// Useful for testing, or when you want to ignore entries.
 #[derive(Copy, Clone, Default)]
-pub struct NullEntrySink {
-    // have a private field
-    _marker: PhantomData<()>,
-}
+#[non_exhaustive]
+pub struct DevNullSink;
 
-impl NullEntrySink {
-    /// Return a new [`NullEntrySink`]
+impl DevNullSink {
+    /// Return a new [`DevNullSink`]
     pub const fn new() -> Self {
-        NullEntrySink {
-            _marker: PhantomData,
-        }
+        DevNullSink
     }
 
-    /// Return a new [`NullEntrySink`] as a [`BoxEntrySink`]
+    /// Return a new [`DevNullSink`] as a [`BoxEntrySink`]
     pub fn boxed() -> BoxEntrySink {
         Self::new().boxed()
     }
 }
 
-impl AnyEntrySink for NullEntrySink {
+impl AnyEntrySink for DevNullSink {
     fn append_any(&self, _entry: impl Entry + Send + 'static) {}
 
     fn flush_async(&self) -> FlushWait {
@@ -208,7 +203,7 @@ mod tests {
 
     #[test]
     fn test_null_entry_sink() {
-        let sink = NullEntrySink::new();
+        let sink = DevNullSink::new();
         sink.append(TestEntry {
             timestamp: SystemTime::now(),
             counter: 1,

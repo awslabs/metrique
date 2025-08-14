@@ -42,6 +42,31 @@ GitHub provides additional document on [forking a repository](https://help.githu
 
 Looking at the existing issues is a great way to find something to contribute on. As our projects, by default, use the default GitHub issue labels (enhancement/bug/duplicate/help wanted/invalid/question/wontfix), looking at any ['help wanted'](https://github.com/awslabs/metrique/labels/help%20wanted) issues is a great place to start.
 
+## Dependencies on crates within the workspace
+
+Dependencies on within-workspace crates within `[dependencies]` should be path-dependencies that
+*include* a `version`, for example:
+
+```toml
+[dependencies]
+...
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.4" }
+```
+
+If a dependency does not include a `version`, you will be unable to publish.
+
+Dependencies within `[dev-dependencies]` should *not* include a `version`:
+
+```toml
+[dev-dependencies]
+...
+metrique = { path = "../metrique" }
+```
+
+If a dev-dependency *does* include a `version` and it goes the wrong way on the dependency
+graph, you might encounter a chicken-and-egg problem when publishing, since `release-plz`
+might update the `version` to the new version you are publishing.
+
 ## Doing releases
 
 There is a `.github/workflows/release.yml` workflow that will attempt to use a crates.io release every time the version in the Cargo.toml changes. That is the sanctioned way of doing releases. The `release.yml` workflow is authorized to publish releases to the metrique crates via [trusted publishing], no further authorization is needed or desired for normal release publishing.
