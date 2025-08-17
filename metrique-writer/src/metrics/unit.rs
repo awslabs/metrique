@@ -4,7 +4,8 @@
 use metrique_writer_core::unit::{NegativeScale, PositiveScale};
 
 /// convert a metrics::Unit to an metrique_writer_core::Unit
-pub(crate) fn metrics_unit_to_metrique_unit(
+#[cfg(feature = "metrics_rs_024")]
+pub(crate) fn metrics_024_unit_to_metrique_unit(
     unit: Option<metrics::Unit>,
 ) -> metrique_writer_core::Unit {
     match unit {
@@ -46,7 +47,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_metrics_unit_to_metrique_unit() {
+    fn test_metrics_024_unit_to_metrique_unit() {
         let map = [
             (metrique_writer_core::Unit::Count, metrics::Unit::Count),
             (metrique_writer_core::Unit::Percent, metrics::Unit::Percent),
@@ -116,12 +117,12 @@ mod test {
             ),
         ];
         assert_eq!(
-            metrics_unit_to_metrique_unit(None),
+            metrics_024_unit_to_metrique_unit(None),
             metrique_writer_core::Unit::None
         );
         for (metrique_unit, metrics_unit) in map {
             assert_eq!(
-                metrics_unit_to_metrique_unit(Some(metrics_unit)),
+                metrics_024_unit_to_metrique_unit(Some(metrics_unit)),
                 metrique_unit
             );
         }

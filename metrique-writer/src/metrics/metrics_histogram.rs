@@ -6,7 +6,6 @@
 use std::ops::RangeInclusive;
 
 use histogram::AtomicHistogram;
-use metrics::HistogramFn;
 
 /// A histogram with known-good configuration and supporting of parallel insertion and draining.
 ///
@@ -76,7 +75,8 @@ pub struct Bucket {
     pub count: u32,
 }
 
-impl HistogramFn for Histogram {
+#[cfg(feature = "metrics_rs_024")]
+impl metrics::HistogramFn for Histogram {
     fn record(&self, value: f64) {
         if value > u32::MAX as f64 {
             self.record(u32::MAX);
@@ -87,6 +87,7 @@ impl HistogramFn for Histogram {
 }
 
 #[cfg(test)]
+#[cfg(feature = "metrics_rs_024")]
 mod tests {
     use super::Histogram;
     use metrics::HistogramFn;

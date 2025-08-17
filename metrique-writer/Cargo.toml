@@ -10,6 +10,7 @@ readme = "README.md"
 
 [dependencies]
 ahash = { workspace = true }
+derive-where = { workspace = true }
 smallvec = { workspace = true, features = [
     "union",
     "const_generics",
@@ -68,6 +69,8 @@ metrics_rs_bridge = [
     "dep:futures",
     "dep:histogram",
     "dep:tokio-util",
+    "dep:tracing",
+    "background_queue",
     "tokio/time",
     "futures/executor",
 ]

@@ -10,7 +10,12 @@ use metrique_writer_format_emf::Emf;
 async fn test_lambda_reporter() {
     let sink = TestSink::default();
     let sink_ = sink.clone();
-    metrique_writer::metrics::lambda_reporter::install_reporter_to_writer(
+    metrique_writer::metrics::lambda_reporter::install_reporter_to_writer::<
+        dyn metrics::Recorder,
+        _,
+        _,
+        _,
+    >(
         Emf::no_validations("MyNS".to_string(), vec![vec![]]),
         move || sink_.clone(),
     );

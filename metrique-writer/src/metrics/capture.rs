@@ -3,24 +3,35 @@
 
 //! This module contains functions for capturing metrics, generally to be used in tests.
 
-use std::future::Future;
+use std::{future::Future, marker::PhantomData};
 
-use metrics::Recorder;
 use pin_project::pin_project;
 
-use crate::metrics::{MetricAccumulatorEntry, MetricRecorder};
+use crate::metrics::{
+    MetricAccumulatorEntry, MetricRecorder, MetricsRsVersion, ParametricRecorder,
+};
 
 /// Run `f`, capturing the metrics while it runs using a local recorder.
-pub fn capture_metrics<T, F: FnOnce() -> T>(f: F) -> (MetricAccumulatorEntry, T) {
-    let accumulator: MetricRecorder = MetricRecorder::new();
-    let res = metrics::with_local_recorder(&accumulator, f);
+pub fn capture_metrics<V: MetricsRsVersion + ?Sized, T, F: FnOnce() -> T>(
+    f: F,
+) -> (MetricAccumulatorEntry<V>, T)
+where
+    MetricRecorder<V>: ParametricRecorder<V>,
+{
+    let accumulator: MetricRecorder<V> = MetricRecorder::new();
+    let res = accumulator.with_local_recorder(f);
     (accumulator.readout(), res)
 }
 
 /// Asynchrounously run `f`, capturing the metrics while it runs using a local recorder.
 ///
 /// If `f` spawns subtasks, metrics from the subtasks will *not* be captured.
-pub async fn capture_metrics_async<T, F: Future<Output = T>>(f: F) -> (MetricAccumulatorEntry, T) {
+pub async fn capture_metrics_async<V: MetricsRsVersion + ?Sized, T, F: Future<Output = T>>(
+    f: F,
+) -> (MetricAccumulatorEntry<V>, T)
+where
+    MetricRecorder<V>: ParametricRecorder<V>,
+{
     let accumulator = MetricRecorder::new();
     let res = LocalRecorderWrapper::new(accumulator.clone(), f).await;
     (accumulator.readout(), res)
@@ -28,13 +39,18 @@ pub async fn capture_metrics_async<T, F: Future<Output = T>>(f: F) -> (MetricAcc
 
 /// Wraps a future to install a local recorder during the executor of said future.
 #[pin_project]
-pub struct LocalRecorderWrapper<R: Recorder, F: Future> {
+pub struct LocalRecorderWrapper<V: MetricsRsVersion + ?Sized, R, F: Future> {
+    marker: PhantomData<V>,
     recorder: R,
     #[pin]
     future: F,
 }
 
-impl<R: Recorder, F: Future> Future for LocalRecorderWrapper<R, F> {
+impl<V: ?Sized, R, F: Future> Future for LocalRecorderWrapper<V, R, F>
+where
+    R: ParametricRecorder<V>,
+    V: MetricsRsVersion,
+{
     type Output = F::Output;
 
     fn poll(
@@ -42,14 +58,18 @@ impl<R: Recorder, F: Future> Future for LocalRecorderWrapper<R, F> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let this = self.project();
-        metrics::with_local_recorder(this.recorder, || this.future.poll(cx))
+        this.recorder.with_local_recorder(|| this.future.poll(cx))
     }
 }
 
-impl<R: Recorder, F: Future> LocalRecorderWrapper<R, F> {
+impl<V: MetricsRsVersion + ?Sized, R, F: Future> LocalRecorderWrapper<V, R, F> {
     /// Create a new `LocalRecorderWrapper`
     pub fn new(recorder: R, future: F) -> Self {
-        Self { recorder, future }
+        Self {
+            marker: PhantomData,
+            recorder,
+            future,
+        }
     }
 }
 
