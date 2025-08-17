@@ -1,4 +1,6 @@
-use std::{collections::HashMap, hash::Hash, sync::atomic::Ordering, time::SystemTime};
+use std::{
+    collections::HashMap, hash::Hash, marker::PhantomData, sync::atomic::Ordering, time::SystemTime,
+};
 
 use crate::metrics::{
     MetricAccumulatorEntry, MetricRecorder, accumulator::AtomicStorageWithHistogram,
@@ -10,6 +12,53 @@ mod private {
     impl Sealed for dyn metrics::Recorder {}
 
     pub trait Sealed2<V: super::MetricsRsVersion + ?Sized> {}
+
+    impl<M> Sealed for super::YouMustSpecifyAMetricsRsVersion<M> {}
+}
+
+// internal trait to make sure inference doesn't magic-pick a metrics.rs
+// version. The generic parameter is to make sure that
+// `PrivateMetricVersionForInference` itself can't be picked.
+#[allow(unused)]
+struct YouMustSpecifyAMetricsRsVersion<M: 'static>(PhantomData<M>);
+#[diagnostic::do_not_recommend]
+impl<M> MetricsRsVersion for YouMustSpecifyAMetricsRsVersion<M> {
+    type Key = ();
+    type AtomicStorageWithHistogramRegistry = ();
+    type Recorder = ();
+    fn new_atomic_storage_with_histogram_registry() {}
+    fn readout(
+        _registry: &Self::AtomicStorageWithHistogramRegistry,
+        _emit_zero_counters: bool,
+        units: impl FnOnce() -> HashMap<String, metrique_writer_core::Unit>,
+    ) -> MetricAccumulatorEntry<Self> {
+        MetricAccumulatorEntry {
+            counters: vec![],
+            gauges: vec![],
+            histograms: vec![],
+            units: units(),
+            timestamp: Some(SystemTime::now()),
+        }
+    }
+    fn key_name(_name: &Self::Key) -> &str {
+        ""
+    }
+    fn key_labels(_key: &Self::Key) -> Vec<(&str, &str)> {
+        vec![]
+    }
+    fn set_global_recorder(_recorder: MetricRecorder<Self>) {}
+}
+#[diagnostic::do_not_recommend]
+impl<M> ParametricRecorder<YouMustSpecifyAMetricsRsVersion<M>>
+    for MetricRecorder<YouMustSpecifyAMetricsRsVersion<M>>
+{
+    fn with_local_recorder<T>(&self, body: impl FnOnce() -> T) -> T {
+        body()
+    }
+}
+impl<M> private::Sealed2<YouMustSpecifyAMetricsRsVersion<M>>
+    for MetricRecorder<YouMustSpecifyAMetricsRsVersion<M>>
+{
 }
 
 /// A trait to allow the metrics.rs bridge to be generic over metrics.rs versions

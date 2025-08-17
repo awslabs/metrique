@@ -12,6 +12,18 @@ use crate::metrics::{
 };
 
 /// Run `f`, capturing the metrics while it runs using a local recorder.
+///
+/// You must pass `dyn metrics::Recorder` as the first type parameter, to ensure
+/// metrics are captured from the right metrics.rs version, for example:
+///
+/// ```
+/// use metrique_writer::metrics::capture;
+///
+/// let (metrics, _) = capture::capture_metrics::<dyn metrics::Recorder, _, _>(|| {
+///     metrics::counter!("foo").increment(9);
+/// });
+/// assert_eq!(metrics.counter_value("foo"), Some(9));
+/// ```
 pub fn capture_metrics<V: MetricsRsVersion + ?Sized, T, F: FnOnce() -> T>(
     f: F,
 ) -> (MetricAccumulatorEntry<V>, T)
@@ -26,6 +38,20 @@ where
 /// Asynchrounously run `f`, capturing the metrics while it runs using a local recorder.
 ///
 /// If `f` spawns subtasks, metrics from the subtasks will *not* be captured.
+///
+/// You must pass `dyn metrics::Recorder` as the first type parameter, to ensure
+/// metrics are captured from the right metrics.rs version, for example:
+///
+/// ```
+/// use metrique_writer::metrics::capture;
+///
+/// # futures::executor::block_on(async {
+/// let (metrics, _) = capture::capture_metrics_async::<dyn metrics::Recorder, _, _>(async {
+///     metrics::counter!("foo").increment(9);
+/// }).await;
+/// assert_eq!(metrics.counter_value("foo"), Some(9));
+/// # });
+/// ```
 pub async fn capture_metrics_async<V: MetricsRsVersion + ?Sized, T, F: Future<Output = T>>(
     f: F,
 ) -> (MetricAccumulatorEntry<V>, T)
@@ -77,7 +103,7 @@ impl<V: MetricsRsVersion + ?Sized, R, F: Future> LocalRecorderWrapper<V, R, F> {
 mod test {
     #[test]
     fn test_capture_metrics() {
-        let (metrics, _) = super::capture_metrics(|| {
+        let (metrics, _) = super::capture_metrics::<dyn metrics::Recorder, _, _>(|| {
             metrics::counter!("foo").increment(9);
             metrics::counter!("foo").increment(3);
             metrics::gauge!("bar").set(5);
@@ -96,16 +122,17 @@ mod test {
 
     #[tokio::test]
     async fn test_capture_metrics_async() {
-        let (metrics, _) = super::capture_metrics_async(async move {
-            metrics::counter!("foo").increment(9);
-            metrics::counter!("foo").increment(3);
-            tokio::task::yield_now().await;
-            metrics::gauge!("bar").set(5);
-            metrics::histogram!("baz").record(100);
-            metrics::histogram!("baz").record(101);
-            metrics::histogram!("baz").record(1000);
-        })
-        .await;
+        let (metrics, _) =
+            super::capture_metrics_async::<dyn metrics::Recorder, _, _>(async move {
+                metrics::counter!("foo").increment(9);
+                metrics::counter!("foo").increment(3);
+                tokio::task::yield_now().await;
+                metrics::gauge!("bar").set(5);
+                metrics::histogram!("baz").record(100);
+                metrics::histogram!("baz").record(101);
+                metrics::histogram!("baz").record(1000);
+            })
+            .await;
         assert_eq!(metrics.counter_value("foo"), Some(12));
         assert_eq!(metrics.counter_value("nothing"), None);
         assert_eq!(metrics.gauge_value("bar"), Some(5.0));
