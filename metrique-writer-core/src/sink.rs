@@ -137,7 +137,7 @@ impl BoxEntrySink {
 
 /// This struct contains a future that can be used to wait for flushing to complete
 #[must_use = "future does nothing unless polled"]
-pub struct FlushWait(Pin<Box<dyn std::future::Future<Output = ()> + 'static>>);
+pub struct FlushWait(Pin<Box<dyn std::future::Future<Output = ()> + Send + Sync + 'static>>);
 
 impl Future for FlushWait {
     type Output = ();
@@ -160,7 +160,7 @@ impl FlushWait {
     }
 
     /// Create a FlushWait that returns when a future is ready
-    pub fn from_future(f: impl std::future::Future<Output = ()> + 'static) -> Self {
+    pub fn from_future(f: impl std::future::Future<Output = ()> + Send + Sync + 'static) -> Self {
         Self(Box::pin(f))
     }
 }
