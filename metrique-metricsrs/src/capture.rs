@@ -7,9 +7,7 @@ use std::{future::Future, marker::PhantomData};
 
 use pin_project::pin_project;
 
-use crate::metrics::{
-    MetricAccumulatorEntry, MetricRecorder, MetricsRsVersion, ParametricRecorder,
-};
+use crate::{MetricAccumulatorEntry, MetricRecorder, MetricsRsVersion, ParametricRecorder};
 
 /// Run `f`, capturing the metrics while it runs using a local recorder.
 ///
@@ -18,7 +16,7 @@ use crate::metrics::{
 ///
 /// ```
 /// # use metrics_024 as metrics;
-/// use metrique_writer::metrics::capture;
+/// use metrique_metricsrs::capture;
 ///
 /// let (metrics, _) = capture::capture_metrics::<dyn metrics::Recorder, _, _>(|| {
 ///     metrics::counter!("foo").increment(9);
@@ -45,7 +43,7 @@ where
 ///
 /// ```
 /// # use metrics_024 as metrics;
-/// use metrique_writer::metrics::capture;
+/// use metrique_metricsrs::capture;
 ///
 /// # futures::executor::block_on(async {
 /// let (metrics, _) = capture::capture_metrics_async::<dyn metrics::Recorder, _, _>(async {

@@ -47,6 +47,7 @@ impl Histogram {
     /// Returns an iterator providing the value and count of each bucket of the histogram.
     /// Only non-empty buckets are returned.
     /// During the iteration, the histogram counts are atomically reset to zero.
+    #[cfg_attr(not(feature = "metrics_rs_024"), allow(unused))]
     pub(crate) fn drain(&self) -> Vec<Bucket> {
         self.inner
             .drain()

@@ -8,11 +8,12 @@ use std::{
     time::SystemTime,
 };
 
-use crate::metrics::{MetricsRsVersion, metrics_histogram::Bucket};
+use crate::{MetricsRsVersion, metrics_histogram::Bucket};
 use derive_where::derive_where;
 use metrique_writer_core::{Entry, EntryWriter, Observation, value::MetricFlags};
 
 /// A [`metrics_util::Storage`] that uses [`crate::metrics_histogram::Histogram`] for its histogram implementation.
+#[cfg_attr(not(feature = "metrics_rs_024"), allow(unused))]
 pub struct AtomicStorageWithHistogram;
 
 #[cfg(feature = "metrics_rs_024")]
@@ -24,12 +25,12 @@ mod impls_024 {
     };
     use metrics_util_020::registry::Storage;
 
-    use crate::metrics::{MetricRecorder, unit::metrics_024_unit_to_metrique_unit};
+    use crate::{MetricRecorder, unit::metrics_024_unit_to_metrique_unit};
 
     impl<K> Storage<K> for super::AtomicStorageWithHistogram {
         type Counter = Arc<AtomicU64>;
         type Gauge = Arc<AtomicU64>;
-        type Histogram = Arc<crate::metrics::metrics_histogram::Histogram>;
+        type Histogram = Arc<crate::metrics_histogram::Histogram>;
 
         fn counter(&self, _: &K) -> Self::Counter {
             Arc::new(AtomicU64::new(0))
@@ -40,7 +41,7 @@ mod impls_024 {
         }
 
         fn histogram(&self, _: &K) -> Self::Histogram {
-            Arc::new(crate::metrics::metrics_histogram::Histogram::new())
+            Arc::new(crate::metrics_histogram::Histogram::new())
         }
     }
 
@@ -355,7 +356,7 @@ mod test {
     use metrique_writer_core::{format::Format, test_stream::DummyFormat};
     use test_case::test_case;
 
-    use crate::metrics::MetricRecorder;
+    use crate::MetricRecorder;
 
     #[test_case(false, None; "no_emit_zero_counters")]
     #[test_case(true, Some(0); "emit_zero_counters")]

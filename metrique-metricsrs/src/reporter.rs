@@ -7,18 +7,18 @@ use std::marker::PhantomData;
 use std::pin::{Pin, pin};
 use std::time::Duration;
 
-#[cfg(feature = "background_queue")]
-use crate::sink::BackgroundQueueBuilder;
-use crate::stream::NullEntryIoStream;
 use futures::future::Either;
 use futures::future::select;
+#[cfg(feature = "background_queue")]
+use metrique_writer::sink::BackgroundQueueBuilder;
+use metrique_writer::stream::NullEntryIoStream;
 use metrique_writer_core::{AnyEntrySink, EntrySink};
 use metrique_writer_core::{BoxEntrySink, EntryIoStream};
 use tokio::task;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::metrics::{MetricRecorder, MetricsRsVersion};
+use crate::{MetricRecorder, MetricsRsVersion};
 
 /// A handle to a metric reporter. This struct is mainly used to synchronize shutdown of the metric reporter
 /// to ensure all metrics are flushed on shutdown.
@@ -112,8 +112,7 @@ pub struct YouMustConfigureAMetricsRsVersion;
 /// can also be used without installation as a local recorder.
 ///
 /// The recorder will work with all metrics reported via the `metrics::counter!`,
-/// `metrics::gauge!` and `metrics::histogram!` macros, both directly-called
-/// and metrics generated using the [`metrics`](`crate::metrics`) macro in this crate.
+/// `metrics::gauge!` and `metrics::histogram!` macros.
 ///
 /// [`metrics::Recorder`]: metrics_024::Recorder
 ///
@@ -122,7 +121,7 @@ pub struct YouMustConfigureAMetricsRsVersion;
 /// **Construct a logger which publishes EMF metrics to a rotating file**
 /// ```no_run
 /// # use metrics_024 as metrics;
-/// use metrique_writer::metrics::MetricReporter;
+/// use metrique_metricsrs::MetricReporter;
 /// use metrique_writer::{Entry, EntryIoStream, FormatExt, EntryIoStreamExt};
 /// use metrique_writer_format_emf::Emf;
 /// use tracing_appender::rolling::{RollingFileAppender, Rotation};
@@ -199,7 +198,7 @@ impl<S, V: ?Sized> MetricReporterBuilder<S, V> {
     /// `dyn metrics::Recorder`, as in
     /// ```
     /// # use metrics_024 as metrics;
-    /// # use metrique_writer::metrics::MetricReporterBuilder;
+    /// # use metrique_metricsrs::MetricReporterBuilder;
     ///
     /// let builder = MetricReporterBuilder::new().metrics_rs_version::<dyn metrics::Recorder>();
     /// ```
@@ -240,10 +239,10 @@ impl<V: ?Sized> MetricReporterBuilder<YouMustConfigureAMetricsDestination, V> {
     /// - Do not use a `MetricReporterBuilder`, just use use [`capture_metrics`] to capture metrics without installing a global recorder.
     /// - Use [Self::metrics_sink] to create a reporter that points to a [`TestEntrySink`], to write records to an in memory buffer.
     ///
-    /// [`capture_metrics`]: crate::metrics::capture::capture_metrics
-    /// [`TestEntrySink`]: crate::test_util::TestEntrySink
-    /// [`MetricReporterBuilder`]: crate::metrics::reporter::MetricReporterBuilder
-    /// [`BackgroundQueue`]: crate::sink::BackgroundQueue
+    /// [`capture_metrics`]: crate::capture::capture_metrics
+    /// [`TestEntrySink`]: metrique_writer::test_util::TestEntrySink
+    /// [`MetricReporterBuilder`]: crate::reporter::MetricReporterBuilder
+    /// [`BackgroundQueue`]: metrique_writer::sink::BackgroundQueue
     pub fn metrics_io_stream<S: EntryIoStream + Send + 'static>(
         self,
         stream: S,
@@ -271,8 +270,8 @@ impl<V: ?Sized> MetricReporterBuilder<YouMustConfigureAMetricsDestination, V> {
     ///    format::FormatExt as _,
     ///    sink::BackgroundQueueBuilder,
     ///    unit::AsCount,
-    ///    metrics::MetricReporter
     /// };
+    /// use metrique_metricsrs::MetricReporter;
     /// use metrique_writer_format_emf::Emf;
     /// use tracing_appender::rolling::{RollingFileAppender, Rotation};
     /// let sink = BackgroundQueueBuilder::new().build_boxed(
@@ -423,7 +422,7 @@ impl MetricReporter {
         AnyEntrySink::flush_async(&self.sink).await
     }
 
-    /// Creates a [builder](crate::metrics::MetricReporterBuilder) for [`MetricReporter`]
+    /// Creates a [builder](crate::MetricReporterBuilder) for [`MetricReporter`]
     pub fn builder() -> MetricReporterBuilder {
         MetricReporterBuilder::new()
     }
@@ -439,9 +438,9 @@ mod test {
     use metrique_writer_core::test_stream::{DummyFormat, TestSink};
     use test_case::test_case;
 
-    use crate::{
+    use crate::{MetricReporter, MetricReporterBuilder};
+    use metrique_writer::{
         FormatExt,
-        metrics::{MetricReporter, MetricReporterBuilder},
         test_util::{TestEntrySink, test_entry_sink},
     };
 

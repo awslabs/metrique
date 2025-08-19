@@ -10,7 +10,7 @@ use metrique_writer_format_emf::Emf;
 async fn test_lambda_reporter() {
     let sink = TestSink::default();
     let sink_ = sink.clone();
-    metrique_writer::metrics::lambda_reporter::install_reporter_to_writer::<
+    metrique_metricsrs::lambda_reporter::install_reporter_to_writer::<
         dyn metrics_024::Recorder,
         _,
         _,
@@ -22,7 +22,7 @@ async fn test_lambda_reporter() {
     counter!("my_counter").increment(3);
     counter!("my_counter", "label" => "value1").increment(1);
     counter!("my_counter", "label" => "value2").increment(2);
-    metrique_writer::metrics::lambda_reporter::flush_metrics()
+    metrique_metricsrs::lambda_reporter::flush_metrics()
         .await
         .unwrap();
 

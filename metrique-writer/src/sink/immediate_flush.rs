@@ -333,11 +333,11 @@ pub const IMMEDIATE_FLUSH_METRICS: &[DescribedMetric] = &[DescribedMetric {
 /// Call it with a recorder type, to allow it to autodetect your metrics.rs version
 ///
 /// This function should be called once per metric recorder, since some metric
-/// recorders are not idempotent in describe. The recorders in [metrique_writer::metrics] are
+/// recorders are not idempotent in describe. The recorders in [metrique_metricsrs] are
 /// however idempotent with describes, so when using that feel free to call this function
 /// multiple times.
 ///
-/// [metrique_writer::metrics]: crate::metrics
+/// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
 ///
 /// ```no_run
 /// # use metrics_024 as metrics;

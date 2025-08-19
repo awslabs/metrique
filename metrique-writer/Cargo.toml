@@ -10,7 +10,6 @@ readme = "README.md"
 
 [dependencies]
 ahash = { workspace = true }
-derive-where = { workspace = true }
 smallvec = { workspace = true, features = [
     "union",
     "const_generics",
@@ -29,8 +28,6 @@ tracing = { workspace = true, optional = true }
 metrics_024 = { workspace = true, optional = true }
 metrics-util_020 = { workspace = true, optional = true }
 futures = { workspace = true, default-features = false, optional = true }
-pin-project = { workspace = true, optional = true }
-histogram = { workspace = true, optional = true }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.4" }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.1" }
 
@@ -58,22 +55,11 @@ default = [
     "background_queue",
     "tracing_subscriber_03",
     "metrics_rs_024",
-    "metrics_rs_bridge",
 ]
 test-util = ["metrique-writer-core/test-util"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
 # dep:tracing-appender is for rustdoc
 private-test-util = ["dep:tracing-appender"]
-metrics_rs_bridge = [
-    "dep:pin-project",
-    "dep:futures",
-    "dep:histogram",
-    "dep:tokio-util",
-    "dep:tracing",
-    "background_queue",
-    "tokio/time",
-    "futures/executor",
-]
 metrics_rs_024 = ["dep:metrics_024", "dep:metrics-util_020"]
 background_queue = [
     "dep:tokio",

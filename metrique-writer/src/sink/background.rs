@@ -138,8 +138,10 @@ impl BackgroundQueueBuilder {
     /// metric recorder can be set after the background queue. You can use [`describe_sink_metrics`]
     /// or [`BACKGROUND_QUEUE_METRICS`] to do that.
     ///
-    /// For the metrics.rs recorder, you can use something like [crate::metrics] to emit these metrics via
+    /// For the metrics.rs recorder, you can use something like [metrique_metricsrs] to emit these metrics via
     /// a Metrique sink, or of course any other metrics.rs backend.
+    ///
+    /// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
     pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
         self.metric_recorder = recorder;
         self
@@ -739,11 +741,11 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
 /// Call it with a recorder type, to allow it to autodetect your metrics.rs version
 ///
 /// This function should be called once per metric recorder, since some metric
-/// recorders are not idempotent in describe. The recorders in [metrique_writer::metrics] are
+/// recorders are not idempotent in describe. The recorders in [metrique_metricsrs] are
 /// however idempotent with describes, so when using that feel free to call this function
 /// multiple times.
 ///
-/// [metrique_writer::metrics]: crate::metrics
+/// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
 ///
 /// ```no_run
 /// # use metrics_024 as metrics;

@@ -17,10 +17,10 @@ use std::io::stdout;
 use std::pin::Pin;
 use std::sync::OnceLock;
 
-use crate::FormatExt;
-use crate::metrics::MetricsRsVersion;
-use crate::sink::BackgroundQueue;
-use crate::sink::BackgroundQueueJoinHandle;
+use crate::MetricsRsVersion;
+use metrique_writer::FormatExt;
+use metrique_writer::sink::BackgroundQueue;
+use metrique_writer::sink::BackgroundQueueJoinHandle;
 use metrique_writer_core::format::Format;
 use metrique_writer_core::{EntryIoStream, EntrySink, IoStreamError};
 
@@ -63,7 +63,9 @@ trait SomeVersionMetricReporter: Send + Sync {
 
 impl<V: MetricsRsVersion + ?Sized> SomeVersionMetricReporter for LambdaMetricReporter<V> {
     fn report(&self) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + '_>> {
-        Box::pin(self.report())
+        // FIXME: use Self::report once we release 0.1.5
+        futures::executor::block_on(self.report());
+        Box::pin(async move {})
     }
 }
 
@@ -139,7 +141,8 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 /// ```
 /// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
-/// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
+/// # use metrique_writer::IoStreamError;
+/// # use metrique_metricsrs::lambda_reporter;
 /// # use metrique_writer_core::test_stream::TestSink;
 /// #
 /// # let sink = TestSink::default();
@@ -195,7 +198,8 @@ pub fn install_reporter_to_writer<
 /// ```
 /// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
-/// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
+/// # use metrique_writer::IoStreamError;
+/// # use metrique_metricsrs::lambda_reporter;
 ///
 /// // on Lambda initialization
 /// lambda_reporter::install_reporter::<dyn metrics::Recorder, _>(

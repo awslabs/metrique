@@ -26,9 +26,6 @@ pub mod stream;
 pub mod test_util;
 pub mod value;
 
-#[cfg(feature = "metrics_rs_bridge")]
-pub mod metrics;
-
 #[doc(hidden)]
 pub use metrique_writer_core as core;
 
