@@ -54,7 +54,11 @@ impl FlushImmediatelyBuilder {
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
+    ///
+    /// [`metrics::Recorder`]: metrics_024::Recorder
     /// ```
+    /// # use metrics_024 as metrics;
+    /// # use metrics_util_020 as metrics_util;
     /// # use std::sync::{Arc, Mutex};
     /// # use metrique_writer::{Entry, GlobalEntrySink};
     /// # use metrique_writer::sink::{AnyEntrySink, FlushImmediately, FlushImmediatelyBuilder};
@@ -95,7 +99,11 @@ impl FlushImmediatelyBuilder {
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
+    ///
+    /// [`metrics::Recorder`]: metrics_024::Recorder
     /// ```
+    /// # use metrics_024 as metrics;
+    /// # use metrics_util_020 as metrics_util;
     /// # use std::sync::{Arc, Mutex};
     /// # use metrique_writer::{Entry, GlobalEntrySink};
     /// # use metrique_writer::sink::{AnyEntrySink, FlushImmediately, FlushImmediatelyBuilder};
@@ -332,6 +340,7 @@ pub const IMMEDIATE_FLUSH_METRICS: &[DescribedMetric] = &[DescribedMetric {
 /// [metrique_writer::metrics]: crate::metrics
 ///
 /// ```no_run
+/// # use metrics_024 as metrics;
 /// metrique_writer::sink::describe_immediate_flush_metrics::<dyn metrics::Recorder>();
 /// ```
 #[allow(private_bounds)]
@@ -450,8 +459,8 @@ mod tests {
     #[cfg(feature = "metrics_rs_024")]
     #[test]
     fn metrics_recorder_works() {
-        use metrics::Recorder;
-        use metrics_util::debugging::DebuggingRecorder;
+        use metrics_024::Recorder;
+        use metrics_util_020::debugging::DebuggingRecorder;
 
         let output: Arc<Mutex<TestStream>> = Default::default();
         let debug_recorder = DebuggingRecorder::new();
@@ -465,7 +474,7 @@ mod tests {
         sink.append(TestEntry(1));
         sink.append(TestEntry(2));
         let snapshot = snapshot.snapshot().into_vec();
-        let (name, _, _, metrics_util::debugging::DebugValue::Histogram(value)) = &snapshot[0]
+        let (name, _, _, metrics_util_020::debugging::DebugValue::Histogram(value)) = &snapshot[0]
         else {
             panic!("unexpected metrics: {snapshot:#?}")
         };

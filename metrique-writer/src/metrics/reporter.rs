@@ -107,7 +107,7 @@ pub struct YouMustConfigureAMetricsRsVersion;
 ///
 /// [`MetricReporter`] must be constructed within the context of a Tokio runtime.
 ///
-/// After installation, this builder set ups a [`metrics::Recorder`] that will
+/// After installation, this builder sets up a [`metrics::Recorder`] that will
 /// collect metrics and periodically emit them into the output file. The builder
 /// can also be used without installation as a local recorder.
 ///
@@ -115,10 +115,13 @@ pub struct YouMustConfigureAMetricsRsVersion;
 /// `metrics::gauge!` and `metrics::histogram!` macros, both directly-called
 /// and metrics generated using the [`metrics`](`crate::metrics`) macro in this crate.
 ///
+/// [`metrics::Recorder`]: metrics_024::Recorder
+///
 /// # Examples
 ///
 /// **Construct a logger which publishes EMF metrics to a rotating file**
 /// ```no_run
+/// # use metrics_024 as metrics;
 /// use metrique_writer::metrics::MetricReporter;
 /// use metrique_writer::{Entry, EntryIoStream, FormatExt, EntryIoStreamExt};
 /// use metrique_writer_format_emf::Emf;
@@ -195,6 +198,7 @@ impl<S, V: ?Sized> MetricReporterBuilder<S, V> {
     /// code publishes to, you must call this function with
     /// `dyn metrics::Recorder`, as in
     /// ```
+    /// # use metrics_024 as metrics;
     /// # use metrique_writer::metrics::MetricReporterBuilder;
     ///
     /// let builder = MetricReporterBuilder::new().metrics_rs_version::<dyn metrics::Recorder>();
@@ -259,6 +263,7 @@ impl<V: ?Sized> MetricReporterBuilder<YouMustConfigureAMetricsDestination, V> {
     ///
     /// # Examples
     /// ```rust,no_run
+    /// # use metrics_024 as metrics;
     /// use metrique_writer::{
     ///    Entry,
     ///    BoxEntry,
@@ -451,18 +456,18 @@ mod test {
             .emit_zero_counters(emit_zero_counters)
             .metrics_publish_interval(Duration::from_secs(60))
             .metrics_io_stream(writer)
-            .metrics_rs_version::<dyn metrics::Recorder>();
+            .metrics_rs_version::<dyn metrics_024::Recorder>();
         let (reporter, recorder) = MetricReporter::new(builder);
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
         let d = sink.take_string();
         assert!(d.contains(r#"("counter_1", "[Unsigned(1)] None []")"#));
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(0);
-            metrics::counter!("counter_2").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(0);
+            metrics_024::counter!("counter_2").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
@@ -517,19 +522,19 @@ mod test {
         let builder = MetricReporterBuilder::new()
             .metrics_publish_interval(Duration::from_secs(60))
             .metrics_sink((sink, shutdown_hook))
-            .metrics_rs_version::<dyn metrics::Recorder>();
+            .metrics_rs_version::<dyn metrics_024::Recorder>();
         let (reporter, recorder) = MetricReporter::new(builder);
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
         let entries = inspector.entries();
         assert_eq!(inspector.entries().len(), 1);
         assert_eq!(entries[0].metrics["counter_1"], 1);
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(0);
-            metrics::counter!("counter_2").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(0);
+            metrics_024::counter!("counter_2").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
@@ -553,7 +558,7 @@ mod test {
         let builder = MetricReporterBuilder::new()
             .metrics_publish_interval(Duration::from_secs(60))
             .metrics_sink_async_shutdown(sink, async move { shutdown_hook.shutdown().await })
-            .metrics_rs_version::<dyn metrics::Recorder>();
+            .metrics_rs_version::<dyn metrics_024::Recorder>();
         let (reporter, _recorder) = MetricReporter::new(builder);
         assert_eq!(shutdown.load(std::sync::atomic::Ordering::Relaxed), false);
         assert_eq!(

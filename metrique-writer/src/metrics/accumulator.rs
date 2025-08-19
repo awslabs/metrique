@@ -19,10 +19,10 @@ pub struct AtomicStorageWithHistogram;
 mod impls_024 {
     use std::sync::{Arc, atomic::AtomicU64};
 
-    use metrics::{
+    use metrics_024::{
         Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
     };
-    use metrics_util::registry::Storage;
+    use metrics_util_020::registry::Storage;
 
     use crate::metrics::{MetricRecorder, unit::metrics_024_unit_to_metrique_unit};
 
@@ -44,12 +44,12 @@ mod impls_024 {
         }
     }
 
-    impl Recorder for MetricRecorder<dyn metrics::Recorder> {
+    impl Recorder for MetricRecorder<dyn metrics_024::Recorder> {
         fn describe_counter(
             &self,
-            key: metrics::KeyName,
-            unit: Option<metrics::Unit>,
-            _description: metrics::SharedString,
+            key: metrics_024::KeyName,
+            unit: Option<metrics_024::Unit>,
+            _description: metrics_024::SharedString,
         ) {
             self.0.units.write().unwrap().insert(
                 key.as_str().to_string(),
@@ -59,9 +59,9 @@ mod impls_024 {
 
         fn describe_gauge(
             &self,
-            key: metrics::KeyName,
-            unit: Option<metrics::Unit>,
-            _description: metrics::SharedString,
+            key: metrics_024::KeyName,
+            unit: Option<metrics_024::Unit>,
+            _description: metrics_024::SharedString,
         ) {
             self.0.units.write().unwrap().insert(
                 key.as_str().to_string(),
@@ -71,9 +71,9 @@ mod impls_024 {
 
         fn describe_histogram(
             &self,
-            key: metrics::KeyName,
-            unit: Option<metrics::Unit>,
-            _description: metrics::SharedString,
+            key: metrics_024::KeyName,
+            unit: Option<metrics_024::Unit>,
+            _description: metrics_024::SharedString,
         ) {
             self.0.units.write().unwrap().insert(
                 key.as_str().to_string(),
@@ -83,30 +83,32 @@ mod impls_024 {
 
         fn register_counter(
             &self,
-            key: &metrics::Key,
-            _metadata: &metrics::Metadata<'_>,
-        ) -> metrics::Counter {
-            metrics::Counter::from_arc(self.0.registry.get_or_create_counter(key, Clone::clone))
+            key: &metrics_024::Key,
+            _metadata: &metrics_024::Metadata<'_>,
+        ) -> metrics_024::Counter {
+            metrics_024::Counter::from_arc(self.0.registry.get_or_create_counter(key, Clone::clone))
         }
 
         fn register_gauge(
             &self,
-            key: &metrics::Key,
-            _metadata: &metrics::Metadata<'_>,
-        ) -> metrics::Gauge {
-            metrics::Gauge::from_arc(self.0.registry.get_or_create_gauge(key, Clone::clone))
+            key: &metrics_024::Key,
+            _metadata: &metrics_024::Metadata<'_>,
+        ) -> metrics_024::Gauge {
+            metrics_024::Gauge::from_arc(self.0.registry.get_or_create_gauge(key, Clone::clone))
         }
 
         fn register_histogram(
             &self,
-            key: &metrics::Key,
-            _metadata: &metrics::Metadata<'_>,
-        ) -> metrics::Histogram {
-            metrics::Histogram::from_arc(self.0.registry.get_or_create_histogram(key, Clone::clone))
+            key: &metrics_024::Key,
+            _metadata: &metrics_024::Metadata<'_>,
+        ) -> metrics_024::Histogram {
+            metrics_024::Histogram::from_arc(
+                self.0.registry.get_or_create_histogram(key, Clone::clone),
+            )
         }
     }
 
-    impl Recorder for super::SharedRecorder<dyn metrics::Recorder> {
+    impl Recorder for super::SharedRecorder<dyn metrics_024::Recorder> {
         fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
             self.0.describe_counter(key, unit, description);
         }
@@ -349,7 +351,7 @@ impl<V: MetricsRsVersion> Debug for SharedRecorder<V> {
 #[cfg(feature = "metrics_rs_024")]
 #[cfg(test)]
 mod test {
-    use metrics::{histogram, with_local_recorder};
+    use metrics_024::{histogram, with_local_recorder};
     use metrique_writer_core::{format::Format, test_stream::DummyFormat};
     use test_case::test_case;
 
@@ -358,10 +360,10 @@ mod test {
     #[test_case(false, None; "no_emit_zero_counters")]
     #[test_case(true, Some(0); "emit_zero_counters")]
     fn test_emit_zero_counters(emit_zero_counters: bool, expected_result: Option<u64>) {
-        let accumulator: MetricRecorder<dyn metrics::Recorder> =
+        let accumulator: MetricRecorder<dyn metrics_024::Recorder> =
             MetricRecorder::new_with_emit_zero_counters(emit_zero_counters);
-        metrics::with_local_recorder(&accumulator, || {
-            metrics::counter!("a").increment(1);
+        metrics_024::with_local_recorder(&accumulator, || {
+            metrics_024::counter!("a").increment(1);
         });
         let read0 = accumulator.readout();
         assert_eq!(read0.counter_value("a"), Some(1));

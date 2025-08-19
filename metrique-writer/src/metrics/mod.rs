@@ -8,7 +8,7 @@
 //!
 //! This allows capturing metrics emitted via the metrics.rs facade into metrique.
 //!
-//! [`metrics::Recorder`]: metrics::Recorder
+//! [`metrics::Recorder`]: metrics_024::Recorder
 //! [`MetricsReporter`]: crate::metrics::MetricReporter
 //! [`lambda_reporter`]: crate::metrics::lambda_reporter
 //! [`capture`]: crate::metrics::capture

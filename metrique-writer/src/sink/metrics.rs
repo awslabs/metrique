@@ -23,23 +23,23 @@ pub(crate) struct GlobalMetricsRs024Bridge;
 #[cfg(feature = "metrics_rs_024")]
 impl MetricRecorder for GlobalMetricsRs024Bridge {
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32) {
-        metrics::histogram!(metric, "sink" => sink.to_owned()).record(value);
+        metrics_024::histogram!(metric, "sink" => sink.to_owned()).record(value);
     }
 
     fn increment_counter(&self, metric: &'static str, sink: &str, value: u64) {
-        metrics::counter!(metric, "sink" => sink.to_owned()).increment(value);
+        metrics_024::counter!(metric, "sink" => sink.to_owned()).increment(value);
     }
 
     fn set_gauge(&self, metric: &'static str, sink: &str, value: f64) {
-        metrics::gauge!(metric, "sink" => sink.to_owned()).set(value);
+        metrics_024::gauge!(metric, "sink" => sink.to_owned()).set(value);
     }
 
     fn increment_gauge(&self, metric: &'static str, sink: &str, value: f64) {
-        metrics::gauge!(metric, "sink" => sink.to_owned()).increment(value);
+        metrics_024::gauge!(metric, "sink" => sink.to_owned()).increment(value);
     }
 
     fn decrement_gauge(&self, metric: &'static str, sink: &str, value: f64) {
-        metrics::gauge!(metric, "sink" => sink.to_owned()).decrement(value);
+        metrics_024::gauge!(metric, "sink" => sink.to_owned()).decrement(value);
     }
 }
 
@@ -49,15 +49,19 @@ impl MetricRecorder for GlobalMetricsRs024Bridge {
 pub(crate) struct LocalMetricsRs024Bridge<R>(pub(crate) R);
 
 #[cfg(feature = "metrics_rs_024")]
-impl<R: metrics::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bridge<R> {
+impl<R: metrics_024::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bridge<R> {
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32) {
         self.0
             .register_histogram(
-                &metrics::Key::from_parts(
+                &metrics_024::Key::from_parts(
                     metric,
-                    vec![metrics::Label::new("sink", sink.to_owned())],
+                    vec![metrics_024::Label::new("sink", sink.to_owned())],
                 ),
-                &metrics::Metadata::new(module_path!(), metrics::Level::INFO, Some(module_path!())),
+                &metrics_024::Metadata::new(
+                    module_path!(),
+                    metrics_024::Level::INFO,
+                    Some(module_path!()),
+                ),
             )
             .record(value);
     }
@@ -65,11 +69,15 @@ impl<R: metrics::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bri
     fn increment_counter(&self, metric: &'static str, sink: &str, value: u64) {
         self.0
             .register_counter(
-                &metrics::Key::from_parts(
+                &metrics_024::Key::from_parts(
                     metric,
-                    vec![metrics::Label::new("sink", sink.to_owned())],
+                    vec![metrics_024::Label::new("sink", sink.to_owned())],
                 ),
-                &metrics::Metadata::new(module_path!(), metrics::Level::INFO, Some(module_path!())),
+                &metrics_024::Metadata::new(
+                    module_path!(),
+                    metrics_024::Level::INFO,
+                    Some(module_path!()),
+                ),
             )
             .increment(value);
     }
@@ -77,11 +85,15 @@ impl<R: metrics::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bri
     fn set_gauge(&self, metric: &'static str, sink: &str, value: f64) {
         self.0
             .register_gauge(
-                &metrics::Key::from_parts(
+                &metrics_024::Key::from_parts(
                     metric,
-                    vec![metrics::Label::new("sink", sink.to_owned())],
+                    vec![metrics_024::Label::new("sink", sink.to_owned())],
                 ),
-                &metrics::Metadata::new(module_path!(), metrics::Level::INFO, Some(module_path!())),
+                &metrics_024::Metadata::new(
+                    module_path!(),
+                    metrics_024::Level::INFO,
+                    Some(module_path!()),
+                ),
             )
             .set(value);
     }
@@ -89,11 +101,15 @@ impl<R: metrics::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bri
     fn increment_gauge(&self, metric: &'static str, sink: &str, value: f64) {
         self.0
             .register_gauge(
-                &metrics::Key::from_parts(
+                &metrics_024::Key::from_parts(
                     metric,
-                    vec![metrics::Label::new("sink", sink.to_owned())],
+                    vec![metrics_024::Label::new("sink", sink.to_owned())],
                 ),
-                &metrics::Metadata::new(module_path!(), metrics::Level::INFO, Some(module_path!())),
+                &metrics_024::Metadata::new(
+                    module_path!(),
+                    metrics_024::Level::INFO,
+                    Some(module_path!()),
+                ),
             )
             .increment(value);
     }
@@ -101,11 +117,15 @@ impl<R: metrics::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bri
     fn decrement_gauge(&self, metric: &'static str, sink: &str, value: f64) {
         self.0
             .register_gauge(
-                &metrics::Key::from_parts(
+                &metrics_024::Key::from_parts(
                     metric,
-                    vec![metrics::Label::new("sink", sink.to_owned())],
+                    vec![metrics_024::Label::new("sink", sink.to_owned())],
                 ),
-                &metrics::Metadata::new(module_path!(), metrics::Level::INFO, Some(module_path!())),
+                &metrics_024::Metadata::new(
+                    module_path!(),
+                    metrics_024::Level::INFO,
+                    Some(module_path!()),
+                ),
             )
             .decrement(value);
     }
@@ -117,23 +137,23 @@ pub(crate) trait GlobalRecorderVersion {
 }
 
 #[cfg(feature = "metrics_rs_024")]
-impl GlobalRecorderVersion for dyn metrics::Recorder {
+impl GlobalRecorderVersion for dyn metrics_024::Recorder {
     fn describe(metrics: &[DescribedMetric]) {
         for metric in metrics {
             let unit = match metric.unit {
-                MetricsRsUnit::Count => metrics::Unit::Count,
-                MetricsRsUnit::Percent => metrics::Unit::Percent,
-                MetricsRsUnit::Millisecond => metrics::Unit::Milliseconds,
+                MetricsRsUnit::Count => metrics_024::Unit::Count,
+                MetricsRsUnit::Percent => metrics_024::Unit::Percent,
+                MetricsRsUnit::Millisecond => metrics_024::Unit::Milliseconds,
             };
             match metric.r#type {
                 MetricsRsType::Counter => {
-                    metrics::describe_counter!(metric.name, unit, metric.description)
+                    metrics_024::describe_counter!(metric.name, unit, metric.description)
                 }
                 MetricsRsType::Gauge => {
-                    metrics::describe_gauge!(metric.name, unit, metric.description)
+                    metrics_024::describe_gauge!(metric.name, unit, metric.description)
                 }
                 MetricsRsType::Histogram => {
-                    metrics::describe_histogram!(metric.name, unit, metric.description)
+                    metrics_024::describe_histogram!(metric.name, unit, metric.description)
                 }
             }
         }
@@ -176,9 +196,9 @@ pub trait LocalRecorderVersion<R> {
 }
 
 #[cfg(feature = "metrics_rs_024")]
-impl<R> LocalRecorderVersion<R> for dyn metrics::Recorder
+impl<R> LocalRecorderVersion<R> for dyn metrics_024::Recorder
 where
-    R: metrics::Recorder + Send + Sync + 'static,
+    R: metrics_024::Recorder + Send + Sync + 'static,
 {
     fn recorder(recorder: R) -> impl MetricRecorder + 'static {
         LocalMetricsRs024Bridge(recorder)

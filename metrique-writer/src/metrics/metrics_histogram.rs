@@ -76,7 +76,7 @@ pub struct Bucket {
 }
 
 #[cfg(feature = "metrics_rs_024")]
-impl metrics::HistogramFn for Histogram {
+impl metrics_024::HistogramFn for Histogram {
     fn record(&self, value: f64) {
         if value > u32::MAX as f64 {
             self.record(u32::MAX);
@@ -90,7 +90,7 @@ impl metrics::HistogramFn for Histogram {
 #[cfg(feature = "metrics_rs_024")]
 mod tests {
     use super::Histogram;
-    use metrics::HistogramFn;
+    use metrics_024::HistogramFn;
     use rand::{RngCore, rng};
 
     use super::Bucket;

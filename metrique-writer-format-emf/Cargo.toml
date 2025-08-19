@@ -30,7 +30,7 @@ rand_chacha = { workspace = true }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }
-metrics = { workspace = true }
+metrics_024 = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true

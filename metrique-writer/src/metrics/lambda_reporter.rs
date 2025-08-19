@@ -137,6 +137,7 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 ///
 /// For example:
 /// ```
+/// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
 /// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
 /// # use metrique_writer_core::test_stream::TestSink;
@@ -192,6 +193,7 @@ pub fn install_reporter_to_writer<
 /// for example:
 ///
 /// ```
+/// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
 /// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
 ///

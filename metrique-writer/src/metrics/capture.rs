@@ -17,6 +17,7 @@ use crate::metrics::{
 /// metrics are captured from the right metrics.rs version, for example:
 ///
 /// ```
+/// # use metrics_024 as metrics;
 /// use metrique_writer::metrics::capture;
 ///
 /// let (metrics, _) = capture::capture_metrics::<dyn metrics::Recorder, _, _>(|| {
@@ -43,6 +44,7 @@ where
 /// metrics are captured from the right metrics.rs version, for example:
 ///
 /// ```
+/// # use metrics_024 as metrics;
 /// use metrique_writer::metrics::capture;
 ///
 /// # futures::executor::block_on(async {
@@ -103,13 +105,13 @@ impl<V: MetricsRsVersion + ?Sized, R, F: Future> LocalRecorderWrapper<V, R, F> {
 mod test {
     #[test]
     fn test_capture_metrics() {
-        let (metrics, _) = super::capture_metrics::<dyn metrics::Recorder, _, _>(|| {
-            metrics::counter!("foo").increment(9);
-            metrics::counter!("foo").increment(3);
-            metrics::gauge!("bar").set(5);
-            metrics::histogram!("baz").record(100);
-            metrics::histogram!("baz").record(101);
-            metrics::histogram!("baz").record(1000);
+        let (metrics, _) = super::capture_metrics::<dyn metrics_024::Recorder, _, _>(|| {
+            metrics_024::counter!("foo").increment(9);
+            metrics_024::counter!("foo").increment(3);
+            metrics_024::gauge!("bar").set(5);
+            metrics_024::histogram!("baz").record(100);
+            metrics_024::histogram!("baz").record(101);
+            metrics_024::histogram!("baz").record(1000);
         });
         assert_eq!(metrics.counter_value("foo"), Some(12));
         assert_eq!(metrics.counter_value("nothing"), None);
@@ -123,14 +125,14 @@ mod test {
     #[tokio::test]
     async fn test_capture_metrics_async() {
         let (metrics, _) =
-            super::capture_metrics_async::<dyn metrics::Recorder, _, _>(async move {
-                metrics::counter!("foo").increment(9);
-                metrics::counter!("foo").increment(3);
+            super::capture_metrics_async::<dyn metrics_024::Recorder, _, _>(async move {
+                metrics_024::counter!("foo").increment(9);
+                metrics_024::counter!("foo").increment(3);
                 tokio::task::yield_now().await;
-                metrics::gauge!("bar").set(5);
-                metrics::histogram!("baz").record(100);
-                metrics::histogram!("baz").record(101);
-                metrics::histogram!("baz").record(1000);
+                metrics_024::gauge!("bar").set(5);
+                metrics_024::histogram!("baz").record(100);
+                metrics_024::histogram!("baz").record(101);
+                metrics_024::histogram!("baz").record(1000);
             })
             .await;
         assert_eq!(metrics.counter_value("foo"), Some(12));

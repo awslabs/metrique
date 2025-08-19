@@ -9,7 +9,7 @@ use crate::metrics::{
 mod private {
     pub trait Sealed {}
     #[cfg(feature = "metrics_rs_024")]
-    impl Sealed for dyn metrics::Recorder {}
+    impl Sealed for dyn metrics_024::Recorder {}
 
     pub trait Sealed2<V: super::MetricsRsVersion + ?Sized> {}
 
@@ -88,17 +88,17 @@ pub trait MetricsRsVersion: 'static + private::Sealed {
 }
 
 #[cfg(feature = "metrics_rs_024")]
-impl MetricsRsVersion for dyn metrics::Recorder {
+impl MetricsRsVersion for dyn metrics_024::Recorder {
     #[doc(hidden)]
-    type Key = metrics::Key;
+    type Key = metrics_024::Key;
     #[doc(hidden)]
     type AtomicStorageWithHistogramRegistry =
-        metrics_util::registry::Registry<metrics::Key, AtomicStorageWithHistogram>;
+        metrics_util_020::registry::Registry<metrics_024::Key, AtomicStorageWithHistogram>;
     #[doc(hidden)]
-    type Recorder = dyn metrics::Recorder + Send + Sync;
+    type Recorder = dyn metrics_024::Recorder + Send + Sync;
     #[doc(hidden)]
     fn new_atomic_storage_with_histogram_registry() -> Self::AtomicStorageWithHistogramRegistry {
-        metrics_util::registry::Registry::new(AtomicStorageWithHistogram)
+        metrics_util_020::registry::Registry::new(AtomicStorageWithHistogram)
     }
     fn readout(
         registry: &Self::AtomicStorageWithHistogramRegistry,
@@ -142,23 +142,25 @@ impl MetricsRsVersion for dyn metrics::Recorder {
     }
     #[track_caller]
     fn set_global_recorder(recorder: MetricRecorder<Self>) {
-        metrics::set_global_recorder(recorder).expect("failed to set global recorder");
+        metrics_024::set_global_recorder(recorder).expect("failed to set global recorder");
     }
 }
 
 /// A trait to allow the metrics.rs bridge to be generic over versions of metrics.rs
-/// [metrics::Recorder]s. This trait is not to be manually implemented or called by
+/// [`metrics::Recorder`]s. This trait is not to be manually implemented or called by
 /// users.
+///
+/// [`metrics::Recorder`]: metrics_024::Recorder
 pub trait ParametricRecorder<V: MetricsRsVersion + ?Sized>: private::Sealed2<V> {
     #[doc(hidden)]
     fn with_local_recorder<T>(&self, body: impl FnOnce() -> T) -> T;
 }
 
 #[cfg(feature = "metrics_rs_024")]
-impl<R: metrics::Recorder> ParametricRecorder<dyn metrics::Recorder> for R {
+impl<R: metrics_024::Recorder> ParametricRecorder<dyn metrics_024::Recorder> for R {
     fn with_local_recorder<T>(&self, body: impl FnOnce() -> T) -> T {
-        metrics::with_local_recorder(self, body)
+        metrics_024::with_local_recorder(self, body)
     }
 }
 #[cfg(feature = "metrics_rs_024")]
-impl<R: metrics::Recorder> private::Sealed2<dyn metrics::Recorder> for R {}
+impl<R: metrics_024::Recorder> private::Sealed2<dyn metrics_024::Recorder> for R {}
