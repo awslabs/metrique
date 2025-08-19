@@ -18,8 +18,9 @@ test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 private-test-util = ["dep:tracing-appender"]
 service-metrics = ["dep:metrique-service-metrics"]
 # re-export metrique-writer features
-metrics_rs_bridge = ["dep:metrique-metricsrs"]
-metrics_rs_024 = ["metrique-writer/metrics_rs_024", "metrique-metricsrs/metrics_rs_024"]
+metrics-rs-bridge = ["dep:metrique-metricsrs"]
+metrics-rs-024 = ["metrique-writer/metrics-rs-024", "metrique-metricsrs/metrics-rs-024"]
+metrics_rs_024 = ["metrics-rs-024"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }

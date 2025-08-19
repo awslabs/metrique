@@ -85,7 +85,7 @@ impl FlushImmediatelyBuilder {
     ///     .build::<MyMetrics, _>(stream);
     ///
     /// ```
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     #[allow(private_bounds)]
     pub fn metrics_recorder_global<V: super::metrics::GlobalRecorderVersion + ?Sized>(
         mut self,
@@ -128,7 +128,7 @@ impl FlushImmediatelyBuilder {
     ///     .metrics_recorder_local::<dyn metrics::Recorder, _>(recorder)
     ///     .build::<MyMetrics, _>(stream);
     /// ```
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     pub fn metrics_recorder_local<V: super::metrics::LocalRecorderVersion<R> + ?Sized, R>(
         mut self,
         recorder: R,
@@ -241,10 +241,10 @@ impl<S: EntryIoStream> SinkState<S> {
 ///     value: u64,
 /// }
 ///
-/// // Create a `FlushImmediately` that writes to stdout
+/// // Create a `FlushImmediately` that writes to stdout (use locking to avoid tearing)
 /// let sink = FlushImmediately::new(Emf::all_validations(
 ///     "MyApp".into(), vec![vec![]]
-/// ).output_to(io::stdout()));
+/// ).output_to_makewriter(|| io::stdout().lock()));
 ///
 /// // Append metrics - this will write immediately to stdout
 /// sink.append(MyMetrics { value: 42 });
@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(output.lock().unwrap().values, vec![1]);
     }
 
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     #[test]
     fn metrics_recorder_works() {
         use metrics_024::Recorder;

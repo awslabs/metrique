@@ -3,6 +3,8 @@ via metrique-writer. This includes [`MetricsReporter`]  that is designed for use
 [`lambda_reporter`] that is designed for use in Lambda, and [`capture`] that is
 designed for use in unit tests.
 
+See the linked documentation pages for examples.
+
 This allows capturing metrics emitted via the metrics.rs facade into metrique.
 
 [`metrics::Recorder`]: metrics_024::Recorder

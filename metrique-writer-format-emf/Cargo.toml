@@ -27,7 +27,7 @@ assert-json-diff = { workspace = true }
 assert_approx_eq = { workspace = true }
 test-case = { workspace = true }
 rand_chacha = { workspace = true }
-metrique-metricsrs = { path = "../metrique-metricsrs", features = [] }
+metrique-metricsrs = { path = "../metrique-metricsrs", features = ["metrics-rs-024"] }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }

@@ -82,7 +82,7 @@ async fn main() {
     // in prod, initialize it to use the global sink
     let _handle = ServiceMetrics::attach_to_stream(
         Emf::all_validations("MyApp".to_string(), vec![vec![]])
-            .output_to(std::io::stdout())
+            .output_to_makewriter(|| std::io::stdout().lock())
             .merge_globals(globals),
     );
 

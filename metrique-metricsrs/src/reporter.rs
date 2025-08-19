@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use futures::future::Either;
 use futures::future::select;
-#[cfg(feature = "background_queue")]
+#[cfg(feature = "background-queue")]
 use metrique_writer::sink::BackgroundQueueBuilder;
 use metrique_writer::stream::NullEntryIoStream;
 use metrique_writer_core::{AnyEntrySink, EntrySink};
@@ -23,14 +23,100 @@ use crate::{MetricRecorder, MetricsRsVersion};
 /// A handle to a metric reporter. This struct is mainly used to synchronize shutdown of the metric reporter
 /// to ensure all metrics are flushed on shutdown.
 ///
-/// The main documentation for metric reports is at [`MetricReporterBuilder`].
-///
 /// Shutdown only occurs when called explicitly (via the [`shutdown`] function) - dropping the `MetricReporter`
 /// will not wait for a flush.
 ///
-/// [`shutdown`]: MetricReporter::shutdown
-///
 /// This may be freely cloned.
+///
+/// After installation, this will sets up a [`metrics::Recorder`] that will
+/// collect metrics and periodically emit them into the output file. The builder
+/// can also be used without installation as a local recorder.
+///
+/// The recorder will work with all metrics reported via the [`metrics::counter!`],
+/// [`metrics::gauge!`] and [`metrics::histogram!`] macros.
+///
+/// # Examples
+///
+/// **Construct a logger which publishes EMF metrics to a rotating file:**
+///
+/// ```no_run
+/// # use metrics_024 as metrics;
+/// use metrique_metricsrs::MetricReporter;
+/// use metrique_writer::{Entry, EntryIoStream, FormatExt, EntryIoStreamExt};
+/// use metrique_writer_format_emf::Emf;
+/// use tracing_appender::rolling::{RollingFileAppender, Rotation};
+///
+/// #[derive(Entry)]
+/// #[entry(rename_all = "PascalCase")]
+/// struct Globals {
+///     service: &'static str,
+/// }
+///
+/// # let log_dir = std::path::PathBuf::from("example");
+/// let logger = MetricReporter::builder()
+///     .metrics_rs_version::<dyn metrics::Recorder>()
+///     .metrics_io_stream(Emf::all_validations("MyNS".to_string(),
+///                   vec![vec![], vec!["service".to_string()]]).output_to_makewriter(
+///                         RollingFileAppender::new(Rotation::HOURLY, &log_dir, "metric_log.log")
+///                   )
+///            // you can skip the `merge_globals` call if you don't want to add dimensions
+///            .merge_globals(Globals {
+///                service: "MyCoolProgram",
+///            })
+///     )
+///     .build_and_install();
+/// ```
+///
+/// **Or via a global sink:**
+///
+/// ```no_run
+/// # use metrics_024 as metrics;
+/// use metrique_metricsrs::MetricReporter;
+/// use metrique_writer::{Entry, EntryIoStream, FormatExt, EntryIoStreamExt};
+/// use metrique_writer::{GlobalEntrySink, AttachGlobalEntrySinkExt};
+/// use metrique_writer_format_emf::Emf;
+/// use metrique::ServiceMetrics; // or some other GlobalEntrySink
+/// use tracing_appender::rolling::{RollingFileAppender, Rotation};
+///
+/// #[derive(Entry)]
+/// #[entry(rename_all = "PascalCase")]
+/// struct Globals {
+///     service: &'static str,
+/// }
+///
+/// # let log_dir = std::path::PathBuf::from("example");
+/// let handle = ServiceMetrics::attach_to_stream(Emf::all_validations("MyNS".to_string(),
+///     vec![vec![], vec!["service".to_string()]]).output_to_makewriter(
+///           RollingFileAppender::new(Rotation::HOURLY, &log_dir, "metric_log.log")
+///     )
+///     // you can skip the `merge_globals` call if you don't want to add dimensions
+///     .merge_globals(Globals {
+///         service: "MyCoolProgram",
+///     }));
+/// let logger = MetricReporter::builder()
+///     .metrics_rs_version::<dyn metrics::Recorder>()
+///     // if some other part of your program manages BackgroundQueue shutdown,
+///     // you can pass `(ServiceMetrics::sink(), ())` instead
+///     // of `(ServiceMetrics::sink(), handle)` - the handle is just
+///     // dropped on shutdown to manage shutdown easily.
+///     .metrics_sink((ServiceMetrics::sink(), handle))
+///     .build_and_install();
+///
+/// // (You can then use `ServiceMetrics::sink()` for other uses as well, all emissions will go to the same destination)
+/// ```
+///
+/// **Note: It is impossible to construct a `MetricReporter` without a configuring destination for metrics:**:
+/// ```compile_fail
+/// use metrique_writer::metrics::MetricReporter;
+/// let logger = MetricReporter::builder().build();
+/// ```
+/// This results in a compilation error.
+///
+/// [`shutdown`]: MetricReporter::shutdown
+/// [`metrics::Recorder`]: metrics_024::Recorder
+/// [`metrics::counter!`]: metrics_024::counter
+/// [`metrics::gauge!`]: metrics_024::gauge
+/// [`metrics::histogram!`]: metrics_024::histogram
 #[derive(Debug, Clone)]
 pub struct MetricReporter {
     tasks: TaskTracker,
@@ -106,53 +192,6 @@ pub struct YouMustConfigureAMetricsRsVersion;
 /// Builder for [`MetricReporter`]
 ///
 /// [`MetricReporter`] must be constructed within the context of a Tokio runtime.
-///
-/// After installation, this builder sets up a [`metrics::Recorder`] that will
-/// collect metrics and periodically emit them into the output file. The builder
-/// can also be used without installation as a local recorder.
-///
-/// The recorder will work with all metrics reported via the `metrics::counter!`,
-/// `metrics::gauge!` and `metrics::histogram!` macros.
-///
-/// [`metrics::Recorder`]: metrics_024::Recorder
-///
-/// # Examples
-///
-/// **Construct a logger which publishes EMF metrics to a rotating file**
-/// ```no_run
-/// # use metrics_024 as metrics;
-/// use metrique_metricsrs::MetricReporter;
-/// use metrique_writer::{Entry, EntryIoStream, FormatExt, EntryIoStreamExt};
-/// use metrique_writer_format_emf::Emf;
-/// use tracing_appender::rolling::{RollingFileAppender, Rotation};
-///
-/// #[derive(Entry)]
-/// #[entry(rename_all = "PascalCase")]
-/// struct Globals {
-///     service: &'static str,
-/// }
-///
-/// # let log_dir = std::path::PathBuf::from("example");
-/// let logger = MetricReporter::builder()
-///     .metrics_rs_version::<dyn metrics::Recorder>()
-///     .metrics_io_stream(Emf::all_validations("MyNS".to_string(),
-///                   vec![vec![], vec!["service".to_string()]]).output_to_makewriter(
-///                         RollingFileAppender::new(Rotation::HOURLY, &log_dir, "metric_log.log")
-///                   )
-///            // you can skip the `merge_globals` call if you don't want to add dimensions
-///            .merge_globals(Globals {
-///                service: "MyCoolProgram",
-///            })
-///     )
-///     .build_and_install();
-/// ```
-///
-/// **Note: It is impossible to construct a `MetricReporter` without a configuring destination for metrics:**:
-/// ```compile_fail
-/// use metrique_writer::metrics::MetricReporter;
-/// let logger = MetricReporter::builder().build();
-/// ```
-/// This results in a compilation error.
 pub struct MetricReporterBuilder<
     S = YouMustConfigureAMetricsDestination,
     V: ?Sized = YouMustConfigureAMetricsRsVersion,
@@ -378,6 +417,9 @@ impl MetricReporter {
         let metrics_token = cancellation.clone();
         let (sink, handle) = match builder.box_entry_sink {
             Some((sink, handle)) => (sink, handle),
+            #[cfg(not(feature = "background-queue"))]
+            None => panic!("setting a queue is required without background-queue enabled"),
+            #[cfg(feature = "background-queue")]
             None => {
                 let (sink, handle) =
                     BackgroundQueueBuilder::default().build_boxed(builder.metrics_stream);

@@ -27,9 +27,11 @@ pub trait FormatExt: Format {
     /// This is the way to get an [`EntryIoStream`] from a [`Format`]
     /// and an [`impl std::io::Write`][std::io::Write].
     ///
-    /// ## Example
-    ///
-    /// This example sets up a global entry sink named `ServiceMetrics` that outputs to stdout
+    /// <section class="warning">
+    /// Usage of this function with an IO stream shared between parts of a program can lead to
+    /// write tearing and corrupted metrics, since metric formats are allowed to perform multiple
+    /// [io::Write::write](std::io::Write::write) calls for a single entry. It is recommended
+    /// to use `output_to_makewriter` to avoid it, for example:
     ///
     /// ```
     /// # use metrique_writer::{
@@ -44,7 +46,7 @@ pub trait FormatExt: Format {
     /// global_entry_sink! { ServiceMetrics }
     ///
     /// let _join = ServiceMetrics::attach_to_stream(Emf::all_validations("MyApp".into(), vec![vec![]])
-    ///     .output_to(std::io::stdout()));
+    ///     .output_to_makewriter(|| std::io::stdout().lock()));
     ///
     /// // and then, for example:
     /// #[derive(Entry, Default)]
@@ -54,6 +56,45 @@ pub trait FormatExt: Format {
     ///
     /// let metric_base = MyMetrics { field: 0 };
     /// let mut metric = ServiceMetrics::append_on_drop(metric_base);
+    /// ```
+    /// </section>
+    ///
+    /// ## Example
+    ///
+    /// This example sets up a global entry sink named `ServiceMetrics` that outputs to a TCP socket:
+    ///
+    /// ```no_run
+    /// # use metrique_writer::{
+    /// #    Entry,
+    /// #    GlobalEntrySink,
+    /// #    sink::{AttachGlobalEntrySinkExt, global_entry_sink},
+    /// #    format::{FormatExt as _},
+    /// # };
+    /// # use std::net::SocketAddr;
+    /// # use metrique_writer_format_emf::Emf;
+    /// # async fn initialize_metrics() {
+    /// # let log_dir = tempfile::tempdir().unwrap();
+    ///
+    /// global_entry_sink! { ServiceMetrics }
+    ///
+    /// let emf_port = 1234;
+    /// let addr = SocketAddr::from(([127, 0, 0, 1], emf_port));
+    /// let tcp_connection = tokio::net::TcpStream::connect(addr)
+    ///    .await
+    ///    .expect("failed to connect to Firelens TCP port")
+    ///    .into_std().unwrap();
+    /// let _join = ServiceMetrics::attach_to_stream(Emf::all_validations("MyApp".into(), vec![vec![]])
+    ///     .output_to(tcp_connection));
+    ///
+    /// // and then, for example:
+    /// #[derive(Entry, Default)]
+    /// struct MyMetrics {
+    ///  field: usize
+    /// }
+    ///
+    /// let metric_base = MyMetrics { field: 0 };
+    /// let mut metric = ServiceMetrics::append_on_drop(metric_base);
+    /// # }
     /// ```
     fn output_to<O>(self, output: O) -> FormattedEntryIoStream<Self, O>
     where
@@ -108,7 +149,7 @@ pub trait FormatExt: Format {
     /// let metric_base = MyMetrics { field: 0 };
     /// let mut metric = ServiceMetrics::append_on_drop(metric_base);
     /// ```
-    #[cfg(feature = "tracing_subscriber_03")]
+    #[cfg(feature = "tracing-subscriber-03")]
     fn output_to_makewriter<O>(self, output: O) -> FormattedMakeWriterEntryIoStream<Self, O>
     where
         Self: Sized,
@@ -258,7 +299,7 @@ impl<F: Format, const N: usize> Format for MergeGlobalDimensions<F, N> {
 }
 
 #[derive(Debug)]
-#[cfg(feature = "tracing_subscriber_03")]
+#[cfg(feature = "tracing-subscriber-03")]
 /// This struct combines a [Format] and an [tracing_subscriber::fmt::MakeWriter]
 /// to get an [EntryIoStream].
 pub struct FormattedMakeWriterEntryIoStream<F, O> {
@@ -266,7 +307,7 @@ pub struct FormattedMakeWriterEntryIoStream<F, O> {
     output: O,
 }
 
-#[cfg(feature = "tracing_subscriber_03")]
+#[cfg(feature = "tracing-subscriber-03")]
 impl<F: Format, O: for<'a> tracing_subscriber::fmt::MakeWriter<'a>> EntryIoStream
     for FormattedMakeWriterEntryIoStream<F, O>
 {

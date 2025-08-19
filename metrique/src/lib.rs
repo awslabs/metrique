@@ -398,7 +398,7 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
 #[cfg(feature = "service-metrics")]
 pub use metrique_service_metrics::ServiceMetrics;
 
-#[cfg(feature = "metrics_rs_bridge")]
+#[cfg(feature = "metrics-rs-bridge")]
 pub use metrique_metricsrs as metrics_rs;
 
 pub use metrique_core::concat;

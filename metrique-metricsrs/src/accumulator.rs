@@ -13,10 +13,10 @@ use derive_where::derive_where;
 use metrique_writer_core::{Entry, EntryWriter, Observation, value::MetricFlags};
 
 /// A [`metrics_util::Storage`] that uses [`crate::metrics_histogram::Histogram`] for its histogram implementation.
-#[cfg_attr(not(feature = "metrics_rs_024"), allow(unused))]
+#[cfg_attr(not(feature = "metrics-rs-024"), allow(unused))]
 pub struct AtomicStorageWithHistogram;
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 mod impls_024 {
     use std::sync::{Arc, atomic::AtomicU64};
 
@@ -349,7 +349,7 @@ impl<V: MetricsRsVersion> Debug for SharedRecorder<V> {
     }
 }
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 #[cfg(test)]
 mod test {
     use metrics_024::{histogram, with_local_recorder};

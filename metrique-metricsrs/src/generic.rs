@@ -4,7 +4,7 @@ use crate::{MetricAccumulatorEntry, MetricRecorder};
 
 mod private {
     pub trait Sealed {}
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     impl Sealed for dyn metrics_024::Recorder {}
 
     pub trait Sealed2<V: super::MetricsRsVersion + ?Sized> {}
@@ -83,7 +83,7 @@ pub trait MetricsRsVersion: 'static + private::Sealed {
     fn set_global_recorder(recorder: MetricRecorder<Self>);
 }
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 mod impls {
     use std::{collections::HashMap, sync::atomic::Ordering, time::SystemTime};
 

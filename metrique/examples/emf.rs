@@ -60,7 +60,7 @@ fn main() {
 
     let _handle = ServiceMetrics::attach_to_stream(
         Emf::all_validations("MyApp".to_string(), vec![vec!["Region".to_string()]])
-            .output_to(std::io::stdout())
+            .output_to_makewriter(|| std::io::stdout().lock())
             // All entries will contain `region` as a dimension
             .merge_globals(globals),
     );

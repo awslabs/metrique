@@ -7,14 +7,14 @@ use std::sync::{Arc, Mutex};
 
 use crate::Entry;
 
-#[cfg(feature = "background_queue")]
+#[cfg(feature = "background-queue")]
 mod background;
 mod immediate_flush;
 mod metrics;
 
-#[cfg(feature = "background_queue")]
+#[cfg(feature = "background-queue")]
 pub use background::{BACKGROUND_QUEUE_METRICS, describe_sink_metrics};
-#[cfg(feature = "background_queue")]
+#[cfg(feature = "background-queue")]
 pub use background::{BackgroundQueue, BackgroundQueueBuilder, BackgroundQueueJoinHandle};
 pub use immediate_flush::{
     AnyFlushImmediately, FlushImmediately, FlushImmediatelyBuilder,
@@ -34,7 +34,7 @@ pub trait AttachGlobalEntrySinkExt: AttachGlobalEntrySink {
     ///
     /// # Panics
     /// Panics if a queue is already attached.
-    #[cfg(feature = "background_queue")]
+    #[cfg(feature = "background-queue")]
     fn attach_to_stream(output: impl EntryIoStream + Send + 'static) -> AttachHandle {
         Self::attach(BackgroundQueue::new(output))
     }

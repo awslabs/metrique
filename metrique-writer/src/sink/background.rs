@@ -1003,13 +1003,13 @@ mod tests {
     #[test]
     fn flush_simple() {
         // this test also tests the metric recorder, since I'll rather not duplicate it
-        #[cfg(feature = "metrics_rs_024")]
+        #[cfg(feature = "metrics-rs-024")]
         let mut recorder = None;
         test_all_queues! {
             |builder| (|builder: BackgroundQueueBuilder| {
                 #[allow(unused_mut)]
                 let mut builder = builder.capacity(10);
-                #[cfg(feature = "metrics_rs_024")]
+                #[cfg(feature = "metrics-rs-024")]
                 {
                     recorder = Some(Arc::new(metrics_util_020::debugging::DebuggingRecorder::new()));
                     metrics_024::with_local_recorder(recorder.as_ref().unwrap(), || describe_sink_metrics::<dyn metrics_024::Recorder>());
@@ -1049,7 +1049,7 @@ mod tests {
                 assert!(output.lock().unwrap().values_flushed > 0);
                 assert_eq!(output.lock().unwrap().values, vec![1u64, 2, 10]);
                 handle.shut_down();
-                #[cfg(feature = "metrics_rs_024")]
+                #[cfg(feature = "metrics-rs-024")]
                 {
                     use metrics_util_020::MetricKind::*;
                     use metrics_util_020::debugging::DebugValue;
@@ -1099,14 +1099,14 @@ mod tests {
 
     #[test]
     fn flush_never_empty() {
-        #[cfg(feature = "metrics_rs_024")]
+        #[cfg(feature = "metrics-rs-024")]
         let mut recorder = None;
         const QUEUE_SIZE: usize = 100;
         test_all_queues! {
             |builder| (|builder: BackgroundQueueBuilder| {
                 #[allow(unused_mut)]
                 let mut builder = builder.capacity(QUEUE_SIZE);
-                #[cfg(feature = "metrics_rs_024")]
+                #[cfg(feature = "metrics-rs-024")]
                 {
                     recorder = Some(Arc::new(metrics_util_020::debugging::DebuggingRecorder::new()));
                     builder = builder.metrics_recorder_local::<dyn metrics_024::Recorder, _>(recorder.clone().unwrap()).metric_name("my_queue");
@@ -1132,7 +1132,7 @@ mod tests {
                 let mut i = 0;
                 let mut other_flush = None;
                 let check_metrics = || {
-                    #[cfg(feature = "metrics_rs_024")]
+                    #[cfg(feature = "metrics-rs-024")]
                     {
                         use metrics_util_020::MetricKind::Histogram;
                         // in theory the queue reaches the size of QUEUE_SIZE in all cases, but I am a little bit afraid
@@ -1162,7 +1162,7 @@ mod tests {
                         };
                         have_queue_size_at_least_half
                     }
-                    #[cfg(not(feature = "metrics_rs_024"))]
+                    #[cfg(not(feature = "metrics-rs-024"))]
                     true
                 };
                 loop {

@@ -1,11 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 use metrique_writer_core::unit::{NegativeScale, PositiveScale};
 
 /// convert a metrics_024::Unit to an metrique_writer_core::Unit
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 pub(crate) fn metrics_024_unit_to_metrique_unit(
     unit: Option<metrics_024::Unit>,
 ) -> metrique_writer_core::Unit {

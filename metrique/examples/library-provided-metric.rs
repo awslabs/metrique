@@ -108,7 +108,8 @@ impl RequestMetrics {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let sink = FlushImmediately::new_boxed(
-        Emf::all_validations("MyApp".into(), vec![vec![]]).output_to(std::io::stdout()),
+        Emf::all_validations("MyApp".into(), vec![vec![]])
+            .output_to_makewriter(|| std::io::stdout().lock()),
     );
     let mut request_metrics = RequestMetrics::init(sink);
     let lib = library::MyLib::new();

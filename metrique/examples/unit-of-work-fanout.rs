@@ -115,7 +115,8 @@ async fn main() {
     tracing_subscriber::fmt::init();
 
     let _handle = ServiceMetrics::attach_to_stream(
-        Emf::all_validations("Ns".to_string(), vec![vec![]]).output_to(std::io::stdout()),
+        Emf::all_validations("Ns".to_string(), vec![vec![]])
+            .output_to_makewriter(|| std::io::stdout().lock()),
     );
     handle_request("a").await;
     handle_request("b").await;
