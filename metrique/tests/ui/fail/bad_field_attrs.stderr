@@ -1,10 +1,10 @@
-error: Unknown field: `bad_root_attr`
+error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:38
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
   |                                      ^^^^^^^^^^^^^
 
-error: Unknown field: `bad_root_attr_eq`
+error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:53
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
