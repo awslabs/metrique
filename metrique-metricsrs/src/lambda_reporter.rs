@@ -63,9 +63,7 @@ trait SomeVersionMetricReporter: Send + Sync {
 
 impl<V: MetricsRsVersion + ?Sized> SomeVersionMetricReporter for LambdaMetricReporter<V> {
     fn report(&self) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + '_>> {
-        // FIXME: use Self::report once we release 0.1.5
-        futures::executor::block_on(self.report());
-        Box::pin(async move {})
+        Box::pin(self.report())
     }
 }
 
