@@ -4,52 +4,149 @@
 use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
-    sync::{
-        Arc, RwLock,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, RwLock},
     time::SystemTime,
 };
 
-use super::unit::metrics_unit_to_metrique_unit;
-use crate::metrics::metrics_histogram::Bucket;
-use metrics::{Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit};
-use metrics_util::registry::{Registry, Storage};
+use crate::metrics::{MetricsRsVersion, metrics_histogram::Bucket};
+use derive_where::derive_where;
 use metrique_writer_core::{Entry, EntryWriter, Observation, value::MetricFlags};
 
 /// A [`metrics_util::Storage`] that uses [`crate::metrics_histogram::Histogram`] for its histogram implementation.
 pub struct AtomicStorageWithHistogram;
 
-impl<K> Storage<K> for AtomicStorageWithHistogram {
-    type Counter = Arc<AtomicU64>;
-    type Gauge = Arc<AtomicU64>;
-    type Histogram = Arc<crate::metrics::metrics_histogram::Histogram>;
+#[cfg(feature = "metrics_rs_024")]
+mod impls_024 {
+    use std::sync::{Arc, atomic::AtomicU64};
 
-    fn counter(&self, _: &K) -> Self::Counter {
-        Arc::new(AtomicU64::new(0))
+    use metrics_024::{
+        Counter, Gauge, Histogram, Key, KeyName, Metadata, Recorder, SharedString, Unit,
+    };
+    use metrics_util_020::registry::Storage;
+
+    use crate::metrics::{MetricRecorder, unit::metrics_024_unit_to_metrique_unit};
+
+    impl<K> Storage<K> for super::AtomicStorageWithHistogram {
+        type Counter = Arc<AtomicU64>;
+        type Gauge = Arc<AtomicU64>;
+        type Histogram = Arc<crate::metrics::metrics_histogram::Histogram>;
+
+        fn counter(&self, _: &K) -> Self::Counter {
+            Arc::new(AtomicU64::new(0))
+        }
+
+        fn gauge(&self, _: &K) -> Self::Gauge {
+            Arc::new(AtomicU64::new(0))
+        }
+
+        fn histogram(&self, _: &K) -> Self::Histogram {
+            Arc::new(crate::metrics::metrics_histogram::Histogram::new())
+        }
     }
 
-    fn gauge(&self, _: &K) -> Self::Gauge {
-        Arc::new(AtomicU64::new(0))
+    impl Recorder for MetricRecorder<dyn metrics_024::Recorder> {
+        fn describe_counter(
+            &self,
+            key: metrics_024::KeyName,
+            unit: Option<metrics_024::Unit>,
+            _description: metrics_024::SharedString,
+        ) {
+            self.0.units.write().unwrap().insert(
+                key.as_str().to_string(),
+                metrics_024_unit_to_metrique_unit(unit),
+            );
+        }
+
+        fn describe_gauge(
+            &self,
+            key: metrics_024::KeyName,
+            unit: Option<metrics_024::Unit>,
+            _description: metrics_024::SharedString,
+        ) {
+            self.0.units.write().unwrap().insert(
+                key.as_str().to_string(),
+                metrics_024_unit_to_metrique_unit(unit),
+            );
+        }
+
+        fn describe_histogram(
+            &self,
+            key: metrics_024::KeyName,
+            unit: Option<metrics_024::Unit>,
+            _description: metrics_024::SharedString,
+        ) {
+            self.0.units.write().unwrap().insert(
+                key.as_str().to_string(),
+                metrics_024_unit_to_metrique_unit(unit),
+            );
+        }
+
+        fn register_counter(
+            &self,
+            key: &metrics_024::Key,
+            _metadata: &metrics_024::Metadata<'_>,
+        ) -> metrics_024::Counter {
+            metrics_024::Counter::from_arc(self.0.registry.get_or_create_counter(key, Clone::clone))
+        }
+
+        fn register_gauge(
+            &self,
+            key: &metrics_024::Key,
+            _metadata: &metrics_024::Metadata<'_>,
+        ) -> metrics_024::Gauge {
+            metrics_024::Gauge::from_arc(self.0.registry.get_or_create_gauge(key, Clone::clone))
+        }
+
+        fn register_histogram(
+            &self,
+            key: &metrics_024::Key,
+            _metadata: &metrics_024::Metadata<'_>,
+        ) -> metrics_024::Histogram {
+            metrics_024::Histogram::from_arc(
+                self.0.registry.get_or_create_histogram(key, Clone::clone),
+            )
+        }
     }
 
-    fn histogram(&self, _: &K) -> Self::Histogram {
-        Arc::new(crate::metrics::metrics_histogram::Histogram::new())
+    impl Recorder for super::SharedRecorder<dyn metrics_024::Recorder> {
+        fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+            self.0.describe_counter(key, unit, description);
+        }
+
+        fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+            self.0.describe_gauge(key, unit, description);
+        }
+
+        fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
+            self.0.describe_histogram(key, unit, description);
+        }
+
+        fn register_counter(&self, key: &Key, metadata: &Metadata<'_>) -> Counter {
+            self.0.register_counter(key, metadata)
+        }
+
+        fn register_gauge(&self, key: &Key, metadata: &Metadata<'_>) -> Gauge {
+            self.0.register_gauge(key, metadata)
+        }
+
+        fn register_histogram(&self, key: &Key, metadata: &Metadata<'_>) -> Histogram {
+            self.0.register_histogram(key, metadata)
+        }
     }
 }
 
-struct MetricRecorderInner {
+struct MetricRecorderInner<V: MetricsRsVersion + ?Sized> {
     emit_zero_counters: bool,
-    registry: Registry<metrics::Key, AtomicStorageWithHistogram>,
+    registry: V::AtomicStorageWithHistogramRegistry,
     units: RwLock<HashMap<String, metrique_writer_core::Unit>>,
 }
 
 /// The metric recorder belonging to this crate. Accumulates metrics in a registry
 /// and lets them be read out via `readout`
-#[derive(Clone)]
-pub struct MetricRecorder(Arc<MetricRecorderInner>);
+#[derive_where(Clone; )]
+pub struct MetricRecorder<V: MetricsRsVersion + ?Sized>(Arc<MetricRecorderInner<V>>);
 
-impl MetricRecorder {
+impl<V: MetricsRsVersion + ?Sized> MetricRecorder<V> {
     /// Create a new metric recorder
     pub fn new() -> Self {
         Self::new_with_emit_zero_counters(false)
@@ -64,67 +161,44 @@ impl MetricRecorder {
 
     /// Read out the current value of the metrics, resetting counters and histograms (and
     /// not resetting gauges).
-    pub fn readout(&self) -> MetricAccumulatorEntry {
+    pub fn readout(&self) -> MetricAccumulatorEntry<V> {
         self.0.readout()
     }
 }
 
-impl Default for MetricRecorder {
+impl<V: MetricsRsVersion + ?Sized> Default for MetricRecorder<V> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MetricRecorderInner {
+impl<V: MetricsRsVersion + ?Sized> MetricRecorderInner<V> {
     fn new(emit_zero_counters: bool) -> Self {
         Self {
             emit_zero_counters,
-            registry: Registry::new(AtomicStorageWithHistogram),
+            registry: V::new_atomic_storage_with_histogram_registry(),
             units: RwLock::new(HashMap::new()),
         }
     }
 
-    fn readout(&self) -> MetricAccumulatorEntry {
-        let mut counters = Vec::new();
-        let mut gauges = Vec::new();
-        let mut histograms = Vec::new();
-        self.registry.visit_counters(|key, counter| {
-            let counter = counter.swap(0, Ordering::Relaxed);
-            // don't include counters that weren't incremented in the log
-            if self.emit_zero_counters || counter != 0 {
-                counters.push((key.clone(), counter));
-            }
-        });
-        counters.sort_by(|u, v| u.0.cmp(&v.0));
-        self.registry.visit_gauges(|key, gauge| {
-            gauges.push((key.clone(), f64::from_bits(gauge.load(Ordering::Relaxed))));
-        });
-        gauges.sort_by(|u, v| u.0.cmp(&v.0));
-        self.registry.visit_histograms(|key, histogram| {
-            histograms.push((key.clone(), histogram.drain()));
-        });
-        histograms.sort_by(|u, v| u.0.cmp(&v.0));
-        MetricAccumulatorEntry {
-            counters,
-            gauges,
-            histograms,
-            units: self.units.read().unwrap().clone(),
-            timestamp: Some(SystemTime::now()),
-        }
+    fn readout(&self) -> MetricAccumulatorEntry<V> {
+        V::readout(&self.registry, self.emit_zero_counters, || {
+            self.units.read().unwrap().clone()
+        })
     }
 }
 
 /// Represents a readout of metrics, with values for all the given metrics.
 #[derive(Clone, Debug)]
-pub struct MetricAccumulatorEntry {
-    counters: Vec<(metrics::Key, u64)>,
-    gauges: Vec<(metrics::Key, f64)>,
-    histograms: Vec<(metrics::Key, Vec<Bucket>)>,
-    units: HashMap<String, metrique_writer_core::Unit>,
-    timestamp: Option<SystemTime>,
+pub struct MetricAccumulatorEntry<V: MetricsRsVersion + ?Sized> {
+    pub(crate) counters: Vec<(V::Key, u64)>,
+    pub(crate) gauges: Vec<(V::Key, f64)>,
+    pub(crate) histograms: Vec<(V::Key, Vec<Bucket>)>,
+    pub(crate) units: HashMap<String, metrique_writer_core::Unit>,
+    pub(crate) timestamp: Option<SystemTime>,
 }
 
-impl MetricAccumulatorEntry {
+impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
     /// Remove the timestamp from this MetricAccumulatorEntry. This should be used
     /// if it is nested in a different metrics struct to avoid double timestamp
     /// recording, which might cause the metrics writer to panic.
@@ -139,14 +213,14 @@ impl MetricAccumulatorEntry {
 }
 
 #[cfg(any(test, feature = "test-util"))]
-impl MetricAccumulatorEntry {
+impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
     /// Get counter value. O(n) in number of metrics so use only for tests.
     ///
     /// Use the `Entry` implementation when performance is needed.
     pub fn counter_value(&self, name: &str) -> Option<u64> {
         self.counters
             .iter()
-            .find(|(key, _)| key.name() == name)
+            .find(|(key, _)| V::key_name(key) == name)
             .map(|(_, v)| *v)
     }
 
@@ -156,7 +230,7 @@ impl MetricAccumulatorEntry {
     pub fn gauge_value(&self, name: &str) -> Option<f64> {
         self.gauges
             .iter()
-            .find(|(key, _)| key.name() == name)
+            .find(|(key, _)| V::key_name(key) == name)
             .map(|(_, v)| *v)
     }
 
@@ -168,14 +242,14 @@ impl MetricAccumulatorEntry {
     pub fn histogram_value(&self, name: &str) -> Vec<u32> {
         self.histograms
             .iter()
-            .filter(|(key, _)| key.name() == name)
+            .filter(|(key, _)| V::key_name(key) == name)
             .flat_map(|(_key, buckets)| buckets)
             .flat_map(|bucket| vec![bucket.value; bucket.count as usize])
             .collect()
     }
 }
 
-impl Entry for MetricAccumulatorEntry {
+impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         struct MultiObservation<'a, T> {
             value: T,
@@ -205,16 +279,13 @@ impl Entry for MetricAccumulatorEntry {
         writer.config(&const { metrique_writer_core::config::AllowSplitEntries::new() });
 
         for (key, value) in &self.counters {
-            let labels = key
-                .labels()
-                .map(|label| (label.key(), label.value()))
-                .collect();
+            let labels = V::key_labels(key);
             let unit = self
                 .units
-                .get(key.name())
+                .get(V::key_name(key))
                 .unwrap_or(&metrique_writer_core::Unit::None);
             writer.value(
-                key.name(),
+                V::key_name(key),
                 &MultiObservation {
                     value: [Observation::Unsigned(*value)],
                     unit: *unit,
@@ -224,16 +295,13 @@ impl Entry for MetricAccumulatorEntry {
         }
 
         for (key, value) in &self.gauges {
-            let labels = key
-                .labels()
-                .map(|label| (label.key(), label.value()))
-                .collect();
+            let labels = V::key_labels(key);
             let unit = self
                 .units
-                .get(key.name())
+                .get(V::key_name(key))
                 .unwrap_or(&metrique_writer_core::Unit::None);
             writer.value(
-                key.name(),
+                V::key_name(key),
                 &MultiObservation {
                     value: [Observation::Floating(*value)],
                     unit: *unit,
@@ -243,20 +311,17 @@ impl Entry for MetricAccumulatorEntry {
         }
 
         for (key, buckets) in &self.histograms {
-            let labels = key
-                .labels()
-                .map(|label| (label.key(), label.value()))
-                .collect();
+            let labels = V::key_labels(key);
             let unit = self
                 .units
-                .get(key.name())
+                .get(V::key_name(key))
                 .unwrap_or(&metrique_writer_core::Unit::None);
             let observations = buckets.iter().map(|bucket| Observation::Repeated {
                 total: bucket.value as f64 * bucket.count as f64,
                 occurrences: bucket.count as u64,
             });
             writer.value(
-                key.name(),
+                V::key_name(key),
                 &MultiObservation {
                     value: observations,
                     unit: *unit,
@@ -267,113 +332,26 @@ impl Entry for MetricAccumulatorEntry {
     }
 }
 
-impl Recorder for MetricRecorder {
-    fn describe_counter(
-        &self,
-        key: metrics::KeyName,
-        unit: Option<metrics::Unit>,
-        _description: metrics::SharedString,
-    ) {
-        self.0.units.write().unwrap().insert(
-            key.as_str().to_string(),
-            metrics_unit_to_metrique_unit(unit),
-        );
-    }
-
-    fn describe_gauge(
-        &self,
-        key: metrics::KeyName,
-        unit: Option<metrics::Unit>,
-        _description: metrics::SharedString,
-    ) {
-        self.0.units.write().unwrap().insert(
-            key.as_str().to_string(),
-            metrics_unit_to_metrique_unit(unit),
-        );
-    }
-
-    fn describe_histogram(
-        &self,
-        key: metrics::KeyName,
-        unit: Option<metrics::Unit>,
-        _description: metrics::SharedString,
-    ) {
-        self.0.units.write().unwrap().insert(
-            key.as_str().to_string(),
-            metrics_unit_to_metrique_unit(unit),
-        );
-    }
-
-    fn register_counter(
-        &self,
-        key: &metrics::Key,
-        _metadata: &metrics::Metadata<'_>,
-    ) -> metrics::Counter {
-        metrics::Counter::from_arc(self.0.registry.get_or_create_counter(key, Clone::clone))
-    }
-
-    fn register_gauge(
-        &self,
-        key: &metrics::Key,
-        _metadata: &metrics::Metadata<'_>,
-    ) -> metrics::Gauge {
-        metrics::Gauge::from_arc(self.0.registry.get_or_create_gauge(key, Clone::clone))
-    }
-
-    fn register_histogram(
-        &self,
-        key: &metrics::Key,
-        _metadata: &metrics::Metadata<'_>,
-    ) -> metrics::Histogram {
-        metrics::Histogram::from_arc(self.0.registry.get_or_create_histogram(key, Clone::clone))
-    }
-}
-
 /// A Cloneable dynamic recorder that implements the Recorder trait
 #[derive(Clone)]
-pub struct SharedRecorder(Arc<dyn Recorder + Send + Sync>);
-impl SharedRecorder {
+pub struct SharedRecorder<V: MetricsRsVersion + ?Sized>(Arc<V::Recorder>);
+impl<V: MetricsRsVersion> SharedRecorder<V> {
     /// Creates a new [SharedRecorder]
-    pub fn new(recorder: Arc<dyn Recorder + Send + Sync>) -> Self {
+    pub fn new(recorder: Arc<V::Recorder>) -> Self {
         Self(recorder)
     }
 }
 
-impl Debug for SharedRecorder {
+impl<V: MetricsRsVersion> Debug for SharedRecorder<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SharedRecorder").finish()
     }
 }
 
-impl Recorder for SharedRecorder {
-    fn describe_counter(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-        self.0.describe_counter(key, unit, description);
-    }
-
-    fn describe_gauge(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-        self.0.describe_gauge(key, unit, description);
-    }
-
-    fn describe_histogram(&self, key: KeyName, unit: Option<Unit>, description: SharedString) {
-        self.0.describe_histogram(key, unit, description);
-    }
-
-    fn register_counter(&self, key: &Key, metadata: &Metadata<'_>) -> Counter {
-        self.0.register_counter(key, metadata)
-    }
-
-    fn register_gauge(&self, key: &Key, metadata: &Metadata<'_>) -> Gauge {
-        self.0.register_gauge(key, metadata)
-    }
-
-    fn register_histogram(&self, key: &Key, metadata: &Metadata<'_>) -> Histogram {
-        self.0.register_histogram(key, metadata)
-    }
-}
-
+#[cfg(feature = "metrics_rs_024")]
 #[cfg(test)]
 mod test {
-    use metrics::{histogram, with_local_recorder};
+    use metrics_024::{histogram, with_local_recorder};
     use metrique_writer_core::{format::Format, test_stream::DummyFormat};
     use test_case::test_case;
 
@@ -382,10 +360,10 @@ mod test {
     #[test_case(false, None; "no_emit_zero_counters")]
     #[test_case(true, Some(0); "emit_zero_counters")]
     fn test_emit_zero_counters(emit_zero_counters: bool, expected_result: Option<u64>) {
-        let accumulator: MetricRecorder =
+        let accumulator: MetricRecorder<dyn metrics_024::Recorder> =
             MetricRecorder::new_with_emit_zero_counters(emit_zero_counters);
-        metrics::with_local_recorder(&accumulator, || {
-            metrics::counter!("a").increment(1);
+        metrics_024::with_local_recorder(&accumulator, || {
+            metrics_024::counter!("a").increment(1);
         });
         let read0 = accumulator.readout();
         assert_eq!(read0.counter_value("a"), Some(1));

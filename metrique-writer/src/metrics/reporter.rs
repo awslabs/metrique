@@ -3,9 +3,11 @@
 
 use std::any::Any;
 use std::fmt;
+use std::marker::PhantomData;
 use std::pin::{Pin, pin};
 use std::time::Duration;
 
+#[cfg(feature = "background_queue")]
 use crate::sink::BackgroundQueueBuilder;
 use crate::stream::NullEntryIoStream;
 use futures::future::Either;
@@ -16,7 +18,7 @@ use tokio::task;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::metrics::MetricRecorder;
+use crate::metrics::{MetricRecorder, MetricsRsVersion};
 
 /// A handle to a metric reporter. This struct is mainly used to synchronize shutdown of the metric reporter
 /// to ensure all metrics are flushed on shutdown.
@@ -43,14 +45,14 @@ const DEFAULT_METRICS_PUBLISH_INTERVAL: Duration = Duration::from_secs(60);
 /// The [`BackgroundQueue`] runs it's own thread to consume from the queue and write data to `destination`
 ///
 /// Each call to `background_queue.append(..)` results in one new record being produced.
-fn spawn_metric_reporter(
+fn spawn_metric_reporter<V: MetricsRsVersion + ?Sized>(
     tracker: &TaskTracker,
     destination: BoxEntrySink,
     shutdown_handle: ShutdownHandle,
     publish_interval: Duration,
     shutdown_signal: CancellationToken,
     emit_zero_counters: bool,
-) -> MetricRecorder {
+) -> MetricRecorder<V> {
     let recorder = MetricRecorder::new_with_emit_zero_counters(emit_zero_counters);
     let recorder_ = recorder.clone();
     tracker.spawn(async move {
@@ -94,11 +96,18 @@ fn spawn_metric_reporter(
 #[non_exhaustive]
 pub struct YouMustConfigureAMetricsDestination;
 
+/// Marker type to ensure that a metrics.rs version is always set.
+///
+/// You cannot construct a MetricReporter builder without provding a metrics.rs version.
+#[derive(Default, Debug)]
+#[non_exhaustive]
+pub struct YouMustConfigureAMetricsRsVersion;
+
 /// Builder for [`MetricReporter`]
 ///
 /// [`MetricReporter`] must be constructed within the context of a Tokio runtime.
 ///
-/// After installation, this builder set ups a [`metrics::Recorder`] that will
+/// After installation, this builder sets up a [`metrics::Recorder`] that will
 /// collect metrics and periodically emit them into the output file. The builder
 /// can also be used without installation as a local recorder.
 ///
@@ -106,10 +115,13 @@ pub struct YouMustConfigureAMetricsDestination;
 /// `metrics::gauge!` and `metrics::histogram!` macros, both directly-called
 /// and metrics generated using the [`metrics`](`crate::metrics`) macro in this crate.
 ///
+/// [`metrics::Recorder`]: metrics_024::Recorder
+///
 /// # Examples
 ///
 /// **Construct a logger which publishes EMF metrics to a rotating file**
 /// ```no_run
+/// # use metrics_024 as metrics;
 /// use metrique_writer::metrics::MetricReporter;
 /// use metrique_writer::{Entry, EntryIoStream, FormatExt, EntryIoStreamExt};
 /// use metrique_writer_format_emf::Emf;
@@ -123,6 +135,7 @@ pub struct YouMustConfigureAMetricsDestination;
 ///
 /// # let log_dir = std::path::PathBuf::from("example");
 /// let logger = MetricReporter::builder()
+///     .metrics_rs_version::<dyn metrics::Recorder>()
 ///     .metrics_io_stream(Emf::all_validations("MyNS".to_string(),
 ///                   vec![vec![], vec!["service".to_string()]]).output_to_makewriter(
 ///                         RollingFileAppender::new(Rotation::HOURLY, &log_dir, "metric_log.log")
@@ -141,11 +154,15 @@ pub struct YouMustConfigureAMetricsDestination;
 /// let logger = MetricReporter::builder().build();
 /// ```
 /// This results in a compilation error.
-pub struct MetricReporterBuilder<S = YouMustConfigureAMetricsDestination> {
+pub struct MetricReporterBuilder<
+    S = YouMustConfigureAMetricsDestination,
+    V: ?Sized = YouMustConfigureAMetricsRsVersion,
+> {
     // We need to keep this generic to allow opaque [`Write`] implementations to be stored. It is only possible
     // to invoke build when `W: Write` — the builder starts with `YouMustConfigureAMetricsDestination` (which is _not_ `Write`).
     // This prevents customers from intializing the MetricReporter without metrics destination at compile time.
     metrics_stream: S,
+    marker: PhantomData<V>,
     box_entry_sink: Option<(BoxEntrySink, ShutdownHandle)>,
     emit_zero_counters: bool,
     metrics_publish_interval: Duration,
@@ -163,23 +180,57 @@ impl<S> fmt::Debug for MetricReporterBuilder<S> {
     }
 }
 
-impl Default for MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
+impl Default
+    for MetricReporterBuilder<
+        YouMustConfigureAMetricsDestination,
+        YouMustConfigureAMetricsRsVersion,
+    >
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
+impl<S, V: ?Sized> MetricReporterBuilder<S, V> {
+    /// Configure a metrics.rs version
+    ///
+    /// To ensure metrics are collected from the same metrics.rs version your
+    /// code publishes to, you must call this function with
+    /// `dyn metrics::Recorder`, as in
+    /// ```
+    /// # use metrics_024 as metrics;
+    /// # use metrique_writer::metrics::MetricReporterBuilder;
+    ///
+    /// let builder = MetricReporterBuilder::new().metrics_rs_version::<dyn metrics::Recorder>();
+    /// ```
+    pub fn metrics_rs_version<V2: MetricsRsVersion + ?Sized>(self) -> MetricReporterBuilder<S, V2> {
+        MetricReporterBuilder {
+            metrics_stream: self.metrics_stream,
+            marker: PhantomData,
+            box_entry_sink: self.box_entry_sink,
+            metrics_publish_interval: self.metrics_publish_interval,
+            emit_zero_counters: self.emit_zero_counters,
+        }
+    }
+}
+
+impl MetricReporterBuilder<YouMustConfigureAMetricsDestination, YouMustConfigureAMetricsRsVersion> {
     /// Initialize the builder.
+    ///
+    /// You must call [Self::metrics_rs_version] and one of the functions that configures a metric
+    /// destination to actually use it.
     pub fn new() -> Self {
         Self {
             metrics_stream: YouMustConfigureAMetricsDestination,
+            marker: PhantomData,
             box_entry_sink: None,
             metrics_publish_interval: DEFAULT_METRICS_PUBLISH_INTERVAL,
             emit_zero_counters: false,
         }
     }
+}
 
+impl<V: ?Sized> MetricReporterBuilder<YouMustConfigureAMetricsDestination, V> {
     /// Write metrics to an [`EntryIoStream`]
     ///
     /// For production, you normally use an EMF emitter backed by a [`tracing_appender::rolling::RollingFileAppender`]. See the
@@ -196,9 +247,10 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
     pub fn metrics_io_stream<S: EntryIoStream + Send + 'static>(
         self,
         stream: S,
-    ) -> MetricReporterBuilder<S> {
+    ) -> MetricReporterBuilder<S, V> {
         MetricReporterBuilder {
             metrics_stream: stream,
+            marker: PhantomData,
             box_entry_sink: self.box_entry_sink,
             metrics_publish_interval: self.metrics_publish_interval,
             emit_zero_counters: self.emit_zero_counters,
@@ -211,6 +263,7 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
     ///
     /// # Examples
     /// ```rust,no_run
+    /// # use metrics_024 as metrics;
     /// use metrique_writer::{
     ///    Entry,
     ///    BoxEntry,
@@ -228,7 +281,8 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
     ///            RollingFileAppender::new(Rotation::HOURLY, "my/logs", "prefix.log")
     ///        )
     ///    );
-    /// let reporter = MetricReporter::builder().metrics_sink(sink).build_and_install();
+    /// let reporter = MetricReporter::builder().metrics_sink(sink).metrics_rs_version::<dyn metrics::Recorder>()
+    ///     .build_and_install();
     /// ```
     pub fn metrics_sink(
         self,
@@ -236,13 +290,14 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
             impl AnyEntrySink + Send + Sync + 'static,
             impl Any + Send + Sync,
         ),
-    ) -> MetricReporterBuilder<NullEntryIoStream> {
+    ) -> MetricReporterBuilder<NullEntryIoStream, V> {
         let (sink, handle) = sink;
         let shutdown_handle = ShutdownHandle::SyncHandle(Box::new(move || {
             let _ = handle;
         }));
         MetricReporterBuilder {
             metrics_stream: NullEntryIoStream::default(),
+            marker: PhantomData,
             box_entry_sink: Some((sink.boxed(), shutdown_handle)),
             emit_zero_counters: self.emit_zero_counters,
             metrics_publish_interval: self.metrics_publish_interval,
@@ -254,12 +309,13 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
         self,
         sink: impl AnyEntrySink + Send + Sync + 'static,
         shutdown: impl Future<Output = ()> + Send + Sync + 'static,
-    ) -> MetricReporterBuilder<NullEntryIoStream> {
+    ) -> MetricReporterBuilder<NullEntryIoStream, V> {
         let shutdown_handle = ShutdownHandle::AsyncHandle(Box::pin(async {
             shutdown.await;
         }));
         MetricReporterBuilder {
             metrics_stream: NullEntryIoStream::default(),
+            marker: PhantomData,
             box_entry_sink: Some((sink.boxed(), shutdown_handle)),
             emit_zero_counters: self.emit_zero_counters,
             metrics_publish_interval: self.metrics_publish_interval,
@@ -267,7 +323,7 @@ impl MetricReporterBuilder<YouMustConfigureAMetricsDestination> {
     }
 
     /// Creates a metric emitter that drops all metrics. Potentially useful for testing.
-    pub fn disable_metrics(self) -> MetricReporterBuilder<NullEntryIoStream> {
+    pub fn disable_metrics(self) -> MetricReporterBuilder<NullEntryIoStream, V> {
         self.metrics_io_stream(NullEntryIoStream::default())
     }
 }
@@ -289,21 +345,21 @@ impl<S> MetricReporterBuilder<S> {
     }
 }
 
-impl<S: EntryIoStream + Send + 'static> MetricReporterBuilder<S> {
+impl<S: EntryIoStream + Send + 'static, V: MetricsRsVersion + ?Sized> MetricReporterBuilder<S, V> {
     /// Builds a MetricReporter and installs its recorder as the global recorder.
     ///
     /// Use the returned MetricReporter to synchronize shutdown.
     #[track_caller]
     pub fn build_and_install(self) -> MetricReporter {
         let (res, accumulator) = MetricReporter::new(self);
-        metrics::set_global_recorder(accumulator).expect("failed to set global recorder");
+        V::set_global_recorder(accumulator);
         res
     }
 
     /// Builds a MetricReporter and returns it along with the associated reference to the recorder
     /// which can be manually used. Metrics recorded to the recorder will be reported
     /// both periodically and when shutting down the MetricReporter.
-    pub fn build_without_installing(self) -> (MetricReporter, MetricRecorder) {
+    pub fn build_without_installing(self) -> (MetricReporter, MetricRecorder<V>) {
         let (reporter, recorder) = MetricReporter::new(self);
         (reporter, recorder)
     }
@@ -314,9 +370,9 @@ impl MetricReporter {
     ///
     /// `access_background_queue` is a hook for unit tests to take a copy of the
     /// background queue to allow them to flush it when needed.
-    fn new(
-        builder: MetricReporterBuilder<impl EntryIoStream + Send + 'static>,
-    ) -> (Self, MetricRecorder) {
+    fn new<V: MetricsRsVersion + ?Sized>(
+        builder: MetricReporterBuilder<impl EntryIoStream + Send + 'static, V>,
+    ) -> (Self, MetricRecorder<V>) {
         let tracker = TaskTracker::new();
         let cancellation = CancellationToken::new();
 
@@ -399,18 +455,19 @@ mod test {
         let builder = MetricReporterBuilder::new()
             .emit_zero_counters(emit_zero_counters)
             .metrics_publish_interval(Duration::from_secs(60))
-            .metrics_io_stream(writer);
+            .metrics_io_stream(writer)
+            .metrics_rs_version::<dyn metrics_024::Recorder>();
         let (reporter, recorder) = MetricReporter::new(builder);
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
         let d = sink.take_string();
         assert!(d.contains(r#"("counter_1", "[Unsigned(1)] None []")"#));
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(0);
-            metrics::counter!("counter_2").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(0);
+            metrics_024::counter!("counter_2").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
@@ -464,19 +521,20 @@ mod test {
         let (shutdown_hook, shutdown, async_shutdown) = TestHandle::new();
         let builder = MetricReporterBuilder::new()
             .metrics_publish_interval(Duration::from_secs(60))
-            .metrics_sink((sink, shutdown_hook));
+            .metrics_sink((sink, shutdown_hook))
+            .metrics_rs_version::<dyn metrics_024::Recorder>();
         let (reporter, recorder) = MetricReporter::new(builder);
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
         let entries = inspector.entries();
         assert_eq!(inspector.entries().len(), 1);
         assert_eq!(entries[0].metrics["counter_1"], 1);
-        metrics::with_local_recorder(&recorder, || {
-            metrics::counter!("counter_1").increment(0);
-            metrics::counter!("counter_2").increment(1);
+        metrics_024::with_local_recorder(&recorder, || {
+            metrics_024::counter!("counter_1").increment(0);
+            metrics_024::counter!("counter_2").increment(1);
         });
         tokio::time::sleep(Duration::from_secs(65)).await;
         reporter.flush().await;
@@ -499,7 +557,8 @@ mod test {
         let (mut shutdown_hook, shutdown, async_shutdown) = TestHandle::new();
         let builder = MetricReporterBuilder::new()
             .metrics_publish_interval(Duration::from_secs(60))
-            .metrics_sink_async_shutdown(sink, async move { shutdown_hook.shutdown().await });
+            .metrics_sink_async_shutdown(sink, async move { shutdown_hook.shutdown().await })
+            .metrics_rs_version::<dyn metrics_024::Recorder>();
         let (reporter, _recorder) = MetricReporter::new(builder);
         assert_eq!(shutdown.load(std::sync::atomic::Ordering::Relaxed), false);
         assert_eq!(

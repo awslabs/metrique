@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use metrics::counter;
+use metrics_024::counter;
 
 use metrique_writer_core::test_stream::TestSink;
 use metrique_writer_format_emf::Emf;
@@ -10,7 +10,12 @@ use metrique_writer_format_emf::Emf;
 async fn test_lambda_reporter() {
     let sink = TestSink::default();
     let sink_ = sink.clone();
-    metrique_writer::metrics::lambda_reporter::install_reporter_to_writer(
+    metrique_writer::metrics::lambda_reporter::install_reporter_to_writer::<
+        dyn metrics_024::Recorder,
+        _,
+        _,
+        _,
+    >(
         Emf::no_validations("MyNS".to_string(), vec![vec![]]),
         move || sink_.clone(),
     );

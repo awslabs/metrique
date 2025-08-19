@@ -14,9 +14,11 @@
 
 use std::io;
 use std::io::stdout;
+use std::pin::Pin;
 use std::sync::OnceLock;
 
 use crate::FormatExt;
+use crate::metrics::MetricsRsVersion;
 use crate::sink::BackgroundQueue;
 use crate::sink::BackgroundQueueJoinHandle;
 use metrique_writer_core::format::Format;
@@ -25,16 +27,16 @@ use metrique_writer_core::{EntryIoStream, EntrySink, IoStreamError};
 use super::MetricAccumulatorEntry;
 use super::MetricRecorder;
 
-struct LambdaMetricReporter {
-    reporter: BackgroundQueue<MetricAccumulatorEntry>,
+struct LambdaMetricReporter<V: MetricsRsVersion + ?Sized> {
+    reporter: BackgroundQueue<MetricAccumulatorEntry<V>>,
     #[allow(unused)]
     join_handle: BackgroundQueueJoinHandle,
-    recorder: MetricRecorder,
+    recorder: MetricRecorder<V>,
 }
 
-impl LambdaMetricReporter {
+impl<V: MetricsRsVersion + ?Sized> LambdaMetricReporter<V> {
     /// Creates a new MetricReporter.
-    fn new(sink: impl EntryIoStream + Send + 'static) -> (Self, MetricRecorder) {
+    fn new(sink: impl EntryIoStream + Send + 'static) -> (Self, MetricRecorder<V>) {
         let recorder = MetricRecorder::new();
         let recorder_ = recorder.clone();
         let (reporter, join_handle) = BackgroundQueue::new(sink);
@@ -55,7 +57,17 @@ impl LambdaMetricReporter {
     }
 }
 
-static METRIC_REPORTER: OnceLock<LambdaMetricReporter> = OnceLock::new();
+trait SomeVersionMetricReporter: Send + Sync {
+    fn report(&self) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + '_>>;
+}
+
+impl<V: MetricsRsVersion + ?Sized> SomeVersionMetricReporter for LambdaMetricReporter<V> {
+    fn report(&self) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + '_>> {
+        Box::pin(self.report())
+    }
+}
+
+static METRIC_REPORTER: OnceLock<Box<dyn SomeVersionMetricReporter>> = OnceLock::new();
 
 struct BufferingStdoutWriter<W: io::Write, F: Fn() -> W> {
     /// Buf is `None` when there is an error writing to the inner writer
@@ -120,8 +132,12 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 
 /// Installs a reporter that outputs to a specific writer.
 ///
+/// You must pass a type parameter containing a `dyn metrics::Recorder` to ensure
+/// metrics are outputted to the same metrics.rs version your code is emitting to.
+///
 /// For example:
 /// ```
+/// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
 /// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
 /// # use metrique_writer_core::test_stream::TestSink;
@@ -129,7 +145,8 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 /// # let sink = TestSink::default();
 /// # let sink_ = sink.clone();
 /// # let writer = move || sink_.clone();
-/// lambda_reporter::install_reporter_to_writer(Emf::all_validations("MyNS".to_string(), vec![vec![]]), writer);
+/// lambda_reporter::install_reporter_to_writer::<
+///     dyn metrics::Recorder, _, _, _>(Emf::all_validations("MyNS".to_string(), vec![vec![]]), writer);
 /// metrics::counter!("my_counter", "request_kind" => "foo").increment(2);
 /// lambda_reporter::flush_metrics_sync();
 /// assert!(sink.dump().contains("my_counter"));
@@ -137,6 +154,7 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 /// # Ok::<_, IoStreamError>(())
 /// ```
 pub fn install_reporter_to_writer<
+    V: MetricsRsVersion + ?Sized,
     F: Format + Send + 'static,
     W: Fn() -> O + Send + 'static,
     O: io::Write + 'static,
@@ -147,8 +165,8 @@ pub fn install_reporter_to_writer<
     METRIC_REPORTER.get_or_init(|| {
         let writer = BufferingStdoutWriter::new(w);
         let (reporter, recorder) = LambdaMetricReporter::new(f.output_to(writer));
-        metrics::set_global_recorder(recorder).expect("failed to set global recorder");
-        reporter
+        V::set_global_recorder(recorder);
+        Box::new(reporter)
     });
 }
 
@@ -166,16 +184,22 @@ pub fn install_reporter_to_writer<
 /// CloudWatch *Metrics*. Any CloudWatch Logs emitter can use EMF to emit arbitrary
 /// CloudWatch Metrics in the same account.
 ///
+/// The `V` type parameter controls the metrics.rs version that is used for collecting
+/// metrics from. Pass `dyn metrics::Recorder` to ensure it uses the same metrics.rs
+/// version as your code.
+///
 /// [EMF]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
 ///
 /// for example:
 ///
 /// ```
+/// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
 /// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
 ///
 /// // on Lambda initialization
-/// lambda_reporter::install_reporter(Emf::all_validations("MyNS".to_string(), vec![vec![]]));
+/// lambda_reporter::install_reporter::<dyn metrics::Recorder, _>(
+///     Emf::all_validations("MyNS".to_string(), vec![vec![]]));
 /// // during runtime
 /// metrics::counter!("my_counter").increment(2);
 ///
@@ -187,8 +211,8 @@ pub fn install_reporter_to_writer<
 ///
 /// # Ok::<_, IoStreamError>(())
 /// ```
-pub fn install_reporter<F: Format + Send + 'static>(f: F) {
-    install_reporter_to_writer(f, stdout)
+pub fn install_reporter<V: MetricsRsVersion + ?Sized, F: Format + Send + 'static>(f: F) {
+    install_reporter_to_writer::<V, _, _, _>(f, stdout)
 }
 
 /// Synchronously flush the metrics in the current reporter. This function blocks

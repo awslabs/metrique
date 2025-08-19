@@ -150,7 +150,11 @@ impl BackgroundQueueBuilder {
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
+    ///
+    /// [`metrics::Recorder`]: metrics_024::Recorder
     /// ```
+    /// # use metrics_024 as metrics;
+    /// # use metrics_util_020 as metrics_util;
     /// # use std::sync::{Arc, Mutex};
     /// # use metrique_writer::{AnyEntrySink, Entry, GlobalEntrySink};
     /// # use metrique_writer::sink::{BackgroundQueue, BackgroundQueueBuilder};
@@ -196,7 +200,11 @@ impl BackgroundQueueBuilder {
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
+    ///
+    /// [`metrics::Recorder`]: metrics_024::Recorder
     /// ```
+    /// # use metrics_024 as metrics;
+    /// # use metrics_util_020 as metrics_util;
     /// # use std::sync::{Arc, Mutex};
     /// # use metrique_writer::{Entry, GlobalEntrySink};
     /// # use metrique_writer::sink::{BackgroundQueue, BackgroundQueueBuilder};
@@ -738,6 +746,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
 /// [metrique_writer::metrics]: crate::metrics
 ///
 /// ```no_run
+/// # use metrics_024 as metrics;
 /// metrique_writer::sink::describe_sink_metrics::<dyn metrics::Recorder>();
 /// ```
 #[allow(private_bounds)]
@@ -1000,9 +1009,9 @@ mod tests {
                 let mut builder = builder.capacity(10);
                 #[cfg(feature = "metrics_rs_024")]
                 {
-                    recorder = Some(Arc::new(metrics_util::debugging::DebuggingRecorder::new()));
-                    metrics::with_local_recorder(recorder.as_ref().unwrap(), || describe_sink_metrics::<dyn metrics::Recorder>());
-                    builder = builder.metrics_recorder_local::<dyn metrics::Recorder, _>(recorder.clone().unwrap()).metric_name("my_queue");
+                    recorder = Some(Arc::new(metrics_util_020::debugging::DebuggingRecorder::new()));
+                    metrics_024::with_local_recorder(recorder.as_ref().unwrap(), || describe_sink_metrics::<dyn metrics_024::Recorder>());
+                    builder = builder.metrics_recorder_local::<dyn metrics_024::Recorder, _>(recorder.clone().unwrap()).metric_name("my_queue");
                 }
                 builder
             })(builder),
@@ -1040,24 +1049,24 @@ mod tests {
                 handle.shut_down();
                 #[cfg(feature = "metrics_rs_024")]
                 {
-                    use metrics_util::MetricKind::*;
-                    use metrics_util::debugging::DebugValue;
-                    use metrics::Unit;
+                    use metrics_util_020::MetricKind::*;
+                    use metrics_util_020::debugging::DebugValue;
+                    use metrics_024::Unit;
                     let snapshot = recorder.as_ref().unwrap().snapshotter().snapshot().into_hashmap();
                     let key = |kind, name: &'static str| {
-                        metrics_util::CompositeKey::new(kind, metrics::Key::from_static_parts(name, const { &[metrics::Label::from_static_parts("sink", "my_queue")] }))
+                        metrics_util_020::CompositeKey::new(kind, metrics_024::Key::from_static_parts(name, const { &[metrics_024::Label::from_static_parts("sink", "my_queue")] }))
                     };
                     assert_eq!(
                         snapshot[&key(Counter, "metrique_metrics_emitted")],
-                        (Some(Unit::Count), Some(metrics::SharedString::from("Number of metrics emitted from this queue")), DebugValue::Counter(3)),
+                        (Some(Unit::Count), Some(metrics_024::SharedString::from("Number of metrics emitted from this queue")), DebugValue::Counter(3)),
                     );
                     assert_eq!(
                         snapshot[&key(Counter, "metrique_io_errors")],
-                        (Some(Unit::Count), Some(metrics::SharedString::from("Number of IO errors when emitting from this queue")), DebugValue::Counter(0)),
+                        (Some(Unit::Count), Some(metrics_024::SharedString::from("Number of IO errors when emitting from this queue")), DebugValue::Counter(0)),
                     );
                     assert_eq!(
                         snapshot[&key(Counter, "metrique_validation_errors")],
-                        (Some(Unit::Count), Some(metrics::SharedString::from("Number of metric validation errors when emitting from this queue")), DebugValue::Counter(0)),
+                        (Some(Unit::Count), Some(metrics_024::SharedString::from("Number of metric validation errors when emitting from this queue")), DebugValue::Counter(0)),
                     );
                     assert!(!snapshot.contains_key(&key(Counter, "metrique_queue_overflows")));
                     let (idle_percent_unit, idle_percent_desc, idle_percent_hist) = &snapshot[&key(Histogram, "metrique_idle_percent")];
@@ -1097,8 +1106,8 @@ mod tests {
                 let mut builder = builder.capacity(QUEUE_SIZE);
                 #[cfg(feature = "metrics_rs_024")]
                 {
-                    recorder = Some(Arc::new(metrics_util::debugging::DebuggingRecorder::new()));
-                    builder = builder.metrics_recorder_local::<dyn metrics::Recorder, _>(recorder.clone().unwrap()).metric_name("my_queue");
+                    recorder = Some(Arc::new(metrics_util_020::debugging::DebuggingRecorder::new()));
+                    builder = builder.metrics_recorder_local::<dyn metrics_024::Recorder, _>(recorder.clone().unwrap()).metric_name("my_queue");
                 }
                 builder
             })(builder),
@@ -1123,16 +1132,16 @@ mod tests {
                 let check_metrics = || {
                     #[cfg(feature = "metrics_rs_024")]
                     {
-                        use metrics_util::MetricKind::Histogram;
+                        use metrics_util_020::MetricKind::Histogram;
                         // in theory the queue reaches the size of QUEUE_SIZE in all cases, but I am a little bit afraid
                         // of race conditions that make it not monitorined at its largest causing flakiness.
                         let mut have_queue_size_at_least_half = false;
                         let snapshot = recorder.as_ref().unwrap().snapshotter().snapshot().into_hashmap();
                         let key = |kind, name: &'static str| {
-                            metrics_util::CompositeKey::new(kind, metrics::Key::from_static_parts(name, const { &[metrics::Label::from_static_parts("sink", "my_queue")] }))
+                            metrics_util_020::CompositeKey::new(kind, metrics_024::Key::from_static_parts(name, const { &[metrics_024::Label::from_static_parts("sink", "my_queue")] }))
                         };
                         // [avoid flakiness due to missing metrics because of tests]
-                        let (_, _, metrics_util::debugging::DebugValue::Histogram(queue_len)) = &snapshot[&key(Histogram, "metrique_queue_len")] else {
+                        let (_, _, metrics_util_020::debugging::DebugValue::Histogram(queue_len)) = &snapshot[&key(Histogram, "metrique_queue_len")] else {
                             panic!("bad queue len")
                         };
                         if queue_len.iter().any(|q| q.0 > ((QUEUE_SIZE as f64) / 2.0)) {
@@ -1144,9 +1153,9 @@ mod tests {
                             }
                         }
                         // entries will be lost, since this test overfills the queue
-                        let (_unit, _descr, lost_count) = &snapshot[&key(metrics_util::MetricKind::Counter, "metrique_queue_overflows")];
+                        let (_unit, _descr, lost_count) = &snapshot[&key(metrics_util_020::MetricKind::Counter, "metrique_queue_overflows")];
                         match lost_count {
-                            metrics_util::debugging::DebugValue::Counter(c) if *c > 0 => {},
+                            metrics_util_020::debugging::DebugValue::Counter(c) if *c > 0 => {},
                             _ => panic!("bad lost count {lost_count:?}"),
                         };
                         have_queue_size_at_least_half

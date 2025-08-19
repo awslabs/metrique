@@ -26,7 +26,7 @@ pub mod stream;
 pub mod test_util;
 pub mod value;
 
-#[cfg(all(feature = "metrics_rs_024", feature = "metrics_rs_bridge"))]
+#[cfg(feature = "metrics_rs_bridge")]
 pub mod metrics;
 
 #[doc(hidden)]

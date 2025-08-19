@@ -34,6 +34,7 @@ pub trait AttachGlobalEntrySinkExt: AttachGlobalEntrySink {
     ///
     /// # Panics
     /// Panics if a queue is already attached.
+    #[cfg(feature = "background_queue")]
     fn attach_to_stream(output: impl EntryIoStream + Send + 'static) -> AttachHandle {
         Self::attach(BackgroundQueue::new(output))
     }

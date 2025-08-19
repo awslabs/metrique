@@ -733,6 +733,7 @@ dependencies = [
  "assert_approx_eq",
  "crossbeam-queue",
  "crossbeam-utils",
+ "derive-where",
  "enum-map",
  "futures",
  "histogram",

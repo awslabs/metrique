@@ -3,24 +3,63 @@
 
 //! This module contains functions for capturing metrics, generally to be used in tests.
 
-use std::future::Future;
+use std::{future::Future, marker::PhantomData};
 
-use metrics::Recorder;
 use pin_project::pin_project;
 
-use crate::metrics::{MetricAccumulatorEntry, MetricRecorder};
+use crate::metrics::{
+    MetricAccumulatorEntry, MetricRecorder, MetricsRsVersion, ParametricRecorder,
+};
 
 /// Run `f`, capturing the metrics while it runs using a local recorder.
-pub fn capture_metrics<T, F: FnOnce() -> T>(f: F) -> (MetricAccumulatorEntry, T) {
-    let accumulator: MetricRecorder = MetricRecorder::new();
-    let res = metrics::with_local_recorder(&accumulator, f);
+///
+/// You must pass `dyn metrics::Recorder` as the first type parameter, to ensure
+/// metrics are captured from the right metrics.rs version, for example:
+///
+/// ```
+/// # use metrics_024 as metrics;
+/// use metrique_writer::metrics::capture;
+///
+/// let (metrics, _) = capture::capture_metrics::<dyn metrics::Recorder, _, _>(|| {
+///     metrics::counter!("foo").increment(9);
+/// });
+/// assert_eq!(metrics.counter_value("foo"), Some(9));
+/// ```
+pub fn capture_metrics<V: MetricsRsVersion + ?Sized, T, F: FnOnce() -> T>(
+    f: F,
+) -> (MetricAccumulatorEntry<V>, T)
+where
+    MetricRecorder<V>: ParametricRecorder<V>,
+{
+    let accumulator: MetricRecorder<V> = MetricRecorder::new();
+    let res = accumulator.with_local_recorder(f);
     (accumulator.readout(), res)
 }
 
 /// Asynchrounously run `f`, capturing the metrics while it runs using a local recorder.
 ///
 /// If `f` spawns subtasks, metrics from the subtasks will *not* be captured.
-pub async fn capture_metrics_async<T, F: Future<Output = T>>(f: F) -> (MetricAccumulatorEntry, T) {
+///
+/// You must pass `dyn metrics::Recorder` as the first type parameter, to ensure
+/// metrics are captured from the right metrics.rs version, for example:
+///
+/// ```
+/// # use metrics_024 as metrics;
+/// use metrique_writer::metrics::capture;
+///
+/// # futures::executor::block_on(async {
+/// let (metrics, _) = capture::capture_metrics_async::<dyn metrics::Recorder, _, _>(async {
+///     metrics::counter!("foo").increment(9);
+/// }).await;
+/// assert_eq!(metrics.counter_value("foo"), Some(9));
+/// # });
+/// ```
+pub async fn capture_metrics_async<V: MetricsRsVersion + ?Sized, T, F: Future<Output = T>>(
+    f: F,
+) -> (MetricAccumulatorEntry<V>, T)
+where
+    MetricRecorder<V>: ParametricRecorder<V>,
+{
     let accumulator = MetricRecorder::new();
     let res = LocalRecorderWrapper::new(accumulator.clone(), f).await;
     (accumulator.readout(), res)
@@ -28,13 +67,18 @@ pub async fn capture_metrics_async<T, F: Future<Output = T>>(f: F) -> (MetricAcc
 
 /// Wraps a future to install a local recorder during the executor of said future.
 #[pin_project]
-pub struct LocalRecorderWrapper<R: Recorder, F: Future> {
+pub struct LocalRecorderWrapper<V: MetricsRsVersion + ?Sized, R, F: Future> {
+    marker: PhantomData<V>,
     recorder: R,
     #[pin]
     future: F,
 }
 
-impl<R: Recorder, F: Future> Future for LocalRecorderWrapper<R, F> {
+impl<V: ?Sized, R, F: Future> Future for LocalRecorderWrapper<V, R, F>
+where
+    R: ParametricRecorder<V>,
+    V: MetricsRsVersion,
+{
     type Output = F::Output;
 
     fn poll(
@@ -42,14 +86,18 @@ impl<R: Recorder, F: Future> Future for LocalRecorderWrapper<R, F> {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Self::Output> {
         let this = self.project();
-        metrics::with_local_recorder(this.recorder, || this.future.poll(cx))
+        this.recorder.with_local_recorder(|| this.future.poll(cx))
     }
 }
 
-impl<R: Recorder, F: Future> LocalRecorderWrapper<R, F> {
+impl<V: MetricsRsVersion + ?Sized, R, F: Future> LocalRecorderWrapper<V, R, F> {
     /// Create a new `LocalRecorderWrapper`
     pub fn new(recorder: R, future: F) -> Self {
-        Self { recorder, future }
+        Self {
+            marker: PhantomData,
+            recorder,
+            future,
+        }
     }
 }
 
@@ -57,13 +105,13 @@ impl<R: Recorder, F: Future> LocalRecorderWrapper<R, F> {
 mod test {
     #[test]
     fn test_capture_metrics() {
-        let (metrics, _) = super::capture_metrics(|| {
-            metrics::counter!("foo").increment(9);
-            metrics::counter!("foo").increment(3);
-            metrics::gauge!("bar").set(5);
-            metrics::histogram!("baz").record(100);
-            metrics::histogram!("baz").record(101);
-            metrics::histogram!("baz").record(1000);
+        let (metrics, _) = super::capture_metrics::<dyn metrics_024::Recorder, _, _>(|| {
+            metrics_024::counter!("foo").increment(9);
+            metrics_024::counter!("foo").increment(3);
+            metrics_024::gauge!("bar").set(5);
+            metrics_024::histogram!("baz").record(100);
+            metrics_024::histogram!("baz").record(101);
+            metrics_024::histogram!("baz").record(1000);
         });
         assert_eq!(metrics.counter_value("foo"), Some(12));
         assert_eq!(metrics.counter_value("nothing"), None);
@@ -76,16 +124,17 @@ mod test {
 
     #[tokio::test]
     async fn test_capture_metrics_async() {
-        let (metrics, _) = super::capture_metrics_async(async move {
-            metrics::counter!("foo").increment(9);
-            metrics::counter!("foo").increment(3);
-            tokio::task::yield_now().await;
-            metrics::gauge!("bar").set(5);
-            metrics::histogram!("baz").record(100);
-            metrics::histogram!("baz").record(101);
-            metrics::histogram!("baz").record(1000);
-        })
-        .await;
+        let (metrics, _) =
+            super::capture_metrics_async::<dyn metrics_024::Recorder, _, _>(async move {
+                metrics_024::counter!("foo").increment(9);
+                metrics_024::counter!("foo").increment(3);
+                tokio::task::yield_now().await;
+                metrics_024::gauge!("bar").set(5);
+                metrics_024::histogram!("baz").record(100);
+                metrics_024::histogram!("baz").record(101);
+                metrics_024::histogram!("baz").record(1000);
+            })
+            .await;
         assert_eq!(metrics.counter_value("foo"), Some(12));
         assert_eq!(metrics.counter_value("nothing"), None);
         assert_eq!(metrics.gauge_value("bar"), Some(5.0));

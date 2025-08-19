@@ -22,8 +22,8 @@ Inflector = "0.11.4"
 insta = "1.36"
 itertools = { version = "0.14", default-features = false }
 itoa = "1.0.15"
-metrics = "0.24"
-metrics-util = "0.20"
+metrics_024 = { package = "metrics", version = "0.24" }
+metrics-util_020 = { package = "metrics-util", version = "0.20" }
 pin-project = "1"
 prettyplease = "0.2"
 proc-macro2 = "1.0"

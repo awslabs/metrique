@@ -8,17 +8,19 @@
 //!
 //! This allows capturing metrics emitted via the metrics.rs facade into metrique.
 //!
-//! [`metrics::Recorder`]: metrics::Recorder
+//! [`metrics::Recorder`]: metrics_024::Recorder
 //! [`MetricsReporter`]: crate::metrics::MetricReporter
 //! [`lambda_reporter`]: crate::metrics::lambda_reporter
 //! [`capture`]: crate::metrics::capture
 
 pub(crate) mod accumulator;
 pub mod capture;
+mod generic;
 pub mod lambda_reporter;
 pub mod metrics_histogram;
 mod reporter;
 mod unit;
 
 pub use accumulator::{MetricAccumulatorEntry, MetricRecorder, SharedRecorder};
+pub use generic::{MetricsRsVersion, ParametricRecorder};
 pub use reporter::{MetricReporter, MetricReporterBuilder};

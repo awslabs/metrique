@@ -17,6 +17,9 @@ test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 # dep:tracing-appender is for rustdoc
 private-test-util = ["dep:tracing-appender"]
 service-metrics = ["dep:metrique-service-metrics"]
+# re-export metrique-writer featurs
+metrics_rs_bridge = ["metrique-writer/metrics_rs_bridge"]
+metrics_rs_024 = ["metrique-writer/metrics_rs_024"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
