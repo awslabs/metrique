@@ -8,6 +8,14 @@ description = "Library for working with unit of work metrics - metrics.rs collec
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
+[features]
+default = ["background_queue"]
+metrics_rs_024 = [ "dep:metrics_024", "dep:metrics-util_020" ]
+background_queue = [ "metrique-writer/background_queue" ]
+test-util = []
+# for docs
+private-test-util = [ "dep:tracing-appender" ]
+
 [dependencies]
 histogram = { workspace = true }
 pin-project = { workspace = true }
@@ -33,14 +41,6 @@ metrique-metricsrs = { path = ".", features = ["metrics_rs_024", "test-util"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 test-case = { workspace = true }
 rand = { workspace = true }
-
-[features]
-default = ["background_queue"]
-metrics_rs_024 = [ "dep:metrics_024", "dep:metrics-util_020" ]
-background_queue = [ "metrique-writer/background_queue" ]
-test-util = []
-# for docs
-private-test-util = [ "dep:tracing-appender" ]
 
 #metrics_rs_bridge = [
 #    "dep:pin-project",

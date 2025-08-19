@@ -665,6 +665,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-macro",
+ "metrique-metricsrs",
  "metrique-service-metrics",
  "metrique-timesource",
  "metrique-writer",

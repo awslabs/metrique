@@ -17,8 +17,9 @@ test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util"]
 # dep:tracing-appender is for rustdoc
 private-test-util = ["dep:tracing-appender"]
 service-metrics = ["dep:metrique-service-metrics"]
-# re-export metrique-writer featurs
-metrics_rs_024 = ["metrique-writer/metrics_rs_024"]
+# re-export metrique-writer features
+metrics_rs_bridge = ["dep:metrique-metricsrs"]
+metrics_rs_024 = ["metrique-writer/metrics_rs_024", "metrique-metricsrs/metrics_rs_024"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
@@ -26,6 +27,7 @@ metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.4" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.2" }
 metrique-core = { path = "../metrique-core", version = "0.1.4" }
 metrique-writer = { path = "../metrique-writer", version = "0.1.4" }
+metrique-metricsrs = { path = "../metrique-metricsrs", version = "0.1.4", optional = true }
 metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.3", optional = true }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.3" }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.2", optional = true }
