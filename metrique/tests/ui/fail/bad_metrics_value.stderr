@@ -24,7 +24,7 @@ error: only plain fields are supported in #[metrics(value)]
 33 |     u32,
    |     ^^^
 
-error: Unknown field: `p`
+error: Unknown field: `p`. Available values: `flatten`, `flatten_entry`, `format`, `ignore`, `name`, `no_close`, `prefix`, `timestamp`, `unit`
   --> tests/ui/fail/bad_metrics_value.rs:38:15
    |
 38 |     #[metrics(p = q)]
@@ -36,7 +36,7 @@ error: Only named fields are supported
 43 | struct Unit; /* not supported right now */
    | ^^^^^^^^^^^^
 
-error: Unknown field: `p`
+error: Unknown field: `p`. Available values: `name`
   --> tests/ui/fail/bad_metrics_value.rs:47:15
    |
 47 |     #[metrics(p="q")]

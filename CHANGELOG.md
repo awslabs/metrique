@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `metrique-core` - [0.1.5](https://github.com/arielb1/metrique-fork/compare/metrique-core-v0.1.4...metrique-core-v0.1.5) - 2025-08-20
+
+### Added
+- Added DevNullSink ([#85](https://github.com/awslabs/metrique/commit/c5d6c19ac4d48a80523ea34c015b1baf9d762714)),
+  which is an EntrySink that drops all entries.
+
+### Breaking Changes
+- moved `metrique_writer::metrics` to `metrique_metricsrs` / `metrique::metrics_rs` ([#88](https://github.com/awslabs/metrique/pull/88))
+- Changed the `metrics` API to support multiple metrics.rs versions. You will need to pass
+  `dyn metrics::Recorder` type parameters to enable detecting the right metrics.rs version - see
+  the function docs for more details. ([#86](https://github.com/awslabs/metrique/commit/057ad73fb7a2f0989c9fd74c55b9596611ba05a0)).
+- Changed `FlushWait` to be `Send + Sync`, which will break if you called `FlushWait::from_future`
+  with a future that is not `Send + Sync`.
+
+### Other
+- updated the following local packages: metrique-writer-core
+
 ## `metrique` - 0.1.4
 
 ### Added
