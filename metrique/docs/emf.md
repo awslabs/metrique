@@ -52,7 +52,7 @@ There are two ways you define dimensions with `metrique`:
    let _handle = ServiceMetrics::attach_to_stream(
        Emf::builder("Ns".to_string(), vec![vec![]])
            .build()
-           .output_to(std::io::stdout())
+           .output_to_makewriter(|| std::io::stdout().lock())
            // All entries will contain `region: us-east-1` as a dimension
            .merge_globals(globals),
    );

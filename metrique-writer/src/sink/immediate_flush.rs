@@ -85,7 +85,7 @@ impl FlushImmediatelyBuilder {
     ///     .build::<MyMetrics, _>(stream);
     ///
     /// ```
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     #[allow(private_bounds)]
     pub fn metrics_recorder_global<V: super::metrics::GlobalRecorderVersion + ?Sized>(
         mut self,
@@ -128,7 +128,7 @@ impl FlushImmediatelyBuilder {
     ///     .metrics_recorder_local::<dyn metrics::Recorder, _>(recorder)
     ///     .build::<MyMetrics, _>(stream);
     /// ```
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     pub fn metrics_recorder_local<V: super::metrics::LocalRecorderVersion<R> + ?Sized, R>(
         mut self,
         recorder: R,
@@ -241,10 +241,10 @@ impl<S: EntryIoStream> SinkState<S> {
 ///     value: u64,
 /// }
 ///
-/// // Create a `FlushImmediately` that writes to stdout
+/// // Create a `FlushImmediately` that writes to stdout (use locking to avoid tearing)
 /// let sink = FlushImmediately::new(Emf::all_validations(
 ///     "MyApp".into(), vec![vec![]]
-/// ).output_to(io::stdout()));
+/// ).output_to_makewriter(|| io::stdout().lock()));
 ///
 /// // Append metrics - this will write immediately to stdout
 /// sink.append(MyMetrics { value: 42 });
@@ -333,11 +333,11 @@ pub const IMMEDIATE_FLUSH_METRICS: &[DescribedMetric] = &[DescribedMetric {
 /// Call it with a recorder type, to allow it to autodetect your metrics.rs version
 ///
 /// This function should be called once per metric recorder, since some metric
-/// recorders are not idempotent in describe. The recorders in [metrique_writer::metrics] are
+/// recorders are not idempotent in describe. The recorders in [metrique_metricsrs] are
 /// however idempotent with describes, so when using that feel free to call this function
 /// multiple times.
 ///
-/// [metrique_writer::metrics]: crate::metrics
+/// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
 ///
 /// ```no_run
 /// # use metrics_024 as metrics;
@@ -456,7 +456,7 @@ mod tests {
         assert_eq!(output.lock().unwrap().values, vec![1]);
     }
 
-    #[cfg(feature = "metrics_rs_024")]
+    #[cfg(feature = "metrics-rs-024")]
     #[test]
     fn metrics_recorder_works() {
         use metrics_024::Recorder;

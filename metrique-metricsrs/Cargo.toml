@@ -1,0 +1,51 @@
+[package]
+name = "metrique-metricsrs"
+version = "0.1.4"
+edition = "2024"
+rust-version = "1.87"                                                                 # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
+license = "Apache-2.0"
+description = "Library for working with unit of work metrics - metrics.rs collector"
+repository = "https://github.com/awslabs/metrique"
+readme = "README.md"
+
+[features]
+default = ["background-queue"]
+metrics-rs-024 = [ "dep:metrics_024", "dep:metrics-util_020" ]
+background-queue = [ "metrique-writer/background-queue" ]
+test-util = []
+# Required to allow docs to use links to tracing-appender
+private-test-util = [ "dep:tracing-appender" ]
+
+[dependencies]
+histogram = { workspace = true }
+pin-project = { workspace = true }
+metrics_024 = { workspace = true, optional = true }
+metrics-util_020 = { workspace = true, optional = true }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.4", default-features = false }
+metrique-writer = { path = "../metrique-writer", version = "0.1.4", default-features = false }
+metrique-timesource = { path = "../metrique-timesource", version = "0.1.3" }
+futures = { workspace = true, default-features = false, features = ["executor"] }
+tokio = { workspace = true, default-features = false, features = [
+    "sync", "time"
+] }
+tokio-util = { workspace = true, features = ["rt"] }
+tracing = { workspace = true }
+derive-where = { workspace = true }
+tracing-appender = { workspace = true, optional = true }
+
+[dev-dependencies]
+tracing-appender = { workspace = true }
+metrique = { path = "../metrique", features = ["service-metrics"] }
+metrique-timesource = { path = "../metrique-timesource", features = [
+    "custom-timesource",
+    "tokio",
+    "test-util",
+] }
+metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
+metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
+metrique-metricsrs = { path = ".", features = ["metrics-rs-024", "test-util"] }
+tokio = { workspace = true, features = ["macros", "test-util"] }
+test-case = { workspace = true }
+rand = { workspace = true }
+

@@ -665,6 +665,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-macro",
+ "metrique-metricsrs",
  "metrique-service-metrics",
  "metrique-timesource",
  "metrique-writer",
@@ -707,6 +708,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "metrique-metricsrs"
+version = "0.1.4"
+dependencies = [
+ "derive-where",
+ "futures",
+ "histogram",
+ "metrics",
+ "metrics-util",
+ "metrique",
+ "metrique-metricsrs",
+ "metrique-timesource",
+ "metrique-writer",
+ "metrique-writer-core",
+ "metrique-writer-format-emf",
+ "pin-project",
+ "rand",
+ "test-case",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-appender",
+]
+
+[[package]]
 name = "metrique-service-metrics"
 version = "0.1.3"
 dependencies = [
@@ -733,17 +758,14 @@ dependencies = [
  "assert_approx_eq",
  "crossbeam-queue",
  "crossbeam-utils",
- "derive-where",
  "enum-map",
  "futures",
- "histogram",
  "metrics",
  "metrics-util",
  "metrique-writer",
  "metrique-writer-core",
  "metrique-writer-format-emf",
  "metrique-writer-macro",
- "pin-project",
  "rand",
  "serde_json",
  "smallvec",
@@ -751,7 +773,6 @@ dependencies = [
  "tempfile",
  "test-case",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
@@ -788,6 +809,8 @@ dependencies = [
  "itertools",
  "itoa",
  "metrics",
+ "metrique-metricsrs",
+ "metrique-timesource",
  "metrique-writer",
  "metrique-writer-core",
  "rand",

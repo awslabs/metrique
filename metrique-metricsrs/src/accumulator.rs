@@ -5,17 +5,17 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
     sync::{Arc, RwLock},
-    time::SystemTime,
 };
 
-use crate::metrics::{MetricsRsVersion, metrics_histogram::Bucket};
+use crate::{MetricsRsVersion, metrics_histogram::Bucket};
 use derive_where::derive_where;
 use metrique_writer_core::{Entry, EntryWriter, Observation, value::MetricFlags};
 
 /// A [`metrics_util::Storage`] that uses [`crate::metrics_histogram::Histogram`] for its histogram implementation.
+#[cfg_attr(not(feature = "metrics-rs-024"), allow(unused))]
 pub struct AtomicStorageWithHistogram;
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 mod impls_024 {
     use std::sync::{Arc, atomic::AtomicU64};
 
@@ -24,12 +24,12 @@ mod impls_024 {
     };
     use metrics_util_020::registry::Storage;
 
-    use crate::metrics::{MetricRecorder, unit::metrics_024_unit_to_metrique_unit};
+    use crate::{MetricRecorder, unit::metrics_024_unit_to_metrique_unit};
 
     impl<K> Storage<K> for super::AtomicStorageWithHistogram {
         type Counter = Arc<AtomicU64>;
         type Gauge = Arc<AtomicU64>;
-        type Histogram = Arc<crate::metrics::metrics_histogram::Histogram>;
+        type Histogram = Arc<crate::metrics_histogram::Histogram>;
 
         fn counter(&self, _: &K) -> Self::Counter {
             Arc::new(AtomicU64::new(0))
@@ -40,7 +40,7 @@ mod impls_024 {
         }
 
         fn histogram(&self, _: &K) -> Self::Histogram {
-            Arc::new(crate::metrics::metrics_histogram::Histogram::new())
+            Arc::new(crate::metrics_histogram::Histogram::new())
         }
     }
 
@@ -195,7 +195,7 @@ pub struct MetricAccumulatorEntry<V: MetricsRsVersion + ?Sized> {
     pub(crate) gauges: Vec<(V::Key, f64)>,
     pub(crate) histograms: Vec<(V::Key, Vec<Bucket>)>,
     pub(crate) units: HashMap<String, metrique_writer_core::Unit>,
-    pub(crate) timestamp: Option<SystemTime>,
+    pub(crate) timestamp: Option<metrique_timesource::SystemTime>,
 }
 
 impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
@@ -207,8 +207,8 @@ impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
     }
 
     /// Get the current timestamp from this metrics accumulator entry
-    pub fn timestamp(&self) -> Option<SystemTime> {
-        self.timestamp
+    pub fn timestamp(&self) -> Option<&metrique_timesource::SystemTime> {
+        self.timestamp.as_ref()
     }
 }
 
@@ -271,8 +271,8 @@ impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
             }
         }
 
-        if let Some(timestamp) = self.timestamp {
-            writer.timestamp(timestamp);
+        if let Some(timestamp) = &self.timestamp {
+            writer.timestamp(timestamp.as_std());
         }
 
         // Reporting time-based metrics, split entries is what we want.
@@ -348,14 +348,17 @@ impl<V: MetricsRsVersion> Debug for SharedRecorder<V> {
     }
 }
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 #[cfg(test)]
 mod test {
+    use std::time::UNIX_EPOCH;
+
     use metrics_024::{histogram, with_local_recorder};
+    use metrique_timesource::{TimeSource, fakes::StaticTimeSource};
     use metrique_writer_core::{format::Format, test_stream::DummyFormat};
     use test_case::test_case;
 
-    use crate::metrics::MetricRecorder;
+    use crate::MetricRecorder;
 
     #[test_case(false, None; "no_emit_zero_counters")]
     #[test_case(true, Some(0); "emit_zero_counters")]
@@ -383,10 +386,11 @@ mod test {
             histogram.record(3);
             histogram.record(3);
         });
-        let mut readout = recorder.readout();
         // force some timestamp for test purposes
-        readout.timestamp =
-            Some(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400));
+        let _guard = metrique_timesource::set_time_source(TimeSource::custom(
+            StaticTimeSource::at_time(UNIX_EPOCH + std::time::Duration::from_secs(86_400)),
+        ));
+        let readout = recorder.readout();
         let mut writer = DummyFormat;
         let mut output = Vec::new();
 

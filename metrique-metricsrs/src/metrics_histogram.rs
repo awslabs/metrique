@@ -47,6 +47,7 @@ impl Histogram {
     /// Returns an iterator providing the value and count of each bucket of the histogram.
     /// Only non-empty buckets are returned.
     /// During the iteration, the histogram counts are atomically reset to zero.
+    #[cfg_attr(not(feature = "metrics-rs-024"), allow(unused))]
     pub(crate) fn drain(&self) -> Vec<Bucket> {
         self.inner
             .drain()
@@ -75,7 +76,7 @@ pub struct Bucket {
     pub count: u32,
 }
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 impl metrics_024::HistogramFn for Histogram {
     fn record(&self, value: f64) {
         if value > u32::MAX as f64 {
@@ -87,7 +88,7 @@ impl metrics_024::HistogramFn for Histogram {
 }
 
 #[cfg(test)]
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 mod tests {
     use super::Histogram;
     use metrics_024::HistogramFn;

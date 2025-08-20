@@ -16,11 +16,11 @@ pub trait MetricRecorder: Send + Sync {
 }
 
 /// Implements MetricRecorder for a global metrics-rs 0.24 recorder
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct GlobalMetricsRs024Bridge;
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 impl MetricRecorder for GlobalMetricsRs024Bridge {
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32) {
         metrics_024::histogram!(metric, "sink" => sink.to_owned()).record(value);
@@ -44,11 +44,11 @@ impl MetricRecorder for GlobalMetricsRs024Bridge {
 }
 
 /// Implements MetricRecorder for a local metrics-rs 0.24 recorder
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct LocalMetricsRs024Bridge<R>(pub(crate) R);
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 impl<R: metrics_024::Recorder + Send + Sync> MetricRecorder for LocalMetricsRs024Bridge<R> {
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32) {
         self.0
@@ -136,7 +136,7 @@ pub(crate) trait GlobalRecorderVersion {
     fn describe(metrics: &[DescribedMetric]);
 }
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 impl GlobalRecorderVersion for dyn metrics_024::Recorder {
     fn describe(metrics: &[DescribedMetric]) {
         for metric in metrics {
@@ -195,7 +195,7 @@ pub trait LocalRecorderVersion<R> {
     fn recorder(recorder: R) -> impl MetricRecorder + 'static;
 }
 
-#[cfg(feature = "metrics_rs_024")]
+#[cfg(feature = "metrics-rs-024")]
 impl<R> LocalRecorderVersion<R> for dyn metrics_024::Recorder
 where
     R: metrics_024::Recorder + Send + Sync + 'static,

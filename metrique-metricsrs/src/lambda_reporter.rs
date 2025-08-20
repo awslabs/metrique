@@ -7,49 +7,102 @@
 //! an invocation, rather than on a background loop.
 //!
 //! It provides a default [`install_reporter()`] method that flushes to stdout,
-//! or a [`install_reporter_to_writer()`] method that allows customizing the i/o destination.
+//! or a [`install_reporter_to_writer()`] method that allows customizing the I/O destination.
+//!
+//! For it to work, your Lambda's role needs to have permissions to write CloudWatch Logs.
+//! The `AWSLambdaBasicExecutionRole` IAM permission policy will do that, but it comes
+//! with the right permissions to write to *all* CloudWatch Logs streams in your account, which might
+//! be more powerful than you intended. If you want to add permissions yourself, see
+//! <https://docs.aws.amazon.com/lambda/latest/operatorguide/access-logs.html>
+//!
+//! Due to the way [EMF] works, you don't need to give anyone write permissions to
+//! CloudWatch *Metrics*. Any CloudWatch Logs emitter can use EMF to emit arbitrary
+//! CloudWatch Metrics in the same account.
 //!
 //! You are responsible for calling [`flush_metrics()`] or [`flush_metrics_sync()`] at the end
 //! of your Lambda invocation handler, or else no metrics will be emitted.
+//!
+//! ## Basic Example
+//!
+//! ```
+//! # use metrics_024 as metrics;
+//! # use metrique_writer_format_emf::Emf;
+//! # use metrique_writer::IoStreamError;
+//! # use metrique_metricsrs::lambda_reporter;
+//!
+//! // on Lambda initialization
+//! lambda_reporter::install_reporter::<dyn metrics::Recorder, _>(
+//!     Emf::all_validations("MyNS".to_string(), vec![vec![]]));
+//!
+//! // during runtime
+//! // This will create a `my_counter` in namespace `MyNS` in your CloudWatch Metrics,
+//! // no extra setup needed.
+//! metrics::counter!("my_counter").increment(2);
+//!
+//! // When your Lambda finishes:
+//! # futures::executor::block_on(async {
+//! lambda_reporter::flush_metrics().await;
+//! # });
+//!
+//! # Ok::<_, IoStreamError>(())
+//! ```
+//!
+//! See the [`install_reporter()`] and [`install_reporter_to_writer()`] docs for more details.
+//!
+//! [EMF]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
 
 use std::io;
 use std::io::stdout;
 use std::pin::Pin;
 use std::sync::OnceLock;
 
-use crate::FormatExt;
-use crate::metrics::MetricsRsVersion;
-use crate::sink::BackgroundQueue;
-use crate::sink::BackgroundQueueJoinHandle;
+use crate::MetricsRsVersion;
+use metrique_writer::FormatExt;
+#[cfg(feature = "background-queue")]
+use metrique_writer::sink::{BackgroundQueue, BackgroundQueueJoinHandle};
 use metrique_writer_core::format::Format;
 use metrique_writer_core::{EntryIoStream, EntrySink, IoStreamError};
 
 use super::MetricAccumulatorEntry;
 use super::MetricRecorder;
 
-struct LambdaMetricReporter<V: MetricsRsVersion + ?Sized> {
-    reporter: BackgroundQueue<MetricAccumulatorEntry<V>>,
+struct LambdaMetricReporter<
+    V: MetricsRsVersion + ?Sized,
+    S: EntrySink<MetricAccumulatorEntry<V>>,
+    JH,
+> {
+    reporter: S,
     #[allow(unused)]
-    join_handle: BackgroundQueueJoinHandle,
+    join_handle: JH,
     recorder: MetricRecorder<V>,
 }
 
-impl<V: MetricsRsVersion + ?Sized> LambdaMetricReporter<V> {
+#[cfg(feature = "background-queue")]
+impl<V: MetricsRsVersion + ?Sized>
+    LambdaMetricReporter<V, BackgroundQueue<MetricAccumulatorEntry<V>>, BackgroundQueueJoinHandle>
+{
     /// Creates a new MetricReporter.
-    fn new(sink: impl EntryIoStream + Send + 'static) -> (Self, MetricRecorder<V>) {
+    fn new(stream: impl EntryIoStream + Send + 'static) -> (Self, MetricRecorder<V>) {
+        let (reporter, join_handle) = BackgroundQueue::new(stream);
+        Self::new_sink(reporter, join_handle)
+    }
+}
+
+impl<V: MetricsRsVersion + ?Sized, S: EntrySink<MetricAccumulatorEntry<V>>, JH>
+    LambdaMetricReporter<V, S, JH>
+{
+    fn new_sink(sink: S, join_handle: JH) -> (Self, MetricRecorder<V>) {
         let recorder = MetricRecorder::new();
         let recorder_ = recorder.clone();
-        let (reporter, join_handle) = BackgroundQueue::new(sink);
         (
             Self {
-                reporter,
+                reporter: sink,
                 join_handle,
                 recorder,
             },
             recorder_,
         )
     }
-
     pub(crate) async fn report(&self) {
         let entry = self.recorder.readout();
         self.reporter.append(entry);
@@ -61,7 +114,11 @@ trait SomeVersionMetricReporter: Send + Sync {
     fn report(&self) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + '_>>;
 }
 
-impl<V: MetricsRsVersion + ?Sized> SomeVersionMetricReporter for LambdaMetricReporter<V> {
+impl<V: MetricsRsVersion + ?Sized, S: EntrySink<MetricAccumulatorEntry<V>>, JH>
+    SomeVersionMetricReporter for LambdaMetricReporter<V, S, JH>
+where
+    Self: Send + Sync,
+{
     fn report(&self) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + '_>> {
         Box::pin(self.report())
     }
@@ -135,11 +192,15 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 /// You must pass a type parameter containing a `dyn metrics::Recorder` to ensure
 /// metrics are outputted to the same metrics.rs version your code is emitting to.
 ///
+/// This function will buffer the writes to the passed [`io::Write`] to avoid
+/// tearing.
+///
 /// For example:
 /// ```
 /// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
-/// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
+/// # use metrique_writer::IoStreamError;
+/// # use metrique_metricsrs::lambda_reporter;
 /// # use metrique_writer_core::test_stream::TestSink;
 /// #
 /// # let sink = TestSink::default();
@@ -153,6 +214,7 @@ impl<W: io::Write, F: Fn() -> W> io::Write for BufferingStdoutWriter<W, F> {
 ///
 /// # Ok::<_, IoStreamError>(())
 /// ```
+#[cfg(feature = "background-queue")]
 pub fn install_reporter_to_writer<
     V: MetricsRsVersion + ?Sized,
     F: Format + Send + 'static,
@@ -170,19 +232,53 @@ pub fn install_reporter_to_writer<
     });
 }
 
+/// Installs a reporter that outputs to a specific [EntrySink].
+///
+/// You must pass a type parameter containing a `dyn metrics::Recorder` to ensure
+/// metrics are outputted to the same metrics.rs version your code is emitting to.
+///
+/// For example:
+/// ```no_run
+/// # use metrics_024 as metrics;
+/// # use metrique_writer_format_emf::Emf;
+/// # use metrique_writer::{IoStreamError, FormatExt};
+/// # use metrique_writer::{GlobalEntrySink, AttachGlobalEntrySinkExt};
+/// # use metrique_metricsrs::lambda_reporter;
+/// # use metrique::ServiceMetrics;
+/// # use metrique_writer_core::test_stream::TestSink;
+///
+/// // use stdout.lock() to prevent line tearing
+/// let handle = ServiceMetrics::attach_to_stream(Emf::all_validations("MyNS".to_string(),
+///     vec![vec![], vec!["service".to_string()]]).output_to_makewriter(|| std::io::stdout().lock()));
+/// // if some other part of your program manages BackgroundQueue shutdown,
+/// // you can pass `(ServiceMetrics::sink(), ())` instead
+/// // of `(ServiceMetrics::sink(), handle)` - the handle is just
+/// // dropped on shutdown to manage shutdown easily.
+/// lambda_reporter::install_reporter_to_sink::<
+///     dyn metrics::Recorder, _, _>(ServiceMetrics::sink(), handle);
+/// metrics::counter!("my_counter", "request_kind" => "foo").increment(2);
+/// lambda_reporter::flush_metrics_sync();
+///
+/// # Ok::<_, IoStreamError>(())
+/// ```
+pub fn install_reporter_to_sink<
+    V: MetricsRsVersion + ?Sized,
+    S: EntrySink<MetricAccumulatorEntry<V>> + Send + Sync + 'static,
+    JH: Send + Sync + 'static,
+>(
+    sink: S,
+    join_handle: JH,
+) {
+    METRIC_REPORTER.get_or_init(|| {
+        let (reporter, recorder) = LambdaMetricReporter::new_sink(sink, join_handle);
+        V::set_global_recorder(recorder);
+        Box::new(reporter)
+    });
+}
+
 /// Installs a reporter that outputs to stdout using `f` as a formatter.
 /// `f` should normally be an [EMF] formatter - this will work natively with Lambda to output
 /// your metrics to CloudWatch.
-///
-/// For this to work, your Lambda's role needs to have permissions to write CloudWatch Logs.
-/// The `AWSLambdaBasicExecutionRole` IAM permission policy will do that, but it comes
-/// with the right permissions to write to *all* CloudWatch Logs streams in your account, which might
-/// be more powerful than you intended. If you want to add permissions yourself, see
-/// <https://docs.aws.amazon.com/lambda/latest/operatorguide/access-logs.html>
-///
-/// Due to the way [EMF] works, you don't need to give anyone write permissions to
-/// CloudWatch *Metrics*. Any CloudWatch Logs emitter can use EMF to emit arbitrary
-/// CloudWatch Metrics in the same account.
 ///
 /// The `V` type parameter controls the metrics.rs version that is used for collecting
 /// metrics from. Pass `dyn metrics::Recorder` to ensure it uses the same metrics.rs
@@ -195,22 +291,26 @@ pub fn install_reporter_to_writer<
 /// ```
 /// # use metrics_024 as metrics;
 /// # use metrique_writer_format_emf::Emf;
-/// # use metrique_writer::{IoStreamError, metrics::lambda_reporter};
+/// # use metrique_writer::IoStreamError;
+/// # use metrique_metricsrs::lambda_reporter;
 ///
 /// // on Lambda initialization
 /// lambda_reporter::install_reporter::<dyn metrics::Recorder, _>(
 ///     Emf::all_validations("MyNS".to_string(), vec![vec![]]));
-/// // during runtime
-/// metrics::counter!("my_counter").increment(2);
 ///
+/// // during runtime
 /// // This will create a `my_counter` in namespace `MyNS` in your CloudWatch Metrics,
 /// // no extra setup needed.
+/// metrics::counter!("my_counter").increment(2);
+///
+/// // When your Lambda finishes:
 /// # futures::executor::block_on(async {
 /// lambda_reporter::flush_metrics().await;
 /// # });
 ///
 /// # Ok::<_, IoStreamError>(())
 /// ```
+#[cfg(feature = "background-queue")]
 pub fn install_reporter<V: MetricsRsVersion + ?Sized, F: Format + Send + 'static>(f: F) {
     install_reporter_to_writer::<V, _, _, _>(f, stdout)
 }

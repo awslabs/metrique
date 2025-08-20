@@ -82,7 +82,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let _handler = ServiceMetrics::attach_to_stream(
         Emf::all_validations("MyApp".into(), vec![vec![]])
-            .output_to(std::io::stdout())
+            .output_to_makewriter(|| std::io::stdout().lock())
             .merge_globals(Globals {
                 region: "us-east-1".into(),
             }),
