@@ -10,14 +10,10 @@ readme = "README.md"
 
 [features]
 default = ["background-queue"]
-# Deprecated name of metrics-rs-024 feature
-metrics_rs_024 = [ "metrics-rs-024" ]
 metrics-rs-024 = [ "dep:metrics_024", "dep:metrics-util_020" ]
-# Deprecated name of background-queue feature
-background_queue = [ "background-queue" ]
 background-queue = [ "metrique-writer/background-queue" ]
 test-util = []
-# for docs
+# Required to allow docs to use links to tracing-appender
 private-test-util = [ "dep:tracing-appender" ]
 
 [dependencies]
@@ -42,7 +38,7 @@ metrique = { path = "../metrique", features = ["service-metrics"] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
-metrique-metricsrs = { path = ".", features = ["metrics_rs_024", "test-util"] }
+metrique-metricsrs = { path = ".", features = ["metrics-rs-024", "test-util"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 test-case = { workspace = true }
 rand = { workspace = true }
