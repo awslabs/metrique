@@ -1,4 +1,4 @@
-use std::{collections::HashMap, hash::Hash, marker::PhantomData, time::SystemTime};
+use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 
 use crate::{MetricAccumulatorEntry, MetricRecorder};
 
@@ -33,7 +33,7 @@ impl<M> MetricsRsVersion for YouMustSpecifyAMetricsRsVersion<M> {
             gauges: vec![],
             histograms: vec![],
             units: units(),
-            timestamp: Some(SystemTime::now()),
+            timestamp: Some(metrique_timesource::time_source().system_time()),
         }
     }
     fn key_name(_name: &Self::Key) -> &str {
@@ -85,7 +85,7 @@ pub trait MetricsRsVersion: 'static + private::Sealed {
 
 #[cfg(feature = "metrics-rs-024")]
 mod impls {
-    use std::{collections::HashMap, sync::atomic::Ordering, time::SystemTime};
+    use std::{collections::HashMap, sync::atomic::Ordering};
 
     use crate::{
         MetricAccumulatorEntry, MetricRecorder, MetricsRsVersion, ParametricRecorder,
@@ -134,7 +134,7 @@ mod impls {
                 gauges,
                 histograms,
                 units: units(),
-                timestamp: Some(SystemTime::now()),
+                timestamp: Some(metrique_timesource::time_source().system_time()),
             }
         }
         fn key_name(key: &Self::Key) -> &str {

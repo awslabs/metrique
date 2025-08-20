@@ -5,7 +5,6 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
     sync::{Arc, RwLock},
-    time::SystemTime,
 };
 
 use crate::{MetricsRsVersion, metrics_histogram::Bucket};
@@ -196,7 +195,7 @@ pub struct MetricAccumulatorEntry<V: MetricsRsVersion + ?Sized> {
     pub(crate) gauges: Vec<(V::Key, f64)>,
     pub(crate) histograms: Vec<(V::Key, Vec<Bucket>)>,
     pub(crate) units: HashMap<String, metrique_writer_core::Unit>,
-    pub(crate) timestamp: Option<SystemTime>,
+    pub(crate) timestamp: Option<metrique_timesource::SystemTime>,
 }
 
 impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
@@ -208,8 +207,8 @@ impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
     }
 
     /// Get the current timestamp from this metrics accumulator entry
-    pub fn timestamp(&self) -> Option<SystemTime> {
-        self.timestamp
+    pub fn timestamp(&self) -> Option<&metrique_timesource::SystemTime> {
+        self.timestamp.as_ref()
     }
 }
 
@@ -272,8 +271,8 @@ impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
             }
         }
 
-        if let Some(timestamp) = self.timestamp {
-            writer.timestamp(timestamp);
+        if let Some(timestamp) = &self.timestamp {
+            writer.timestamp(timestamp.as_std());
         }
 
         // Reporting time-based metrics, split entries is what we want.
@@ -352,7 +351,10 @@ impl<V: MetricsRsVersion> Debug for SharedRecorder<V> {
 #[cfg(feature = "metrics-rs-024")]
 #[cfg(test)]
 mod test {
+    use std::time::UNIX_EPOCH;
+
     use metrics_024::{histogram, with_local_recorder};
+    use metrique_timesource::{TimeSource, fakes::StaticTimeSource};
     use metrique_writer_core::{format::Format, test_stream::DummyFormat};
     use test_case::test_case;
 
@@ -384,10 +386,11 @@ mod test {
             histogram.record(3);
             histogram.record(3);
         });
-        let mut readout = recorder.readout();
         // force some timestamp for test purposes
-        readout.timestamp =
-            Some(std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(86_400));
+        let _guard = metrique_timesource::set_time_source(TimeSource::custom(
+            StaticTimeSource::at_time(UNIX_EPOCH + std::time::Duration::from_secs(86_400)),
+        ));
+        let readout = recorder.readout();
         let mut writer = DummyFormat;
         let mut output = Vec::new();
 
