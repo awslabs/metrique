@@ -671,6 +671,7 @@ dependencies = [
  "metrique-writer",
  "metrique-writer-core",
  "metrique-writer-format-emf",
+ "metrique-writer-macro",
  "rustversion",
  "ryu",
  "serde_json",
