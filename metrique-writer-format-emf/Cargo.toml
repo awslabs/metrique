@@ -25,8 +25,8 @@ metrique-writer = { path = "../metrique-writer", version = "0.1.5" }
 [dev-dependencies]
 assert-json-diff = { workspace = true }
 assert_approx_eq = { workspace = true }
-test-case = { workspace = true }
 rand_chacha = { workspace = true }
+rstest = { workspace = true }
 metrique-metricsrs = { path = "../metrique-metricsrs", features = ["metrics-rs-024"] }
 metrique-timesource = { path = "../metrique-timesource", features = [
     "custom-timesource",

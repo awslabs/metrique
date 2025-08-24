@@ -44,9 +44,9 @@ tokio = { workspace = true, features = ["macros", "test-util"] }
 tracing-appender = { workspace = true }
 tempfile = { workspace = true }
 assert_approx_eq = { workspace = true }
-test-case = { workspace = true }
 assert-json-diff = { workspace = true }
 serde_json = { workspace = true }
+rstest = { workspace = true }
 
 [features]
 default = [

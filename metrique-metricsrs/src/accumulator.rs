@@ -356,13 +356,17 @@ mod test {
     use metrics_024::{histogram, with_local_recorder};
     use metrique_timesource::{TimeSource, fakes::StaticTimeSource};
     use metrique_writer_core::{format::Format, test_stream::DummyFormat};
-    use test_case::test_case;
+    use rstest::rstest;
 
     use crate::MetricRecorder;
 
-    #[test_case(false, None; "no_emit_zero_counters")]
-    #[test_case(true, Some(0); "emit_zero_counters")]
-    fn test_emit_zero_counters(emit_zero_counters: bool, expected_result: Option<u64>) {
+    #[rstest]
+    #[case(false, None)]
+    #[case(true, Some(0))]
+    fn test_emit_zero_counters(
+        #[case] emit_zero_counters: bool,
+        #[case] expected_result: Option<u64>,
+    ) {
         let accumulator: MetricRecorder<dyn metrics_024::Recorder> =
             MetricRecorder::new_with_emit_zero_counters(emit_zero_counters);
         metrics_024::with_local_recorder(&accumulator, || {
