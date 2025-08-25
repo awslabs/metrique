@@ -1631,7 +1631,6 @@ impl<R: RngCore> SampledFormat for SampledEmf<R> {
 mod tests {
     use assert_approx_eq::assert_approx_eq;
     use rand::SeedableRng;
-    use test_case::test_case;
 
     use super::*;
     use core::{f32, f64};
@@ -1642,6 +1641,7 @@ mod tests {
         unit::{BitPerSecond, Kilobyte, Millisecond, NegativeScale, Second},
         value::WithDimension,
     };
+    use rstest::rstest;
     use std::time::Duration;
 
     // The normal Value implementations don't support empty Value, but it is legal, so test it.
@@ -2026,10 +2026,11 @@ mod tests {
         }
     }
 
-    #[test_case(None; "sample_rate_None")]
-    #[test_case(Some(1); "sample_rate_1")]
-    #[test_case(Some(2); "sample_rate_2")]
-    fn formats_all_features(sample_rate: Option<u64>) {
+    #[rstest]
+    #[case(None)]
+    #[case(Some(1))]
+    #[case(Some(2))]
+    fn formats_all_features(#[case] sample_rate: Option<u64>) {
         struct TestEntry;
         impl Entry for TestEntry {
             fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
@@ -2754,9 +2755,10 @@ mod tests {
         );
     }
 
-    #[test_case(false; "no split entries")]
-    #[test_case(true; "split entries")]
-    fn test_multiple_namespaces(split_entries: bool) {
+    #[rstest]
+    #[case(false)]
+    #[case(true)]
+    fn test_multiple_namespaces(#[case] split_entries: bool) {
         struct TestEntry {
             split_entries: bool,
         }
@@ -3134,10 +3136,15 @@ mod tests {
         storage_mode: StorageMode::NoMetric,
     };
 
-    #[test_case(STORAGE_HIRES, STORAGE_HIRES, STORAGE_HIRES; "hires+hires=hires")]
-    #[test_case(STORAGE_HIRES, STORAGE_NO_METRIC, STORAGE_NO_METRIC; "hires+nometric=nometric")]
-    #[test_case(STORAGE_NO_METRIC, STORAGE_HIRES, STORAGE_NO_METRIC; "nometric+hires=nometric")]
-    fn test_try_merge(lhs: &EmfOptions, rhs: &EmfOptions, result: &EmfOptions) {
+    #[rstest]
+    #[case(STORAGE_HIRES, STORAGE_HIRES, STORAGE_HIRES)]
+    #[case(STORAGE_HIRES, STORAGE_NO_METRIC, STORAGE_NO_METRIC)]
+    #[case(STORAGE_NO_METRIC, STORAGE_HIRES, STORAGE_NO_METRIC)]
+    fn test_try_merge(
+        #[case] lhs: &EmfOptions,
+        #[case] rhs: &EmfOptions,
+        #[case] result: &EmfOptions,
+    ) {
         assert_eq!(
             MetricFlags::upcast(lhs)
                 .try_merge(MetricFlags::upcast(rhs))

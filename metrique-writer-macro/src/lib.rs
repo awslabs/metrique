@@ -13,7 +13,9 @@ use quote::{ToTokens, quote, quote_spanned};
 use syn::{Attribute, Path, spanned::Spanned};
 use synstructure::{BindingInfo, Structure, VariantInfo};
 
-synstructure::decl_derive!([Entry, attributes(entry)] =>
+macro_rules! decl_derive {
+    ($name:ident, $derive_fn:ident) => {
+synstructure::decl_derive!([$name, attributes(entry)] =>
     /// Derive `Entry` for a struct or enum.
     ///
     /// Each field in the struct or enum variant will be written to the metric entry using the rust field name by
@@ -127,11 +129,20 @@ synstructure::decl_derive!([Entry, attributes(entry)] =>
     ///     remote_call: Option<Duration>,
     /// }
     /// ```
-    derive_entry
+    $derive_fn
 );
+    }
+}
+
+decl_derive!(Entry, derive_entry);
+decl_derive!(MetriqueEntry, derive_metrique_entry);
 
 fn derive_entry(input: Structure<'_>) -> TokenStream {
-    tokens_or_compiler_err(try_derive(input))
+    tokens_or_compiler_err(try_derive(input, &quote!(::metrique_writer)))
+}
+
+fn derive_metrique_entry(input: Structure<'_>) -> TokenStream {
+    tokens_or_compiler_err(try_derive(input, &quote!(::metrique::writer)))
 }
 
 // Raw per-field attributes for #[entry]
@@ -231,7 +242,7 @@ impl ContainerMetricAttr {
     }
 }
 
-fn try_derive(input: Structure<'_>) -> syn::Result<TokenStream> {
+fn try_derive(input: Structure<'_>, krate: &TokenStream) -> syn::Result<TokenStream> {
     let span = input.ast().span();
 
     let container_attr = match &input.ast().data {
@@ -250,14 +261,14 @@ fn try_derive(input: Structure<'_>) -> syn::Result<TokenStream> {
         let EntryVariant {
             write,
             sample_group,
-        } = derive_variant(variant, &container_attr, has_multiple_variants)?;
+        } = derive_variant(variant, &container_attr, has_multiple_variants, krate)?;
         writes.push(write);
         sample_groups.push(sample_group);
     }
 
     Ok(input.gen_impl(quote_spanned! {span=>
-        gen impl ::metrique_writer::core::entry::Entry for @Self {
-            fn write<'a>(&'a self, writer: &mut impl ::metrique_writer::core::entry::EntryWriter<'a>) {
+        gen impl #krate::core::entry::Entry for @Self {
+            fn write<'a>(&'a self, writer: &mut impl #krate::core::entry::EntryWriter<'a>) {
                 match *self {
                     #(#writes)*
                 }
@@ -317,6 +328,7 @@ fn derive_variant(
     variant: &VariantInfo,
     root_container_attr: &ContainerMetricAttr,
     has_multiple_variants: bool,
+    krate: &TokenStream,
 ) -> syn::Result<EntryVariant> {
     let container_attr = ContainerMetricAttr::from_attributes(variant.ast().attrs)?
         .merge_with_defaults_from(root_container_attr);
@@ -334,7 +346,7 @@ fn derive_variant(
     let mut errors: Vec<syn::Error> = variant
         .bindings()
         .iter()
-        .flat_map(|field| fields.add(field).err())
+        .flat_map(|field| fields.add(field, krate).err())
         .collect();
     if let Some(mut error) = errors.pop() {
         // flatten any errors past the first into the first error
@@ -379,7 +391,7 @@ struct FieldSet {
 }
 
 impl FieldSet {
-    fn add(&mut self, field: &BindingInfo<'_>) -> syn::Result<()> {
+    fn add(&mut self, field: &BindingInfo<'_>, krate: &TokenStream) -> syn::Result<()> {
         match FieldMetricAttr::try_parse(field.span(), &field.ast().attrs)? {
             FieldMetricAttr::NamedValue {
                 name,
@@ -397,12 +409,12 @@ impl FieldSet {
                     Some(format) => {
                         let format = &*format;
                         quote_spanned! {field.binding.span() =>
-                            &::metrique_writer::core::value::FormattedValue::<_, #format, _>::new(#field)
+                            &#krate::core::value::FormattedValue::<_, #format, _>::new(#field)
                         }
                     }
                 };
                 self.writes.push(quote_spanned! {field.binding.span()=>
-                    ::metrique_writer::core::entry::EntryWriter::value(writer, #name, #field_tokens);
+                    #krate::core::entry::EntryWriter::value(writer, #name, #field_tokens);
                 });
                 if sample_group.is_some() {
                     self.sample_groups
@@ -420,11 +432,11 @@ impl FieldSet {
             FieldMetricAttr::Ignore => {}
             FieldMetricAttr::Flatten => {
                 self.writes.push(quote_spanned! {field.binding.span()=>
-                    ::metrique_writer::core::entry::Entry::write(#field, writer);
+                    #krate::core::entry::Entry::write(#field, writer);
                 });
                 self.sample_groups
                     .push(quote_spanned! {field.binding.span()=>
-                        ::metrique_writer::core::entry::Entry::sample_group(#field)
+                        #krate::core::entry::Entry::sample_group(#field)
                     });
             }
             FieldMetricAttr::Timestamp(span) => {
@@ -440,7 +452,7 @@ impl FieldSet {
                     self.writes.push(quote_spanned! {field.binding.span()=>
                         #[allow(clippy::useless_conversion)]
                         {
-                            ::metrique_writer::core::entry::EntryWriter::timestamp(writer, (*#field).into());
+                            #krate::core::entry::EntryWriter::timestamp(writer, (*#field).into());
                         }
                     });
                 }
@@ -628,6 +640,46 @@ mod tests {
                                             },
                                     ))
                                     .chain(::metrique_writer::core::entry::Entry::sample_group(__binding_6)),
+                            }
+                        }
+                    }
+                };
+            }
+            no_build
+        }
+    }
+
+    #[test]
+    fn derives_struct_entry_metrique() {
+        synstructure::test_derive! {
+            derive_metrique_entry {
+                #[entry(rename_all = "PascalCase")]
+                struct TestEntry {
+                    #[entry(timestamp)]
+                    start: SystemTime,
+                }
+            }
+            expands to {
+                const _: () = {
+                    impl ::metrique::writer::core::entry::Entry for TestEntry {
+                        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::core::entry::EntryWriter<'a>) {
+                            match *self {
+                                TestEntry {
+                                    start: ref __binding_0,
+                                } => {
+                                    #[allow(clippy::useless_conversion)]
+                                    {
+                                        ::metrique::writer::core::entry::EntryWriter::timestamp(writer, (*__binding_0).into());
+                                    }
+                                }
+                            }
+                        }
+
+                        fn sample_group(&self) -> impl ::std::iter::Iterator<Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>)> {
+                            match *self {
+                                TestEntry {
+                                    start: ref __binding_0,
+                                } => ::std::iter::empty(),
                             }
                         }
                     }

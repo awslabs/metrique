@@ -478,7 +478,7 @@ mod test {
     };
 
     use metrique_writer_core::test_stream::{DummyFormat, TestSink};
-    use test_case::test_case;
+    use rstest::rstest;
 
     use crate::{MetricReporter, MetricReporterBuilder};
     use metrique_writer::{
@@ -487,10 +487,11 @@ mod test {
     };
 
     // not using BackgroundQueue here since it uses the real-time clock.
-    #[test_case(true; "emit_zero_counters")]
-    #[test_case(false; "no_emit_zero_counters")]
+    #[rstest]
+    #[case(true)]
+    #[case(false)]
     #[tokio::test(start_paused = true)]
-    async fn test_spawn_metric_recorder(emit_zero_counters: bool) {
+    async fn test_spawn_metric_recorder(#[case] emit_zero_counters: bool) {
         let sink = TestSink::default();
         let writer = DummyFormat.output_to(sink.clone());
         let builder = MetricReporterBuilder::new()

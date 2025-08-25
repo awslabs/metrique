@@ -88,7 +88,7 @@ help: a trait with a similar name exists
    |
 help: consider importing one of these structs
    |
-1  + use metrique::unit::Second;
+1  + use metrique::writer::unit::Second;
    |
 1  + use metrique_writer::unit::Second;
    |

@@ -403,4 +403,31 @@ pub use metrique_metricsrs as metrics_rs;
 
 pub use metrique_core::concat;
 
-pub use metrique_writer as writer;
+/// Re-exports of [metrique_writer]
+pub mod writer {
+    pub use metrique_writer::GlobalEntrySink;
+    pub use metrique_writer::{AnyEntrySink, BoxEntrySink, EntrySink};
+    pub use metrique_writer::{BoxEntry, EntryConfig, EntryWriter, core::Entry};
+    pub use metrique_writer::{Convert, Unit};
+    pub use metrique_writer::{EntryIoStream, IoStreamError};
+    pub use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
+    pub use metrique_writer::{ValidationError, ValidationErrorBuilder};
+
+    // Use the variant of the macro that has `metrique::` prefixes.
+    pub use metrique_writer_macro::MetriqueEntry as Entry;
+
+    pub use metrique_writer::AttachGlobalEntrySinkExt;
+    pub use metrique_writer::{AttachGlobalEntrySink, EntryIoStreamExt, FormatExt};
+    pub use metrique_writer::{entry, format, sample, sink, stream, value};
+
+    #[cfg(feature = "test-util")]
+    #[doc(hidden)] // prefer the metrique::test_util re-export
+    pub use metrique_writer::test_util;
+
+    #[doc(hidden)] // prefer the metrique::unit re-export
+    pub use metrique_writer::unit;
+
+    // used by macros
+    #[doc(hidden)]
+    pub use metrique_writer::core;
+}

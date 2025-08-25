@@ -46,6 +46,5 @@ metrique-writer-core = { path = "../metrique-writer-core", features = ["private-
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 metrique-metricsrs = { path = ".", features = ["metrics-rs-024", "test-util"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }
-test-case = { workspace = true }
 rand = { workspace = true }
-
+rstest = { workspace = true }
