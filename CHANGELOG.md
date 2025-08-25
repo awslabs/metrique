@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `metrique-service-metrics` - [0.1.5](https://github.com/awslabs/metrique/compare/metrique-service-metrics-v0.1.4...metrique-service-metrics-v0.1.5) - 2025-08-25
+
+### Fixes
+- allow `metrique::writer::Entry` to work without a metrique-writer import
+- make `metrique/test-util` depend on `metrique-metricsrs/test-util`
+
 ## `metrique-core` - [0.1.5](https://github.com/arielb1/metrique-fork/compare/metrique-core-v0.1.4...metrique-core-v0.1.5) - 2025-08-20
 
 ### Added
