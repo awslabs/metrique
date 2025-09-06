@@ -45,6 +45,7 @@ use crate::inflect::metric_name;
 /// |-----------|------|-------------|---------|
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
+/// | `format` | Path | Specifies the formatter (`ValueFormatter`) for the metric value | `#[metrics(format=EpochSeconds)]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
