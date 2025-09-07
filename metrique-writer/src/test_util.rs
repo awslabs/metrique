@@ -266,6 +266,7 @@ pub fn to_test_entry(e: impl Entry) -> TestEntry {
 /// to the sink.
 ///
 /// This requires that the `test-util` feature be enabled.
+#[derive(Clone, Debug)]
 pub struct TestEntrySink {
     /// The inspector for examining captured metric entries.
     pub inspector: Inspector,
