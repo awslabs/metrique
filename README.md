@@ -3,8 +3,8 @@
 A set of crates for collecting and exporting metrics, especially unit-of-work metrics.
 
 This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
-More formats might be supported in future versions.
-
+More formats might be supported in future versions. You can also configure a custom
+format using the [`Format`] trait.
 
 ## Getting Started
 
@@ -77,7 +77,8 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 > See [`metrique-writer`](metrique-writer) for more information about queues and destinations.
 
-You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future.
+You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future. You can also configure a custom
+format using the [`Format`] trait.
 
 ## Glossary
 
@@ -125,7 +126,7 @@ You can either attach it to a global destination or thread the queue to the loca
 [`Entry`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.Entry.html
 [`EntryIoStream`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntryIoStream.html
 [`EntrySink`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntrySink.html
-[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
+[`Format`]: https://docs.rs/metrique/0.1/metrique/writer/format/trait.Format.html
 [`FlushGuard`]: https://docs.rs/metrique/0.1/metrique/slot/struct.FlushGuard.html
 [`FlushImmediately`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sink/struct.FlushImmediately.html
 [`InflectableEntry`]: https://docs.rs/metrique/0.1/metrique/trait.InflectableEntry.html
