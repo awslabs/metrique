@@ -25,7 +25,9 @@ struct RequestMetrics {
 ```
 
 This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
-More formats might be supported in future versions.
+More formats might be supported in future versions. You can also implement a custom
+format using the [`Format`] trait. If you do, you can optionally implement a custom
+[`EntrySink`] if you need flush functionality beyond writing bytes to an arbitrary I/O destination.
 
 ## Why Metrique?
 
@@ -54,6 +56,7 @@ flush the contents of metrics collected via libraries already compatible with `m
 However, if your goal is to emit structured events that produce metrics with as little overhead as possible:
 - Metrique avoids `HashMap`-based metric storage, reducing allocation pressure and the overhead of recording metrics
 - Compile-time metric definition prevents typos and makes it obvious exactly what metrics your application produces
+
 
 ## Getting Started
 
@@ -126,7 +129,8 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 > See [`metrique-writer`](metrique-writer) for more information about queues and destinations.
 
-You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future.
+You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future. You can also configure a custom
+format using the [`Format`] trait.
 
 ## Aggregation
 
@@ -202,7 +206,7 @@ For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/
 [`Entry`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.Entry.html
 [`EntryIoStream`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntryIoStream.html
 [`EntrySink`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntrySink.html
-[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
+[`Format`]: https://docs.rs/metrique/0.1/metrique/writer/format/trait.Format.html
 [`FlushGuard`]: https://docs.rs/metrique/0.1/metrique/slot/struct.FlushGuard.html
 [`FlushImmediately`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sink/struct.FlushImmediately.html
 [`InflectableEntry`]: https://docs.rs/metrique/0.1/metrique/trait.InflectableEntry.html
