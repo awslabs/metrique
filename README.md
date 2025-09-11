@@ -1,6 +1,15 @@
-## Metrique
+# Metrique [![Build Status]][actions] [![Latest Version]][crates.io] [![Released API docs]][docs.rs] [![Apache-2.0 licensed]][license]
 
-A set of crates for collecting and exporting metrics, especially unit-of-work metrics.
+[Build Status]: https://github.com/awslabs/metrique/actions/workflows/build.yml/badge.svg
+[actions]: https://github.com/awslabs/metrique/actions?query=workflow%3Abuild
+[Latest Version]: https://img.shields.io/crates/v/metrique.svg
+[crates.io]: https://crates.io/crates/metrique
+[Released API docs]: https://docs.rs/metrique/badge.svg
+[docs.rs]: https://docs.rs/metrique
+[Apache-2.0 licensed]: https://img.shields.io/badge/license-Apache_2.0-blue.svg
+[license]: ./LICENSE
+
+**Metrique is a set of crates for collecting and exporting *unit-of-work* metrics.**
 
 This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
 More formats might be supported in future versions.
@@ -56,7 +65,7 @@ async fn count_ducks() {
 }
 ```
 
-But when it drops, it will be appended to the queue to be formatted and flushed. 
+But when it drops, it will be appended to the queue to be formatted and flushed.
 
 To control how it is written, when you start your application, you must configure a queue:
 ```rust
