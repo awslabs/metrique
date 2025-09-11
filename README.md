@@ -11,9 +11,49 @@
 
 **Metrique is a set of crates for collecting and exporting *unit-of-work* metrics.**
 
+```rust
+use metrique::unit_of_work::metrics;
+
+#[metrics]
+struct RequestMetrics {
+    #[metrics(timestamp)]
+    timestamp: Timestamp,
+    number_of_ducks: usize,
+    #[metrics(unit = Millisecond)]
+    operation_time: Timer,
+}
+```
+
 This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
 More formats might be supported in future versions.
 
+## Why Metrique?
+
+Metrique is designed for high-performance, structured metrics collection with minimal runtime overhead. Metrique is built around the principle that a metric associated with a specific action is more valuable than those that are only available aggregated over time. We call these metrics "unit-of-work" metrics because they correspond to a single unit of application work.
+
+### Performance
+Unlike metrics libraries that collect metrics in a `HashMap`, `metrique` uses plain structs. This eliminates allocation and hashmap lookups when producing metrics, resulting in significantly lower CPU overhead and memory pressure. This is especially important for high-throughput services.
+
+Compared to libraries that rely on `HashMap`s or similar containers, the overhead of `metrique` can be 50x lower!
+
+### Structured Metrics with Type Safety
+Because metrique builds on plain structs, metric structure is enforced at compile time. Your metrics are defined as structs with the `#[metrics]` attribute, ensuring consistency and catching errors early rather than at runtime. Structuring your metrics up front has some up front cost but it pays for itself in the long term.
+
+### Minimal Allocation Overhead
+`metrique-writer`, the serialization library for `metrique`, enables low (and sometimes 0) allocation formatting for EMF. Coupled with the fact that metrics-are-just-structs, this can significantly reduce allocator pressure.
+
+### Why use `metrique`?
+
+#### Instead of [OpenTelemetry](https://opentelemetry.io/)
+OTel and metrique solve different problems and future work may add an OTel backend for metrique. `metrique` is about emitting events that capture all the metrics associated with single unit of work, in Rust, as efficiently as possible.
+
+#### Instead of [metrics.rs](https://metrics.rs/)
+`metrique` is actually compatible with `metrics.rs` via the [`metrique-metricsrs`](https://crates.io/crates/metrique-metricsrs) crate! This allows you to periodically
+flush the contents of metrics collected via libraries already compatible with `metrics.rs` as a single event.
+
+However, if your goal is to emit structured events that produce metrics with as little overhead as possible:
+- Metrique avoids `HashMap`-based metric storage, reducing allocation pressure and the overhead of recording metrics
+- Compile-time metric definition prevents typos and makes it obvious exactly what metrics your application produces
 
 ## Getting Started
 
@@ -109,7 +149,7 @@ You can either attach it to a global destination or thread the queue to the loca
    comes with support for the [Amazon EMF] backend, but support can be added to other
    backends.
  - **metric datapoint**: A single point of `(name, dimensions, multiplicity, time, value)`,
-   generally nor represented explicitly but rather being emitted from fields in a
+   generally not represented explicitly but rather being emitted from fields in a
    *metric entry*. Metric datapoints have a value that is an integer or floating point, and can
    come with some sort of *multiplicity*.
  - **metric entry**: something that implements [`Entry`] (when using `metrique` rather
@@ -140,6 +180,15 @@ You can either attach it to a global destination or thread the queue to the loca
 [`InflectableEntry`]: https://docs.rs/metrique/0.1/metrique/trait.InflectableEntry.html
 [`RootEntry`]: https://docs.rs/metrique/0.1/metrique/struct.RootEntry.html
 [`Slot`]: https://docs.rs/metrique/0.1/metrique/slot/struct.Slot.html
+
+## Format-Specific Information
+
+Metrique supports multiple metrics formats, each with their own considerations and optimizations. While the formats are generally compatible, there are important details to be aware of when choosing and configuring your output format.
+
+Currently supported formats:
+- **EMF (Embedded Metric Format)**: For direct CloudWatch integration - see [EMF Guide](metrique/docs/emf.md)
+
+Additional formats may be supported in future versions. For guidance on choosing the right format for your use case, see the [Performance and Library Comparisons](metrique/docs/performance_and_comparisons.md) documentation.
 
 ## Security
 
