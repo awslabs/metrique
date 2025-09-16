@@ -421,6 +421,10 @@ fn count_concurrent_ducks() {
 
 [unit-of-work-fanout]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-fanout.rs
 
+### Using sampling to deal with too-many-metrics
+
+Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider sampling: You can use the built in support for [sampling](https://docs.rs/metrique/0.1.5/metrique/emf/struct.Emf.html#method.with_sampling)
+
 ## Controlling metric output
 
 ### Setting units for metrics
