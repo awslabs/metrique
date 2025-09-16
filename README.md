@@ -181,15 +181,6 @@ You can either attach it to a global destination or thread the queue to the loca
 [`RootEntry`]: https://docs.rs/metrique/0.1/metrique/struct.RootEntry.html
 [`Slot`]: https://docs.rs/metrique/0.1/metrique/slot/struct.Slot.html
 
-## Format-Specific Information
-
-Metrique supports multiple metrics formats, each with their own considerations and optimizations. While the formats are generally compatible, there are important details to be aware of when choosing and configuring your output format.
-
-Currently supported formats:
-- **EMF (Embedded Metric Format)**: For direct CloudWatch integration - see [EMF Guide](metrique/docs/emf.md)
-
-Additional formats may be supported in future versions. For guidance on choosing the right format for your use case, see the [Performance and Library Comparisons](metrique/docs/performance_and_comparisons.md) documentation.
-
 ## Security
 
 See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
