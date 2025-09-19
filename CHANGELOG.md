@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## `metrique-service-metrics` - [0.1.6](https://github.com/awslabs/metrique/compare/metrique-service-metrics-v0.1.5...metrique-service-metrics-v0.1.6) - 2025-09-19
+
+### Other
+- updated the following local packages: metrique-writer
+
+## `metrique-metricsrs` - [0.1.7](https://github.com/awslabs/metrique/compare/metrique-metricsrs-v0.1.6...metrique-metricsrs-v0.1.7) - 2025-09-19
+
+### Other
+- updated the following local packages: metrique-writer
+
 ## `metrique-service-metrics` - [0.1.5](https://github.com/awslabs/metrique/compare/metrique-service-metrics-v0.1.4...metrique-service-metrics-v0.1.5) - 2025-08-25
 
 ### Fixes
