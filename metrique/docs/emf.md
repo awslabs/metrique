@@ -282,12 +282,22 @@ let stream = Emf::all_validations("MyApp".into(), vec![vec![]])
     );
 ```
 
+It is also possible, but normally more difficult, to set up a [CloudWatch Agent] on Fargate
+and treat it like an [EC2](#ec2).
+
 ### Lambda
 On Lambda, you will generally output to `std::io::stdout()` and use the default lambda log driver that is already included.
 
 ### EC2
 
-On EC2, the standard approach is to use [CloudWatch Agent (CWA)][Cloudwatch Agent]. The Cloudwatch Agent will handle deletion for you. You should configure output to a file using the `RollingFileAppender`.
+On EC2, the standard approach is to use [CloudWatch Agent (CWA)][Cloudwatch Agent]. The Cloudwatch Agent will handle deletion for you.
+
+#### Via a file interface
+
+To use CloudWatch Agent's file API, you should configure output to a file using the `RollingFileAppender`.
+
+In that case, you need to configure CloudWatch Agent to
+[read logs from your file and write them to a log group].
 
 ```rust,no_run
 use metrique::emf::Emf;
@@ -300,9 +310,44 @@ let stream = Emf::all_validations("MyApp".into(), vec![vec![]])
     );
 ```
 
+#### Via the TCP / UDP interface
+
+Amazon CloudWatch Agent also has a [TCP / UDP interface] that can be used to send metrics without using a file.
+
+When using that, you will need to specify the `LogGroupName` explicity, for example, via the
+TCP interface:
+
+**WARNING**: To use the CloudWatch Agent UDP interface, you will need to implement your own buffering
+logic, that collects [`io::Write::write`] output until a call to [`io::Write::flush`],
+and sends a single packet upon the call to [`io::Write::flush`].
+
+```rust,no_run
+use metrique::emf::Emf;
+use metrique::writer::FormatExt;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use std::net::SocketAddr;
+# async fn set_up_logs() {
+let emf_port = 25888;
+let addr = SocketAddr::from(([127, 0, 0, 1], emf_port));
+// Use tokio to establish the socket to avoid blocking the runtime, then convert it to std
+let tcp_connection = tokio::net::TcpStream::connect(addr)
+    .await
+    .expect("failed to connect to Firelens TCP port")
+    .into_std().unwrap();
+let stream = Emf::builder("MyApp".into(), vec![vec![]])
+    .log_group_name("MyLogGroup")
+    .build()
+    .output_to(tcp_connection);
+# }
+```
+
 [awslogs driver]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_awslogs.html
 [Cloudwatch Agent]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/Install-CloudWatch-Agent.html
 [Cloudwatch Log Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/AnalyzingLogData.html
 [Cloudwatch Contributor Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContributorInsights.html
+[read logs from your file and write them to a log group]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/create-cloudwatch-agent-configuration-file-examples.html
+[TCP / UDP interface]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Generation_CloudWatch_Agent.html
 [`Emf`]: metrique_writer_format_emf::Emf
 [`output_to`]: metrique_writer::FormatExt::output_to
+[`io::Write::flush`]: std::io::Write::flush
+[`io::Write::write`]: std::io::Write::write
