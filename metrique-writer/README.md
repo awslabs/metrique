@@ -57,7 +57,8 @@ It is also possible to implement `Entry` manually (see the docs for [`Entry`]).
 
 This library currently only comes with `metrique-writer-format-emf`,
 which formats to [Amazon CloudWatch Embedded Metric Format (EMF)][emf-docs],
-but more formatters might be added in the future.
+but more formatters might be added in the future. You can also implement a custom
+format using the [`Format`] trait.
 
 Entries are sent to an [`EntrySink`] in order to be written to a destination.
 
@@ -229,4 +230,4 @@ queue.append_any(metric);
 ```
 
 [emf-docs]: htps://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
-[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
+[`Format`]: https://docs.rs/metrique/0.1/metrique/writer/format/trait.Format.html
