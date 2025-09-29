@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.6](https://github.com/awslabs/metrique/compare/metrique-v0.1.5...metrique-v0.1.6) - 2025-09-19
+
+### Added
+
+- *(emf)* allow selecting a log group name ([#107](https://github.com/awslabs/metrique/pull/107))
+- *(test-util)* derive Clone and Debug for TestEntrySink ([#92](https://github.com/awslabs/metrique/pull/92))
+
+### Fixed
+
+- *(docs)* properly set global dimension in emf module docs ([#97](https://github.com/awslabs/metrique/pull/97))
+
+### Other
+
+- Add "why" section to the README ([#101](https://github.com/awslabs/metrique/pull/101))
+- *(macro)* minor field description enhancement ([#96](https://github.com/awslabs/metrique/pull/96))
+
 ## `metrique-service-metrics` - [0.1.5](https://github.com/awslabs/metrique/compare/metrique-service-metrics-v0.1.4...metrique-service-metrics-v0.1.5) - 2025-08-25
 
 ### Fixes

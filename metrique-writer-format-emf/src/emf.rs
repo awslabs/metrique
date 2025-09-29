@@ -161,6 +161,7 @@ pub struct Emf {
 struct State {
     namespaces: Vec<JsonEncodedString>,
     each_dimensions_str: Vec<JsonEncodedArray>,
+    log_group_and_timestamp: LogGroupNameAndTimestampString,
     dimension_set_map: hashbrown::HashMap<DimensionSet, MetricsForDimensionSet>,
 
     // buf that string fields can be added to
@@ -278,9 +279,39 @@ impl Display for JsonEncodedArray {
     }
 }
 
+/// Contains the log group name and timestamp string
+/// It is either
+/// `],"LogGroupName":"log group","Timestamp":`
+/// or
+/// `],"Timestamp":`
+#[derive(Clone)]
+struct LogGroupNameAndTimestampString {
+    encoded: String,
+}
+
+impl LogGroupNameAndTimestampString {
+    fn new(log_group: Option<String>) -> Self {
+        LogGroupNameAndTimestampString {
+            encoded: if let Some(log_group) = log_group {
+                format!(
+                    r#"],"LogGroupName":{},"Timestamp":"#,
+                    serde_json::to_string(&log_group).expect("everything here is valid")
+                )
+            } else {
+                r#"],"Timestamp":"#.to_string()
+            },
+        }
+    }
+}
+
 trait PushJsonSafeString {
     fn push_json_safe_string<'a>(&'a mut self, s: &JsonEncodedString) -> &'a mut Self;
     fn push_json_safe_array<'a>(&'a mut self, s: &JsonEncodedArray) -> &'a mut Self;
+    fn push_json_safe_log_group_and_timestamp<'a>(
+        &'a mut self,
+        s: &LogGroupNameAndTimestampString,
+        timestamp_str: &str,
+    ) -> &'a mut Self;
 }
 
 impl PushJsonSafeString for PrefixedStringBuf {
@@ -290,6 +321,14 @@ impl PushJsonSafeString for PrefixedStringBuf {
 
     fn push_json_safe_array<'a>(&'a mut self, s: &JsonEncodedArray) -> &'a mut Self {
         self.push_raw_str(&s.encoded_array)
+    }
+
+    fn push_json_safe_log_group_and_timestamp<'a>(
+        &'a mut self,
+        s: &LogGroupNameAndTimestampString,
+        timestamp_str: &str,
+    ) -> &'a mut Self {
+        self.push_raw_str(&s.encoded).push_raw_str(timestamp_str)
     }
 }
 
@@ -316,6 +355,7 @@ impl Emf {
             default_dimensions,
             allow_ignored_dimensions: false,
             extra_directives: String::new(),
+            log_group_name: None,
             #[cfg(debug_assertions)]
             validation: Validation::default(),
             #[cfg(not(debug_assertions))]
@@ -467,6 +507,7 @@ pub struct EmfBuilder {
     namespaces: Vec<String>,
     validation: Validation,
     allow_ignored_dimensions: bool,
+    log_group_name: Option<String>,
 }
 
 impl EmfBuilder {
@@ -569,6 +610,7 @@ impl EmfBuilder {
                 metrics_buf: PrefixedStringBuf::new(r#"],"Metrics":["#, 2048),
                 decl_buf: PrefixedStringBuf::new(&self.extra_directives, 256),
                 allow_ignored_dimensions: self.allow_ignored_dimensions,
+                log_group_and_timestamp: LogGroupNameAndTimestampString::new(self.log_group_name),
                 allow_split_entries: false,
             },
             validation_map_base: validation_map,
@@ -734,8 +776,69 @@ impl EmfBuilder {
     ///     })
     /// );
     /// ```
-    pub fn add_namespace(mut self, namespace: String) -> Self {
-        self.namespaces.push(namespace);
+    pub fn add_namespace(mut self, namespace: impl Into<String>) -> Self {
+        self.namespaces.push(namespace.into());
+        self
+    }
+
+    /// Set the log group name for this builder.
+    ///
+    /// This is used when publishing to [CloudWatch Agent via TCP or UDP][cwa-tcp-udp],
+    /// to select the destination log group name.
+    ///
+    /// When publishing via the file-based CloudWatch Agent interface, the log group name
+    /// is instead selected by CloudWatch Agent configuration, so this is not needed.
+    ///
+    /// This field is not read by EMF itself (outside of the CloudWatch Agent).
+    ///
+    /// [cwa-tcp-udp]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Generation_CloudWatch_Agent.html#CloudWatch_Embedded_Metric_Format_Generation_CloudWatch_Agent_Send_Logs
+    ///
+    /// ## Examples
+    ///
+    /// This will publish the metrics to the `Foo` log group:
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::time::{Duration, SystemTime};
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct MyMetrics {
+    ///     #[entry(timestamp)]
+    ///     start: SystemTime,
+    ///     my_field: u32,
+    /// }
+    ///
+    /// let mut emf = Emf::builder("MyApp".to_string(), vec![vec![]])
+    ///     .log_group_name("Foo".to_string())
+    ///     .build();
+    /// let mut output = Vec::new();
+    ///
+    /// emf.format(&MyMetrics {
+    ///     start: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
+    ///     my_field: 4,
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [
+    ///                  {"Namespace": "MyApp", "Dimensions": [[]], "Metrics": [{"Name": "MyField"}]},
+    ///             ],
+    ///             "LogGroupName": "Foo",
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "MyField": 4,
+    ///     })
+    /// );
+    /// ```
+    pub fn log_group_name(mut self, log_group_name: impl Into<String>) -> Self {
+        self.log_group_name = Some(log_group_name.into());
         self
     }
 }
@@ -1024,8 +1127,11 @@ impl EntryWriter<'_> {
         self.error.build()?;
         self.state
             .decl_buf
-            .push_raw_str(r#"],"Timestamp":"#)
-            .push_raw_str(timestamp_str); // safe because timestamp_str is a number
+            // safe because timestamp is a number
+            .push_json_safe_log_group_and_timestamp(
+                &self.state.log_group_and_timestamp,
+                timestamp_str,
+            );
         self.state.string_fields_buf.push_raw_str("}\n");
 
         let mut emitted_any_dimension_metrics = false;
@@ -1042,8 +1148,11 @@ impl EntryWriter<'_> {
             }
             entry
                 .metrics_buf
-                .push_raw_str(r#"],"Timestamp":"#)
-                .push_raw_str(timestamp_str); // safe because timestamp_str is a number
+                // safe because timestamp is a number
+                .push_json_safe_log_group_and_timestamp(
+                    &self.state.log_group_and_timestamp,
+                    timestamp_str,
+                );
             let buf: SmallVec<[_; 3]> = smallvec![
                 entry.metrics_buf.as_ref(),
                 entry.fields_buf.as_ref(),
@@ -2601,7 +2710,7 @@ mod tests {
             }
         }
 
-        fn check(mut format: Emf, extra: &str) {
+        fn check(mut format: Emf, log_group_name: &str, extra: &str) {
             // format multiple times to make sure that buffers are cleared.
             for _ in 0..3 {
                 let mut output = Vec::new();
@@ -2611,7 +2720,9 @@ mod tests {
                 assert_eq!(output.pop().unwrap(), b"");
                 assert_eq!(output.len(), 2);
                 output.sort();
-                let expected: &str = r#"
+                let expected: String = format!(
+                    "{}{}{}",
+                    r#"
             {
                 "API": "MyAPI",
                 "AWSAccountId": "012345678901",
@@ -2635,11 +2746,14 @@ mod tests {
                                 }
                             ]
                         }
-                    ],
+                    ],"#,
+                    log_group_name,
+                    r#"
                     "Timestamp": 1749475336015
                 }
             }
-            "#;
+            "#
+                );
                 let json: serde_json::Value = serde_json::from_slice(&output[0]).unwrap();
 
                 assert_json_diff::assert_json_eq!(
@@ -2648,7 +2762,7 @@ mod tests {
                 );
 
                 let expected = format!(
-                    "{}{}{}",
+                    "{}{}{}{}{}",
                     r#"
             {
                 "API": "MyAPI",
@@ -2677,9 +2791,9 @@ mod tests {
                             ]
                         }"#,
                     extra,
-                    r#"
-                    ],
-                    "Timestamp": 1749475336015
+                    r"],",
+                    log_group_name,
+                    r#""Timestamp": 1749475336015
                 }
             }
             "#
@@ -2707,6 +2821,7 @@ mod tests {
             })
             .skip_all_validations(true)
             .build(),
+            "",
             r#"                        ,{ "Namespace": "TestNS", "Dimensions": [["API"]], "Metrics": [{"Name": "MeanValue", "Unit": "Seconds", "StorageResolution": 1}]}"#,
         );
 
@@ -2726,6 +2841,7 @@ mod tests {
             })
             .skip_all_validations(false)
             .build(),
+            "",
             r#"                        ,{ "Namespace": "TestNS", "Dimensions": [["API"]], "Metrics": [{"Name": "MeanValue", "Unit": "Seconds", "StorageResolution": 1}]}"#,
         );
 
@@ -2735,6 +2851,7 @@ mod tests {
                 vec![vec![], vec!["AWSAccountId".to_string()]],
             ),
             "",
+            "",
         );
 
         check(
@@ -2742,6 +2859,7 @@ mod tests {
                 "TestNS".to_string(),
                 vec![vec![], vec!["AWSAccountId".to_string()]],
             ),
+            "",
             "",
         );
 
@@ -2751,6 +2869,18 @@ mod tests {
                 vec![vec![], vec!["AWSAccountId".to_string()]],
             )
             .build(),
+            "",
+            "",
+        );
+
+        check(
+            Emf::builder(
+                "TestNS".to_string(),
+                vec![vec![], vec!["AWSAccountId".to_string()]],
+            )
+            .log_group_name("Bar")
+            .build(),
+            r#""LogGroupName": "Bar","#,
             "",
         );
     }

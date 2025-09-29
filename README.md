@@ -1,10 +1,61 @@
-## Metrique
+# Metrique [![Build Status]][actions] [![Latest Version]][crates.io] [![Released API docs]][docs.rs] [![Apache-2.0 licensed]][license]
 
-A set of crates for collecting and exporting metrics, especially unit-of-work metrics.
+[Build Status]: https://github.com/awslabs/metrique/actions/workflows/build.yml/badge.svg
+[actions]: https://github.com/awslabs/metrique/actions?query=workflow%3Abuild
+[Latest Version]: https://img.shields.io/crates/v/metrique.svg
+[crates.io]: https://crates.io/crates/metrique
+[Released API docs]: https://docs.rs/metrique/badge.svg
+[docs.rs]: https://docs.rs/metrique
+[Apache-2.0 licensed]: https://img.shields.io/badge/license-Apache_2.0-blue.svg
+[license]: ./LICENSE
+
+**Metrique is a set of crates for collecting and exporting *unit-of-work* metrics.**
+
+```rust
+use metrique::unit_of_work::metrics;
+
+#[metrics]
+struct RequestMetrics {
+    #[metrics(timestamp)]
+    timestamp: Timestamp,
+    number_of_ducks: usize,
+    #[metrics(unit = Millisecond)]
+    operation_time: Timer,
+}
+```
 
 This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
+
 More formats might be supported in future versions. You can also configure a custom
 format using the [`Format`] trait.
+
+## Why Metrique?
+
+Metrique is designed for high-performance, structured metrics collection with minimal runtime overhead. Metrique is built around the principle that a metric associated with a specific action is more valuable than those that are only available aggregated over time. We call these metrics "unit-of-work" metrics because they correspond to a single unit of application work.
+
+### Performance
+Unlike metrics libraries that collect metrics in a `HashMap`, `metrique` uses plain structs. This eliminates allocation and hashmap lookups when producing metrics, resulting in significantly lower CPU overhead and memory pressure. This is especially important for high-throughput services.
+
+Compared to libraries that rely on `HashMap`s or similar containers, the overhead of `metrique` can be 50x lower!
+
+### Structured Metrics with Type Safety
+Because metrique builds on plain structs, metric structure is enforced at compile time. Your metrics are defined as structs with the `#[metrics]` attribute, ensuring consistency and catching errors early rather than at runtime. Structuring your metrics up front has some up front cost but it pays for itself in the long term.
+
+### Minimal Allocation Overhead
+`metrique-writer`, the serialization library for `metrique`, enables low (and sometimes 0) allocation formatting for EMF. Coupled with the fact that metrics-are-just-structs, this can significantly reduce allocator pressure.
+
+### Why use `metrique`?
+
+#### Instead of [OpenTelemetry](https://opentelemetry.io/)
+OTel and metrique solve different problems and future work may add an OTel backend for metrique. `metrique` is about emitting events that capture all the metrics associated with single unit of work, in Rust, as efficiently as possible.
+
+#### Instead of [metrics.rs](https://metrics.rs/)
+`metrique` is actually compatible with `metrics.rs` via the [`metrique-metricsrs`](https://crates.io/crates/metrique-metricsrs) crate! This allows you to periodically
+flush the contents of metrics collected via libraries already compatible with `metrics.rs` as a single event.
+
+However, if your goal is to emit structured events that produce metrics with as little overhead as possible:
+- Metrique avoids `HashMap`-based metric storage, reducing allocation pressure and the overhead of recording metrics
+- Compile-time metric definition prevents typos and makes it obvious exactly what metrics your application produces
 
 ## Getting Started
 
@@ -56,7 +107,7 @@ async fn count_ducks() {
 }
 ```
 
-But when it drops, it will be appended to the queue to be formatted and flushed. 
+But when it drops, it will be appended to the queue to be formatted and flushed.
 
 To control how it is written, when you start your application, you must configure a queue:
 ```rust
@@ -101,7 +152,7 @@ format using the [`Format`] trait.
    comes with support for the [Amazon EMF] backend, but support can be added to other
    backends.
  - **metric datapoint**: A single point of `(name, dimensions, multiplicity, time, value)`,
-   generally nor represented explicitly but rather being emitted from fields in a
+   generally not represented explicitly but rather being emitted from fields in a
    *metric entry*. Metric datapoints have a value that is an integer or floating point, and can
    come with some sort of *multiplicity*.
  - **metric entry**: something that implements [`Entry`] (when using `metrique` rather
