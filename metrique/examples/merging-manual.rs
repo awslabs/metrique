@@ -12,6 +12,13 @@ use metrique::writer::{
 
 global_entry_sink! { ServiceMetrics }
 
+/// Key for grouping requests that can be merged together.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct RequestKey {
+    operation: &'static str,
+    status_code: u16,
+}
+
 /// A simple request metric that can be merged.
 #[derive(Debug, Clone)]
 struct RequestMetrics {
@@ -24,8 +31,7 @@ struct RequestMetrics {
 /// The merged version accumulates multiple RequestMetrics.
 #[derive(Debug)]
 struct MergedRequestMetrics {
-    operation: &'static str,
-    status_code: u16,
+    key: RequestKey,
     request_count: u64,
     total_latency_ms: u64,
     entry_count: usize,
@@ -50,8 +56,8 @@ impl Entry for RequestMetrics {
 
 impl Entry for MergedRequestMetrics {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        writer.value("Operation", &self.operation);
-        writer.value("StatusCode", &self.status_code);
+        writer.value("Operation", &self.key.operation);
+        writer.value("StatusCode", &self.key.status_code);
         writer.value("RequestCount", &self.request_count);
         writer.value("TotalLatencyMs", &self.total_latency_ms);
         writer.value("AverageLatencyMs", &(self.total_latency_ms / self.request_count.max(1)));
@@ -60,38 +66,40 @@ impl Entry for MergedRequestMetrics {
 
     fn sample_group(&self) -> impl Iterator<Item = (std::borrow::Cow<'static, str>, std::borrow::Cow<'static, str>)> {
         [
-            ("Operation".into(), self.operation.into()),
-            ("StatusCode".into(), self.status_code.to_string().into()),
+            ("Operation".into(), self.key.operation.into()),
+            ("StatusCode".into(), self.key.status_code.to_string().into()),
         ]
         .into_iter()
     }
 }
 
 impl MergeableEntry for RequestMetrics {
+    type Key = RequestKey;
     type Merged = MergedRequestMetrics;
 
-    fn new_merged() -> Self::Merged {
+    fn new_merged(key: Self::Key) -> Self::Merged {
         MergedRequestMetrics {
-            operation: "",
-            status_code: 0,
+            key,
             request_count: 0,
             total_latency_ms: 0,
             entry_count: 0,
         }
     }
+
+    fn key(&self) -> Self::Key {
+        RequestKey {
+            operation: self.operation,
+            status_code: self.status_code,
+        }
+    }
 }
 
 impl MergedEntry for MergedRequestMetrics {
+    type Key = RequestKey;
     type Source = RequestMetrics;
 
     fn merge_into(&mut self, entry: &Self::Source) {
-        if self.entry_count == 0 {
-            // First entry - initialize dimensions
-            self.operation = entry.operation;
-            self.status_code = entry.status_code;
-        }
-        
-        // Merge metrics
+        // Key is already set during construction, just merge metrics
         self.request_count += entry.request_count;
         self.total_latency_ms += entry.total_latency_ms;
         self.entry_count += 1;
@@ -133,7 +141,11 @@ fn main() {
     ];
 
     // Manually merge entries with same sample group
-    let mut merged = RequestMetrics::new_merged();
+    let key = RequestKey {
+        operation: "GetItem",
+        status_code: 200,
+    };
+    let mut merged = RequestMetrics::new_merged(key);
     for metric in metrics.iter().take(2) {
         merged.merge_into(metric);
     }

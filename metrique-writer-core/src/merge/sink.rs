@@ -23,11 +23,9 @@ struct MergingEntrySinkInner<E: MergeableEntry, S> {
 }
 
 struct MergeState<E: MergeableEntry> {
-    /// Merged entries keyed by sample group
-    merged: HashMap<SampleGroupKey, E::Merged>,
+    /// Merged entries keyed by their Key type
+    merged: HashMap<E::Key, E::Merged>,
 }
-
-type SampleGroupKey = Vec<(String, String)>;
 
 /// Configuration for merging behavior.
 #[derive(Debug, Clone)]
@@ -85,17 +83,14 @@ where
     fn append(&self, entry: E) {
         let mut state = self.inner.state.lock().unwrap();
         
-        // Build sample group key
-        let key: SampleGroupKey = entry
-            .sample_group()
-            .map(|(k, v)| (k.into_owned(), v.into_owned()))
-            .collect();
+        // Extract key from entry
+        let key = entry.key();
 
-        // Get or create merged entry for this sample group
+        // Get or create merged entry for this key
         let merged = state
             .merged
-            .entry(key)
-            .or_insert_with(|| E::new_merged());
+            .entry(key.clone())
+            .or_insert_with(|| E::new_merged(key));
 
         merged.merge_into(&entry);
 

@@ -12,10 +12,15 @@ Marks an entry type as capable of being merged:
 
 ```rust
 pub trait MergeableEntry: Entry {
-    type Merged: MergedEntry<Source = Self>;
-    fn new_merged() -> Self::Merged;
+    type Key: Eq + std::hash::Hash + Clone;
+    type Merged: MergedEntry<Source = Self, Key = Self::Key>;
+    
+    fn new_merged(key: Self::Key) -> Self::Merged;
+    fn key(&self) -> Self::Key;
 }
 ```
+
+**Key Type**: Identifies which entries can be merged together. Use `()` for keyless merging where all entries combine regardless of dimensions.
 
 ### `MergedEntry`
 
@@ -23,13 +28,45 @@ Accumulates multiple entries of the same type:
 
 ```rust
 pub trait MergedEntry: Entry {
-    type Source: MergeableEntry<Merged = Self>;
+    type Key: Eq + std::hash::Hash + Clone;
+    type Source: MergeableEntry<Merged = Self, Key = Self::Key>;
+    
     fn merge_into(&mut self, entry: &Self::Source);
     fn count(&self) -> usize;
 }
 ```
 
 **Note**: The method is named `merge_into` to avoid collision with `Entry::merge()` which combines two different entry types.
+
+## Key Design
+
+The `Key` associated type determines merge behavior:
+
+### Keyed Merging
+Entries with the same key merge together:
+```rust
+struct RequestKey {
+    operation: &'static str,
+    status_code: u16,
+}
+
+impl MergeableEntry for RequestMetrics {
+    type Key = RequestKey;
+    // ...
+}
+```
+
+### Keyless Merging
+All entries merge together:
+```rust
+impl MergeableEntry for TotalRequests {
+    type Key = ();  // No key
+    
+    fn key(&self) -> Self::Key {
+        ()  // Always returns unit
+    }
+}
+```
 
 ## Merge Strategies
 
@@ -38,24 +75,20 @@ Different field types require different merge strategies:
 - **Counters** (request_count, error_count): Sum values
 - **Timers/Latencies** (total_latency_ms): Sum for total, divide by count for average
 - **Gauges** (active_connections): Last value, min, max, or average
-- **Dimensions** (operation, status_code): Must match for entries to merge
+- **Keys/Dimensions** (operation, status_code): Part of the Key type, set during construction
 
 ## MergingEntrySink
 
-Automatically merges entries with the same sample group:
+Automatically merges entries with the same key:
 
 ```rust
 let merging_sink = MergingEntrySink::new(downstream_sink);
-merging_sink.append(entry); // Automatically merged by sample group
+merging_sink.append(entry); // Automatically merged by key
 ```
 
 Configuration options:
-- `max_entries`: Flush when this many unique sample groups accumulated
+- `max_entries`: Flush when this many unique keys accumulated
 - `sample_rate`: Emit some unmerged entries for debugging (future)
-
-## Sample Groups
-
-Entries are merged based on their `sample_group()` - typically dimensions like operation and status code. Only entries with identical sample groups are merged together.
 
 ## Future Work
 
@@ -64,6 +97,8 @@ Entries are merged based on their `sample_group()` - typically dimensions like o
 3. **Time-based flushing**: Flush merged entries after a time window
 4. **Histogram support**: Proper histogram merging for latency distributions
 
-## Example
+## Examples
 
-See `metrique/examples/merging-manual.rs` for a complete manual implementation.
+- `metrique/examples/merging-manual.rs` - Keyed merging by operation and status code
+- `metrique/examples/merging-keyless.rs` - Keyless merging of all entries
+
