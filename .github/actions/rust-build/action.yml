@@ -30,5 +30,12 @@ runs:
           cargo test --verbose ${{ inputs.flags }}
           if [ "${{ inputs.toolchain }}" == nightly -a "${{ inputs.flags }}" == "--all-features" ]; then
               # docs use unstable features, run them on nightly
-              RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --verbose ${{ inputs.flags }}
+              # pass --no-deps. When *rendering* docs, is better to not use `--no-deps`,
+              # since links in docs can link to types in dependencies, but currently, some crates
+              # do not compile with `cfg(docsrs)` due to the feature gate name change
+              # in <https://github.com/rust-lang/rust/pull/138907>.
+              #
+              # It's better to keep `--no-deps` in CI, since it matches what rustdoc runs, and is
+              # faster.
+              RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --verbose --no-deps ${{ inputs.flags }}
           fi
