@@ -6,8 +6,25 @@
 use crate::Entry;
 
 pub mod sink;
+pub mod strategies;
 
 pub use sink::{MergeConfig, MergingEntrySink};
+pub use strategies::{Counter, Gauge, Max, Min};
+
+/// Defines how to merge individual field values.
+///
+/// This trait is used by the proc macro to generate merge implementations
+/// for individual fields in a metrics struct.
+pub trait MergeValue<T> {
+    /// The accumulated type. Often the same as T, but can differ (e.g., Histogram).
+    type Merged;
+
+    /// Initialize a new accumulator.
+    fn init() -> Self::Merged;
+
+    /// Merge a value into the accumulator.
+    fn merge(accum: &mut Self::Merged, value: &T);
+}
 
 /// An entry that can be merged with other entries of the same type.
 ///
@@ -41,19 +58,4 @@ pub trait MergedEntry: Entry {
 
     /// Get the number of entries merged so far.
     fn count(&self) -> usize;
-}
-
-/// Strategy for merging numeric values.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MergeStrategy {
-    /// Sum all values (for counters).
-    Sum,
-    /// Keep the last value (for gauges).
-    Last,
-    /// Keep the minimum value.
-    Min,
-    /// Keep the maximum value.
-    Max,
-    /// Calculate the average.
-    Average,
 }

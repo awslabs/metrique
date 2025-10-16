@@ -6,7 +6,7 @@
 use metrique::emf::Emf;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntrySink, EntryWriter, FormatExt, GlobalEntrySink,
-    merge::{MergeableEntry, MergedEntry},
+    merge::{Counter, MergeableEntry, MergedEntry, MergeValue},
     sink::global_entry_sink,
 };
 
@@ -32,8 +32,8 @@ struct RequestMetrics {
 #[derive(Debug)]
 struct MergedRequestMetrics {
     key: RequestKey,
-    request_count: u64,
-    total_latency_ms: u64,
+    request_count: <Counter as MergeValue<u64>>::Merged,
+    total_latency_ms: <Counter as MergeValue<u64>>::Merged,
     entry_count: usize,
 }
 
@@ -80,8 +80,8 @@ impl MergeableEntry for RequestMetrics {
     fn new_merged(key: Self::Key) -> Self::Merged {
         MergedRequestMetrics {
             key,
-            request_count: 0,
-            total_latency_ms: 0,
+            request_count: Counter::init(),
+            total_latency_ms: Counter::init(),
             entry_count: 0,
         }
     }
@@ -99,9 +99,9 @@ impl MergedEntry for MergedRequestMetrics {
     type Source = RequestMetrics;
 
     fn merge_into(&mut self, entry: &Self::Source) {
-        // Key is already set during construction, just merge metrics
-        self.request_count += entry.request_count;
-        self.total_latency_ms += entry.total_latency_ms;
+        // Use Counter strategy to merge fields
+        Counter::merge(&mut self.request_count, &entry.request_count);
+        Counter::merge(&mut self.total_latency_ms, &entry.total_latency_ms);
         self.entry_count += 1;
     }
 
