@@ -3,7 +3,7 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 // not bumping the MSRV for collapsible_if
 #![allow(clippy::collapsible_if)]
 
