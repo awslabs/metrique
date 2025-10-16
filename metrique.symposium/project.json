@@ -1,0 +1,14 @@
+{
+  "version" : 2,
+  "name" : "metrique",
+  "agent" : "qcli",
+  "stackedWindowsEnabled" : false,
+  "id" : "F9F352E5-8276-4589-AE81-47B24B8D3E9C",
+  "remoteName" : "origin",
+  "taskspaces" : [
+
+  ],
+  "directoryPath" : "\/Users\/rcoh\/code\/metrique\/metrique.symposium",
+  "createdAt" : "2025-10-16T18:51:29Z",
+  "gitURL" : "https:\/\/github.com\/awslabs\/metrique\/tree\/main\/metrique"
+}
