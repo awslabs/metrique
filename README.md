@@ -43,10 +43,10 @@ Because metrique builds on plain structs, metric structure is enforced at compil
 `metrique-writer`, the serialization library for `metrique`, enables low (and sometimes 0) allocation formatting for EMF. Coupled with the fact that metrics-are-just-structs, this can significantly reduce allocator pressure.
 
 ### In-Memory Aggregation
-Metrique supports in-memory aggregation to reduce the number of metric records sent to your backend. Entries with the same key (dimensions) are automatically merged before emission:
+Metrique supports in-memory aggregation to reduce the number of metric records sent to your backend. Entries with the same key (dimensions) are automatically aggregated before emission:
 
 ```rust
-#[metrics(mergeable)]
+#[metrics(aggregate)]
 struct RequestMetrics {
     #[metrics(key)]
     operation: &'static str,
@@ -54,21 +54,21 @@ struct RequestMetrics {
     #[metrics(key)]
     status_code: u16,
     
-    #[metrics(merge = Counter)]
+    #[metrics(aggregate = Counter)]
     request_count: u64,
     
-    #[metrics(merge = Histogram)]
+    #[metrics(aggregate = Histogram)]
     latency_ms: u64,
 }
 ```
 
-**Merge strategies:**
+**Aggregation strategies:**
 - `Counter` - Sums values (request counts, bytes transferred)
 - `Gauge` - Keeps last value (active connections, memory usage)
 - `Histogram` - Collects distribution (latency, response sizes)
 - `Max`/`Min` - Tracks extremes (peak latency, minimum queue depth)
 
-Entries with the same `operation` and `status_code` are automatically merged, with `request_count` summed and `latency_ms` values collected into a histogram. For keyless merging (all entries combine), omit the `#[metrics(key)]` attributes.
+Entries with the same `operation` and `status_code` are automatically aggregated, with `request_count` summed and `latency_ms` values collected into a histogram. For keyless merging (all entries combine), omit the `#[metrics(key)]` attributes.
 
 ### Why use `metrique`?
 

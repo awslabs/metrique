@@ -1,12 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Example showing manual implementation of MergeableEntry for in-memory aggregation.
+//! Example showing manual implementation of AggregatableEntry for in-memory aggregation.
 
 use metrique::emf::Emf;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntrySink, EntryWriter, FormatExt, GlobalEntrySink,
-    merge::{Counter, Histogram, MergeableEntry, MergedEntry, MergeValue},
+    merge::{Counter, Histogram, AggregatableEntry, AggregatedEntry, AggregateValue},
     sink::global_entry_sink,
 };
 
@@ -30,10 +30,10 @@ struct RequestMetrics {
 
 /// The merged version accumulates multiple RequestMetrics.
 #[derive(Debug)]
-struct MergedRequestMetrics {
+struct AggregatedRequestMetrics {
     key: RequestKey,
-    request_count: <Counter as MergeValue<u64>>::Merged,
-    latency_ms: <Histogram as MergeValue<u64>>::Merged,  // VecHistogram
+    request_count: <Counter as AggregateValue<u64>>::Aggregated,
+    latency_ms: <Histogram as AggregateValue<u64>>::Aggregated,  // VecHistogram
     entry_count: usize,
 }
 
@@ -54,13 +54,13 @@ impl Entry for RequestMetrics {
     }
 }
 
-impl Entry for MergedRequestMetrics {
+impl Entry for AggregatedRequestMetrics {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         writer.value("Operation", &self.key.operation);
         writer.value("StatusCode", &self.key.status_code);
         writer.value("RequestCount", &self.request_count);
         writer.value("LatencyMs", &self.latency_ms);
-        writer.value("MergedEntryCount", &(self.entry_count as u64));
+        writer.value("AggregatedEntryCount", &(self.entry_count as u64));
     }
 
     fn sample_group(&self) -> impl Iterator<Item = (std::borrow::Cow<'static, str>, std::borrow::Cow<'static, str>)> {
@@ -72,12 +72,12 @@ impl Entry for MergedRequestMetrics {
     }
 }
 
-impl MergeableEntry for RequestMetrics {
+impl AggregatableEntry for RequestMetrics {
     type Key = RequestKey;
-    type Merged = MergedRequestMetrics;
+    type Aggregated = AggregatedRequestMetrics;
 
-    fn new_merged(key: Self::Key) -> Self::Merged {
-        MergedRequestMetrics {
+    fn new_aggregated(key: Self::Key) -> Self::Aggregated {
+        AggregatedRequestMetrics {
             key,
             request_count: Counter::init(),
             latency_ms: Histogram::init(),
@@ -93,14 +93,14 @@ impl MergeableEntry for RequestMetrics {
     }
 }
 
-impl MergedEntry for MergedRequestMetrics {
+impl AggregatedEntry for AggregatedRequestMetrics {
     type Key = RequestKey;
     type Source = RequestMetrics;
 
-    fn merge_into(&mut self, entry: &Self::Source) {
+    fn aggregate_into(&mut self, entry: &Self::Source) {
         // Use strategies to merge fields
-        Counter::merge(&mut self.request_count, &entry.request_count);
-        Histogram::merge(&mut self.latency_ms, &entry.latency_ms);
+        Counter::aggregate(&mut self.request_count, &entry.request_count);
+        Histogram::aggregate(&mut self.latency_ms, &entry.latency_ms);
         self.entry_count += 1;
     }
 
@@ -112,7 +112,7 @@ impl MergedEntry for MergedRequestMetrics {
 fn main() {
     // Initialize metrics sink
     let _handle = ServiceMetrics::attach_to_stream(
-        Emf::builder("MergingExample".to_string(), vec![vec!["Operation".to_string()]])
+        Emf::builder("AggregationExample".to_string(), vec![vec!["Operation".to_string()]])
             .build()
             .output_to_makewriter(|| std::io::stdout().lock()),
     );
@@ -144,16 +144,16 @@ fn main() {
         operation: "GetItem",
         status_code: 200,
     };
-    let mut merged = RequestMetrics::new_merged(key);
+    let mut merged = RequestMetrics::new_aggregated(key);
     for metric in metrics.iter().take(2) {
-        merged.merge_into(metric);
+        merged.aggregate_into(metric);
     }
 
     let count = merged.count();
     let total_requests = merged.request_count;
     let avg_latency = merged.latency_ms.avg();
 
-    println!("Merged {} entries", count);
+    println!("Aggregated {} entries", count);
     println!("Total requests: {}", total_requests);
     println!("Average latency: {}ms", avg_latency);
     println!("Min latency: {}ms", merged.latency_ms.min().unwrap());
