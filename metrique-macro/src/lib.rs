@@ -182,6 +182,7 @@ struct RawRootAttributes {
     #[darling(rename = "subfield_owned")]
     subfield_owned: Flag,
     value: Option<ValueAttributes>,
+    aggregate: Flag,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -192,6 +193,7 @@ enum MetricMode {
     SubfieldOwned,
     Value,
     ValueString,
+    Aggregate,
 }
 
 #[derive(Debug, Default)]
@@ -227,6 +229,7 @@ impl RawRootAttributes {
             out,
             &self.subfield_owned,
         )?;
+        out = set_exclusive(|_| MetricMode::Aggregate, "aggregate", out, &self.aggregate)?;
         let mode = out.map(|(s, _)| s).unwrap_or_default();
         if let (MetricMode::ValueString, Some(ds)) = (mode, &self.emf_dimensions) {
             return Err(
@@ -273,7 +276,7 @@ impl RootAttributes {
 
     fn ownership_kind(&self) -> OwnershipKind {
         match self.mode {
-            MetricMode::RootEntry | MetricMode::SubfieldOwned => OwnershipKind::ByValue,
+            MetricMode::RootEntry | MetricMode::SubfieldOwned | MetricMode::Aggregate => OwnershipKind::ByValue,
             MetricMode::Subfield | MetricMode::ValueString | MetricMode::Value => {
                 OwnershipKind::ByRef
             }
@@ -293,6 +296,11 @@ struct RawMetricsFieldAttrs {
     timestamp: Flag,
 
     ignore: Flag,
+
+    key: Flag,
+
+    #[darling(default)]
+    aggregate: Option<syn::Path>,
 
     #[darling(default)]
     unit: Option<SpannedKv<syn::Path>>,
@@ -428,6 +436,8 @@ impl RawMetricsFieldAttrs {
         }
         Ok(MetricsFieldAttrs {
             close,
+            key: self.key,
+            aggregate: self.aggregate,
             kind: match out {
                 Some((out, _)) => out,
                 None => MetricsFieldKind::Field {
@@ -467,6 +477,8 @@ struct MetricsVariantAttrs {
 struct MetricsFieldAttrs {
     close: bool,
     kind: MetricsFieldKind,
+    key: Flag,
+    aggregate: Option<syn::Path>,
 }
 
 #[derive(Debug, Clone)]
@@ -495,7 +507,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
         MetricMode::RootEntry
         | MetricMode::Subfield
         | MetricMode::SubfieldOwned
-        | MetricMode::Value => {
+        | MetricMode::Value
+        | MetricMode::Aggregate => {
             let fields = match &input.data {
                 Data::Struct(data_struct) => match &data_struct.fields {
                     Fields::Named(fields_named) => &fields_named.named,
@@ -648,6 +661,10 @@ fn generate_metrics_for_struct(
                 // the <STRUCT>Guard that implements AppendOnDrop
                 #on_drop_wrapper
             }
+        }
+        MetricMode::Aggregate => {
+            // Generate aggregation implementations
+            generate_aggregation_impls(struct_name, &entry_name, &parsed_fields, &root_attributes)?
         }
         MetricMode::Subfield
         | MetricMode::SubfieldOwned
@@ -1142,6 +1159,195 @@ fn clean_base_adt(input: &DeriveInput) -> Ts2 {
     }
 }
 
+/// Generate aggregation implementations for a struct marked with #[metrics(aggregate)]
+fn generate_aggregation_impls(
+    struct_name: &Ident,
+    _entry_name: &Ident,
+    fields: &[MetricsField],
+    _root_attributes: &RootAttributes,
+) -> Result<Ts2> {
+    // Separate key fields from aggregate fields
+    let key_fields: Vec<_> = fields.iter().filter(|f| f.attrs.key.is_present()).collect();
+    let aggregate_fields: Vec<_> = fields.iter().filter(|f| f.attrs.aggregate.is_some()).collect();
+    
+    // Generate Key type
+    let key_type = if key_fields.is_empty() {
+        quote! { () }
+    } else {
+        let key_types = key_fields.iter().map(|f| &f.ty);
+        quote! { (#(#key_types),*) }
+    };
+    
+    // Generate Aggregated struct name
+    let aggregated_name = format_ident!("Aggregated{}", struct_name);
+    
+    // Generate Aggregated struct fields
+    let mut aggregated_fields = Vec::new();
+    
+    // Add key field
+    aggregated_fields.push(quote! {
+        key: #key_type
+    });
+    
+    // Add aggregated fields
+    for field in &aggregate_fields {
+        let field_name = field.name.as_ref().unwrap();
+        let field_type = &field.ty;
+        let strategy = field.attrs.aggregate.as_ref().unwrap();
+        
+        aggregated_fields.push(quote! {
+            #field_name: <#strategy as ::metrique::writer::merge::AggregateValue<#field_type>>::Aggregated
+        });
+    }
+    
+    // Add entry count
+    aggregated_fields.push(quote! {
+        entry_count: usize
+    });
+    
+    // Generate Aggregated struct
+    let aggregated_struct = quote! {
+        #[derive(Debug)]
+        struct #aggregated_name {
+            #(#aggregated_fields),*
+        }
+    };
+    
+    // Generate AggregatableEntry impl
+    let key_extraction = if key_fields.is_empty() {
+        quote! { () }
+    } else {
+        let key_field_names = key_fields.iter().map(|f| f.name.as_ref().unwrap());
+        quote! { (#(self.#key_field_names),*) }
+    };
+    
+    let aggregated_init_fields = aggregate_fields.iter().map(|f| {
+        let field_name = f.name.as_ref().unwrap();
+        let strategy = f.attrs.aggregate.as_ref().unwrap();
+        quote! {
+            #field_name: <#strategy as ::metrique::writer::merge::AggregateValue<_>>::init()
+        }
+    });
+    
+    let aggregatable_impl = quote! {
+        impl ::metrique::writer::merge::AggregatableEntry for #struct_name {
+            type Key = #key_type;
+            type Aggregated = #aggregated_name;
+            
+            fn new_aggregated(key: Self::Key) -> Self::Aggregated {
+                #aggregated_name {
+                    key,
+                    #(#aggregated_init_fields,)*
+                    entry_count: 0,
+                }
+            }
+            
+            fn key(&self) -> Self::Key {
+                #key_extraction
+            }
+        }
+    };
+    
+    // Generate AggregatedEntry impl
+    let aggregate_calls = aggregate_fields.iter().map(|f| {
+        let field_name = f.name.as_ref().unwrap();
+        let strategy = f.attrs.aggregate.as_ref().unwrap();
+        quote! {
+            <#strategy as ::metrique::writer::merge::AggregateValue<_>>::aggregate(&mut self.#field_name, &entry.#field_name);
+        }
+    });
+    
+    let aggregated_impl = quote! {
+        impl ::metrique::writer::merge::AggregatedEntry for #aggregated_name {
+            type Key = #key_type;
+            type Source = #struct_name;
+            
+            fn aggregate_into(&mut self, entry: &Self::Source) {
+                #(#aggregate_calls)*
+                self.entry_count += 1;
+            }
+            
+            fn count(&self) -> usize {
+                self.entry_count
+            }
+        }
+    };
+    
+    // Generate Entry impl for Aggregated struct
+    let key_writes = if key_fields.is_empty() {
+        Vec::new()
+    } else {
+        key_fields.iter().enumerate().map(|(i, f)| {
+            let field_name = f.name.as_ref().unwrap();
+            let field_name_str = field_name.to_string();
+            let field_name_pascal = to_pascal_case(&field_name_str);
+            let index = syn::Index::from(i);
+            quote! {
+                writer.value(#field_name_pascal, &self.key.#index);
+            }
+        }).collect()
+    };
+    
+    let aggregate_writes = aggregate_fields.iter().map(|f| {
+        let field_name = f.name.as_ref().unwrap();
+        let field_name_str = field_name.to_string();
+        let field_name_pascal = to_pascal_case(&field_name_str);
+        quote! {
+            writer.value(#field_name_pascal, &self.#field_name);
+        }
+    });
+    
+    let sample_group_items = if key_fields.is_empty() {
+        Vec::new()
+    } else {
+        key_fields.iter().enumerate().map(|(i, f)| {
+            let field_name = f.name.as_ref().unwrap();
+            let field_name_str = field_name.to_string();
+            let field_name_pascal = to_pascal_case(&field_name_str);
+            let index = syn::Index::from(i);
+            quote! {
+                (#field_name_pascal.into(), self.key.#index.to_string().into())
+            }
+        }).collect()
+    };
+    
+    let entry_impl = quote! {
+        impl ::metrique::writer::Entry for #aggregated_name {
+            fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+                #(#key_writes)*
+                #(#aggregate_writes)*
+                writer.value("AggregatedEntryCount", &(self.entry_count as u64));
+            }
+            
+            fn sample_group(&self) -> impl Iterator<Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>)> {
+                [
+                    #(#sample_group_items),*
+                ]
+                .into_iter()
+            }
+        }
+    };
+    
+    Ok(quote! {
+        #aggregated_struct
+        #aggregatable_impl
+        #aggregated_impl
+        #entry_impl
+    })
+}
+
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use darling::FromMeta;
@@ -1272,5 +1478,36 @@ mod tests {
         };
 
         assert_snapshot!("simple_metrics_enum", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregation_metrics_struct() {
+        let input = quote! {
+            struct RequestMetrics {
+                #[metrics(key)]
+                operation: &'static str,
+                #[metrics(key)]
+                status_code: u16,
+                #[metrics(aggregate = Counter)]
+                request_count: u64,
+                #[metrics(aggregate = Histogram)]
+                latency_ms: u64,
+            }
+        };
+
+        // Process the input through the metrics macro
+        let output = metrics_impl(input, quote!(metrics(aggregate)));
+
+        // Parse the output back into a syn::File for pretty printing
+        let parsed_file = match parse2::<syn::File>(output.clone()) {
+            Ok(file) => prettyplease::unparse(&file),
+            Err(_) => {
+                // If parsing fails, use the raw string output
+                output.to_string()
+            }
+        };
+
+        println!("Generated code:\n{}", parsed_file);
+        assert_snapshot!("aggregation_metrics_struct", parsed_file);
     }
 }
