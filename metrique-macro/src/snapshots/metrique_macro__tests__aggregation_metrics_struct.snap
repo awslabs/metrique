@@ -260,3 +260,22 @@ impl ::metrique::writer::Entry for AggregatedRequestMetrics {
             .into_iter()
     }
 }
+impl ::metrique::writer::Entry for RequestMetrics {
+    fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+        writer.value("Operation", &self.operation);
+        writer.value("StatusCode", &self.status_code);
+        writer.value("RequestCount", &self.request_count);
+        writer.value("LatencyMs", &self.latency_ms);
+    }
+    fn sample_group(
+        &self,
+    ) -> impl Iterator<
+        Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+    > {
+        [
+            ("Operation".into(), self.operation.to_string().into()),
+            ("StatusCode".into(), self.status_code.to_string().into()),
+        ]
+            .into_iter()
+    }
+}

@@ -21,6 +21,10 @@ struct RequestMetrics {
     latency_ms: u64,
 }
 
+struct AggregatedMetrics {
+    aggregator: AggregatedRequestMetrics
+}
+
 fn main() {
     // Create some sample metrics
     let metrics1 = RequestMetrics {
