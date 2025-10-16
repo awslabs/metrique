@@ -6,6 +6,62 @@
 use super::MergeValue;
 use std::ops::AddAssign;
 
+/// Simple vector-based histogram for demonstration.
+///
+/// Stores all individual values. Obviously inefficient but shows type transformation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct VecHistogram {
+    values: Vec<u64>,
+}
+
+impl VecHistogram {
+    /// Get the count of values.
+    pub fn count(&self) -> usize {
+        self.values.len()
+    }
+
+    /// Get the sum of all values.
+    pub fn sum(&self) -> u64 {
+        self.values.iter().sum()
+    }
+
+    /// Get the average value.
+    pub fn avg(&self) -> u64 {
+        if self.values.is_empty() {
+            0
+        } else {
+            self.sum() / self.values.len() as u64
+        }
+    }
+
+    /// Get the minimum value.
+    pub fn min(&self) -> Option<u64> {
+        self.values.iter().copied().min()
+    }
+
+    /// Get the maximum value.
+    pub fn max(&self) -> Option<u64> {
+        self.values.iter().copied().max()
+    }
+}
+
+/// Histogram merge strategy - collects all values.
+///
+/// Use for latency, size distributions, etc. Input type is u64, merged type is VecHistogram.
+pub struct Histogram;
+
+impl MergeValue<u64> for Histogram {
+    type Merged = VecHistogram;
+
+    fn init() -> Self::Merged {
+        VecHistogram { values: Vec::new() }
+    }
+
+    fn merge(accum: &mut Self::Merged, value: &u64) {
+        accum.values.push(*value);
+    }
+}
+
 /// Counter merge strategy - sums values.
 ///
 /// Use for metrics that accumulate over time (request counts, error counts, bytes transferred).
@@ -129,5 +185,19 @@ mod tests {
         Min::merge(&mut accum, &25u64);
         Min::merge(&mut accum, &15u64);
         assert_eq!(accum, Some(10));
+    }
+
+    #[test]
+    fn histogram_collects_values() {
+        let mut accum = Histogram::init();
+        Histogram::merge(&mut accum, &50);
+        Histogram::merge(&mut accum, &75);
+        Histogram::merge(&mut accum, &100);
+        
+        assert_eq!(accum.count(), 3);
+        assert_eq!(accum.sum(), 225);
+        assert_eq!(accum.avg(), 75);
+        assert_eq!(accum.min(), Some(50));
+        assert_eq!(accum.max(), Some(100));
     }
 }

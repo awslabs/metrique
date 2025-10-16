@@ -9,7 +9,7 @@ pub mod sink;
 pub mod strategies;
 
 pub use sink::{MergeConfig, MergingEntrySink};
-pub use strategies::{Counter, Gauge, Max, Min};
+pub use strategies::{Counter, Gauge, Histogram, Max, Min, VecHistogram};
 
 /// Defines how to merge individual field values.
 ///

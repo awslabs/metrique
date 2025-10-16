@@ -6,7 +6,7 @@
 use metrique::emf::Emf;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntrySink, EntryWriter, FormatExt, GlobalEntrySink,
-    merge::{Counter, MergeableEntry, MergedEntry, MergeValue},
+    merge::{Counter, Histogram, MergeableEntry, MergedEntry, MergeValue},
     sink::global_entry_sink,
 };
 
@@ -25,7 +25,7 @@ struct RequestMetrics {
     operation: &'static str,
     status_code: u16,
     request_count: u64,
-    total_latency_ms: u64,
+    latency_ms: u64,  // Individual latency value
 }
 
 /// The merged version accumulates multiple RequestMetrics.
@@ -33,7 +33,7 @@ struct RequestMetrics {
 struct MergedRequestMetrics {
     key: RequestKey,
     request_count: <Counter as MergeValue<u64>>::Merged,
-    total_latency_ms: <Counter as MergeValue<u64>>::Merged,
+    latency_ms: <Histogram as MergeValue<u64>>::Merged,  // VecHistogram
     entry_count: usize,
 }
 
@@ -42,7 +42,7 @@ impl Entry for RequestMetrics {
         writer.value("Operation", &self.operation);
         writer.value("StatusCode", &self.status_code);
         writer.value("RequestCount", &self.request_count);
-        writer.value("TotalLatencyMs", &self.total_latency_ms);
+        writer.value("LatencyMs", &self.latency_ms);
     }
 
     fn sample_group(&self) -> impl Iterator<Item = (std::borrow::Cow<'static, str>, std::borrow::Cow<'static, str>)> {
@@ -59,8 +59,15 @@ impl Entry for MergedRequestMetrics {
         writer.value("Operation", &self.key.operation);
         writer.value("StatusCode", &self.key.status_code);
         writer.value("RequestCount", &self.request_count);
-        writer.value("TotalLatencyMs", &self.total_latency_ms);
-        writer.value("AverageLatencyMs", &(self.total_latency_ms / self.request_count.max(1)));
+        writer.value("LatencyCount", &(self.latency_ms.count() as u64));
+        writer.value("LatencySum", &self.latency_ms.sum());
+        writer.value("LatencyAvg", &self.latency_ms.avg());
+        if let Some(min) = self.latency_ms.min() {
+            writer.value("LatencyMin", &min);
+        }
+        if let Some(max) = self.latency_ms.max() {
+            writer.value("LatencyMax", &max);
+        }
         writer.value("MergedEntryCount", &(self.entry_count as u64));
     }
 
@@ -81,7 +88,7 @@ impl MergeableEntry for RequestMetrics {
         MergedRequestMetrics {
             key,
             request_count: Counter::init(),
-            total_latency_ms: Counter::init(),
+            latency_ms: Histogram::init(),
             entry_count: 0,
         }
     }
@@ -99,9 +106,9 @@ impl MergedEntry for MergedRequestMetrics {
     type Source = RequestMetrics;
 
     fn merge_into(&mut self, entry: &Self::Source) {
-        // Use Counter strategy to merge fields
+        // Use strategies to merge fields
         Counter::merge(&mut self.request_count, &entry.request_count);
-        Counter::merge(&mut self.total_latency_ms, &entry.total_latency_ms);
+        Histogram::merge(&mut self.latency_ms, &entry.latency_ms);
         self.entry_count += 1;
     }
 
@@ -124,19 +131,19 @@ fn main() {
             operation: "GetItem",
             status_code: 200,
             request_count: 1,
-            total_latency_ms: 50,
+            latency_ms: 50,
         },
         RequestMetrics {
             operation: "GetItem",
             status_code: 200,
             request_count: 1,
-            total_latency_ms: 75,
+            latency_ms: 75,
         },
         RequestMetrics {
             operation: "GetItem",
             status_code: 500,
             request_count: 1,
-            total_latency_ms: 200,
+            latency_ms: 200,
         },
     ];
 
@@ -152,11 +159,13 @@ fn main() {
 
     let count = merged.count();
     let total_requests = merged.request_count;
-    let avg_latency = merged.total_latency_ms / merged.request_count;
+    let avg_latency = merged.latency_ms.avg();
 
     println!("Merged {} entries", count);
     println!("Total requests: {}", total_requests);
     println!("Average latency: {}ms", avg_latency);
+    println!("Min latency: {}ms", merged.latency_ms.min().unwrap());
+    println!("Max latency: {}ms", merged.latency_ms.max().unwrap());
 
     // Emit the merged entry
     ServiceMetrics::sink().append(merged);
