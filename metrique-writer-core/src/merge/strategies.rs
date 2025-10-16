@@ -4,6 +4,8 @@
 //! Built-in merge strategies for common metric patterns.
 
 use super::MergeValue;
+use crate::value::{MetricFlags, Observation, Value, ValueWriter};
+use crate::unit::Unit;
 use std::ops::AddAssign;
 
 /// Simple vector-based histogram for demonstration.
@@ -12,6 +14,18 @@ use std::ops::AddAssign;
 #[derive(Debug, Clone, PartialEq)]
 pub struct VecHistogram {
     values: Vec<u64>,
+}
+
+impl Value for VecHistogram {
+    fn write(&self, writer: impl ValueWriter) {
+        // Write as metric with multiple observations
+        writer.metric(
+            self.values.iter().map(|&v| Observation::Floating(v as f64)),
+            Unit::None,
+            std::iter::empty(),
+            MetricFlags::empty(),
+        );
+    }
 }
 
 impl VecHistogram {

@@ -59,15 +59,7 @@ impl Entry for MergedRequestMetrics {
         writer.value("Operation", &self.key.operation);
         writer.value("StatusCode", &self.key.status_code);
         writer.value("RequestCount", &self.request_count);
-        writer.value("LatencyCount", &(self.latency_ms.count() as u64));
-        writer.value("LatencySum", &self.latency_ms.sum());
-        writer.value("LatencyAvg", &self.latency_ms.avg());
-        if let Some(min) = self.latency_ms.min() {
-            writer.value("LatencyMin", &min);
-        }
-        if let Some(max) = self.latency_ms.max() {
-            writer.value("LatencyMax", &max);
-        }
+        writer.value("LatencyMs", &self.latency_ms);
         writer.value("MergedEntryCount", &(self.entry_count as u64));
     }
 
