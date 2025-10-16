@@ -7,6 +7,7 @@
 
 pub use metrique_writer_core::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use metrique_writer_core::global::GlobalEntrySink;
+pub use metrique_writer_core::merge;
 pub use metrique_writer_core::sink::{AnyEntrySink, BoxEntrySink, EntrySink};
 pub use metrique_writer_core::stream::{EntryIoStream, IoStreamError};
 pub use metrique_writer_core::unit::{Convert, Unit};

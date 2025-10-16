@@ -379,6 +379,13 @@ pub struct RootEntry<M: InflectableEntry> {
 }
 
 impl<M: InflectableEntry> RootEntry<M> {
+    /// returns the metric
+    pub fn metric(&self) -> &M {
+        &self.metric
+    }
+}
+
+impl<M: InflectableEntry> RootEntry<M> {
     /// create a new [`RootEntry`]
     pub fn new(metric: M) -> Self {
         Self { metric }
@@ -418,7 +425,7 @@ pub mod writer {
 
     pub use metrique_writer::AttachGlobalEntrySinkExt;
     pub use metrique_writer::{AttachGlobalEntrySink, EntryIoStreamExt, FormatExt};
-    pub use metrique_writer::{entry, format, sample, sink, stream, value};
+    pub use metrique_writer::{entry, format, merge, sample, sink, stream, value};
 
     #[cfg(feature = "test-util")]
     #[doc(hidden)] // prefer the metrique::test_util re-export

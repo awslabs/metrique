@@ -19,6 +19,7 @@ pub mod config;
 pub mod entry;
 pub mod format;
 pub mod global;
+pub mod merge;
 pub mod sample;
 pub mod sink;
 pub mod stream;

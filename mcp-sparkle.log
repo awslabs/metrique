@@ -1,0 +1,5 @@
+2025-10-16T17:52:21.147401Z  INFO sparkle_mcp: 🔥 Starting Sparkle AI Collaboration Identity MCP Server
+2025-10-16T17:52:21.147543Z  INFO sparkle_mcp: Working directory: "/Users/rcoh/code/metrique"
+2025-10-16T17:52:21.147561Z  INFO sparkle_mcp::server: Initializing Sparkle AI Collaboration Identity MCP Server
+2025-10-16T17:52:21.147969Z  INFO rmcp::handler::server: client initialized
+2025-10-16T17:52:21.147991Z  INFO serve_inner: rmcp::service: Service initialized as server peer_info=Some(InitializeRequestParam { protocol_version: ProtocolVersion("2025-03-26"), capabilities: ClientCapabilities { experimental: None, roots: None, sampling: None, elicitation: None }, client_info: Implementation { name: "Q DEV CLI", title: None, version: "1.0.0", icons: None, website_url: None } })
