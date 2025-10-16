@@ -1191,12 +1191,13 @@ fn generate_aggregation_impls(
     
     // Add aggregated fields
     for field in &aggregate_fields {
-        let field_name = field.name.as_ref().unwrap();
+        let field_name_str = field.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
         let field_type = &field.ty;
         let strategy = field.attrs.aggregate.as_ref().unwrap();
         
         aggregated_fields.push(quote! {
-            #field_name: <#strategy as ::metrique::writer::merge::AggregateValue<#field_type>>::Aggregated
+            #field_name_ident: <#strategy as ::metrique::writer::merge::AggregateValue<#field_type>>::Aggregated
         });
     }
     
@@ -1217,15 +1218,19 @@ fn generate_aggregation_impls(
     let key_extraction = if key_fields.is_empty() {
         quote! { () }
     } else {
-        let key_field_names = key_fields.iter().map(|f| f.name.as_ref().unwrap());
-        quote! { (#(self.#key_field_names),*) }
+        let key_field_idents = key_fields.iter().map(|f| {
+            let field_name_str = f.name.as_ref().unwrap();
+            format_ident!("{}", field_name_str)
+        });
+        quote! { (#(self.#key_field_idents),*) }
     };
     
     let aggregated_init_fields = aggregate_fields.iter().map(|f| {
-        let field_name = f.name.as_ref().unwrap();
+        let field_name_str = f.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
         let strategy = f.attrs.aggregate.as_ref().unwrap();
         quote! {
-            #field_name: <#strategy as ::metrique::writer::merge::AggregateValue<_>>::init()
+            #field_name_ident: <#strategy as ::metrique::writer::merge::AggregateValue<_>>::init()
         }
     });
     
@@ -1250,10 +1255,11 @@ fn generate_aggregation_impls(
     
     // Generate AggregatedEntry impl
     let aggregate_calls = aggregate_fields.iter().map(|f| {
-        let field_name = f.name.as_ref().unwrap();
+        let field_name_str = f.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
         let strategy = f.attrs.aggregate.as_ref().unwrap();
         quote! {
-            <#strategy as ::metrique::writer::merge::AggregateValue<_>>::aggregate(&mut self.#field_name, &entry.#field_name);
+            <#strategy as ::metrique::writer::merge::AggregateValue<_>>::aggregate(&mut self.#field_name_ident, &entry.#field_name_ident);
         }
     });
     
@@ -1278,9 +1284,8 @@ fn generate_aggregation_impls(
         Vec::new()
     } else {
         key_fields.iter().enumerate().map(|(i, f)| {
-            let field_name = f.name.as_ref().unwrap();
-            let field_name_str = field_name.to_string();
-            let field_name_pascal = to_pascal_case(&field_name_str);
+            let field_name_str = f.name.as_ref().unwrap();
+            let field_name_pascal = to_pascal_case(field_name_str);
             let index = syn::Index::from(i);
             quote! {
                 writer.value(#field_name_pascal, &self.key.#index);
@@ -1289,11 +1294,11 @@ fn generate_aggregation_impls(
     };
     
     let aggregate_writes = aggregate_fields.iter().map(|f| {
-        let field_name = f.name.as_ref().unwrap();
-        let field_name_str = field_name.to_string();
-        let field_name_pascal = to_pascal_case(&field_name_str);
+        let field_name_str = f.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
+        let field_name_pascal = to_pascal_case(field_name_str);
         quote! {
-            writer.value(#field_name_pascal, &self.#field_name);
+            writer.value(#field_name_pascal, &self.#field_name_ident);
         }
     });
     
@@ -1301,9 +1306,8 @@ fn generate_aggregation_impls(
         Vec::new()
     } else {
         key_fields.iter().enumerate().map(|(i, f)| {
-            let field_name = f.name.as_ref().unwrap();
-            let field_name_str = field_name.to_string();
-            let field_name_pascal = to_pascal_case(&field_name_str);
+            let field_name_str = f.name.as_ref().unwrap();
+            let field_name_pascal = to_pascal_case(field_name_str);
             let index = syn::Index::from(i);
             quote! {
                 (#field_name_pascal.into(), self.key.#index.to_string().into())
@@ -1328,11 +1332,54 @@ fn generate_aggregation_impls(
         }
     };
     
+    // Generate Entry impl for original struct (needed for AggregatableEntry trait bound)
+    let original_key_writes = key_fields.iter().map(|f| {
+        let field_name_str = f.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
+        let field_name_pascal = to_pascal_case(field_name_str);
+        quote! {
+            writer.value(#field_name_pascal, &self.#field_name_ident);
+        }
+    });
+    
+    let original_aggregate_writes = aggregate_fields.iter().map(|f| {
+        let field_name_str = f.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
+        let field_name_pascal = to_pascal_case(field_name_str);
+        quote! {
+            writer.value(#field_name_pascal, &self.#field_name_ident);
+        }
+    });
+    
+    let original_sample_group_items = key_fields.iter().map(|f| {
+        let field_name_str = f.name.as_ref().unwrap();
+        let field_name_ident = format_ident!("{}", field_name_str);
+        let field_name_pascal = to_pascal_case(field_name_str);
+        quote! {
+            (#field_name_pascal.into(), self.#field_name_ident.to_string().into())
+        }
+    });
+    
     Ok(quote! {
         #aggregated_struct
         #aggregatable_impl
         #aggregated_impl
         #entry_impl
+        
+        // Add direct Entry implementation for the original struct
+        impl ::metrique::writer::Entry for #struct_name {
+            fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+                #(#original_key_writes)*
+                #(#original_aggregate_writes)*
+            }
+            
+            fn sample_group(&self) -> impl Iterator<Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>)> {
+                [
+                    #(#original_sample_group_items),*
+                ]
+                .into_iter()
+            }
+        }
     })
 }
 
