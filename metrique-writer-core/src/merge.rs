@@ -5,13 +5,13 @@
 
 use crate::Entry;
 
-pub mod sink;
 pub mod local_sink;
+pub mod sink;
 pub mod strategies;
 
-pub use sink::{AggregateConfig, AggregatingEntrySink};
 pub use local_sink::LocalAggregatingEntrySink;
-pub use strategies::{Counter, Gauge, Histogram, Max, Min, VecHistogram};
+pub use sink::{AggregateConfig, AggregatingEntrySink};
+pub use strategies::{Counter, Gauge, Max, Min, VecHistogram};
 
 /// Defines how to aggregate individual field values.
 ///

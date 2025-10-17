@@ -1196,8 +1196,17 @@ fn generate_aggregation_impls(
         let field_type = &field.ty;
         let strategy = field.attrs.aggregate.as_ref().unwrap();
         
+        // Apply unit wrapping if specified (same logic as regular field processing)
+        let processed_type = if let Some(unit_expr) = field.unit() {
+            quote! {
+                <#field_type as ::metrique::unit::AttachUnit>::Output<#unit_expr>
+            }
+        } else {
+            quote! { #field_type }
+        };
+        
         aggregated_fields.push(quote! {
-            #field_name_ident: <#strategy as ::metrique::writer::merge::AggregateValue<#field_type>>::Aggregated
+            #field_name_ident: <#strategy as ::metrique::writer::merge::AggregateValue<#processed_type>>::Aggregated
         });
     }
     
@@ -1258,8 +1267,18 @@ fn generate_aggregation_impls(
         let field_name_str = f.name.as_ref().unwrap();
         let field_name_ident = format_ident!("{}", field_name_str);
         let strategy = f.attrs.aggregate.as_ref().unwrap();
+        
+        // Wrap field value with unit if specified
+        let field_value = if let Some(_unit_expr) = f.unit() {
+            quote! {
+                &entry.#field_name_ident.into()
+            }
+        } else {
+            quote! { &entry.#field_name_ident }
+        };
+        
         quote! {
-            <#strategy as ::metrique::writer::merge::AggregateValue<_>>::aggregate(&mut self.#field_name_ident, &entry.#field_name_ident);
+            <#strategy as ::metrique::writer::merge::AggregateValue<_>>::aggregate(&mut self.#field_name_ident, #field_value);
         }
     });
     

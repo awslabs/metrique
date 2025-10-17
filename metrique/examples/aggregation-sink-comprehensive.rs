@@ -7,7 +7,7 @@ use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
 use metrique::writer::{
     EntrySink, FormatExt,
-    merge::{Counter, Histogram, Gauge, Max, Min, AggregatingEntrySink, AggregateConfig},
+    merge::{Counter, VecHistogram, Gauge, Max, Min, AggregatingEntrySink, AggregateConfig},
     sink::FlushImmediately,
 };
 
@@ -22,7 +22,7 @@ struct ServerMetrics {
     #[metrics(aggregate = Counter)]
     request_count: u64,
     
-    #[metrics(aggregate = Histogram)]
+    #[metrics(aggregate = VecHistogram)]
     response_time_ms: u64,
     
     #[metrics(aggregate = Gauge)]

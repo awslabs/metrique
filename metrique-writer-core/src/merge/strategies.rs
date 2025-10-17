@@ -4,75 +4,94 @@
 //! Built-in aggregation strategies for common metric patterns.
 
 use super::AggregateValue;
+use crate::MetricValue;
+use crate::unit::{Unit, UnitTag};
 use crate::value::{MetricFlags, Observation, Value, ValueWriter};
-use crate::unit::Unit;
 use std::ops::AddAssign;
 
-/// Simple vector-based histogram for demonstration.
+/// Histogram aggregation strategy - collects all values.
 ///
-/// Stores all individual values. Obviously inefficient but shows type transformation.
-#[derive(Debug, Clone, PartialEq)]
-pub struct VecHistogram {
-    values: Vec<u64>,
+/// Use for latency, size distributions, etc. Works with any type that implements MetricValue.
+pub struct VecHistogram;
+
+impl<T> AggregateValue<T> for VecHistogram
+where
+    T: MetricValue,
+{
+    type Aggregated = HistogramValue<T>;
+
+    fn init() -> Self::Aggregated {
+        HistogramValue {
+            observations: Vec::new(),
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    fn aggregate(accum: &mut Self::Aggregated, value: &T) {
+        // Use a collector that directly mutates our observations vector
+        let collector = ObservationCollector::new(&mut accum.observations);
+        value.write(collector);
+    }
 }
 
-impl Value for VecHistogram {
+/// A histogram value that holds observations and unit information.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistogramValue<T: MetricValue> {
+    observations: Vec<Observation>,
+    _phantom: std::marker::PhantomData<T>,
+}
+
+impl<T: MetricValue> Value for HistogramValue<T> {
     fn write(&self, writer: impl ValueWriter) {
-        // Write as metric with multiple observations
         writer.metric(
-            self.values.iter().map(|&v| Observation::Floating(v as f64)),
-            Unit::None,
+            self.observations.iter().copied(),
+            T::Unit::UNIT,
             std::iter::empty(),
             MetricFlags::empty(),
         );
     }
 }
 
-impl VecHistogram {
-    /// Get the count of values.
+impl<T: MetricValue> HistogramValue<T> {
+    /// Get the count of observations.
     pub fn count(&self) -> usize {
-        self.values.len()
+        self.observations.len()
     }
 
-    /// Get the sum of all values.
-    pub fn sum(&self) -> u64 {
-        self.values.iter().sum()
-    }
-
-    /// Get the average value.
-    pub fn avg(&self) -> u64 {
-        if self.values.is_empty() {
-            0
-        } else {
-            self.sum() / self.values.len() as u64
-        }
-    }
-
-    /// Get the minimum value.
-    pub fn min(&self) -> Option<u64> {
-        self.values.iter().copied().min()
-    }
-
-    /// Get the maximum value.
-    pub fn max(&self) -> Option<u64> {
-        self.values.iter().copied().max()
+    /// Get all observations as a slice.
+    pub fn observations(&self) -> &[Observation] {
+        &self.observations
     }
 }
 
-/// Histogram aggregation strategy - collects all values.
-///
-/// Use for latency, size distributions, etc. Input type is u64, aggregated type is VecHistogram.
-pub struct Histogram;
+/// A ValueWriter that collects observations for histogram aggregation.
+struct ObservationCollector<'a> {
+    observations: &'a mut Vec<Observation>,
+}
 
-impl AggregateValue<u64> for Histogram {
-    type Aggregated = VecHistogram;
+impl<'a> ObservationCollector<'a> {
+    fn new(observations: &'a mut Vec<Observation>) -> Self {
+        Self { observations }
+    }
+}
 
-    fn init() -> Self::Aggregated {
-        VecHistogram { values: Vec::new() }
+impl ValueWriter for ObservationCollector<'_> {
+    fn string(self, _value: &str) {
+        // Ignore string values for histogram
     }
 
-    fn aggregate(accum: &mut Self::Aggregated, value: &u64) {
-        accum.values.push(*value);
+    fn metric<'a>(
+        self,
+        distribution: impl IntoIterator<Item = Observation>,
+        _unit: Unit,
+        _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        _flags: MetricFlags<'_>,
+    ) {
+        self.observations.extend(distribution);
+    }
+
+    fn error(self, _error: crate::ValidationError) {
+        // Ignore errors for histogram
     }
 }
 
@@ -203,11 +222,11 @@ mod tests {
 
     #[test]
     fn histogram_collects_values() {
-        let mut accum = Histogram::init();
-        Histogram::aggregate(&mut accum, &50);
-        Histogram::aggregate(&mut accum, &75);
-        Histogram::aggregate(&mut accum, &100);
-        
+        let mut accum = VecHistogram::init();
+        VecHistogram::aggregate(&mut accum, &50);
+        VecHistogram::aggregate(&mut accum, &75);
+        VecHistogram::aggregate(&mut accum, &100);
+
         assert_eq!(accum.count(), 3);
         assert_eq!(accum.sum(), 225);
         assert_eq!(accum.avg(), 75);

@@ -7,7 +7,7 @@ use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
 use metrique::writer::{
     EntrySink, FormatExt,
-    merge::{Counter, Histogram, LocalAggregatingEntrySink, AggregateConfig},
+    merge::{Counter, VecHistogram, LocalAggregatingEntrySink, AggregateConfig},
     sink::FlushImmediately,
 };
 
@@ -23,7 +23,7 @@ struct ApiMetrics {
     #[metrics(aggregate = Counter)]
     request_count: u64,
     
-    #[metrics(aggregate = Histogram)]
+    #[metrics(aggregate = VecHistogram)]
     response_time_ms: u64,
 }
 

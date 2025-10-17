@@ -7,6 +7,7 @@
 
 use metrique_writer_core::{EntryWriter, entry::SampleGroupElement};
 
+pub mod aggregated;
 mod atomics;
 mod close_value_impls;
 pub mod concat;
@@ -15,6 +16,7 @@ mod namestyle;
 
 pub use atomics::Counter;
 pub use namestyle::NameStyle;
+pub use aggregated::Aggregated;
 
 /// Close a given value
 ///

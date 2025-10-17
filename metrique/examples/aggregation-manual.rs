@@ -6,7 +6,7 @@
 use metrique::emf::Emf;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntrySink, EntryWriter, FormatExt, GlobalEntrySink,
-    merge::{Counter, Histogram, AggregatableEntry, AggregatedEntry, AggregateValue},
+    merge::{Counter, VecHistogram, AggregatableEntry, AggregatedEntry, AggregateValue},
     sink::global_entry_sink,
 };
 
@@ -33,7 +33,7 @@ struct RequestMetrics {
 struct AggregatedRequestMetrics {
     key: RequestKey,
     request_count: <Counter as AggregateValue<u64>>::Aggregated,
-    latency_ms: <Histogram as AggregateValue<u64>>::Aggregated,  // VecHistogram
+    latency_ms: <VecHistogram as AggregateValue<u64>>::Aggregated,  // VecHistogram
     entry_count: usize,
 }
 
@@ -80,7 +80,7 @@ impl AggregatableEntry for RequestMetrics {
         AggregatedRequestMetrics {
             key,
             request_count: Counter::init(),
-            latency_ms: Histogram::init(),
+            latency_ms: VecHistogram::init(),
             entry_count: 0,
         }
     }
@@ -100,7 +100,7 @@ impl AggregatedEntry for AggregatedRequestMetrics {
     fn aggregate_into(&mut self, entry: &Self::Source) {
         // Use strategies to merge fields
         Counter::aggregate(&mut self.request_count, &entry.request_count);
-        Histogram::aggregate(&mut self.latency_ms, &entry.latency_ms);
+        VecHistogram::aggregate(&mut self.latency_ms, &entry.latency_ms);
         self.entry_count += 1;
     }
 
