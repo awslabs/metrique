@@ -45,6 +45,9 @@ pub mod timers;
 /// handle that work in the background.
 pub mod slot;
 
+/// [`MultiFlex`][multi_flex::MultiFlex] allows you to have multiple entries each with their own deterministic prefix
+pub mod multi_flex;
+
 use metrique_core::CloseEntry;
 use metrique_writer_core::Entry;
 use metrique_writer_core::EntryWriter;
