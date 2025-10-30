@@ -114,9 +114,11 @@ use crate::inflect::metric_name;
 /// # Generated Types
 ///
 /// For a struct named `MyMetrics`, the macro generates:
-/// - `MyMetricsEntry`: The internal representation used for serialization
-/// - `MyMetricsGuard`: A wrapper that implements `Deref`/`DerefMut` to the original struct and handles emission on drop
-/// - `MyMetricsHandle`: A shareable handle for concurrent access to the metrics
+/// - `MyMetricsEntry`: The internal representation used for serialization, implements `InflectableEntry`
+/// - `MyMetricsGuard`: A wrapper that implements `Deref`/`DerefMut` to the original struct and handles emission on drop.
+///   A type alias to ``AppendAndCloseOnDrop`.
+/// - `MyMetricsHandle`: A shareable handle for concurrent access to the metrics.
+///   A type alias to ``AppendAndCloseOnDropHandle`.
 #[proc_macro_attribute]
 pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

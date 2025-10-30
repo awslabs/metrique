@@ -69,6 +69,8 @@ fn make_slot<T: CloseValue>(initial_value: T) -> (SlotGuard<T>, Waiting<T::Close
 ///     .append_on_drop(ServiceMetrics::sink());
 ///
 ///     let flush_guard = metrics.flush_guard();
+///     // the flush_guard will delay the metric emission until dropped
+///     // use OnParentDrop::Wait to wait until the `SlotGuard` is flushed.
 ///     let background_metrics = metrics
 ///         .background_metrics
 ///         .open(OnParentDrop::Wait(flush_guard))
@@ -79,8 +81,9 @@ fn make_slot<T: CloseValue>(initial_value: T) -> (SlotGuard<T>, Waiting<T::Close
 /// }
 ///
 /// async fn do_background_work(mut metrics: SlotGuard<BackgroundMetrics>) {
-///     // this will take awhile...
+///     // do some slow operation
 ///     tokio::time::sleep(Duration::from_secs(1)).await;
+///     // `SlotGuard` derefs to the slot contents
 ///     metrics.field_1 += 1;
 /// }
 /// ```
@@ -281,7 +284,7 @@ pub struct FlushGuard {
 /// The counterpart to `FlushGuard`:
 ///
 /// If you create a `ForceFlushGuard` and drop it, all existing `FlushGuard`s are ignored and the entry
-/// is flushed (provided the root entry has already been droped.)
+/// is flushed (provided the root entry has already been dropped).
 pub struct ForceFlushGuard {
     pub(crate) _drop_guard: DropAll,
 }

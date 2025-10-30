@@ -1,4 +1,4 @@
-error[E0277]: the trait bound `ChildMetricsEntry: Value` is not satisfied
+error[E0277]: `ChildMetricsEntry` is not a metric value
   --> tests/ui/fail/missing_flatten_attribute.rs:13:1
    |
 13 | #[metrics(rename_all = "PascalCase")]
@@ -7,6 +7,7 @@ error[E0277]: the trait bound `ChildMetricsEntry: Value` is not satisfied
 19 |     downstream_operation: Slot<ChildMetrics>,
    |     -------------------- required by a bound introduced by this call
    |
+   = note: If `ChildMetricsEntry` is a metric *entry*, flatten it using `#[metrics(flatten)]`
    = help: the following other types implement trait `Value`:
              &T
              Arc<T>

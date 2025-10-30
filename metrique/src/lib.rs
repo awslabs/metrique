@@ -137,19 +137,22 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// This struct holds a metric entry and a sink. When the struct is dropped,
 /// it closes the entry and appends it to the sink.
 ///
-/// The `#[metrics]` macro generates a type alias to this type
+/// The [`metrics`] macro generates a type alias to this type
 /// named `<metric struct name>Guard`, you should normally mention that instead
 /// of mentioning `AppendAndCloseOnDrop` directly.
 ///
 /// This is typically created using the `append_on_drop` method on a metrics struct
 /// or through the `append_and_close` function.
 ///
-/// Example:
+/// [`metrics`]: crate::unit_of_work::metrics
+///
+/// # Example
+///
 /// ```
 /// # use metrique::ServiceMetrics;
 /// # use metrique::unit_of_work::metrics;
 /// # use metrique::writer::GlobalEntrySink;
-///
+/// #
 /// #[metrics]
 /// struct MyMetrics {
 ///     operation: &'static str,
@@ -177,7 +180,7 @@ impl<
     /// occur after both:
     /// 1. This struct ([`AppendAndCloseOnDrop`]) is dropped (if [AppendAndCloseOnDrop::handle] is used,
     ///    then after all instances of the [`AppendAndCloseOnDropHandle`] have been dropped).
-    /// 2. Either all [`FlushGuard`]s have been dropped, or a [`ForceFlushGuard`] has been
+    /// 2. Either all [`FlushGuard`]s have been dropped, or *any* of the [`ForceFlushGuard`]s has been
     ///    dropped.
     ///
     /// This is most useful when the metrics struct contains a [`SharedChild`] or a [`Slot`], to allow for
@@ -191,13 +194,68 @@ impl<
     /// drop the resulting guard. That will prevent any present (and future) `FlushGuard`s from preventing the
     /// main entry from flushing to the sink.
     ///
-    /// See the example for [`Slot`].
+    /// # Example
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use metrique::{Counter, OnParentDrop, ServiceMetrics, Slot, SlotGuard};
+    /// use metrique::unit_of_work::metrics;
+    /// use metrique::writer::GlobalEntrySink;
+    ///
+    /// #[metrics(rename_all = "PascalCase")]
+    /// struct RequestMetrics {
+    ///     operation: &'static str,
+    ///     #[metrics(flatten)]
+    ///     background_metrics: Slot<BackgroundMetrics>,
+    /// }
+    ///
+    /// #[metrics(subfield)]
+    /// #[derive(Default)]
+    /// struct BackgroundMetrics {
+    ///     field_1: usize,
+    ///     counter: Counter,
+    /// }
+    ///
+    /// async fn handle_request() {
+    ///     let mut metrics = RequestMetrics {
+    ///         operation: "abc",
+    ///         background_metrics: Default::default(),
+    ///     }
+    ///     .append_on_drop(ServiceMetrics::sink());
+    ///
+    ///     let flush_guard = metrics.flush_guard();
+    ///     // the flush_guard will delay the metric emission until dropped
+    ///     // use OnParentDrop::Wait to wait until the `SlotGuard` is flushed.
+    ///     let background_metrics = metrics
+    ///         .background_metrics
+    ///         .open(OnParentDrop::Wait(flush_guard))
+    ///         .unwrap();
+    ///
+    ///     tokio::task::spawn(do_background_work(background_metrics));
+    ///     // metric will be emitted after `do_background_work` completes
+    /// }
+    ///
+    /// async fn do_background_work(mut metrics: SlotGuard<BackgroundMetrics>) {
+    ///     // do some slow operation
+    ///     tokio::time::sleep(Duration::from_secs(1)).await;
+    ///     // `SlotGuard` derefs to the slot contents
+    ///     metrics.field_1 += 1;
+    /// }
+    /// ```
     pub fn flush_guard(&self) -> FlushGuard {
         FlushGuard {
             _drop_guard: self.inner.new_guard(),
         }
     }
 
+    /// <div class="warning">
+    /// `ForceFlushGuard` is currently in an experimental state, and does not seem to
+    /// have many real-world use-cases in its current state.
+    ///
+    /// If you are interested in getting it improved to fit your use-case, file an
+    /// issue.
+    /// </div>
+    ///
     /// Create a [`ForceFlushGuard`]
     ///
     /// When a [`ForceFlushGuard`] (it is possible to create multiple of them) along with all
@@ -217,6 +275,50 @@ impl<
 
     /// Return a cloneable handle to the contents. The handle allows for cloneable,
     /// shared access to the contents.
+    ///
+    /// The [`metrics`] macro generates a type alias to the return type of this function
+    /// named `<my metrics struct>Handle`.
+    ///
+    /// [`metrics`]: crate::unit_of_work::metrics
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use std::time::Duration;
+    /// use metrique::{Counter, ServiceMetrics};
+    /// use metrique::unit_of_work::metrics;
+    /// use metrique::writer::GlobalEntrySink;
+    /// use tokio::task::JoinSet;
+    ///
+    /// #[metrics(rename_all = "PascalCase")]
+    /// struct RequestMetrics {
+    ///     operation: &'static str,
+    ///     counter: Counter,
+    /// }
+    ///
+    /// async fn handle_request() {
+    ///     let mut metrics = RequestMetrics {
+    ///         operation: "abc",
+    ///         counter: Default::default(),
+    ///     }
+    ///     .append_on_drop(ServiceMetrics::sink());
+    ///
+    ///     let handle = metrics.handle();
+    ///     let join_set: JoinSet<_> = (0..10).map(
+    ///         |_| do_parallel_work(handle.clone())
+    ///     ).collect();
+    ///     join_set.join_all().await;
+    ///
+    ///     // metric will be emitted here
+    /// }
+    ///
+    /// async fn do_parallel_work(mut metrics: /* type alias */ RequestMetricsHandle) {
+    ///     // do some slow operation
+    ///     tokio::time::sleep(Duration::from_secs(1)).await;
+    ///     // `handle` derefs to the metric contents
+    ///     metrics.counter.increment();
+    /// }
+    /// ```
     pub fn handle(self) -> AppendAndCloseOnDropHandle<E, S> {
         AppendAndCloseOnDropHandle {
             inner: std::sync::Arc::new(self),
@@ -236,7 +338,7 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndClose
         self.inner.deref()
     }
 }
-
+//
 impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> DerefMut for AppendAndCloseOnDrop<E, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.deref_mut()
@@ -267,9 +369,15 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Drop for AppendAndCloseO
     }
 }
 
-/// Handle to an AppendAndCloseOnDrop
+/// Handle to an [`AppendAndCloseOnDrop`], returned by [`AppendAndCloseOnDrop::handle`].
 ///
 /// This is basically an `Arc<AppendAndCloseOnDrop>`, allowing shared and clone access to the contents.
+///
+/// The [`metrics`] macro generates a type alias to this type
+/// named `<metric struct name>Handle`, you should normally mention that instead
+/// of mentioning `AppendAndCloseOnDropHandle` directly.
+///
+/// [`metrics`]: crate::unit_of_work::metrics
 pub struct AppendAndCloseOnDropHandle<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
     inner: Arc<AppendAndCloseOnDrop<E, S>>,
 }
@@ -292,7 +400,7 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
     }
 }
 
-/// Creates an `AppendAndCloseOnDrop` wrapper for a metric entry and sink.
+/// Creates an [`AppendAndCloseOnDrop`] wrapper for a metric entry and sink.
 ///
 /// This function takes a metric entry and a sink, and returns a wrapper that will
 /// close the entry and append it to the sink when dropped.
@@ -302,23 +410,37 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
 /// * `sink` - The sink to append the closed entry to
 ///
 /// # Returns
-/// An `AppendAndCloseOnDrop` wrapper that will close and append the entry when dropped
+///
+/// An [`AppendAndCloseOnDrop`] wrapper that will close and append the entry when dropped.
+///
+/// The [`metrics`] macro generates a type alias to [`AppendAndCloseOnDrop`] named
+/// `<my metrics struct>Guard`. When using the macro, it is recommended to refer
+/// to the return type using that alias.
+///
+/// [`metrics`]: crate::unit_of_work::metrics
 ///
 /// # Example
 /// ```
 /// # use metrique::{append_and_close, unit_of_work::metrics, ServiceMetrics};
 /// # use metrique::writer::{GlobalEntrySink, FormatExt};
-///
+/// #
 /// #[metrics]
 /// struct MyMetrics {
 ///     operation: &'static str,
+///     counter: u32,
+/// }
+///
+///
+/// fn some_function(metrics: &mut /* type alias */ MyMetricsGuard) {
+///     metrics.counter += 1;
 /// }
 ///
 /// # fn example() {
-/// let metrics = append_and_close(
-///     MyMetrics { operation: "example" },
+/// let mut metrics = append_and_close(
+///     MyMetrics { operation: "example", counter: 0 },
 ///     ServiceMetrics::sink()
 /// );
+/// some_function(&mut metrics);
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
@@ -391,7 +513,38 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
 /// "Roots" an [`InflectableEntry`] to turn it into an [`Entry`] that can be passed
 /// to an [`EntrySink`].
 ///
+/// The names in an [`InflectableEntry`] such as the struct created by [closing over] a
+/// [`metrics`] value can be inflected at compile time, for example by adding a
+/// prefix. To send the metrics to an entry sink, the metrics need to be rooted
+/// by using a [`RootEntry`].
+///
+/// When using [`append_and_close`], the metrics are rooted for you, but it is also possible
+/// to root a metric entry in your own code.
+///
+/// # Example
+///
+/// ```
+/// use metrique::{CloseValue, ServiceMetrics, RootEntry};
+/// use metrique::unit_of_work::metrics;
+/// use metrique::writer::{EntrySink, GlobalEntrySink};
+///
+/// #[metrics]
+/// struct MyMetrics {
+///     operation: &'static str,
+/// }
+///
+/// # fn example() {
+/// let metrics = MyMetrics {
+///     operation: "example",
+/// };
+/// // same as calling `drop(metrics.append_on_drop(ServiceMetrics::sink()));`
+/// ServiceMetrics::sink().append(RootEntry::new(metrics.close()));
+/// # }
+/// ```
+///
+/// [closing over]: crate::CloseEntry
 /// [`EntrySink`]: metrique_writer::EntrySink
+/// [`metrics`]: crate::unit_of_work::metrics
 pub struct RootEntry<M: InflectableEntry> {
     metric: M,
 }

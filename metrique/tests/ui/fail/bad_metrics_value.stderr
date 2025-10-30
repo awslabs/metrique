@@ -95,12 +95,13 @@ help: consider importing one of these structs
 1  + use metrique_writer_core::unit::Second;
    |
 
-error[E0277]: the trait bound `FormattedValue<'_, u32, Foo, _>: Value` is not satisfied
+error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
   --> tests/ui/fail/bad_metrics_value.rs:26:5
    |
 26 |     x: u32,
    |     ^ the trait `Value` is not implemented for `FormattedValue<'_, u32, Foo, _>`
    |
+   = note: If `FormattedValue<'_, u32, Foo, _>` is a metric *entry*, flatten it using `#[metrics(flatten)]`
    = help: the following other types implement trait `Value`:
              &T
              Arc<T>
@@ -111,3 +112,15 @@ error[E0277]: the trait bound `FormattedValue<'_, u32, Foo, _>: Value` is not sa
              Distribution<V, N>
              Duration
            and $N others
+
+error[E0277]: CloseValue is not implemented for &String
+  --> tests/ui/fail/bad_metrics_value.rs:63:5
+   |
+63 |     field: String,
+   |     ^^^^^ the trait `CloseValue` is not implemented for `&String`
+   |
+   = note: You may need to add `#[metrics]` to `&String` or implement `CloseValue` directly.
+help: consider dereferencing here
+   |
+63 |     *field: String,
+   |     +

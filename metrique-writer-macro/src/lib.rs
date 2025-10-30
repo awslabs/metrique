@@ -115,8 +115,8 @@ synstructure::decl_derive!([$name, attributes(entry)] =>
     /// // Operation-specific metrics
     /// #[derive(Entry)]
     /// enum OperationMetrics {
-    ///     Foo(#[flatten] FooMetrics),
-    ///     Bar(#[flatten] BarMetrics),
+    ///     Foo(#[entry(flatten)] FooMetrics),
+    ///     Bar(#[entry(flatten)] BarMetrics),
     /// }
     ///
     /// #[derive(Entry)]

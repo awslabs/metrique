@@ -26,6 +26,18 @@ use crate::{
 };
 
 /// A metric value that may be associated with a name in a [`crate::EntryWriter::value()`] call.
+///
+/// A value can emit either nothing, a string, an [`Observation`] containing any number of scalars,
+/// or a [`ValidationError`].
+///
+/// This differs from [`Entry`] because an [`Entry`] that emits a single value has to emit it to a
+/// specific metric name, while a [`Value`] has the name passed from outside.
+///
+/// [`Entry`]: crate::Entry
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a metric value",
+    note = "If `{Self}` is a metric *entry*, flatten it using `#[metrics(flatten)]`"
+)]
 pub trait Value {
     /// Write the value to the metric entry. This must never panic, but invalid values may trigger a validaiton panic on
     /// [`crate::EntrySink::append()`] for test sinks or a `tracing` event on production queues.
