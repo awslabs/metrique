@@ -174,9 +174,15 @@ impl<
     /// Create a `flush_guard` to delay flushing the entry to the backing sink
     ///
     /// When you create a [`FlushGuard`], the actual appending of the record to the attached sink will
-    /// occur when:
-    /// 1. This struct (`AppendAndCloseOnDrop`) is dropped.
-    /// 2. FlushGuards have been dropped (or a `force_flush_guard` has been created and dropped).
+    /// occur after both:
+    /// 1. This struct ([`AppendAndCloseOnDrop`]) is dropped (if [AppendAndCloseOnDrop::handle] is used,
+    ///    then after all instances of the [`AppendAndCloseOnDropHandle`] have been dropped).
+    /// 2. Either all [`FlushGuard`]s have been dropped, or a [`ForceFlushGuard`] has been
+    ///    dropped.
+    ///
+    /// This is most useful when the metrics struct contains a [`SharedChild`] or a [`Slot`], to allow for
+    /// delaying the metric's flush until the tasks using the slot have recorded their metrics. Note
+    /// that a [`Slot`] can hold a [`FlushGuard`] using [`OnParentDrop::Wait`].
     ///
     /// Creating a [`FlushGuard`] does not actually _block_ this struct from being dropped. The actual
     /// write to the background sink happens in the thread of the last guard to drop.
@@ -184,6 +190,8 @@ impl<
     /// If you want to force the entry to be immediately flushed, you can use [`Self::force_flush_guard`], then
     /// drop the resulting guard. That will prevent any present (and future) `FlushGuard`s from preventing the
     /// main entry from flushing to the sink.
+    ///
+    /// See the example for [`Slot`].
     pub fn flush_guard(&self) -> FlushGuard {
         FlushGuard {
             _drop_guard: self.inner.new_guard(),
@@ -192,15 +200,23 @@ impl<
 
     /// Create a [`ForceFlushGuard`]
     ///
-    /// A typical usage will be creating this prior to flushing the record and spawning a task to
-    /// drop it after some timeout.
+    /// When a [`ForceFlushGuard`] (it is possible to create multiple of them) along with all
+    /// "direct" references to the [`AppendAndCloseOnDrop`] have been dropped, the metric will
+    /// be emitted.
+    ///
+    /// A typical usage is handing a [`Slot`] to a background task, and dropping the
+    /// [`ForceFlushGuard`] after a timeout to ensure the rest of the metric record will
+    /// be emitted even if the background task takes a very long time to finish - in that case,
+    /// the metrics from the background task written after the timeout will not
+    /// be emitted, but the rest the metric entry will be emitted.
     pub fn force_flush_guard(&self) -> ForceFlushGuard {
         ForceFlushGuard {
             _drop_guard: self.inner.force_drop_guard(),
         }
     }
 
-    /// Return a handle
+    /// Return a cloneable handle to the contents. The handle allows for cloneable,
+    /// shared access to the contents.
     pub fn handle(self) -> AppendAndCloseOnDropHandle<E, S> {
         AppendAndCloseOnDropHandle {
             inner: std::sync::Arc::new(self),
@@ -252,6 +268,8 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Drop for AppendAndCloseO
 }
 
 /// Handle to an AppendAndCloseOnDrop
+///
+/// This is basically an `Arc<AppendAndCloseOnDrop>`, allowing shared and clone access to the contents.
 pub struct AppendAndCloseOnDropHandle<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
     inner: Arc<AppendAndCloseOnDrop<E, S>>,
 }
