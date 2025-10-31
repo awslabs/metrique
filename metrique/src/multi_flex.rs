@@ -61,6 +61,7 @@ pub trait FlexItem {
 /// ```
 ///
 /// This will emit metrics like `devices.0.size`, `devices.1.size`, etc.
+#[derive(Clone, Debug)]
 pub struct MultiFlex<T>(Vec<T>);
 
 impl<T> Default for MultiFlex<T> {
@@ -122,7 +123,6 @@ impl<T: InflectableEntry<NoPrefix<NS>>, NS: NameStyle> InflectableEntry<NS> for 
             let prefix = Cow::Owned(prefix);
             let mut prefixer = DynPrefix { prefix, writer };
             InflectableEntry::<NoPrefix<NS>>::write(item, &mut prefixer);
-            item.write(&mut prefixer);
         }
     }
 
