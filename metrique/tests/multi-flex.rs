@@ -3,7 +3,6 @@ use metrique::{
     test_util::{TestEntrySink, test_entry_sink},
     unit_of_work::metrics,
 };
-use std::borrow::Cow;
 
 #[metrics]
 struct MyDevices {
@@ -13,15 +12,15 @@ struct MyDevices {
     top_level: usize,
 }
 
-#[metrics]
+#[metrics(subfield)]
 struct Device {
-    id: String,
+    id: usize,
     size: usize,
 }
 
 impl FlexItem for Device {
-    fn prefix_item(&self, idx: usize) -> std::borrow::Cow<'static, str> {
-        return Cow::Owned(format!(".{idx}."));
+    fn prefix_item(&self, idx: usize, mut buffer: impl std::fmt::Write) {
+        write!(buffer, ".{idx}.").unwrap();
     }
 }
 
@@ -32,20 +31,15 @@ fn basic_test() {
         top_level: 5,
     };
 
-    devices.devices.push(Device {
-        id: "hello".into(),
-        size: 10,
-    });
-    devices.devices.push(Device {
-        id: "also hello".into(),
-        size: 10000,
-    });
+    devices.devices.push(Device { id: 1, size: 10 });
+    devices.devices.push(Device { id: 2, size: 10000 });
     let TestEntrySink { sink, inspector } = test_entry_sink();
     drop(devices.append_on_drop(sink));
     let metrics = inspector.entries();
-    assert_eq!(metrics[0].metrics["devices.0.size"], 10);
+    dbg!(&metrics[0].metrics);
+    assert_eq!(metrics[0].metrics["devices.0.size"], 10,);
     assert_eq!(metrics[0].metrics["devices.1.size"], 10000);
-    assert_eq!(metrics[0].values["devices.0.id"], "hello");
-    assert_eq!(metrics[0].values["devices.1.id"], "also hello");
+    assert_eq!(metrics[0].metrics["devices.0.id"], 1);
+    assert_eq!(metrics[0].metrics["devices.1.id"], 2);
     assert_eq!(metrics[0].metrics["top_level"], 5);
 }

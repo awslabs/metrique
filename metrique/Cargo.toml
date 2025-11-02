@@ -36,6 +36,7 @@ metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.3" }
 tracing-appender = { workspace = true, optional = true }
 ryu = { workspace = true }
 itoa = { workspace = true }
+smartstring = "1"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

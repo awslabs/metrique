@@ -12,14 +12,14 @@ use metrique::{
     unit_of_work::metrics,
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink, sink::global_entry_sink},
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write};
 
 global_entry_sink! { ServiceMetrics }
 
-#[metrics]
+#[metrics(subfield)]
 #[derive(Clone, Debug)]
 struct RequestMetrics {
-    request_id: String,
+    request_id: usize,
     #[metrics(flatten, prefix = "endpoints")]
     endpoints: MultiFlex<EndpointCall>,
     total_calls: usize,
@@ -32,22 +32,22 @@ struct MultiRequest {
 }
 
 impl FlexItem for RequestMetrics {
-    fn prefix_item(&self, _idx: usize) -> Cow<'static, str> {
-        Cow::Owned(format!("{}.", self.request_id))
+    fn prefix_item(&self, _idx: usize, mut buffer: impl Write) {
+        write!(buffer, "{}.", self.request_id).unwrap();
     }
 }
 
-#[metrics]
+#[metrics(subfield)]
 #[derive(Debug, Clone)]
 struct EndpointCall {
-    name: String,
+    name: usize,
     response_time_ms: u64,
     status_code: u16,
 }
 
 impl FlexItem for EndpointCall {
-    fn prefix_item(&self, idx: usize) -> Cow<'static, str> {
-        Cow::Owned(format!(".{idx}."))
+    fn prefix_item(&self, idx: usize, mut buffer: impl Write) {
+        write!(buffer, ".{idx}.").unwrap();
     }
 }
 
@@ -66,26 +66,26 @@ fn main() {
 
     // Create metrics for a request that calls multiple endpoints
     let mut request_metrics = RequestMetrics {
-        request_id: "req-12345".to_string(),
+        request_id: 12345,
         endpoints: MultiFlex::default(),
         total_calls: 0,
     };
 
     // Add metrics for each endpoint call
     request_metrics.endpoints.push(EndpointCall {
-        name: "user-service".to_string(),
+        name: 1,
         response_time_ms: 45,
         status_code: 200,
     });
 
     request_metrics.endpoints.push(EndpointCall {
-        name: "auth-service".to_string(),
+        name: 2,
         response_time_ms: 12,
         status_code: 200,
     });
 
     request_metrics.endpoints.push(EndpointCall {
-        name: "billing-service".to_string(),
+        name: 3,
         response_time_ms: 89,
         status_code: 503,
     });
@@ -97,7 +97,7 @@ fn main() {
     };
     multi_requset.requests.push(request_metrics.clone());
     let mut other_request = request_metrics.clone();
-    other_request.request_id = "request-2".to_string();
+    other_request.request_id = 67890;
     multi_requset.requests.push(other_request);
 
     // Emit the metrics - this will create metrics like:

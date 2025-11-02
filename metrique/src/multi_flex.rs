@@ -1,11 +1,12 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write};
 
 use metrique_core::{
-    CloseValue, InflectableEntry, NameStyle, NoPrefix,
-    concat::{ConstStr, MaybeConstStr},
+    CloseValue, CloseValueRef, InflectableEntry, NameStyle, NoPrefix,
+    concat::{ConstStr, const_str_value},
 };
 use metrique_writer::{EntryWriter, Value};
 use metrique_writer_core::entry::SampleGroupElement;
+use smartstring::{LazyCompact, SmartString};
 
 /// Trait for items that can be used in a [`MultiFlex`] collection.
 ///
@@ -15,15 +16,13 @@ pub trait FlexItem {
     /// Generate a prefix for this item's metrics based on its index in the collection.
     ///
     /// The prefix should include separators (like `.0.`, `.1.`) to properly namespace
-    /// the metrics. For example, returning `.{idx}.` will create metrics like
+    /// the metrics. For example, writing `.{idx}.` will create metrics like
     /// `devices.0.size`, `devices.1.size`, etc.
     ///
     /// # Arguments
     /// * `idx` - The zero-based index of this item in the MultiFlex collection
-    ///
-    /// # Returns
-    /// A string that will be used as a prefix for all metrics from this item
-    fn prefix_item(&self, idx: usize) -> Cow<'static, str>;
+    /// * `buffer` - A string buffer to write the prefix into
+    fn prefix_item(&self, idx: usize, buffer: impl Write);
 }
 
 /// A collection type for emitting metrics from a dynamic list of items.
@@ -47,15 +46,16 @@ pub trait FlexItem {
 ///     devices: MultiFlex<Device>,
 /// }
 ///
-/// #[metrics]
+/// #[metrics(subfield)]
 /// struct Device {
-///     id: String,
+///     id: usize,
 ///     size: usize,
 /// }
 ///
 /// impl FlexItem for Device {
-///     fn prefix_item(&self, idx: usize) -> Cow<'static, str> {
-///         Cow::Owned(format!(".{idx}."))
+///     fn prefix_item(&self, idx: usize, buffer: &mut String) {
+///         use std::fmt::Write;
+///         write!(buffer, ".{idx}.").unwrap();
 ///     }
 /// }
 /// ```
@@ -81,20 +81,24 @@ impl<T> MultiFlex<T> {
     pub fn push(&mut self, item: T) {
         self.0.push(item);
     }
+
+    /// Creates a MulitFlex with a
+    pub fn with_capacity(cap: usize) -> Self {
+        Self(Vec::with_capacity(cap))
+    }
 }
 
 /// The closed form of a [`MultiFlex`] collection, containing the processed entries
 /// ready for metric emission.
 ///
 /// This struct is created when a `MultiFlex<T>` is closed and contains each item
-/// paired with its computed prefix. You typically don't interact with this type
-/// directly - it's used internally by the metrics system.
-pub struct MultiFlexEntry<T> {
-    entries: Vec<(Cow<'static, str>, T)>,
+/// in both unclosed (for prefix computation) and closed (for writing) forms.
+pub struct MultiFlexEntry<T, C> {
+    entries: Vec<(usize, T, C)>,
 }
 
-impl<T: CloseValue + FlexItem> CloseValue for MultiFlex<T> {
-    type Closed = MultiFlexEntry<T::Closed>;
+impl<T: CloseValueRef + FlexItem> CloseValue for MultiFlex<T> {
+    type Closed = MultiFlexEntry<T, T::Closed>;
 
     fn close(self) -> Self::Closed {
         MultiFlexEntry {
@@ -102,7 +106,28 @@ impl<T: CloseValue + FlexItem> CloseValue for MultiFlex<T> {
                 .0
                 .into_iter()
                 .enumerate()
-                .map(|(idx, entry)| (entry.prefix_item(idx), entry.close()))
+                .map(|(idx, item)| {
+                    let closed = item.close_ref();
+                    (idx, item, closed)
+                })
+                .collect(),
+        }
+    }
+}
+
+impl<T: CloseValueRef + FlexItem + Clone> CloseValue for &MultiFlex<T> {
+    type Closed = MultiFlexEntry<T, T::Closed>;
+
+    fn close(self) -> Self::Closed {
+        MultiFlexEntry {
+            entries: self
+                .0
+                .iter()
+                .enumerate()
+                .map(|(idx, item)| {
+                    let closed = item.close_ref();
+                    (idx, item.clone(), closed)
+                })
                 .collect(),
         }
     }
@@ -113,16 +138,25 @@ impl ConstStr for EmptyString {
     const VAL: &'static str = "";
 }
 
-impl<T: InflectableEntry<NoPrefix<NS>>, NS: NameStyle> InflectableEntry<NS> for MultiFlexEntry<T> {
+impl<T: FlexItem, C: InflectableEntry<NoPrefix<NS>>, NS: NameStyle> InflectableEntry<NS>
+    for MultiFlexEntry<T, C>
+{
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        //writer.value(Cow::Borrowed(self.key.as_ref()), &self.value);
-        for (prefix, item) in &self.entries {
-            let external_prefix = <NS::Inflect<EmptyString, EmptyString, EmptyString, EmptyString> as MaybeConstStr>::MAYBE_VAL;
-            let prefix = format!("{external_prefix}{prefix}");
+        let external_prefix =
+            const_str_value::<NS::Inflect<EmptyString, EmptyString, EmptyString, EmptyString>>();
+        // Pre-allocate a string buffer for building prefixes
+        let mut entry = SmartString::<LazyCompact>::new();
 
-            let prefix = Cow::Owned(prefix);
-            let mut prefixer = DynPrefix { prefix, writer };
-            InflectableEntry::<NoPrefix<NS>>::write(item, &mut prefixer);
+        for (idx, item, closed) in &self.entries {
+            entry.truncate(0);
+            item.prefix_item(*idx, &mut entry);
+
+            let mut prefixer = DynPrefix {
+                head: external_prefix.as_ref(),
+                prefix: entry.as_str(),
+                writer,
+            };
+            InflectableEntry::<NoPrefix<NS>>::write(closed, &mut prefixer);
         }
     }
 
@@ -133,7 +167,8 @@ impl<T: InflectableEntry<NoPrefix<NS>>, NS: NameStyle> InflectableEntry<NS> for 
 }
 
 struct DynPrefix<'b, T> {
-    prefix: Cow<'static, str>,
+    head: &'b str,
+    prefix: &'b str,
     writer: &'b mut T,
 }
 
@@ -143,10 +178,9 @@ impl<'a, 'b, T: EntryWriter<'a>> EntryWriter<'a> for DynPrefix<'b, T> {
     }
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
-        let prefix = &self.prefix;
         let name = name.into();
-        let name = format!("{prefix}{name}");
-        self.writer.value(name, value);
+        self.writer
+            .value(format!("{}{}{}", self.head, self.prefix, name), value);
     }
 
     fn config(&mut self, config: &'a dyn metrique_writer::EntryConfig) {
