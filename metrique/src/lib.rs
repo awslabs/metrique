@@ -268,9 +268,7 @@ impl<
     /// the metrics from the background task written after the timeout will not
     /// be emitted, but the rest the metric entry will be emitted.
     pub fn force_flush_guard(&self) -> ForceFlushGuard {
-        ForceFlushGuard {
-            _drop_guard: self.inner.force_drop_guard(),
-        }
+        ForceFlushGuard::new(self.inner.force_drop_guard())
     }
 
     /// Return a cloneable handle to the contents. The handle allows for cloneable,

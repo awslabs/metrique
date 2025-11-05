@@ -3,10 +3,11 @@
 
 use crate::DropAll;
 use crate::Guard;
-use core::ops::Deref;
-use core::ops::DerefMut;
-use core::unreachable;
 use metrique_core::CloseValue;
+use std::marker::PhantomPinned;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::unreachable;
 use tokio::sync::oneshot;
 
 fn make_slot<T: CloseValue>(initial_value: T) -> (SlotGuard<T>, Waiting<T::Closed>) {
@@ -287,6 +288,18 @@ pub struct FlushGuard {
 /// is flushed (provided the root entry has already been dropped).
 pub struct ForceFlushGuard {
     pub(crate) _drop_guard: DropAll,
+    // reserve ForceFlushGuard: !Unpin, to allow making it a future that
+    // waits on a signal
+    _marker: PhantomPinned,
+}
+
+impl ForceFlushGuard {
+    pub(crate) fn new(_drop_guard: DropAll) -> Self {
+        ForceFlushGuard {
+            _drop_guard,
+            _marker: PhantomPinned,
+        }
+    }
 }
 
 impl<T: CloseValue> Deref for SlotGuard<T> {
