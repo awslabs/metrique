@@ -58,6 +58,11 @@ enum Multi2 {
     X
 }
 
+#[metrics(subfield)]
+struct WithString {
+    field: String,
+}
+
 fn main() {
     let _ = Bad::Bad; // check that the enum is still generated
 }

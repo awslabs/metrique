@@ -38,6 +38,89 @@ pub use namestyle::NameStyle;
 ///     fn close(self) -> Self::Closed { self.close_ref() /* delegate to by-ref implementation */ }
 /// }
 /// ```
+///
+/// This trait is also used for entries that can be closed as [`CloseEntry`].
+///
+/// ## Why `CloseValue` is not implemented for `&str` or `&String`
+///
+/// Since `CloseValue` takes its argument by value, an implementation of `CloseValue`
+/// for `&str` or `&String` would have to allocate.
+///
+/// The most common case this is encountered is when using `#[metrics(subfield)]`:
+///
+/// ```compile_fail
+/// # use std::sync::Arc;
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics(subfield)]
+/// struct ChildMetrics {
+///     field: String,
+/// }
+///
+/// #[metrics]
+/// struct MainMetric {
+///     // this is allowed when using `#[metrics(subfield)]`
+///     #[metrics(flatten)]
+///     child: Arc<ChildMetrics>,
+/// }
+/// ```
+///
+/// Since `#[metrics(subfield)]` supports taking the fields by reference, as
+/// you this would have to allocate and therefore there is no implementation
+/// to avoid surprise allocations.
+///
+/// There are a few options to deal with it:
+///
+/// 1. Use a `&'static str` or a `#[metrics(value(string))]` enum instead of a `String`, avoiding
+///    the allocation.
+///     ```rust
+///     # use metrique::unit_of_work::metrics;
+///     #[metrics(value(string))]
+///     enum MyEnum { Foo }
+///
+///     #[metrics(subfield)]
+///     struct ChildMetrics {
+///         field_1: &'static str,
+///         field_2: MyEnum,
+///     }
+///     ```
+/// 2. Use `#[metrics(subfield_owned)]`, which implements `CloseValue` by value.
+///    In that case, you can't use the subfield via an `Arc` but only by-value:
+///     ```rust
+///     # use metrique::unit_of_work::metrics;
+///     #[metrics(subfield_owned)]
+///     struct ChildMetrics {
+///         field: String,
+///     }
+///
+///     #[metrics]
+///     struct MainMetric {
+///         // must use by-value
+///         #[metrics(flatten)]
+///         child: ChildMetrics,
+///     }
+///     ```
+/// 3. If you are fine with allocating, you could make your own string wrapper type.
+///     ```rust
+///     # use metrique::unit_of_work::metrics;
+///     struct StringValue(String);
+///     impl metrique::CloseValue for &StringValue {
+///         type Closed = String;
+///
+///         fn close(self) -> String { self.0.clone() }
+///     }
+///
+///     impl metrique::CloseValue for StringValue {
+///         type Closed = String;
+///
+///         fn close(self) -> String { self.0 }
+///     }
+///
+///     #[metrics(subfield)]
+///     struct ChildMetrics {
+///         field: StringValue,
+///     }
+///    ```
 #[diagnostic::on_unimplemented(
     message = "CloseValue is not implemented for {Self}",
     note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly."
