@@ -91,6 +91,7 @@ pub trait GlobalEntrySink {
     /// // metric appends to sink as scope ends and variable drops
     ///
     /// ```
+    #[track_caller]
     fn append_on_drop<E: Entry + Send + 'static>(entry: E) -> AppendOnDrop<E, BoxEntrySink>
     where
         Self: Sized + Clone,
@@ -136,6 +137,7 @@ pub trait GlobalEntrySink {
     /// // metric appends to sink as scope ends and variable drops
     ///
     /// ```
+    #[track_caller]
     fn append_on_drop_default<E: Default + Entry + Send + 'static>() -> AppendOnDrop<E, BoxEntrySink>
     where
         Self: Sized + Clone,
@@ -177,6 +179,61 @@ pub trait AttachGlobalEntrySink {
 
 /// Handle that, when dropped, will cause the attached global sink to flush remaining entries and
 /// then detach.
+///
+/// ## Examples
+///
+/// After detaching, it is possible to attach a new sink:
+///
+/// ```
+/// # use metrique_writer::{
+/// #    AttachGlobalEntrySinkExt,
+/// #    Entry,
+/// #    GlobalEntrySink,
+/// #    sink::{global_entry_sink, AttachGlobalEntrySink},
+/// #    format::{FormatExt as _},
+/// # };
+/// # use metrique_writer_format_emf::Emf;
+/// # let log_dir = tempfile::tempdir().unwrap();
+/// # #[derive(Entry)]
+/// # struct MyMetrics { }
+/// use tracing_appender::rolling::{RollingFileAppender, Rotation};
+///
+/// global_entry_sink! {
+///     /// A special metrics sink for my application
+///     MyEntrySink
+/// }
+///
+/// let join = MyEntrySink::attach_to_stream(Emf::all_validations("MyApp".into(), vec![vec![]])
+///     .output_to_makewriter(
+///         RollingFileAppender::new(Rotation::HOURLY, &log_dir, "prefix.log")
+///     )
+/// );
+///
+/// // Can use from any thread
+/// MyEntrySink::append(MyMetrics { });
+///
+/// // When dropped, `join` will flush all appended metrics and detach the output stream.
+/// drop(join);
+///
+/// // Most users don't need to do any of the below:
+///
+/// // This is normally not needed, but after a sink is detached, it is possible to attach
+/// // a new one. Currently there is no way to do an "atomic detach and attach", please file
+/// // an issue if you have a use-case for atomic detach-and-attach.
+/// let join = MyEntrySink::attach_to_stream(Emf::all_validations("MyApp2".into(), vec![vec![]])
+///     .output_to_makewriter(
+///         RollingFileAppender::new(Rotation::HOURLY, log_dir, "prefix2.log")
+///     )
+/// );
+///
+/// // Will go to the new sink
+/// MyEntrySink::append(MyMetrics { });
+///
+/// // It is also possible to call `AttachHandle::forget` on an `AttachHandle`, which will keep the
+/// // stream running. However, in that case, if an asynchronous background queue is used, some other
+/// // synchronization mechanism will be needed to avoid dropping metrics during shutdown.
+/// join.forget();
+/// ```
 #[must_use = "if unused the global sink will be immediately detached and shut down"]
 pub struct AttachHandle {
     join: Option<fn()>,
@@ -247,6 +304,7 @@ impl AttachHandle {
 }
 
 impl<Q: AttachGlobalEntrySink> GlobalEntrySink for Q {
+    #[track_caller]
     fn sink() -> BoxEntrySink {
         Q::try_sink().expect("sink must be `attach()`ed before use")
     }
@@ -377,7 +435,7 @@ macro_rules! global_entry_sink {
                     let mut write = SINK.write().unwrap();
                     if write.is_some() {
                         drop(write); // don't poison
-                        panic!("Already installed a global {NAME} sink, call `join()` first if intentionally attaching a new sink");
+                        panic!("Already installed a global {NAME} sink, drop the attach handle first if intentionally attaching a new sink");
                     } else {
                         *write = Some((BoxEntrySink::new(sink), Box::new(handle)));
                     }
