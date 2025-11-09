@@ -1,0 +1,23 @@
+error: use of deprecated constant `_::_::_W`: Found '.' in inflected prefix. `prefix` inflection treats all non-alphanumeric characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for a separator that will not be inflected. `.` is currently allowed in an inflected prefix, but will be disallowed in a future version.
+  --> tests/ui/fail/prefix_dot.rs:12:33
+   |
+12 |     #[metrics(flatten, prefix = "foo.")]
+   |                                 ^^^^^^
+   |
+note: the lint level is defined here
+  --> tests/ui/fail/prefix_dot.rs:1:9
+   |
+1  | #![deny(deprecated)]
+   |         ^^^^^^^^^^
+
+error: use of deprecated constant `_::_::_W`: Found '.' in inflected prefix. `prefix` inflection treats all non-alphanumeric characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for a separator that will not be inflected. `.` is currently allowed in an inflected prefix, but will be disallowed in a future version.
+  --> tests/ui/fail/prefix_dot.rs:14:33
+   |
+14 |     #[metrics(flatten, prefix = "bar.")]
+   |                                 ^^^^^^
+
+error: use of deprecated constant `_::_W`: Found '.' in inflected prefix. `prefix` inflection treats all non-alphanumeric characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for a separator that will not be inflected. `.` is currently allowed in an inflected prefix, but will be disallowed in a future version.
+  --> tests/ui/fail/prefix_dot.rs:18:20
+   |
+18 | #[metrics(prefix = "baz.")]
+   |                    ^^^^^^

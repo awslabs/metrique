@@ -75,6 +75,8 @@ struct Prefix1 {
 #[derive(Clone, Default)]
 struct Prefix2 {
     value: u32,
+    #[metrics(name = "foo")]
+    value2: u32,
 }
 
 #[derive(Clone, Default)]
@@ -158,11 +160,34 @@ struct PrefixSnake2 {
     inner: Prefix2,
 }
 
+// put PrefixSnake2 in a separate module for expect(deprecated) to work
+#[expect(deprecated)]
+mod prefix_3 {
+    use super::*;
+    #[metrics(rename_all = "kebab-case")]
+    #[derive(Clone, Default)]
+    pub(super) struct PrefixSnake3 {
+        #[metrics(flatten, prefix = "foo-x.")]
+        inner: PrefixSnake2,
+    }
+}
+
+use prefix_3::PrefixSnake3;
+
 #[metrics(rename_all = "kebab-case")]
 #[derive(Clone, Default)]
-struct PrefixSnake3 {
-    #[metrics(flatten, prefix = "foo-")]
+struct ExactPrefix3a {
+    #[metrics(flatten, exact_prefix = "foo:")]
     inner: PrefixSnake2,
+}
+
+#[metrics(exact_prefix = "API@", rename_all="PascalCase")]
+#[derive(Clone, Default)]
+struct Outer {
+    #[metrics(flatten, prefix = "inner2_")]  // Mix of explicit + inflectable
+    inner: Nested,
+    #[metrics(flatten, exact_prefix = "Inner:")]
+    inner2: Nested,  // Does this become "API@Inner:field"?
 }
 
 #[test]
@@ -174,7 +199,10 @@ fn flatten_flush_as_expected() {
         b: true,
         sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
         nested_with_prefix: Prefix1 {
-            inner: Prefix2 { value: 3 },
+            inner: Prefix2 {
+                value: 3,
+                value2: 4,
+            },
             metric: 2,
         },
         ..Default::default()
@@ -198,6 +226,8 @@ fn flatten_flush_as_expected() {
 
     assert_eq!(entry.metrics["NestedMetric"], 2);
     assert_eq!(entry.metrics["NestedValValue"], 3);
+    // `name = "..."` ignores inflection and local prefixes, but includes non-local prefixes
+    assert_eq!(entry.metrics["NestedValfoo"], 4);
 }
 
 #[test]
@@ -208,7 +238,10 @@ fn flatten_flush_as_expected_snake() {
         b: true,
         sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
         nested_with_prefix: Prefix1 {
-            inner: Prefix2 { value: 3 },
+            inner: Prefix2 {
+                value: 3,
+                value2: 4,
+            },
             metric: 2,
         },
         ..Default::default()
@@ -229,6 +262,7 @@ fn flatten_flush_as_expected_snake() {
 
     assert_eq!(entry.metrics["nested_metric"], 2);
     assert_eq!(entry.metrics["nested_val_value"], 3);
+    assert_eq!(entry.metrics["nested_val_foo"], 4);
 }
 
 #[test]
@@ -239,7 +273,32 @@ fn flatten_flush_as_expected_mixed_prefix_casing() {
     let entry = test_util::to_test_entry(&entries[0]);
 
     // check that the rename_all on PrefixSnake2 catches inside it, but not outside it
-    assert_eq!(entry.metrics["foo-BarValue"].as_u64(), 0);
+    // prefixes are inflected, so `.` becomes `-`.
+    assert_eq!(entry.metrics["foo-x-BarValue"].as_u64(), 0);
+}
+
+#[test]
+fn flatten_flush_as_expected_mixed_prefix_casing_exact() {
+    let vec_sink = VecEntrySink::new();
+    ExactPrefix3a::default().append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+
+    // check that the rename_all on PrefixSnake2 catches inside it, but not outside it
+    assert_eq!(entry.metrics["foo:BarValue"].as_u64(), 0);
+}
+
+
+#[test]
+fn flatten_flush_as_expected_mixed_prefix_root_and_name() {
+    let vec_sink = VecEntrySink::new();
+    Outer::default().append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+
+    // check that prefix-on-the-root does not apply to prefix-on-fields
+    assert_eq!(entry.metrics["Inner:NestedMetric"].as_u64(), 0);
+    assert_eq!(entry.metrics["Inner2NestedMetric"].as_u64(), 0);
 }
 
 #[test]
@@ -250,7 +309,10 @@ fn flatten_flush_as_expected_kebab() {
         b: true,
         sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
         nested_with_prefix: Prefix1 {
-            inner: Prefix2 { value: 3 },
+            inner: Prefix2 {
+                value: 3,
+                value2: 4,
+            },
             metric: 2,
         },
         ..Default::default()

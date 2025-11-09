@@ -1,0 +1,131 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct RequestMetrics {
+    operation: &'static str,
+    number_of_ducks: usize,
+}
+#[doc(hidden)]
+pub struct RequestMetricsEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    operation: <&'static str as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    number_of_ducks: <usize as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for RequestMetricsEntry {
+        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    #[allow(non_camel_case_types)]
+                    struct operationPreserve;
+                    impl ::metrique::concat::ConstStr for operationPreserve {
+                        const VAL: &'static str = "API@operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationKebab;
+                    impl ::metrique::concat::ConstStr for operationKebab {
+                        const VAL: &'static str = "API@operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationPascal;
+                    impl ::metrique::concat::ConstStr for operationPascal {
+                        const VAL: &'static str = "API@Operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationSnake;
+                    impl ::metrique::concat::ConstStr for operationSnake {
+                        const VAL: &'static str = "API@operation";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            operationPreserve,
+                            operationPascal,
+                            operationSnake,
+                            operationKebab,
+                        >,
+                    >()
+                },
+                &self.operation,
+            );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    #[allow(non_camel_case_types)]
+                    struct number_of_ducksPreserve;
+                    impl ::metrique::concat::ConstStr for number_of_ducksPreserve {
+                        const VAL: &'static str = "API@number_of_ducks";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct number_of_ducksKebab;
+                    impl ::metrique::concat::ConstStr for number_of_ducksKebab {
+                        const VAL: &'static str = "API@number-of-ducks";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct number_of_ducksPascal;
+                    impl ::metrique::concat::ConstStr for number_of_ducksPascal {
+                        const VAL: &'static str = "API@NumberOfDucks";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct number_of_ducksSnake;
+                    impl ::metrique::concat::ConstStr for number_of_ducksSnake {
+                        const VAL: &'static str = "API@number_of_ducks";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            number_of_ducksPreserve,
+                            number_of_ducksPascal,
+                            number_of_ducksSnake,
+                            number_of_ducksKebab,
+                        >,
+                    >()
+                },
+                &self.number_of_ducks,
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            ::std::iter::empty()
+        }
+    }
+};
+impl metrique::CloseValue for RequestMetrics {
+    type Closed = RequestMetricsEntry;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        RequestMetricsEntry {
+            operation: metrique::CloseValue::close(self.operation),
+            number_of_ducks: metrique::CloseValue::close(self.number_of_ducks),
+        }
+    }
+}
+type RequestMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    RequestMetrics,
+    Q,
+>;
+type RequestMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    RequestMetrics,
+    Q,
+>;
+impl RequestMetrics {
+    ///Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<RequestMetricsEntry>>
+            + Send + Sync + 'static,
+    >(self, sink: Q) -> RequestMetricsGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}
