@@ -39,6 +39,16 @@ struct Baz5 {
     x: u32,
 }
 
+#[metrics(value, prefix = "foo")]
+struct Baz6 {
+    x: u32,
+}
+
+#[metrics(value, exact_prefix = "foo")]
+struct Baz7 {
+    x: u32,
+}
+
 #[metrics(value)]
 struct Unit; /* not supported right now */
 

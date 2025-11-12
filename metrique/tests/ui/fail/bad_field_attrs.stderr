@@ -1,10 +1,10 @@
-error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
+error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:38
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
   |                                      ^^^^^^^^^^^^^
 
-error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
+error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:53
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
@@ -58,8 +58,32 @@ error: Cannot combine ignore with no_close
 32 |     #[metrics(ignore, no_close)]
    |               ^^^^^^
 
-error: prefix can only be used with flatten
+error: prefix can only be used with `flatten`
   --> tests/ui/fail/bad_field_attrs.rs:35:15
    |
 35 |     #[metrics(prefix = "foo")]
    |               ^^^^^^
+
+error: You cannot use the character ':' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve ':' in the final metric name use `exact_prefix = "foo:"
+  --> tests/ui/fail/bad_field_attrs.rs:38:24
+   |
+38 |     #[metrics(flatten, prefix = "foo:")]
+   |                        ^^^^^^
+
+error: Cannot combine `prefix` with `exact_prefix`
+  --> tests/ui/fail/bad_field_attrs.rs:41:24
+   |
+41 |     #[metrics(flatten, prefix = "foo", exact_prefix = "bar")]
+   |                        ^^^^^^
+
+error: Cannot combine `prefix` with `exact_prefix`
+  --> tests/ui/fail/bad_field_attrs.rs:50:11
+   |
+50 | #[metrics(prefix = "foo", exact_prefix = "foo")]
+   |           ^^^^^^
+
+error: You cannot use the character '@' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve '@' in the final metric name use `exact_prefix = "foo@"
+  --> tests/ui/fail/bad_field_attrs.rs:55:11
+   |
+55 | #[metrics(prefix = "foo@")]
+   |           ^^^^^^

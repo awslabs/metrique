@@ -1,0 +1,23 @@
+error: use of deprecated constant `_::_::_W`: You cannot use the character '.' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve '.' in the final metric name use `exact_prefix = "foo.". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required
+  --> tests/ui/fail/prefix_dot.rs:12:33
+   |
+12 |     #[metrics(flatten, prefix = "foo.")]
+   |                                 ^^^^^^
+   |
+note: the lint level is defined here
+  --> tests/ui/fail/prefix_dot.rs:1:9
+   |
+1  | #![deny(deprecated)]
+   |         ^^^^^^^^^^
+
+error: use of deprecated constant `_::_::_W`: You cannot use the character '.' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "bar-"`. If you want to preserve '.' in the final metric name use `exact_prefix = "bar.". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required
+  --> tests/ui/fail/prefix_dot.rs:14:33
+   |
+14 |     #[metrics(flatten, prefix = "bar.")]
+   |                                 ^^^^^^
+
+error: use of deprecated constant `_::_W`: You cannot use the character '.' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "baz-"`. If you want to preserve '.' in the final metric name use `exact_prefix = "baz.". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required
+  --> tests/ui/fail/prefix_dot.rs:18:20
+   |
+18 | #[metrics(prefix = "baz.")]
+   |                    ^^^^^^

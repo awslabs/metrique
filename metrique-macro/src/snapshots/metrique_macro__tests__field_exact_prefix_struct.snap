@@ -1,0 +1,105 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct RequestMetrics {
+    nested: NestedMetrics,
+    operation: &'static str,
+}
+#[doc(hidden)]
+pub struct RequestMetricsEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    nested: <NestedMetrics as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    operation: <&'static str as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for RequestMetricsEntry {
+        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            #[allow(non_camel_case_types)]
+            struct nestedPreserve;
+            impl ::metrique::concat::ConstStr for nestedPreserve {
+                const VAL: &'static str = "API@";
+            }
+            ::metrique::InflectableEntry::<
+                <NS as ::metrique::NameStyle>::AppendPrefix<nestedPreserve>,
+            >::write(&self.nested, writer);
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    #[allow(non_camel_case_types)]
+                    struct operationPreserve;
+                    impl ::metrique::concat::ConstStr for operationPreserve {
+                        const VAL: &'static str = "operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationKebab;
+                    impl ::metrique::concat::ConstStr for operationKebab {
+                        const VAL: &'static str = "operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationPascal;
+                    impl ::metrique::concat::ConstStr for operationPascal {
+                        const VAL: &'static str = "Operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationSnake;
+                    impl ::metrique::concat::ConstStr for operationSnake {
+                        const VAL: &'static str = "operation";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            operationPreserve,
+                            operationPascal,
+                            operationSnake,
+                            operationKebab,
+                        >,
+                    >()
+                },
+                &self.operation,
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            ::metrique::InflectableEntry::<NS>::sample_group(&self.nested)
+        }
+    }
+};
+impl metrique::CloseValue for RequestMetrics {
+    type Closed = RequestMetricsEntry;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        RequestMetricsEntry {
+            nested: metrique::CloseValue::close(self.nested),
+            operation: metrique::CloseValue::close(self.operation),
+        }
+    }
+}
+type RequestMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    RequestMetrics,
+    Q,
+>;
+type RequestMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    RequestMetrics,
+    Q,
+>;
+impl RequestMetrics {
+    ///Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<RequestMetricsEntry>>
+            + Send + Sync + 'static,
+    >(self, sink: Q) -> RequestMetricsGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

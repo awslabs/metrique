@@ -34,10 +34,26 @@ struct MetricsWithInvalidUnit {
 
     #[metrics(prefix = "foo")]
     prefix_no_flatten: usize,
+
+    #[metrics(flatten, prefix = "foo:")]
+    prefix_bad_character: usize,
+
+    #[metrics(flatten, prefix = "foo", exact_prefix = "bar")]
+    prefix_and_exact: SubMetric,
 }
 
 #[metrics(rename_all = "snake_case")]
 struct SubMetric {
+    a: usize,
+}
+
+#[metrics(prefix = "foo", exact_prefix = "foo")]
+struct PrefixAndExact {
+    a: usize,
+}
+
+#[metrics(prefix = "foo@")]
+struct PrefixBadCharacter {
     a: usize,
 }
 

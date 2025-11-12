@@ -26,6 +26,15 @@ struct PrefixedMetrics {
     local_rename: &'static str,
 }
 
+#[metrics(rename_all = "PascalCase", exact_prefix = "prefix@")]
+struct ExactPrefixedMetrics {
+    a: usize,
+
+    // local renames take precence, this field is just called `name`
+    #[metrics(name = "name")]
+    local_rename: &'static str,
+}
+
 #[metrics]
 struct SubMetrics {
     sub_field_a: usize,
@@ -55,4 +64,19 @@ fn metrics_renames_work() {
 
     // For sub metrics which _don't_ set a rename, they get rename transitively from the pattern
     assert_eq!(entry.metrics["sub-field-a"], 4);
+}
+
+#[test]
+fn exact_prefix_metrics() {
+    let metrics = ExactPrefixedMetrics {
+        a: 100,
+        local_rename: "abcd",
+    };
+    let entry = test_util::to_test_entry(RootEntry::new(metrics.close()));
+
+    // the submetric has explicit snake casing, it doesn't get transitively renamed
+    assert_eq!(entry.metrics["prefix@A"].as_u64(), 100);
+
+    // a prefix doesn't apply when name is set
+    assert_eq!(entry.values["name"], "abcd");
 }
