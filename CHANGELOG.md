@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7](https://github.com/awslabs/metrique/compare/metrique-v0.1.6...metrique-v0.1.7) - 2025-11-12
+
+### Added
+
+- implement `#[metrics(explicit_prefix)]` which is not inflected ([#122](https://github.com/awslabs/metrique/pull/122))
+
+### Fixed
+
+- Timer::stop should be idempotent ([#115](https://github.com/awslabs/metrique/pull/115))
+- add track_caller to GlobalEntrySink::sink ([#123](https://github.com/awslabs/metrique/pull/123))
+
+### Other
+
+- improve documentation (several PRs)
+- replace doc_auto_cfg with doc_cfg ([#111](https://github.com/awslabs/metrique/pull/111))
+
+### Breaking changes
+
+- reserve `ForceFlushGuard: !Unpin` ([#119](https://github.com/awslabs/metrique/pull/119))
+
 ## [0.1.6](https://github.com/awslabs/metrique/compare/metrique-v0.1.5...metrique-v0.1.6) - 2025-09-19
 
 ### Added
