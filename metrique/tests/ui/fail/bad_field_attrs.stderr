@@ -64,7 +64,7 @@ error: prefix can only be used with `flatten`
 35 |     #[metrics(prefix = "foo")]
    |               ^^^^^^
 
-error: Found ':' in inflected prefix. `prefix` inflection treats all non-alphanumeric characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for a separator that will not be inflected.
+error: You cannot use the character ':' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve ':' in the final metric name use `exact_prefix = "foo:"
   --> tests/ui/fail/bad_field_attrs.rs:38:24
    |
 38 |     #[metrics(flatten, prefix = "foo:")]
@@ -82,7 +82,7 @@ error: Cannot combine `prefix` with `exact_prefix`
 50 | #[metrics(prefix = "foo", exact_prefix = "foo")]
    |           ^^^^^^
 
-error: Found '@' in inflected prefix. `prefix` inflection treats all non-alphanumeric characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for a separator that will not be inflected.
+error: You cannot use the character '@' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve '@' in the final metric name use `exact_prefix = "foo@"
   --> tests/ui/fail/bad_field_attrs.rs:55:11
    |
 55 | #[metrics(prefix = "foo@")]

@@ -7,7 +7,7 @@ struct RequestMetrics {
 }
 const _: () = {
     #[deprecated(
-        note = "Found '.' in inflected prefix. `prefix` inflection treats all non-alphanumeric characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for a separator that will not be inflected. `.` is currently allowed in an inflected prefix, but will be disallowed in a future version."
+        note = "You cannot use the character '.' with `prefix`. `prefix` will \"inflect\" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = \"X-\"`. If you want to preserve '.' in the final metric name use `exact_prefix = \"X.\". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required"
     )]
     const _W: () = ();
     _W

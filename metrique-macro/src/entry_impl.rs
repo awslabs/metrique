@@ -91,7 +91,7 @@ fn generate_write_statements(
                         if let Some(span) = contains_dot {
                             dot_warning = proc_macro_warning(
                                 *span,
-                                &Prefix::inflected_prefix_message('.', true),
+                                &Prefix::inflected_prefix_message(prefix, '.', true),
                             );
                         }
                         append_prefix_to_ns(

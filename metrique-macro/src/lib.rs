@@ -76,11 +76,12 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 ///
 ///    ```rust
 ///    # use metrique::unit_of_work::metrics;
+///    # use std::time::Duration;
 ///    #[metrics(subfield)]
 ///    struct Subfield {
-///        field_val: u32, // inflected
-///        #[metrics(name="SomeName")] // not inflected (since `name` is not inflected), prefixed
-///        some_name: u32,
+///        request_latency: Duration, // inflected
+///        #[metrics(name="NDucks")] // not inflected (since `name` is not inflected), prefixed
+///        number_of_ducks: u32,
 ///    }
 ///
 ///    #[metrics(rename_all = "kebab-case")]
@@ -89,54 +90,58 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 ///        #[metrics(flatten, exact_prefix = "API:")]
 ///        api: Subfield,
 ///        // uses `prefix`, inflected
-///        #[metrics(flatten, prefix = "bar")]
-///        bar: Subfield,
+///        #[metrics(flatten, prefix = "alt")]
+///        alt: Subfield,
 ///    }
 ///
 ///    let vec_sink = metrique::writer::sink::VecEntrySink::new();
 ///    Base {
-///        api: Subfield { field_val: 0, some_name: 0 },
-///        bar: Subfield { field_val: 0, some_name: 0 }
+///        api: Subfield { request_latency: Duration::from_millis(1), number_of_ducks: 0 },
+///        alt: Subfield { request_latency: Duration::from_millis(1), number_of_ducks: 0 }
 ///    }.append_on_drop(vec_sink.clone());
 ///    let entries = vec_sink.drain();
 ///    let entry = metrique::test_util::to_test_entry(&entries[0]);
-///    assert_eq!(entry.metrics["API:field-val"], 0);
-///    assert_eq!(entry.metrics["bar-field-val"], 0);
-///    assert_eq!(entry.metrics["API:SomeName"], 0);
-///    assert_eq!(entry.metrics["bar-SomeName"], 0);
+///    assert_eq!(entry.metrics["API:request-latency"], 1.0);
+///    assert_eq!(entry.metrics["alt-request-latency"], 1.0);
+///    assert_eq!(entry.metrics["API:NDucks"], 0);
+///    assert_eq!(entry.metrics["alt-NDucks"], 0);
 ///    ```
 /// 2. Prefixes on the struct itself, which *only* affect fields within the metric
 ///    that don't have a `name` or a `flatten` attribute:
 ///
 ///    ```rust
 ///    # use metrique::unit_of_work::metrics;
+///    # use std::time::Duration;
 ///    #[metrics(subfield)]
 ///    struct Subfield {
-///        field_val: u32 // inflected
-///     }
+///        request_latency: Duration, // inflected
+///    }
 ///
-///     #[metrics(prefix = "Foo-" /* prefix gets inflected */, rename_all = "kebab-case")]
-///     struct Base {
-///         // prefix does not propagate to subfield
-///         #[metrics(flatten)]
-///         sub: Subfield,
-///         // prefix does not propagate to named field
-///         #[metrics(name = "some-name")]
-///         named: u32,
-///         // prefix does propagate to other
-///         other: u32,
-///     }
+///    #[metrics(prefix = "Foo-" /* prefix gets inflected */, rename_all = "kebab-case")]
+///    struct Base {
+///        // prefix does not propagate to subfield. Use `prefix = "Foo-"` to propagate
+///        #[metrics(flatten)]
+///        sub: Subfield,
+///        // prefix does not propagate to named field
+///        #[metrics(name = "n-ducks")]
+///        number_of_ducks: u32,
+///        // prefix does propagate to other
+///        number_of_geese: u32,
+///    }
 ///
-///     let vec_sink = metrique::writer::sink::VecEntrySink::new();
-///     Base { sub: Subfield { field_val: 0 }, named: 0, other: 0}
-///         .append_on_drop(vec_sink.clone());
-///     let entries = vec_sink.drain();
-///     let entry = metrique::test_util::to_test_entry(&entries[0]);
-///     assert_eq!(entry.metrics["field-val"], 0);
-///     assert_eq!(entry.metrics["some-name"], 0);
-///     // prefix-on-struct only applies to this
-///     assert_eq!(entry.metrics["foo-other"], 0);
-///     ```
+///    let vec_sink = metrique::writer::sink::VecEntrySink::new();
+///    Base {
+///        sub: Subfield { request_latency: Duration::from_millis(1) },
+///        number_of_ducks: 0,
+///        number_of_geese: 0
+///    }.append_on_drop(vec_sink.clone());
+///    let entries = vec_sink.drain();
+///    let entry = metrique::test_util::to_test_entry(&entries[0]);
+///    assert_eq!(entry.metrics["request-latency"], 1.0);
+///    assert_eq!(entry.metrics["n-ducks"], 0);
+///    // prefix-on-struct only applies to this
+///    assert_eq!(entry.metrics["foo-number-of-geese"], 0);
+///    ```
 ///
 /// Note that prefix-attribute-on-flatten *does* apply to nested fields that have
 /// a `name` attribute.
@@ -163,22 +168,22 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 ///
 /// #[metrics(subfield)]
 /// struct Subfield {
-///     #[metrics(name = "Bar")]
-///     bar: u32,
+///     #[metrics(name = "NDucks")]
+///     number_of_ducks: u32,
 /// }
 ///
 /// #[metrics(rename_all = "snake_case")]
 /// struct Base {
-///     #[metrics(flatten, prefix = "Foo_")]
-///     foo: Subfield,
+///     #[metrics(flatten, prefix = "Waterfowl_")]
+///     waterfowl: Subfield,
 /// }
 ///
 /// let vec_sink = metrique::writer::sink::VecEntrySink::new();
-/// Base { foo: Subfield { bar: 0 } }
+/// Base { waterfowl: Subfield { number_of_ducks: 0 } }
 ///     .append_on_drop(vec_sink.clone());
 /// let entries = vec_sink.drain();
 /// let entry = metrique::test_util::to_test_entry(&entries[0]);
-/// assert_eq!(entry.metrics["foo_Bar"], 0);
+/// assert_eq!(entry.metrics["waterfowl_NDucks"], 0);
 /// ```
 ///
 /// # Example
@@ -408,11 +413,11 @@ impl RootAttributes {
     }
 
     fn warnings(&self) -> Ts2 {
-        match self.prefix {
+        match &self.prefix {
             Some(Prefix::Inflectable {
-                prefix: _,
+                prefix,
                 contains_dot: Some(span),
-            }) => proc_macro_warning(span, &Prefix::inflected_prefix_message('.', true)),
+            }) => proc_macro_warning(*span, &Prefix::inflected_prefix_message(prefix, '.', true)),
             _ => quote! {},
         }
     }
@@ -622,16 +627,20 @@ enum Prefix {
 }
 
 impl Prefix {
-    fn inflected_prefix_message(c: char, is_warning: bool) -> String {
+    fn inflected_prefix_message(prefix: &str, c: char, is_warning: bool) -> String {
         let warning_text = if is_warning {
-            " `.` is currently allowed in an inflected prefix, but will be disallowed in a future version."
+            ". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required"
         } else {
             ""
         };
+        let prefix_fixed: String = prefix
+            .chars()
+            .map(|c| if !c.is_alphanumeric() { '-' } else { c })
+            .collect();
         format!(
-            "Found {c:?} in inflected prefix. `prefix` inflection treats all non-alphanumeric \
-                        characters identically. Use `-` or `_` for an inflectable separator, or use `exact_prefix` for \
-                        a separator that will not be inflected.{warning_text}"
+            "You cannot use the character {c:?} with `prefix`. `prefix` will \"inflect\" to match the name scheme specified by `rename_all`. For example, \
+            it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = {prefix_fixed:?}`. If you want to preserve {c:?} \
+            in the final metric name use `exact_prefix = {prefix:?}{warning_text}"
         )
     }
 
@@ -642,10 +651,12 @@ impl Prefix {
         match (inflectable, exact) {
             (Some(prefix), None) => {
                 if let Some(c) = name_contains_uninflectables(&prefix.value) {
-                    Err(
-                        darling::Error::custom(Self::inflected_prefix_message(c, false))
-                            .with_span(&prefix.key_span),
-                    )
+                    Err(darling::Error::custom(Self::inflected_prefix_message(
+                        &prefix.value,
+                        c,
+                        false,
+                    ))
+                    .with_span(&prefix.key_span))
                 } else {
                     Ok(Some(SpannedValue::new(
                         Self::Inflectable {
