@@ -20,6 +20,7 @@ darling = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 prettyplease = { workspace = true }
+metrique = { path = "../metrique", features = ["test-util"] }
 
 [package.metadata.docs.rs]
 all-features = true

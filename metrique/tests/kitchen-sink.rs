@@ -181,13 +181,13 @@ struct ExactPrefix3a {
     inner: PrefixSnake2,
 }
 
-#[metrics(exact_prefix = "API@", rename_all="PascalCase")]
+#[metrics(exact_prefix = "API@", rename_all = "PascalCase")]
 #[derive(Clone, Default)]
 struct Outer {
-    #[metrics(flatten, prefix = "inner2_")]  // Mix of explicit + inflectable
+    #[metrics(flatten, prefix = "inner2_")] // Mix of explicit + inflectable
     inner: Nested,
     #[metrics(flatten, exact_prefix = "Inner:")]
-    inner2: Nested,  // Does this become "API@Inner:field"?
+    inner2: Nested, // Does this become "API@Inner:field"?
 }
 
 #[test]
@@ -287,7 +287,6 @@ fn flatten_flush_as_expected_mixed_prefix_casing_exact() {
     // check that the rename_all on PrefixSnake2 catches inside it, but not outside it
     assert_eq!(entry.metrics["foo:BarValue"].as_u64(), 0);
 }
-
 
 #[test]
 fn flatten_flush_as_expected_mixed_prefix_root_and_name() {

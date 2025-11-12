@@ -55,7 +55,7 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
 /// | `exact_prefix` | String | Adds a prefix to flattened entries without inflection | `#[metrics(flatten, exact_prefix="API_")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
-/// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs | `#[metrics(flatten_entry)]` |
+/// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 ///
@@ -65,13 +65,130 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 /// |-----------|------|-------------|---------|
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 ///
+/// # Metric Names
+///
+/// ## Prefixes
+///
+/// Prefixes can be attached to metrics in 2 different ways:
+///
+/// 1. Prefixes on flattened subfields, which affect all the metrics contained within
+///    the flattened subfield:
+///
+///    ```rust
+///    # use metrique::unit_of_work::metrics;
+///    #[metrics(subfield)]
+///    struct Subfield {
+///        field_val: u32, // inflected
+///        #[metrics(name="SomeName")] // not inflected (since `name` is not inflected), prefixed
+///        some_name: u32,
+///    }
+///
+///    #[metrics(rename_all = "kebab-case")]
+///    struct Base {
+///        // uses `exact_prefix`, not inflected
+///        #[metrics(flatten, exact_prefix = "API:")]
+///        api: Subfield,
+///        // uses `prefix`, inflected
+///        #[metrics(flatten, prefix = "bar")]
+///        bar: Subfield,
+///    }
+///
+///    let vec_sink = metrique::writer::sink::VecEntrySink::new();
+///    Base {
+///        api: Subfield { field_val: 0, some_name: 0 },
+///        bar: Subfield { field_val: 0, some_name: 0 }
+///    }.append_on_drop(vec_sink.clone());
+///    let entries = vec_sink.drain();
+///    let entry = metrique::test_util::to_test_entry(&entries[0]);
+///    assert_eq!(entry.metrics["API:field-val"], 0);
+///    assert_eq!(entry.metrics["bar-field-val"], 0);
+///    assert_eq!(entry.metrics["API:SomeName"], 0);
+///    assert_eq!(entry.metrics["bar-SomeName"], 0);
+///    ```
+/// 2. Prefixes on the struct itself, which *only* affect fields within the metric
+///    that don't have a `name` or a `flatten` attribute:
+///
+///    ```rust
+///    # use metrique::unit_of_work::metrics;
+///    #[metrics(subfield)]
+///    struct Subfield {
+///        field_val: u32 // inflected
+///     }
+///
+///     #[metrics(prefix = "Foo-" /* prefix gets inflected */, rename_all = "kebab-case")]
+///     struct Base {
+///         // prefix does not propagate to subfield
+///         #[metrics(flatten)]
+///         sub: Subfield,
+///         // prefix does not propagate to named field
+///         #[metrics(name = "some-name")]
+///         named: u32,
+///         // prefix does propagate to other
+///         other: u32,
+///     }
+///
+///     let vec_sink = metrique::writer::sink::VecEntrySink::new();
+///     Base { sub: Subfield { field_val: 0 }, named: 0, other: 0}
+///         .append_on_drop(vec_sink.clone());
+///     let entries = vec_sink.drain();
+///     let entry = metrique::test_util::to_test_entry(&entries[0]);
+///     assert_eq!(entry.metrics["field-val"], 0);
+///     assert_eq!(entry.metrics["some-name"], 0);
+///     // prefix-on-struct only applies to this
+///     assert_eq!(entry.metrics["foo-other"], 0);
+///     ```
+///
+/// Note that prefix-attribute-on-flatten *does* apply to nested fields that have
+/// a `name` attribute.
+///
+/// Prefixes can either be inflectable (with the `prefix` attribute) or non-inflectable
+/// (with the `exact_prefix` attribute).
+///
+/// ## Inflection
+///
+/// Metric names are inflected to allow them to fit into the name style used by the
+/// application. This uses the `Inflector` crate and supports inflecting metrics into
+/// PascalCase, snake_case, and kebab-case.
+///
+/// Metric names assigned via the `name` attribute are not inflected, but if they are
+/// contained in a metric with a prefix, the prefix can be inflected. Prefixes assigned via
+/// `exact_prefix` are similarly not inflected.
+///
+/// For example, this emits a metric named "foo_Bar", since "Bar" is assigned via a
+/// `name` attribute and therefore not inflected, but the prefix is assigned
+/// via `prefix` and is therefore inflected.
+///
+/// ```rust
+/// # use metrique::unit_of_work::metrics;
+///
+/// #[metrics(subfield)]
+/// struct Subfield {
+///     #[metrics(name = "Bar")]
+///     bar: u32,
+/// }
+///
+/// #[metrics(rename_all = "snake_case")]
+/// struct Base {
+///     #[metrics(flatten, prefix = "Foo_")]
+///     foo: Subfield,
+/// }
+///
+/// let vec_sink = metrique::writer::sink::VecEntrySink::new();
+/// Base { foo: Subfield { bar: 0 } }
+///     .append_on_drop(vec_sink.clone());
+/// let entries = vec_sink.drain();
+/// let entry = metrique::test_util::to_test_entry(&entries[0]);
+/// assert_eq!(entry.metrics["foo_Bar"], 0);
+/// ```
+///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
 /// use metrique::unit_of_work::metrics;
 /// use metrique::timers::{Timestamp, Timer};
 /// use metrique::unit::{Count, Millisecond};
-/// use metrique::writer::{GlobalEntrySink, ServiceMetrics};
+/// use metrique::writer::GlobalEntrySink;
+/// use metrique::ServiceMetrics;
 /// use std::time::SystemTime;
 ///
 /// #[metrics(value(string), rename_all = "snake_case")]
@@ -92,13 +209,13 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 ///     #[metrics(unit = Millisecond)]
 ///     operation_time: Timer,
 ///
-///     #[metrics(flatten)]
+///     #[metrics(flatten, prefix = "sub_")]
 ///     nested: NestedMetrics,
 ///
 ///     request_count: RequestCount,
 /// }
 ///
-/// #[metrics(subfield, prefix = "sub_")]
+/// #[metrics(subfield)]
 /// struct NestedMetrics {
 ///     #[metrics(name = "CustomCounter")]
 ///     counter: usize,

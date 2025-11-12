@@ -723,6 +723,7 @@ dependencies = [
  "Inflector",
  "darling",
  "insta",
+ "metrique",
  "prettyplease",
  "proc-macro2",
  "quote",
