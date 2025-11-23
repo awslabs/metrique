@@ -41,7 +41,7 @@ strum_macros = "0.27"
 syn = "2.0"
 synstructure = "0.13"
 tempfile = "3"
-tokio = { version = "1.47.0", default-features = false }
+tokio = { version = "1.38", default-features = false }
 tokio-util = "0.7.13"
 tracing = "0.1.41"
 tracing-appender = "0.2"
