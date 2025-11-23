@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8](https://github.com/awslabs/metrique/compare/metrique-v0.1.7...metrique-v0.1.8) - 2025-11-23
+
+### Other
+
+- support older versions of Tokio (from Tokio 1.38) ([#126](https://github.com/awslabs/metrique/pull/126))
+- declare MSRV for all crates ([#126](https://github.com/awslabs/metrique/pull/126))
+
 ## [0.1.7](https://github.com/awslabs/metrique/compare/metrique-v0.1.6...metrique-v0.1.7) - 2025-11-12
 
 ### Added
