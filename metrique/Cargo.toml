@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating unit of work metrics"
@@ -26,13 +26,13 @@ metrics_rs_024 = ["metrics-rs-024"]
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.6" }
-metrique-macro = { path = "../metrique-macro", version = "0.1.5" }
-metrique-core = { path = "../metrique-core", version = "0.1.6" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.8" }
-metrique-metricsrs = { path = "../metrique-metricsrs", version = "0.1.8", optional = true }
-metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.7", optional = true }
-metrique-timesource = { path = "../metrique-timesource", version = "0.1.4" }
-metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.7", optional = true }
+metrique-macro = { path = "../metrique-macro", version = "0.1.6" }
+metrique-core = { path = "../metrique-core", version = "0.1.7" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.9" }
+metrique-metricsrs = { path = "../metrique-metricsrs", version = "0.1.9", optional = true }
+metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.8", optional = true }
+metrique-timesource = { path = "../metrique-timesource", version = "0.1.5" }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.8", optional = true }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.4" }
 tracing-appender = { workspace = true, optional = true }
 ryu = { workspace = true }
