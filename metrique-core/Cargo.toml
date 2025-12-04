@@ -1,6 +1,6 @@
 [package]
 name = "metrique-core"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
 license = "Apache-2.0"
@@ -9,7 +9,7 @@ repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
 [dependencies]
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.6" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.7" }
 itertools = { workspace = true }
 
 [dev-dependencies]

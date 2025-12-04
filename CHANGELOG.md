@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9](https://github.com/arielb1/metrique-fork/compare/metrique-v0.1.8...metrique-v0.1.9) - 2025-12-04
+
+### Added
+
+- show useful error information on validation error with no tracing ([#129](https://github.com/awslabs/metrique/pull/129))
+
 ## [0.1.8](https://github.com/awslabs/metrique/compare/metrique-v0.1.7...metrique-v0.1.8) - 2025-11-23
 
 ### Other
