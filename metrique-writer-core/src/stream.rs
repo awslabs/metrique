@@ -6,7 +6,7 @@
 
 use std::{fmt, io};
 
-use crate::{Entry, ValidationError, config::BasicErrorMessage};
+use crate::{Entry, ValidationError};
 
 /// The error cases for a [`EntryIoStream::next`] call.
 #[derive(Debug)]
@@ -63,14 +63,6 @@ pub trait EntryIoStream {
     ///
     /// If an [`IoStreamError::Io`] occurs, the result of the following call is undefined.
     fn next(&mut self, entry: &impl Entry) -> Result<(), IoStreamError>;
-
-    /// Writes an error message into the stream, this is used for reporting validation
-    /// errors when tracing is not enabled.
-    ///
-    /// If an [`IoStreamError::Io`] occurs, the result of the following call is undefined.
-    fn next_basic_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        self.next(&BasicErrorMessage::new(message))
-    }
 
     /// Flush any pending entries that have been written to a buffer before the final IO sink.
     ///

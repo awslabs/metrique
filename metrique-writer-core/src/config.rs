@@ -30,7 +30,8 @@ impl EntryConfig for AllowSplitEntries {}
 /// EMF errors missing dimensions) so that something
 /// will get out even if globals are misconfigured.
 ///
-/// This should still not allow
+/// Even with this option, it should not be possible to emit entries
+/// that break the framing format.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
 pub struct IsBasicErrorMessage(());
@@ -47,6 +48,9 @@ impl EntryConfig for IsBasicErrorMessage {}
 /// An entry that represents a basic error message that can be used to
 /// get a log message to the metrics stream even if globals are
 /// misconfigured.
+///
+/// This emits the config [IsBasicErrorMessage] and a property with name
+/// "Error" containing the message.
 pub struct BasicErrorMessage<'a> {
     message: &'a str,
 }

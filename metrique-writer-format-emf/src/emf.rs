@@ -3441,13 +3441,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case("Foo", "Region")]
+    #[case("Foo", "Region", true)]
     // merging property "_aws" is illegal
-    #[case("Foo", "_aws")]
+    #[case("Foo", "_aws", false)]
     // merging property "Error" will cause a conflict, which should make us bail out
-    #[case("Foo", "Error")]
-    #[case("Error", "Region")]
-    fn test_report_error(#[case] dim: &str, #[case] merged_dim: &str) {
+    #[case("Foo", "Error", false)]
+    #[case("Error", "Region", true)]
+    fn test_report_error(#[case] dim: &str, #[case] merged_dim: &str, #[case] is_valid: bool) {
         struct MergeUsEast1<'a> {
             dim: &'a str,
         }
@@ -3459,36 +3459,31 @@ mod tests {
         let writer = Emf::all_validations("Foo".into(), vec![vec![dim.into()]]);
 
         let mut w1 = vec![];
-        writer
+        let res = writer
             .output_to(&mut w1)
             .merge_globals(MergeUsEast1 { dim: merged_dim })
-            .report_error("basic error")
-            .unwrap();
-        let aws = serde_json::json!({
-            "CloudWatchMetrics": [{
-                "Namespace": "Foo",
-                "Dimensions": [[dim]],
-                "Metrics": []
-            }],
-            "Timestamp": 0,
-        });
+            .report_error("basic error");
+        if is_valid {
+            res.unwrap();
+        } else {
+            res.unwrap_err();
+            return;
+        }
         let mut actual =
             serde_json::from_str::<serde_json::Value>(&String::from_utf8(w1).unwrap()).unwrap();
         actual["_aws"]["Timestamp"] = 0.into();
-        let expected = if merged_dim == "_aws" || merged_dim == "Error" {
-            // if the merged dimension is "_aws" or "Error", the entry should
-            // be emitted without it
-            serde_json::json!({
-                "_aws": aws,
-                "Error": "basic error"
-            })
-        } else {
-            serde_json::json!({
-                "_aws": aws,
-                merged_dim: "us-east-1",
-                "Error": "basic error"
-            })
-        };
+        let expected = serde_json::json!({
+            "_aws": serde_json::json!({
+                "CloudWatchMetrics": [{
+                    "Namespace": "Foo",
+                    "Dimensions": [[dim]],
+                    "Metrics": []
+                }],
+                "Timestamp": 0,
+            }),
+            merged_dim: "us-east-1",
+            "Error": "basic error"
+        });
         assert_json_eq!(expected, actual);
     }
 }

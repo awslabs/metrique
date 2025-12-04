@@ -118,10 +118,7 @@ pub trait EntryIoStreamExt: EntryIoStream {
     /// This function uses [EntryIoStream::next_basic_error] to be able of reporting
     /// an error even if some global dimensions are invalid.
     fn report_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        if self.next(&BasicErrorMessage::new(message)).is_ok() {
-            return Ok(());
-        }
-        self.next_basic_error(message)
+        self.next(&BasicErrorMessage::new(message))
     }
 }
 impl<T: EntryIoStream + ?Sized> EntryIoStreamExt for T {}
@@ -176,12 +173,6 @@ impl<S1: EntryIoStream, S2: EntryIoStream> EntryIoStream for Tee<S1, S2> {
         self.s1.next(entry).and(self.s2.next(entry))
     }
 
-    fn next_basic_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        self.s1
-            .next_basic_error(message)
-            .and(self.s2.next_basic_error(message))
-    }
-
     fn flush(&mut self) -> io::Result<()> {
         let r1 = self.s1.flush();
         let r2 = self.s2.flush();
@@ -201,10 +192,6 @@ pub struct MergeGlobals<S, G> {
 impl<S: EntryIoStream, G: Entry> EntryIoStream for MergeGlobals<S, G> {
     fn next(&mut self, entry: &impl Entry) -> Result<(), IoStreamError> {
         self.stream.next(&self.globals.merge_by_ref(entry))
-    }
-
-    fn next_basic_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        self.stream.next_basic_error(message)
     }
 
     fn flush(&mut self) -> io::Result<()> {
@@ -237,10 +224,6 @@ impl<S: EntryIoStream, const N: usize> EntryIoStream for MergeGlobalDimensions<S
         }
     }
 
-    fn next_basic_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        self.stream.next_basic_error(message)
-    }
-
     fn flush(&mut self) -> io::Result<()> {
         self.stream.flush()
     }
@@ -258,50 +241,5 @@ impl EntryIoStream for NullEntryIoStream {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::borrow::Cow;
-
-    use crate::{
-        Entry, EntryIoStreamExt, EntryWriter, FormatExt, stream::tee, test_util::TestFlag,
-    };
-    use metrique_writer_core::{EntryIoStream, test_stream::DummyFormat};
-
-    struct TestGlobals;
-    impl Entry for TestGlobals {
-        fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {
-            panic!("should not use globals")
-        }
-    }
-
-    #[test]
-    fn test_format_basic_error() {
-        // check that `format_basic_error` works and ignores globals
-        let mut w1 = Vec::new();
-        let mut w2 = Vec::new();
-        let mut io_stream = tee(
-            TestFlag::from(
-                DummyFormat
-                    .merge_globals(TestGlobals)
-                    .output_to(&mut w1)
-                    .merge_globals(TestGlobals),
-            ),
-            DummyFormat
-                .merge_global_dimensions(
-                    [(Cow::Borrowed("Foo"), Cow::Borrowed("Foo"))].into(),
-                    None,
-                )
-                .output_to(&mut w2)
-                .merge_global_dimensions(
-                    [(Cow::Borrowed("Foo"), Cow::Borrowed("Foo"))].into(),
-                    None,
-                ),
-        );
-        io_stream.next_basic_error("error").unwrap();
-        assert_eq!(String::from_utf8(w1).unwrap(), "[(\"Error\", \"error\")]");
-        assert_eq!(String::from_utf8(w2).unwrap(), "[(\"Error\", \"error\")]");
     }
 }

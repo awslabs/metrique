@@ -263,10 +263,6 @@ impl<F: Format, O: io::Write> EntryIoStream for FormattedEntryIoStream<F, O> {
         self.format.format(entry, &mut self.output)
     }
 
-    fn next_basic_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        self.format.format_basic_error(message, &mut self.output)
-    }
-
     fn flush(&mut self) -> io::Result<()> {
         self.output.flush()
     }
@@ -280,14 +276,6 @@ impl<F: Format, G: Entry> Format for MergeGlobals<F, G> {
     ) -> Result<(), IoStreamError> {
         self.stream
             .format(&self.globals.merge_by_ref(entry), output)
-    }
-
-    fn format_basic_error(
-        &mut self,
-        message: &str,
-        output: &mut impl io::Write,
-    ) -> Result<(), IoStreamError> {
-        self.stream.format_basic_error(message, output)
     }
 }
 
@@ -307,14 +295,6 @@ impl<F: Format, const N: usize> Format for MergeGlobalDimensions<F, N> {
             );
             self.stream.format(&entry_with_global_dimensions, output)
         }
-    }
-
-    fn format_basic_error(
-        &mut self,
-        message: &str,
-        output: &mut impl io::Write,
-    ) -> Result<(), IoStreamError> {
-        self.stream.format_basic_error(message, output)
     }
 }
 

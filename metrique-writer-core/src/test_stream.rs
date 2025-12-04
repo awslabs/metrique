@@ -224,7 +224,10 @@ impl ValueWriter for DummyValueWriter<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::{Entry, EntryIoStream, IoStreamError, format::Format, test_stream::DummyFormat};
+    use crate::{
+        Entry, EntryIoStream, IoStreamError, config::BasicErrorMessage, format::Format,
+        test_stream::DummyFormat,
+    };
 
     struct BasicEntryIoStream(Vec<u8>);
     impl EntryIoStream for BasicEntryIoStream {
@@ -240,7 +243,7 @@ mod test {
     #[test]
     fn test_format_error() {
         let mut stream = BasicEntryIoStream(vec![]);
-        stream.next_basic_error("basic-error").unwrap();
+        stream.next(&BasicErrorMessage::new("basic-error")).unwrap();
         assert_eq!(
             String::from_utf8(stream.0).unwrap(),
             "[(\"Error\", \"basic-error\")]"
