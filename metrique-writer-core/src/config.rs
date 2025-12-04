@@ -25,6 +25,47 @@ impl AllowSplitEntries {
 
 impl EntryConfig for AllowSplitEntries {}
 
+/// This config is used for basic error messages. It allows generating
+/// error messages that will not be routed properly (for example,
+/// EMF errors missing dimensions) so that something
+/// will get out even if globals are misconfigured.
+///
+/// This should still not allow
+#[derive(Clone, Debug, Default)]
+#[non_exhaustive]
+pub struct IsBasicErrorMessage(());
+
+impl IsBasicErrorMessage {
+    /// Create a new [IsBasicErrorMessage]
+    const fn new() -> Self {
+        Self(())
+    }
+}
+
+impl EntryConfig for IsBasicErrorMessage {}
+
+/// An entry that represents a basic error message that can be used to
+/// get a log message to the metrics stream even if globals are
+/// misconfigured.
+pub struct BasicErrorMessage<'a> {
+    message: &'a str,
+}
+
+impl<'a> BasicErrorMessage<'a> {
+    /// Create a new [BasicErrorMessage].
+    pub fn new(message: &'a str) -> Self {
+        Self { message }
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl crate::Entry for BasicErrorMessage<'_> {
+    fn write<'a>(&'a self, writer: &mut impl crate::EntryWriter<'a>) {
+        writer.config(&const { IsBasicErrorMessage::new() });
+        writer.value("Error", self.message);
+    }
+}
+
 /// This struct is mostly useful for the EMF internal implementation
 pub struct DimensionsIterator<'a> {
     inner: slice::Iter<'a, Cow<'static, str>>,

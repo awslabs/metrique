@@ -32,6 +32,7 @@ impl Drop for FuelGuard {
 #[derive(Default)]
 pub struct TestStream {
     pub values: Vec<u64>,
+    pub found_errors: u64,
     pub error: Option<IoStreamError>,
     pub flushes: u64,
     pub values_flushed: usize,
@@ -76,8 +77,12 @@ impl<'a> EntryWriter<'a> for Arc<Mutex<TestStream>> {
     }
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
-        assert_eq!(name.into(), "value");
-        value.write(&mut *self.lock().unwrap());
+        let name = name.into();
+        match &name[..] {
+            "value" => value.write(&mut *self.lock().unwrap()),
+            "Error" => self.lock().unwrap().found_errors += 1,
+            _ => panic!("unexpected name {name}"),
+        }
     }
 
     #[inline]
@@ -214,5 +219,31 @@ impl ValueWriter for DummyValueWriter<'_> {
 
     fn error(self, error: ValidationError) {
         panic!("{error}");
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{Entry, EntryIoStream, IoStreamError, format::Format, test_stream::DummyFormat};
+
+    struct BasicEntryIoStream(Vec<u8>);
+    impl EntryIoStream for BasicEntryIoStream {
+        fn next(&mut self, entry: &impl Entry) -> Result<(), IoStreamError> {
+            DummyFormat.format(entry, &mut self.0)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_format_error() {
+        let mut stream = BasicEntryIoStream(vec![]);
+        stream.next_basic_error("basic-error").unwrap();
+        assert_eq!(
+            String::from_utf8(stream.0).unwrap(),
+            "[(\"Error\", \"basic-error\")]"
+        );
     }
 }

@@ -174,6 +174,10 @@ impl<S: EntryIoStream, FLAGS: FlagConstructor> EntryIoStream for ForceFlag<S, FL
         self.0.next(&ForceFlag(entry, self.1))
     }
 
+    fn next_basic_error(&mut self, message: &str) -> Result<(), IoStreamError> {
+        self.0.next_basic_error(message)
+    }
+
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
     }

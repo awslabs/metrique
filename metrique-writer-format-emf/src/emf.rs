@@ -6,6 +6,7 @@ use hashbrown::hash_map::EntryRef;
 use itertools::Itertools;
 use metrique_writer::sample::DefaultRng;
 use metrique_writer::value::{FlagConstructor, ForceFlag, MetricOptions};
+use metrique_writer_core::config::IsBasicErrorMessage;
 use metrique_writer_core::format::Format;
 use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_core::stream::IoStreamError;
@@ -179,7 +180,6 @@ struct State {
     // buf of extra declarations
     decl_buf: PrefixedStringBuf,
     allow_ignored_dimensions: bool,
-    allow_split_entries: bool,
 }
 
 /// Serde declaration of EMF's MetricDirective type
@@ -417,6 +417,8 @@ impl Emf {
             timestamp: None,
             validations: &self.validation,
             error: ValidationErrorBuilder::default(),
+            allow_split_entries: false,
+            is_basic_error_message: false,
         };
 
         entry.write(&mut writer);
@@ -611,7 +613,6 @@ impl EmfBuilder {
                 decl_buf: PrefixedStringBuf::new(&self.extra_directives, 256),
                 allow_ignored_dimensions: self.allow_ignored_dimensions,
                 log_group_and_timestamp: LogGroupNameAndTimestampString::new(self.log_group_name),
-                allow_split_entries: false,
             },
             validation_map_base: validation_map,
             validation: self.validation,
@@ -1016,6 +1017,8 @@ struct EntryWriter<'a> {
     timestamp: Option<SystemTime>,
     multiplicity: Option<u64>,
     error: ValidationErrorBuilder,
+    allow_split_entries: bool,
+    is_basic_error_message: bool,
 }
 
 impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
@@ -1099,14 +1102,20 @@ impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
             .downcast_ref::<AllowSplitEntries>()
             .is_some()
         {
-            self.state.allow_split_entries = true;
+            self.allow_split_entries = true;
+        }
+        if (config as &dyn Any)
+            .downcast_ref::<IsBasicErrorMessage>()
+            .is_some()
+        {
+            self.is_basic_error_message = true;
         }
     }
 }
 
 impl EntryWriter<'_> {
     fn finish(mut self, output: &mut impl io::Write) -> Result<(), IoStreamError> {
-        if !self.validations.skip_validate_dimensions_exist {
+        if !self.validations.skip_validate_dimensions_exist && !self.is_basic_error_message {
             for (dim, value) in self.validation_map.iter_mut() {
                 if let LineData {
                     kind: LineKind::UnfoundDimension,
@@ -1496,7 +1505,7 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
     ) {
         let mut dimensions = dimensions.into_iter().peekable();
         let is_global = self.entry.state.allow_ignored_dimensions || dimensions.peek().is_none();
-        if !is_global && !self.entry.state.allow_split_entries {
+        if !is_global && !self.entry.allow_split_entries {
             self.entry.error.extend_mut(
                 ValidationError::invalid("can't use per-metric dimensions without split entries - you probably want to remove WithDimensions<>")
                     .for_field(&self.name),
@@ -1531,7 +1540,7 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
                 });
             (&mut val.metrics_buf, &mut val.fields_buf, val.index.into())
         };
-        if !self.entry.validations.skip_validate_unique {
+        if !self.entry.validations.skip_validate_unique && !self.entry.is_basic_error_message {
             // either the field is a true duplicate, or the field is an UnfoundDimension that is referred to as a metric
             match self
                 .entry
@@ -1739,12 +1748,13 @@ impl<R: RngCore> SampledFormat for SampledEmf<R> {
 #[cfg(test)]
 mod tests {
     use assert_approx_eq::assert_approx_eq;
+    use assert_json_diff::assert_json_eq;
     use rand::SeedableRng;
 
     use super::*;
     use core::{f32, f64};
-    use metrique_writer::FormatExt;
     use metrique_writer::value::{Distribution, Mean};
+    use metrique_writer::{EntryIoStreamExt, FormatExt};
     use metrique_writer_core::{
         EntryIoStream, EntryWriter, MetricValue,
         unit::{BitPerSecond, Kilobyte, Millisecond, NegativeScale, Second},
@@ -2020,8 +2030,10 @@ mod tests {
         check(true);
     }
 
-    #[test]
-    fn test_validation_errors_dimensions_no_split() {
+    #[rstest]
+    #[case(false)]
+    #[case(true)]
+    fn test_validation_errors_dimensions_no_split(#[case] preset_split_entries: bool) {
         struct TestEntry;
         impl Entry for TestEntry {
             fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
@@ -2036,17 +2048,26 @@ mod tests {
             }
         }
 
-        fn check(skip_validations: bool) {
+        fn check(skip_validations: bool, preset_split_entries: bool) {
             let mut emf = Emf::builder("TestNS".to_string(), vec![vec![]])
                 .skip_all_validations(skip_validations)
                 .build();
+            if preset_split_entries {
+                struct ForceSplitEntries;
+                impl Entry for ForceSplitEntries {
+                    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                        writer.config(&const { AllowSplitEntries::new() });
+                    }
+                }
+                emf.format(&ForceSplitEntries, &mut vec![]).unwrap();
+            }
             let errors = format!("{}", emf.format(&TestEntry, &mut vec![]).unwrap_err());
             assert!(errors.contains("for `WithDimension`: can't use per-metric dimensions without split entries - you probably want to remove WithDimensions<>"));
             assert!(!errors.contains("Normal"));
         }
 
-        check(false);
-        check(true);
+        check(false, preset_split_entries);
+        check(true, preset_split_entries);
     }
 
     #[test]
@@ -3417,5 +3438,57 @@ mod tests {
             json,
             serde_json::from_str::<serde_json::Value>(&expected).unwrap()
         );
+    }
+
+    #[rstest]
+    #[case("Foo", "Region")]
+    // merging property "_aws" is illegal
+    #[case("Foo", "_aws")]
+    // merging property "Error" will cause a conflict, which should make us bail out
+    #[case("Foo", "Error")]
+    #[case("Error", "Region")]
+    fn test_report_error(#[case] dim: &str, #[case] merged_dim: &str) {
+        struct MergeUsEast1<'a> {
+            dim: &'a str,
+        }
+        impl Entry for MergeUsEast1<'_> {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value(self.dim, "us-east-1");
+            }
+        }
+        let writer = Emf::all_validations("Foo".into(), vec![vec![dim.into()]]);
+
+        let mut w1 = vec![];
+        writer
+            .output_to(&mut w1)
+            .merge_globals(MergeUsEast1 { dim: merged_dim })
+            .report_error("basic error")
+            .unwrap();
+        let aws = serde_json::json!({
+            "CloudWatchMetrics": [{
+                "Namespace": "Foo",
+                "Dimensions": [[dim]],
+                "Metrics": []
+            }],
+            "Timestamp": 0,
+        });
+        let mut actual =
+            serde_json::from_str::<serde_json::Value>(&String::from_utf8(w1).unwrap()).unwrap();
+        actual["_aws"]["Timestamp"] = 0.into();
+        let expected = if merged_dim == "_aws" || merged_dim == "Error" {
+            // if the merged dimension is "_aws" or "Error", the entry should
+            // be emitted without it
+            serde_json::json!({
+                "_aws": aws,
+                "Error": "basic error"
+            })
+        } else {
+            serde_json::json!({
+                "_aws": aws,
+                merged_dim: "us-east-1",
+                "Error": "basic error"
+            })
+        };
+        assert_json_eq!(expected, actual);
     }
 }
