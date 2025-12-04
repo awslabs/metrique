@@ -26,31 +26,34 @@ impl AllowSplitEntries {
 impl EntryConfig for AllowSplitEntries {}
 
 /// This config is used for basic error messages. It allows generating
-/// error messages that will not be routed properly (for example,
+/// metric entries even if they not be routed properly (for example,
 /// EMF errors missing dimensions) so that something
 /// will get out even if globals are misconfigured.
+///
+/// This config should only be used when emitting a [BasicErrorMessage],
+/// using it for other kinds of entries is not supported.
 ///
 /// Even with this option, it should not be possible to emit entries
 /// that break the framing format.
 #[derive(Clone, Debug, Default)]
 #[non_exhaustive]
-pub struct IsBasicErrorMessage(());
+pub struct AllowUnroutableEntries(());
 
-impl IsBasicErrorMessage {
-    /// Create a new [IsBasicErrorMessage]
+impl AllowUnroutableEntries {
+    /// Create a new [AllowUnroutableEntries]
     const fn new() -> Self {
         Self(())
     }
 }
 
-impl EntryConfig for IsBasicErrorMessage {}
+impl EntryConfig for AllowUnroutableEntries {}
 
 /// An entry that represents a basic error message that can be used to
 /// get a log message to the metrics stream even if globals are
 /// misconfigured.
 ///
-/// This emits the config [IsBasicErrorMessage] and a property with name
-/// "Error" containing the message.
+/// This emits the config [AllowUnroutableEntries], which allows it to
+/// be emitted even if there are some misconfigurations.
 pub struct BasicErrorMessage<'a> {
     message: &'a str,
 }
@@ -65,7 +68,7 @@ impl<'a> BasicErrorMessage<'a> {
 #[diagnostic::do_not_recommend]
 impl crate::Entry for BasicErrorMessage<'_> {
     fn write<'a>(&'a self, writer: &mut impl crate::EntryWriter<'a>) {
-        writer.config(&const { IsBasicErrorMessage::new() });
+        writer.config(&const { AllowUnroutableEntries::new() });
         writer.value("Error", self.message);
     }
 }

@@ -113,10 +113,8 @@ pub trait EntryIoStreamExt: EntryIoStream {
         tee(self, other)
     }
 
-    /// Report an error message to the relevant log streams in the correct format
-    ///
-    /// This function uses [EntryIoStream::next_basic_error] to be able of reporting
-    /// an error even if some global dimensions are invalid.
+    /// Report an error message to the relevant log streams in a way that
+    /// will work even if globals are miconfigured.
     fn report_error(&mut self, message: &str) -> Result<(), IoStreamError> {
         self.next(&BasicErrorMessage::new(message))
     }

@@ -6,7 +6,7 @@ use hashbrown::hash_map::EntryRef;
 use itertools::Itertools;
 use metrique_writer::sample::DefaultRng;
 use metrique_writer::value::{FlagConstructor, ForceFlag, MetricOptions};
-use metrique_writer_core::config::IsBasicErrorMessage;
+use metrique_writer_core::config::AllowUnroutableEntries;
 use metrique_writer_core::format::Format;
 use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_core::stream::IoStreamError;
@@ -418,7 +418,7 @@ impl Emf {
             validations: &self.validation,
             error: ValidationErrorBuilder::default(),
             allow_split_entries: false,
-            is_basic_error_message: false,
+            is_allow_unroutable_entries: false,
         };
 
         entry.write(&mut writer);
@@ -1018,7 +1018,7 @@ struct EntryWriter<'a> {
     multiplicity: Option<u64>,
     error: ValidationErrorBuilder,
     allow_split_entries: bool,
-    is_basic_error_message: bool,
+    is_allow_unroutable_entries: bool,
 }
 
 impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
@@ -1105,17 +1105,17 @@ impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
             self.allow_split_entries = true;
         }
         if (config as &dyn Any)
-            .downcast_ref::<IsBasicErrorMessage>()
+            .downcast_ref::<AllowUnroutableEntries>()
             .is_some()
         {
-            self.is_basic_error_message = true;
+            self.is_allow_unroutable_entries = true;
         }
     }
 }
 
 impl EntryWriter<'_> {
     fn finish(mut self, output: &mut impl io::Write) -> Result<(), IoStreamError> {
-        if !self.validations.skip_validate_dimensions_exist && !self.is_basic_error_message {
+        if !self.validations.skip_validate_dimensions_exist && !self.is_allow_unroutable_entries {
             for (dim, value) in self.validation_map.iter_mut() {
                 if let LineData {
                     kind: LineKind::UnfoundDimension,
@@ -1540,7 +1540,7 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
                 });
             (&mut val.metrics_buf, &mut val.fields_buf, val.index.into())
         };
-        if !self.entry.validations.skip_validate_unique && !self.entry.is_basic_error_message {
+        if !self.entry.validations.skip_validate_unique && !self.entry.is_allow_unroutable_entries {
             // either the field is a true duplicate, or the field is an UnfoundDimension that is referred to as a metric
             match self
                 .entry
