@@ -16,14 +16,133 @@ use crate::{
 
 /// Adds a set of dimensions to a [Value] or [Entry] as (class, instance) pairs.
 ///
-/// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
-/// except for time-based metrics.
+/// This will not work in [EMF] unless [split entry] mode is enabled - which is
+/// normally not recommended in [EMF], since it loses the association between
+/// different metrics in the same entry ([split entry] mode is normally used only
+/// when an [Entry] represents a collection of independent metrics that is
+/// collected periodically, as in the [metrics.rs integration]).
 ///
 /// [EMF]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/
+/// [metrics.rs integration]: https://docs.rs/metrique-metricsrs/0.1/metrique_metricsrs/
 /// [split entry]: crate::config::AllowSplitEntries
 ///
 /// The const `N` defines how many of the pairs will be stored inline with the value before being spilled to the heap.
-/// In most cases, the number of dimensions is known and setting `N` accordingly will avoid an allocation.
+/// In most cases, the number of dimensions is known and setting `N` accordingly will avoid an allocation. It *is*
+/// perfectly valid to pass either more or less than `N` dimensions in (though passing more than `N` will require
+/// an heap allocation).
+///
+/// # Examples
+///
+/// ## Simple use
+///
+/// Using `metrique::unit_of_work::metrics`:
+///
+/// ```no_run
+/// use metrique::ServiceMetrics;
+/// use metrique::unit_of_work::metrics;
+/// use metrique::writer::{GlobalEntrySink, MetricValue};
+/// use metrique::writer::value::WithDimension;
+///
+/// #[metrics(subfield)]
+/// struct EggCounter {
+///     number_of_eggs: u32,
+/// }
+///
+/// #[metrics]
+/// struct MyEntry {
+///     number_of_ducks: WithDimension<u32>,
+///     #[metrics(flatten)]
+///     egg_counter: WithDimension<EggCounter>,
+/// }
+///
+/// let mut entry = MyEntry {
+///     number_of_ducks: 0u32.with_dimension("Operation", "CountDucks"),
+///     // for nested entries, use the constructor instead of `.with_dimension`
+///     egg_counter:
+///         WithDimension::new(EggCounter { number_of_eggs: 0 }, "Operation", "CountDucks"),
+/// }.append_on_drop(ServiceMetrics::sink());
+///
+/// // WithDimensions implements Deref and DerefMut
+/// *entry.number_of_ducks += 1;
+/// entry.egg_counter.number_of_eggs += 2;
+/// ```
+///
+/// ## Simple use (`Entry` API)
+///
+/// Using the `metrique_writer::Entry` API:
+///
+/// ```no_run
+/// use metrique::ServiceMetrics;
+/// use metrique_writer::{Entry, EntrySink, GlobalEntrySink, MetricValue};
+/// use metrique_writer::value::WithDimension;
+///
+/// #[derive(Entry)]
+/// struct EggCounter {
+///     number_of_eggs: u32,
+/// }
+///
+/// #[derive(Entry)]
+/// struct MyEntry {
+///     number_of_ducks: WithDimension<u32>,
+///     #[entry(flatten)]
+///     egg_counter: WithDimension<EggCounter>,
+/// }
+///
+/// let mut entry = ServiceMetrics::sink().append_on_drop(MyEntry {
+///     number_of_ducks: 0u32.with_dimension("Operation", "CountDucks"),
+///     // for nested entries, use the constructor instead of `.with_dimension`
+///     egg_counter:
+///         WithDimension::new(EggCounter { number_of_eggs: 0 }, "Operation", "CountDucks"),
+/// });
+///
+/// // WithDimensions implements Deref and DerefMut
+/// *entry.number_of_ducks += 1;
+/// entry.egg_counter.number_of_eggs += 2;
+/// ```
+///
+/// ## Use with a dynamic number of dimensions
+///
+/// It is also possible to use `WithDimensions` with a dynamic number of dimensions. In order
+/// to avoid allocations, make `N` the maximal number of possible dimensions.
+///
+/// For example:
+/// ```no_run
+/// use metrique::ServiceMetrics;
+/// use metrique::unit_of_work::metrics;
+/// use metrique::writer::GlobalEntrySink;
+/// use metrique::writer::value::WithDimensions;
+///
+/// #[metrics]
+/// struct MyEntry {
+///     // always have a Year dimension, may have Season dimension
+///     number_of_ducks: WithDimensions<u32, 2>,
+/// }
+///
+/// // You can use a String as a dimension (tho creating the String is an
+/// // allocation).
+/// fn current_year() -> String {
+///     "2025".to_string()
+/// }
+///
+/// fn current_season() -> Option<&'static str> {
+///     // get the (possibly-unknown) season
+///     Some("Spring")
+/// }
+///
+/// let mut entry = MyEntry {
+///     // default constructor 0 dimensions
+///     number_of_ducks: Default::default(),
+/// }.append_on_drop(ServiceMetrics::sink());
+///
+/// // WithDimensions implements Deref and DerefMut
+/// *entry.number_of_ducks += 1;
+///
+/// // add the dimensions
+/// entry.number_of_ducks.add_dimension("Year", current_year());
+/// if let Some(season) = current_season() {
+///     entry.number_of_ducks.add_dimension("Season", season);
+/// }
+/// ```
 #[derive(Debug, Default, Clone, PartialEq, Eq, Hash)]
 pub struct WithDimensions<V, const N: usize> {
     value: V,
@@ -42,10 +161,14 @@ impl<V, const N: usize> WithDimensions<V, N> {
 
 /// Type alias of [`WithDimensions`] for the common case of adding a single (class, instance) pair.
 ///
-/// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
-/// except for time-based metrics.
+/// This will not work in [EMF] unless [split entry] mode is enabled - which is
+/// normally not recommended in [EMF], since it loses the association between
+/// different metrics in the same entry ([split entry] mode is normally used only
+/// when an [Entry] represents a collection of independent metrics that is
+/// collected periodically, as in the [metrics.rs integration]).
 ///
 /// [EMF]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/
+/// [metrics.rs integration]: https://docs.rs/metrique-metricsrs/0.1/metrique_metricsrs/
 /// [split entry]: crate::config::AllowSplitEntries
 ///
 /// Note that more than one pair can be added, but they will trigger a spill to the heap.
@@ -53,10 +176,14 @@ pub type WithDimension<V> = WithDimensions<V, 1>;
 
 /// Type alias of [`WithDimensions`] that will always store dimensions on the heap.
 ///
-/// This will not work in [EMF] unless [split entry] mode is enabled, and is probably not what you want in EMF
-/// except for time-based metrics.
+/// This will not work in [EMF] unless [split entry] mode is enabled - which is
+/// normally not recommended in [EMF], since it loses the association between
+/// different metrics in the same entry ([split entry] mode is normally used only
+/// when an [Entry] represents a collection of independent metrics that is
+/// collected periodically, as in the [metrics.rs integration]).
 ///
 /// [EMF]: https://docs.rs/metrique-writer-format-emf/0.1/metrique_writer_format_emf/
+/// [metrics.rs integration]: https://docs.rs/metrique-metricsrs/0.1/metrique_metricsrs/
 /// [split entry]: crate::config::AllowSplitEntries
 pub type WithVecDimensions<V> = WithDimensions<V, 0>;
 
