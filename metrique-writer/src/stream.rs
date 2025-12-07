@@ -5,7 +5,7 @@
 
 use std::{collections::HashSet, io};
 
-use metrique_writer_core::{Entry, config::BasicErrorMessage};
+use metrique_writer_core::{Entry, config::MetriqueValidationError};
 use smallvec::SmallVec;
 
 use crate::{CowStr, entry::WithGlobalDimensions};
@@ -116,7 +116,7 @@ pub trait EntryIoStreamExt: EntryIoStream {
     /// Report an error message to the relevant log streams in a way that
     /// will work even if globals are miconfigured.
     fn report_error(&mut self, message: &str) -> Result<(), IoStreamError> {
-        self.next(&BasicErrorMessage::new(message))
+        self.next(&MetriqueValidationError::new(message))
     }
 }
 impl<T: EntryIoStream + ?Sized> EntryIoStreamExt for T {}

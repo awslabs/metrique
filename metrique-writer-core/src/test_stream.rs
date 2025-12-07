@@ -32,7 +32,7 @@ impl Drop for FuelGuard {
 #[derive(Default)]
 pub struct TestStream {
     pub values: Vec<u64>,
-    pub found_errors: u64,
+    pub found_metrique_formatting_errors: u64,
     pub error: Option<IoStreamError>,
     pub flushes: u64,
     pub values_flushed: usize,
@@ -80,7 +80,7 @@ impl<'a> EntryWriter<'a> for Arc<Mutex<TestStream>> {
         let name = name.into();
         match &name[..] {
             "value" => value.write(&mut *self.lock().unwrap()),
-            "Error" => self.lock().unwrap().found_errors += 1,
+            "MetriqueValidationError" => self.lock().unwrap().found_metrique_formatting_errors += 1,
             _ => panic!("unexpected name {name}"),
         }
     }
@@ -225,7 +225,7 @@ impl ValueWriter for DummyValueWriter<'_> {
 #[cfg(test)]
 mod test {
     use crate::{
-        Entry, EntryIoStream, IoStreamError, config::BasicErrorMessage, format::Format,
+        Entry, EntryIoStream, IoStreamError, config::MetriqueValidationError, format::Format,
         test_stream::DummyFormat,
     };
 
@@ -243,10 +243,12 @@ mod test {
     #[test]
     fn test_format_error() {
         let mut stream = BasicEntryIoStream(vec![]);
-        stream.next(&BasicErrorMessage::new("basic-error")).unwrap();
+        stream
+            .next(&MetriqueValidationError::new("basic-error"))
+            .unwrap();
         assert_eq!(
             String::from_utf8(stream.0).unwrap(),
-            "[(\"Error\", \"basic-error\")]"
+            "[(\"MetriqueValidationError\", \"basic-error\")]"
         );
     }
 }

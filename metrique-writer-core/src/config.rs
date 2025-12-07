@@ -26,11 +26,11 @@ impl AllowSplitEntries {
 impl EntryConfig for AllowSplitEntries {}
 
 /// This config is used for basic error messages. It allows generating
-/// metric entries even if they not be routed properly (for example,
+/// metric entries even if they can't be routed properly (for example,
 /// EMF errors missing dimensions) so that something
 /// will get out even if globals are misconfigured.
 ///
-/// This config should only be used when emitting a [BasicErrorMessage],
+/// This config should only be used when emitting a [MetriqueValidationError],
 /// using it for other kinds of entries is not supported.
 ///
 /// Even with this option, it should not be possible to emit entries
@@ -48,28 +48,35 @@ impl AllowUnroutableEntries {
 
 impl EntryConfig for AllowUnroutableEntries {}
 
-/// An entry that represents a basic error message that can be used to
-/// get a log message to the metrics stream even if globals are
-/// misconfigured.
+/// An entry that represents a metrique [`ValidationError`]. This can be
+/// used by [`EntrySink`] implementations to allow reporting validation
+/// errors "in band".
+///
+/// The exact reporting format of this error currently uses
+/// the property `"MetriqueValidationError"`, but is unstable and subject
+/// to change between different `metrique-writer-core` versions.
 ///
 /// This emits the config [AllowUnroutableEntries], which allows it to
 /// be emitted even if there are some misconfigurations.
-pub struct BasicErrorMessage<'a> {
+///
+/// [`EntrySink`]: crate::EntrySink
+/// [`ValidationError`]: crate::ValidationError
+pub struct MetriqueValidationError<'a> {
     message: &'a str,
 }
 
-impl<'a> BasicErrorMessage<'a> {
-    /// Create a new [BasicErrorMessage].
+impl<'a> MetriqueValidationError<'a> {
+    /// Create a new [MetriqueValidationError].
     pub fn new(message: &'a str) -> Self {
         Self { message }
     }
 }
 
 #[diagnostic::do_not_recommend]
-impl crate::Entry for BasicErrorMessage<'_> {
+impl crate::Entry for MetriqueValidationError<'_> {
     fn write<'a>(&'a self, writer: &mut impl crate::EntryWriter<'a>) {
         writer.config(&const { AllowUnroutableEntries::new() });
-        writer.value("Error", self.message);
+        writer.value("MetriqueValidationError", self.message);
     }
 }
 

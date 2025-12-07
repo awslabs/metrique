@@ -3444,9 +3444,10 @@ mod tests {
     #[case("Foo", "Region", true)]
     // merging property "_aws" is illegal
     #[case("Foo", "_aws", false)]
-    // merging property "Error" will cause a conflict, which should make us bail out
-    #[case("Foo", "Error", false)]
-    #[case("Error", "Region", true)]
+    // merging property "MetriqueValidationError" will cause a conflict, which should make us bail out
+    #[case("Foo", "MetriqueValidationError", false)]
+    // dimension "MetriqueValidationError" will get "merged"
+    #[case("MetriqueValidationError", "Region", true)]
     fn test_report_error(#[case] dim: &str, #[case] merged_dim: &str, #[case] is_valid: bool) {
         struct MergeUsEast1<'a> {
             dim: &'a str,
@@ -3482,7 +3483,7 @@ mod tests {
                 "Timestamp": 0,
             }),
             merged_dim: "us-east-1",
-            "Error": "basic error"
+            "MetriqueValidationError": "basic error"
         });
         assert_json_eq!(expected, actual);
     }

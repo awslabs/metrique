@@ -117,7 +117,8 @@ fn test_background_queue_with_invalid_metric() {
                 }],
                 "Timestamp": 0
             },
-            "Error": "metric entry could not be formatted correctly, call tracing_subscriber::fmt::init to see more detailed information"
+            "MetriqueValidationError":
+                "metric entry could not be formatted correctly, call tracing_subscriber::fmt::init to see more detailed information"
         })
     );
 }
