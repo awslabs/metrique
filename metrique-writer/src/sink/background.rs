@@ -12,9 +12,11 @@ use std::{
 
 use crossbeam_queue::ArrayQueue;
 use crossbeam_utils::sync::{Parker, Unparker};
-use metrique_writer_core::{BoxEntrySink, EntryIoStream, IoStreamError, sink::FlushWait};
+use metrique_writer_core::{
+    BoxEntrySink, EntryIoStream, IoStreamError, ValidationError, sink::FlushWait,
+};
 
-use crate::{Entry, EntrySink, rate_limit::rate_limited};
+use crate::{Entry, EntryIoStreamExt, EntrySink, rate_limit::rate_limited};
 
 use super::metrics::{
     DescribedMetric, GlobalRecorderVersion, LocalRecorderVersion, MetricRecorder, MetricsRsType,
@@ -670,6 +672,28 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
         (DrainResult::Drained, count)
     }
 
+    fn report_validation_error(&mut self, err: ValidationError) {
+        if tracing::Dispatch::default().is::<tracing::subscriber::NoSubscriber>() {
+            // HACK: it is an unfortunately common mistake where people set up a background
+            // queue but no tracing subscriber. This can lead to a problem where the customer
+            // sees no output and has no idea why. Put some report in the log stream so that
+            // the customer at least sees *something*.
+            //
+            // Don't print more detailed message to avoid complaints about infoleak risks.
+            //
+            // intentionally not having "bad characters" here to make it easy for formats to emit
+            match self.stream.report_error(
+                "metric entry could not be formatted correctly, call tracing_subscriber::fmt::init to see more detailed information"
+            ) {
+                Ok(()) => self.metrics_emitted += 1,
+                Err(IoStreamError::Io(_)) => self.metric_io_errors += 1,
+                Err(IoStreamError::Validation(_)) => {}
+            }
+        } else {
+            tracing::error!(?err, "metric entry couldn't be formatted correctly")
+        }
+    }
+
     fn consume(&mut self, entry: E) {
         match self.stream.next(&entry) {
             Ok(()) => {
@@ -677,10 +701,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             }
             Err(IoStreamError::Validation(err)) => {
                 self.metric_validation_errors += 1;
-                rate_limited!(
-                    Duration::from_secs(1),
-                    tracing::error!(?err, "metric entry couldn't be formatted correctly")
-                )
+                rate_limited!(Duration::from_secs(1), self.report_validation_error(err))
             }
             Err(IoStreamError::Io(err)) => {
                 self.metric_io_errors += 1;
