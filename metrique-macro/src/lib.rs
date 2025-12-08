@@ -39,6 +39,7 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 /// | `prefix` | String | Adds a prefix to all field names (prefix gets inflected) | `#[metrics(prefix = "api_")]` |
 /// | `exact_prefix` | String | Adds a prefix to all field names without inflection | `#[metrics(exact_prefix = "API_")]` |
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
+/// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
 /// | `subfield` | Flag | When set, this metric can only be used when nested within other metrics, and can be consumed by reference (has both `impl CloseValue for &MyStruct` and `impl CloseValue for MyStruct`). It cannot be added to a sink directly. | `#[metrics(subfield)]` |
 /// | `subfield_owned` | Flag | When set, this metric can only be used when nested within other metrics. It cannot be added to a sink directly. | `#[metrics(subfield_owned)]` |
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
@@ -52,6 +53,7 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `format` | Path | Specifies the formatter (`ValueFormatter`) for the metric value | `#[metrics(format=EpochSeconds)]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
+/// | `sample_group` | Flag | Marks a field as a sample group - it will still be emitted as a value | `#[metrics(sample_group)]` |
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
 /// | `exact_prefix` | String | Adds a prefix to flattened entries without inflection | `#[metrics(flatten, exact_prefix="API_")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
@@ -206,6 +208,7 @@ use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectable
 ///
 /// #[metrics(rename_all = "PascalCase")]
 /// struct RequestMetrics {
+///     #[metrics(sample_group)]
 ///     operation: Operation,
 ///
 ///     #[metrics(timestamp)]
@@ -312,6 +315,8 @@ struct RawRootAttributes {
     subfield: Flag,
     #[darling(rename = "subfield_owned")]
     subfield_owned: Flag,
+    #[darling(rename = "sample_group")]
+    sample_group: Flag,
     value: Option<ValueAttributes>,
 }
 
@@ -332,6 +337,8 @@ struct RootAttributes {
     rename_all: NameStyle,
 
     emf_dimensions: Option<DimensionSets>,
+
+    sample_group: bool,
 
     mode: MetricMode,
 }
@@ -358,7 +365,19 @@ impl RawRootAttributes {
             out,
             &self.subfield_owned,
         )?;
-        let mode = out.map(|(s, _)| s).unwrap_or_default();
+        let mut mode = out.map(|(s, _)| s).unwrap_or_default();
+        let sample_group = if self.sample_group.is_present() {
+            if let MetricMode::Value = &mut mode {
+                true
+            } else {
+                return Err(darling::Error::custom(
+                    "`sample_group` as a top-level attribute only works with `value`",
+                )
+                .with_span(&self.sample_group.span()));
+            }
+        } else {
+            false
+        };
         if let (MetricMode::ValueString, Some(ds)) = (mode, &self.emf_dimensions) {
             return Err(
                 darling::Error::custom("value does not make sense with dimension-sets")
@@ -370,6 +389,7 @@ impl RawRootAttributes {
                 .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
+            sample_group,
             mode,
         })
     }
@@ -434,6 +454,8 @@ struct RawMetricsFieldAttrs {
 
     timestamp: Flag,
 
+    sample_group: Flag,
+
     ignore: Flag,
 
     #[darling(default)]
@@ -484,6 +506,10 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
     }
 }
 
+fn cannot_combine_error(existing: &str, new: &str, new_span: Span) -> darling::Error {
+    darling::Error::custom(format!("Cannot combine `{existing}` with `{new}`")).with_span(&new_span)
+}
+
 // Set metrics to `new`, enforcing the fact that this field is exclusive and cannot be combined
 fn set_exclusive<T>(
     new: impl Fn(Span) -> T,
@@ -492,10 +518,7 @@ fn set_exclusive<T>(
     flag: &Flag,
 ) -> darling::Result<Option<(T, &'static str)>> {
     match (flag.is_present(), &existing) {
-        (true, Some((_, other))) => Err(darling::Error::custom(format!(
-            "Cannot combine {other} with {name}"
-        ))
-        .with_span(&flag.span())),
+        (true, Some((_, other))) => Err(cannot_combine_error(other, name, flag.span())),
         (true, None) => Ok(Some((new(flag.span()), name))),
         _ => Ok(existing),
     }
@@ -508,11 +531,23 @@ fn get_field_option<'a, T>(
     span: &'a Option<SpannedKv<T>>,
 ) -> darling::Result<Option<&'a T>> {
     match (span, &existing) {
-        (Some(input), Some((_, other))) => Err(darling::Error::custom(format!(
-            "Cannot combine {other} with {field_name}"
-        ))
-        .with_span(&input.key_span)),
+        (Some(input), Some((_, other))) => {
+            Err(cannot_combine_error(other, field_name, input.key_span))
+        }
         (Some(v), None) => Ok(Some(&v.value)),
+        _ => Ok(None),
+    }
+}
+
+// retrieve the value for a flag that requires a value to be a field
+fn get_field_flag(
+    field_name: &'static str,
+    existing: &Option<(MetricsFieldKind, &'static str)>,
+    flag: &Flag,
+) -> darling::Result<Option<Span>> {
+    match (flag.is_present(), &existing) {
+        (true, Some((_, other))) => Err(cannot_combine_error(other, field_name, flag.span())),
+        (true, None) => Ok(Some(flag.span())),
         _ => Ok(None),
     }
 }
@@ -552,11 +587,10 @@ impl RawMetricsFieldAttrs {
         let name = get_field_option("name", &out, &name)?;
         let unit = get_field_option("unit", &out, &self.unit)?;
         let format = get_field_option("format", &out, &self.format)?;
+        let sample_group = get_field_flag("sample_group", &out, &self.sample_group)?;
         let close = !self.no_close.is_present();
         if let (false, Some((MetricsFieldKind::Ignore(span), _))) = (close, &out) {
-            return Err(
-                darling::Error::custom("Cannot combine ignore with no_close").with_span(span),
-            );
+            return Err(cannot_combine_error("no_close", "ignore", *span));
         }
 
         let prefix = Prefix::from_inflectable_and_exact(&self.prefix, &self.exact_prefix)?;
@@ -579,6 +613,7 @@ impl RawMetricsFieldAttrs {
             kind: match out {
                 Some((out, _)) => out,
                 None => MetricsFieldKind::Field {
+                    sample_group,
                     name: name.cloned(),
                     unit: unit.cloned(),
                     format: format.cloned(),
@@ -676,10 +711,11 @@ impl Prefix {
                 p.key_span,
             ))),
             (None, None) => Ok(None),
-            (Some(inflectable), Some(_)) => Err(darling::Error::custom(
-                "Cannot combine `prefix` with `exact_prefix`",
-            )
-            .with_span(&inflectable.key_span)),
+            (Some(inflectable), Some(_)) => Err(cannot_combine_error(
+                "prefix",
+                "exact_prefix",
+                inflectable.key_span,
+            )),
         }
     }
 }
@@ -697,6 +733,7 @@ enum MetricsFieldKind {
         unit: Option<syn::Path>,
         name: Option<String>,
         format: Option<syn::Path>,
+        sample_group: Option<Span>,
     },
 }
 
@@ -1436,6 +1473,20 @@ mod tests {
     }
 
     #[test]
+    fn test_sample_group_metrics_struct() {
+        let input = quote! {
+            struct RequestMetrics {
+                #[metrics(sample_group)]
+                operation: &'static str,
+                number_of_ducks: usize
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("sample_group_metrics_struct", parsed_file);
+    }
+
+    #[test]
     fn test_simple_metrics_value_struct() {
         let input = quote! {
             struct RequestValue {
@@ -1447,6 +1498,20 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics(value)));
         assert_snapshot!("simple_metrics_value_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_sample_group_metrics_value_struct() {
+        let input = quote! {
+            struct RequestValue {
+                #[metrics(ignore)]
+                ignore: u32,
+                value: &'static str,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(value, sample_group)));
+        assert_snapshot!("sample_group_metrics_value_struct", parsed_file);
     }
 
     #[test]

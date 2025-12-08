@@ -17,11 +17,29 @@ pub(crate) fn generate_value_impl_for_enum(
         quote_spanned!(variant.ident.span()=> #value_name::#variant_ident => #metric_name)
     });
     quote!(
+        // generate `From` impls for the value type like strum's `derive(AsStaticStr)`
+        // This is the value type, so it should not have user-defined
+        // implementations
+        impl ::std::convert::From<&'_ #value_name> for &'static str {
+            fn from(value: &#value_name) -> Self {
+                #[allow(deprecated)] match value {
+                    #(#variants_and_strings),*
+                }
+            }
+        }
+        impl ::std::convert::From<#value_name> for &'static str {
+            fn from(value: #value_name) -> Self {
+                <&str as ::std::convert::From<&_>>::from(&value)
+            }
+        }
         impl ::metrique::writer::Value for #value_name {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
-                writer.string(#[allow(deprecated)] match self {
-                    #(#variants_and_strings),*
-                });
+                writer.string(::std::convert::Into::<&str>::into(self));
+            }
+        }
+        impl ::metrique::writer::core::SampleGroup for #value_name {
+            fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
             }
         }
     )
@@ -40,6 +58,34 @@ pub fn validate_value_impl_for_struct(
         return Err(syn::Error::new(
             non_ignore_fields[1].span,
             "multiple non-ignored fields for #[metrics(value)]",
+        ));
+    }
+    for field in &non_ignore_fields {
+        if let MetricsFieldKind::Field {
+            unit: _,
+            sample_group,
+            name,
+            format: _,
+        } = &field.attrs.kind
+        {
+            if sample_group.is_some() {
+                return Err(syn::Error::new(
+                    field.span,
+                    "`sample_group` in value structs is used as a struct attribute, not a field attribute: `#[metrics(value, sample_group)]`",
+                ));
+            }
+            if name.is_some() {
+                return Err(syn::Error::new(
+                    field.span,
+                    "`name` does not make sense in value stucts",
+                ));
+            }
+        }
+    }
+    if root_attrs.sample_group && non_ignore_fields.is_empty() {
+        return Err(syn::Error::new(
+            value_name.span(),
+            "`sample_group` requires a non-ignore field",
         ));
     }
     if root_attrs.emf_dimensions.is_some() {
@@ -73,39 +119,64 @@ pub(crate) fn format_value(format: &Option<syn::Path>, span: Span, field: Ts2) -
 }
 
 pub(crate) fn generate_value_impl_for_struct(
-    _root_attrs: &RootAttributes,
+    root_attrs: &RootAttributes,
     value_name: &Ident,
     parsed_fields: &[MetricsField],
 ) -> Result<Ts2, syn::Error> {
     // support struct with only ignored fields as no value for orthogonality
-    let non_ignore_fields = parsed_fields
+    let mut non_ignore_fields_iter = parsed_fields
         .iter()
         .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)));
-    let body: Vec<Ts2> = non_ignore_fields
+    let non_ignore_field = non_ignore_fields_iter.next();
+    assert!(
+        non_ignore_fields_iter.next().is_none(),
+        "value impl can't have multiple non-ignore fields"
+    );
+    let (body, sample_group_impl) = non_ignore_field
         .map(|field| match &field.attrs.kind {
             MetricsFieldKind::Field {
                 unit: _,
-                name: None,
+                sample_group: _,
+                name: _,
                 format,
             } => {
                 let ident = &field.ident;
-                let value = format_value(format, field.span, quote! { &self.#ident });
-                Ok(quote_spanned! {field.span=> ::metrique::writer::Value::write(#value, writer) })
+                let value = format_value(
+                    format,
+                    field.span,
+                    quote_spanned! {field.span=> &self.#ident },
+                );
+                let sample_group_impl = if root_attrs.sample_group {
+                    // SampleGroup impl is only valid if there is a field
+                    quote_spanned! {field.span=>
+                        impl ::metrique::writer::core::SampleGroup for #value_name {
+                            fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+                                #[allow(deprecated)] {
+                                    ::metrique::writer::core::SampleGroup::as_sample_group(&self.#ident)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    quote!{}
+                };
+                Ok((quote_spanned! {field.span=> ::metrique::writer::Value::write(#value, writer); }, sample_group_impl))
             }
             _ => Err(syn::Error::new(
                 field.span,
                 "only plain fields are supported in #[metrics(value)]",
             )),
         })
-        .collect::<Result<Vec<_>, _>>()?;
-
+        .transpose()?.unzip();
     Ok(quote! {
         impl ::metrique::writer::Value for #value_name {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 #[allow(deprecated)] {
-                    #(#body);*
+                    #body
                 }
             }
         }
+
+        #sample_group_impl
     })
 }

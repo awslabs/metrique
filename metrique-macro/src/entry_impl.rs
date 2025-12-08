@@ -121,12 +121,7 @@ fn generate_write_statements(
                 continue;
             }
             MetricsFieldKind::Field { format, .. } => {
-                let (extra, name) = make_inflect(
-                    &ns,
-                    format_ident!("Inflect", span = field_span),
-                    |style| metric_name(root_attrs, style, field),
-                    field,
-                );
+                let (extra, name) = make_inflect_metric_name(root_attrs, field);
                 let value = format_value(format, field_span, quote! { &self.#field_ident });
                 writes.push(quote_spanned! {field_span=>
                     ::metrique::writer::EntryWriter::value(writer,
@@ -152,6 +147,15 @@ fn append_prefix_to_ns(ns: &Ts2, (extra, prefix): (Ts2, Ts2), field: &MetricsFie
     )
 }
 
+fn make_inflect_metric_name(root_attrs: &RootAttributes, field: &MetricsField) -> (Ts2, Ts2) {
+    make_inflect(
+        &make_ns(root_attrs.rename_all, field.span),
+        format_ident!("Inflect", span = field.span),
+        |style| metric_name(root_attrs, style, field),
+        field,
+    )
+}
+
 fn make_inflect(
     ns: &Ts2,
     inflect: syn::Ident,
@@ -174,7 +178,6 @@ fn make_inflect(
             #extra_kebab
             #extra_pascal
             #extra_snake
-
         ),
         quote!(
             <#ns as ::metrique::NameStyle>::#inflect<#name_ident, #name_pascal, #name_snake, #name_kebab>
@@ -226,9 +229,32 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
                     ::metrique::InflectableEntry::<#ns>::sample_group(&self.#field_ident)
                 });
             }
-            _ => {
-                // TODO: support sample_group
+            MetricsFieldKind::FlattenEntry(span) => {
+                sample_group_fields.push(quote_spanned! {*span=>
+                    ::metrique::writer::Entry::sample_group(&self.#field_ident)
+                });
             }
+            MetricsFieldKind::Field {
+                sample_group: Some(span),
+                ..
+            } => {
+                let (extra, name) = make_inflect_metric_name(root_attrs, field);
+                sample_group_fields.push(quote_spanned! {*span=>
+                    {
+                        #extra
+                        ::std::iter::once((
+                            ::metrique::concat::const_str_value::<#name>(),
+                            ::metrique::writer::core::SampleGroup::as_sample_group(&self.#field_ident)
+                        ))
+                    }
+                });
+            }
+            // these don't have sample groups
+            MetricsFieldKind::Field {
+                sample_group: None, ..
+            }
+            | MetricsFieldKind::Ignore { .. }
+            | MetricsFieldKind::Timestamp { .. } => {}
         }
     }
 

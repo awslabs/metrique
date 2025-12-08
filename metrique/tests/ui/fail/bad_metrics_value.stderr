@@ -18,7 +18,7 @@ error: multiple non-ignored fields for #[metrics(value)]
 14 |     y: u32,
    |     ^
 
-error: only plain fields are supported in #[metrics(value)]
+error: `name` does not make sense in value stucts
   --> tests/ui/fail/bad_metrics_value.rs:33:5
    |
 33 |     u32,
@@ -54,7 +54,7 @@ error: Unknown field: `p`. Available values: `name`
 57 |     #[metrics(p="q")]
    |               ^
 
-error: Cannot combine value with subfield
+error: Cannot combine `value` with `subfield`
   --> tests/ui/fail/bad_metrics_value.rs:61:26
    |
 61 | #[metrics(value(string), subfield)]

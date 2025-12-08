@@ -1,10 +1,10 @@
-error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
+error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `sample_group`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:38
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
   |                                      ^^^^^^^^^^^^^
 
-error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
+error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `sample_group`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:53
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
@@ -22,7 +22,7 @@ error: Duplicate field `unit`
 14 |     #[metrics(unit = Seconds, unit = Minutes)]
    |                               ^^^^
 
-error: Cannot combine flatten with name
+error: Cannot combine `flatten` with `name`
   --> tests/ui/fail/bad_field_attrs.rs:17:24
    |
 17 |     #[metrics(flatten, name = "foo")]
@@ -52,7 +52,7 @@ error: invalid name: name must not contain spaces
 29 |     #[metrics(name = "a b")]
    |                      ^^^^^
 
-error: Cannot combine ignore with no_close
+error: Cannot combine `no_close` with `ignore`
   --> tests/ui/fail/bad_field_attrs.rs:32:15
    |
 32 |     #[metrics(ignore, no_close)]
