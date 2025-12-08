@@ -722,6 +722,7 @@ dependencies = [
  "futures",
  "metrics",
  "metrics-util",
+ "metrique-metricsrs",
  "metrique-writer",
  "metrique-writer-core",
  "metrique-writer-format-emf",

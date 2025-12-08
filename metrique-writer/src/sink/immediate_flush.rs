@@ -39,11 +39,8 @@ impl FlushImmediatelyBuilder {
     }
 
     /// If provided, metrics to the callback when entries are written.
-    ///
-    /// All metrics are emitted with the dimension `sink` equal to the [Self::metric_name] config.
-    ///
-    /// The following metrics exist:
-    /// 1. `metrique_flush_time_ms` - histogram of flush operation times in milliseconds
+    #[deprecated = "this function can't be called by users since `MetricRecorder` implementations are private, \
+        call metrics_recorder_global or metrics_recorder_local instead"]
     pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
         self.metric_recorder = recorder;
         self
@@ -51,6 +48,11 @@ impl FlushImmediatelyBuilder {
 
     /// Send metrics to the global recorder. Pass `dyn metrics::Recorder` as a type parameter
     /// to allow it to autodetect the right metrics.rs version.
+    ///
+    /// All metrics are emitted with the dimension `sink` equal to the [Self::metric_name] config.
+    ///
+    /// The following metrics exist:
+    /// 1. `metrique_flush_time_ms` - histogram of flush operation times in milliseconds
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
@@ -96,6 +98,11 @@ impl FlushImmediatelyBuilder {
 
     /// Send metrics to a local metrics recorder. Pass `dyn metrics::Recorder` as the first type parameter
     /// to allow it to autodetect the right metrics.rs version.
+    ///
+    /// All metrics are emitted with the dimension `sink` equal to the [Self::metric_name] config.
+    ///
+    /// The following metrics exist:
+    /// 1. `metrique_flush_time_ms` - histogram of flush operation times in milliseconds
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
