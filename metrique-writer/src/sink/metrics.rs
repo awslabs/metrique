@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /// Defines callbacks for recording metrics
+///
+/// This trait is unstable and not exposed since its definition might change to
+/// allow being generic over different `metrics.rs` versions.
+///
+/// Concrete metric recorders should implement the [metrics::Recorder] trait
+/// (for a supported version of `metrics.rs`),
+///
+/// [metrics::Recorder]: metrics_024::Recorder
 pub trait MetricRecorder: Send + Sync {
     /// Records a histogram entry. metric is used to define the metric, sink to define the sink, value the histogram value
     fn record_histogram(&self, metric: &'static str, sink: &str, value: u32);

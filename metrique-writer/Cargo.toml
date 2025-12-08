@@ -38,6 +38,7 @@ metrique-writer-core = { path = "../metrique-writer-core", features = [
 ] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
+metrique-metricsrs = { path = "../metrique-metricsrs" }
 metrics-util_020 = { workspace = true, features = ["debugging"] }
 futures = { workspace = true, features = ["executor"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }

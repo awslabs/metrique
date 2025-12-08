@@ -48,6 +48,15 @@ impl Default for BackgroundQueueBuilder {
 
 /// Contains metadata for the BackgroundQueue metrics emitted by this crate, for implementing
 /// your custom describe function.
+///
+///
+/// The following metrics exist:
+/// 1. `metrique_idle_percent` - the percentage of time that the background queue is idle.
+/// 2. `metrique_queue_len` - the measured length of the background queue.
+/// 3. `metrique_metrics_emitted` - the count of metrics emitted.
+/// 4. `metrique_io_errors` - the amount of IO errors encountered emitting metrics.
+/// 5. `metrique_validation_errors` - the amount of validation errors encountered emitting metrics.
+/// 6. `metrique_queue_overflows` - the count of metrics being lost due to a full queue.
 pub const BACKGROUND_QUEUE_METRICS: &[DescribedMetric] = &[
     DescribedMetric {
         name: "metrique_idle_percent",
@@ -120,30 +129,8 @@ impl BackgroundQueueBuilder {
     }
 
     /// If true, the background queue will emit metrics to the callback
-    ///
-    /// All metrics are emitted with the dimension `queue` equal to the [Self::metric_name] config.
-    ///
-    /// The following metrics exist:
-    /// 1. `metrique_idle_percent` - the percentage of time that the background queue is idle.
-    /// 2. `metrique_queue_len` - the measured length of the background queue.
-    /// 3. `metrique_metrics_emitted` - the count of metrics emitted.
-    /// 4. `metrique_io_errors` - the amount of IO errors encountered emitting metrics.
-    /// 5. `metrique_validation_errors` - the amount of validation errors encountered emitting metrics.
-    /// 6. `metrique_queue_overflows` - the count of metrics being lost due to a full queue.
-    ///
-    /// To avoid breakage, this function intentionally does not depend on metrics-rs. To allow for
-    /// bridging, you can use the [BackgroundQueueBuilder::metrics_recorder_global] or
-    /// [BackgroundQueueBuilder::metrics_recorder_local] functions, which are what most
-    /// customers are expected to use.
-    ///
-    /// This function does not assign units to metrics, since there are often race conditions as the
-    /// metric recorder can be set after the background queue. You can use [`describe_sink_metrics`]
-    /// or [`BACKGROUND_QUEUE_METRICS`] to do that.
-    ///
-    /// For the metrics.rs recorder, you can use something like [metrique_metricsrs] to emit these metrics via
-    /// a Metrique sink, or of course any other metrics.rs backend.
-    ///
-    /// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
+    #[deprecated = "this function can't be called by users since `MetricRecorder` implementations are private, \
+        call metrics_recorder_global or metrics_recorder_local instead"]
     pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
         self.metric_recorder = recorder;
         self
@@ -152,8 +139,21 @@ impl BackgroundQueueBuilder {
     /// Send metrics to the global recorder. Pass `dyn metrics::Recorder` as a type parameter
     /// to allow it to autodetect the right metrics.rs version.
     ///
+    /// See [BACKGROUND_QUEUE_METRICS] for the precise list of emitted metrics, which
+    /// are All metrics emitted with the dimension `queue` equal to the
+    /// [Self::metric_name] config.
+    ///
+    /// This function does not assign units to metrics, since there are often race conditions as the
+    /// metric recorder can be set after the background queue. You can use [`describe_sink_metrics`]
+    /// or [`BACKGROUND_QUEUE_METRICS`] to do that.
+    ///
+    /// # Example
+    ///
+    /// To get a metrics.rs recorder, you can use [metrique_metricsrs] to emit
+    /// these metrics via a Metrique sink, or of course any other metrics.rs backend.
+    ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
-    /// and an [`EntryIoStream`] named `stream`).
+    /// and an [`EntryIoStream`] named `stream`):
     ///
     /// [`metrics::Recorder`]: metrics_024::Recorder
     /// ```
@@ -194,16 +194,84 @@ impl BackgroundQueueBuilder {
     /// #     u.is_some() && d.is_some()
     /// # }))
     /// ```
+    ///
+    /// # Example using [metrique_metricsrs] and a single queue
+    ///
+    /// Using [metrique_metricsrs] works to emit the metrics to the same background queue:
+    ///
+    /// ```
+    /// # use metrics_024 as metrics;
+    /// # use std::sync::{Arc, Mutex};
+    /// # use metrique_writer::{AnyEntrySink, Entry, FormatExt, GlobalEntrySink};
+    /// # use metrique_writer::sink::{BackgroundQueue, BackgroundQueueBuilder};
+    /// # use metrique_writer::sink::{describe_sink_metrics, global_entry_sink};
+    /// # use metrique_writer::AttachGlobalEntrySink;
+    /// # use metrique_writer_format_emf::Emf;
+    ///
+    /// global_entry_sink! { ServiceMetrics }
+    ///
+    /// #[derive(Entry)]
+    /// struct MyMetrics {
+    ///      value: usize
+    /// }
+    /// # #[tokio::main(flavor = "current_thread", start_paused = true)]
+    /// # async fn main() {
+    /// # let output = metrique_writer_core::test_stream::TestSink::default();
+    /// # let stream = Emf::all_validations("MyApp".into(), vec![vec![]])
+    /// #       .output_to(output.clone());
+    ///
+    /// let bg_handle = ServiceMetrics::attach(BackgroundQueueBuilder::new()
+    ///     .metrics_recorder_global::<dyn metrics::Recorder>()
+    ///     .build(stream));
+    ///
+    /// // Set up a `metrique_metricsrs` recorder that outputs to `ServiceMetrics`
+    /// // This should be done *after* setting up the background queue,
+    /// // the use of `metrics_recorder_global` breaks the cycle.
+    /// let reporter_handle = metrique_metricsrs::MetricReporter::builder()
+    ///     .metrics_rs_version::<dyn metrics::Recorder>()
+    ///     .metrics_sink((ServiceMetrics::sink(), ()))
+    ///     .build_and_install();
+    /// // call `describe_sink_metrics` after it has been set up
+    /// describe_sink_metrics::<dyn metrics::Recorder>();
+    ///
+    /// let metric_base = MyMetrics { value: 0 };
+    /// let mut metric = ServiceMetrics::append_on_drop(metric_base);
+    /// # drop(metric);
+    /// # // the first background queue flush causes metrics to be emitted. The fake time
+    /// # // sleep causes them to be reported, the next flush causes the reported metrics
+    /// # // to be written. In the real world, this happens in a timely manner.
+    /// # ServiceMetrics::sink().flush_async().await;
+    /// # tokio::time::sleep(std::time::Duration::from_secs(120)).await;
+    /// # ServiceMetrics::sink().flush_async().await;
+    /// # let output = output.dump();
+    /// # assert!(output.contains("\"Name\":\"metrique_metrics_emitted\",\"Unit\":\"Count\""));
+    /// # assert!(output.contains("\"metrique_metrics_emitted\":"));
+    /// # }
+    /// ```
+    ///
+    /// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
     #[allow(private_bounds)]
-    pub fn metrics_recorder_global<V: GlobalRecorderVersion + ?Sized>(self) -> Self {
-        self.metric_recorder(Some(Box::new(V::recorder())))
+    pub fn metrics_recorder_global<V: GlobalRecorderVersion + ?Sized>(mut self) -> Self {
+        self.metric_recorder = Some(Box::new(V::recorder()));
+        self
     }
 
     /// Send metrics to a local metrics recorder. Pass `dyn metrics::Recorder` as the first type parameter
     /// to allow it to autodetect the right metrics.rs version.
     ///
+    /// See [BACKGROUND_QUEUE_METRICS] for the precise list of emitted metrics, which
+    /// are All metrics emitted with the dimension `queue` equal to the
+    /// [Self::metric_name] config.
+    ///
+    /// This function does not assign units to metrics, since there are often race conditions as the
+    /// metric recorder can be set after the background queue. You can use [`describe_sink_metrics`]
+    /// or [`BACKGROUND_QUEUE_METRICS`] to do that.
+    ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
+    ///
+    /// To get a recorder, you can find a third-party [`metrics::Recorder`] compatible with your
+    /// format, or implement the trait yourself.
     ///
     /// [`metrics::Recorder`]: metrics_024::Recorder
     /// ```
@@ -245,10 +313,11 @@ impl BackgroundQueueBuilder {
     /// ```
     #[allow(private_bounds)]
     pub fn metrics_recorder_local<V: LocalRecorderVersion<R> + ?Sized, R>(
-        self,
+        mut self,
         recorder: R,
     ) -> Self {
-        self.metric_recorder(Some(Box::new(V::recorder(recorder))))
+        self.metric_recorder = Some(Box::new(V::recorder(recorder)));
+        self
     }
 
     /// Dimension used for the tracing span and queue metrics emitted. Defaults to the thread name.
