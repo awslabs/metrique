@@ -423,7 +423,7 @@ impl FieldSet {
                                 ::std::borrow::Cow::Borrowed(#name),
                                 #[allow(clippy::useless_conversion)]
                                 {
-                                    ::std::borrow::Cow::from(#field.clone())
+                                    #krate::core::SampleGroup::as_sample_group(#field)
                                 },
                             ))
                         });
@@ -636,7 +636,7 @@ mod tests {
                                             ::std::borrow::Cow::Borrowed("Operation"),
                                             #[allow(clippy::useless_conversion)]
                                             {
-                                                ::std::borrow::Cow::from(__binding_3.clone())
+                                                ::metrique_writer::core::SampleGroup::as_sample_group(__binding_3)
                                             },
                                     ))
                                     .chain(::metrique_writer::core::entry::Entry::sample_group(__binding_6)),
@@ -733,7 +733,7 @@ mod tests {
                     First(#[entry(flatten)] FirstEntry),
                     Second {
                         #[entry(sample_group)]
-                        test: String,
+                        test: &'static str,
                         #[entry(timestamp)]
                         time: SystemTime,
                         some_counter: u64,
@@ -775,7 +775,7 @@ mod tests {
                                             ::std::borrow::Cow::Borrowed("Test"),
                                             #[allow(clippy::useless_conversion)]
                                             {
-                                                ::std::borrow::Cow::from(__binding_0.clone())
+                                                ::metrique_writer::core::SampleGroup::as_sample_group(__binding_0)
                                             },
                                         ))
                                     ) as Box<dyn ::std::iter::Iterator<Item = _>>,
