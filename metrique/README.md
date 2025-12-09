@@ -14,7 +14,12 @@ Most metrics your application records will be "unit of work" metrics. In a class
 
 You declare a struct that represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`. That makes it possible to write it to a `Sink`. Rather than writing to the sink directly, you typically use `append_on_drop(sink)` to obtain a guard that will automatically write to the sink when dropped.
 
-The simplest way to emit the entry is by emitting it to a global entry sink, defined by using the [`metrique_writer::sink::global_entry_sink`] macro. That will create a global rendezvous point - you can attach a destination by using [`attach`] or [`attach_to_stream`], and then write to it by using the [`sink`] method (you must attach a destination before calling [`sink`], otherwise you will encounter a panic!).
+The simplest way to emit the entry is by emitting it to the [`ServiceMetrics`] global sink. That is a global
+rendezvous point - you can attach a destination by using [`attach`] or [`attach_to_stream`], and then write to it
+by using the [`sink`] method (you must attach a destination before calling [`sink`], otherwise you will encounter
+a panic!).
+
+If the global sink is not suitable, see [non-default and non-global sinks](#non-default-and-non-global-sinks).
 
 The example below will write the metrics to an [`tracing_appender::rolling::RollingFileAppender`]
 in EMF format.
@@ -763,6 +768,262 @@ struct MyMetric {
 
 [`ValueFormatter`]: metrique_writer::value::ValueFormatter
 [`ValueWriter`]: metrique_writer::ValueWriter
+
+## Destinations
+
+`metrique` metrics are normally written via a [`BackgroundQueue`], which performs
+the formatting and I/O in a background thread. `metrique` supports writing to the
+following destinations:
+
+1. Via [`output_to_makewriter`] to a [`tracing_subscriber::fmt::MakeWriter`], for example a
+   [`tracing_appender::rolling::RollingFileAppender`] that writes the metric
+   to a rotating file with a rotation period.
+2. Via [`output_to`] to a [`std::io::Write`], for example to standard output or a
+   network socket, often used for sending EMF logs to a local metric agent process.
+3. To an in-memory [`TestEntrySink`] for tests (see [Testing](#testing)).
+
+You can find examples setting up EMF uploading in the [EMF docs](crate::emf).
+
+[`BackgroundQueue`]: crate::writer::sink::BackgroundQueue
+[`TestEntrySink`]: crate::writer::test_util::TestEntrySink
+[`output_to_makewriter`]: crate::writer::FormatExt::output_to_makewriter
+[`output_to`]: crate::writer::FormatExt::output_to
+
+### Sink types
+
+#### Background Queue
+
+The default [`BackgroundQueue`](crate::writer::sink::BackgroundQueue) implementation buffers entries
+in memory and writes them to the output stream in a background thread. This is ideal for high-throughput
+applications where you want to minimize the impact of metric writing on your application's performance.
+
+Background queues are normally set up by using `ServiceMetrics::attach_to_stream`:
+
+```rust
+use metrique::emf::Emf;
+use metrique::ServiceMetrics;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+
+let handle = ServiceMetrics::attach_to_stream(
+    Emf::builder("Ns".to_string(), vec![vec![]])
+        .build()
+        .output_to(std::io::stdout())
+);
+
+# use metrique::unit_of_work::metrics;
+# #[metrics]
+# struct MyEntry {}
+# MyEntry {}.append_on_drop(ServiceMetrics::sink());
+```
+
+#### Immediate Flushing for ephemeral environments
+
+For simpler use cases, especially in environments like AWS Lambda where background threads are not
+ideal, you can use the [`FlushImmediately`](crate::writer::sink::FlushImmediately) implementation.
+
+```rust
+use metrique::emf::Emf;
+use metrique::ServiceMetrics;
+use metrique::writer::{AttachGlobalEntrySink, FormatExt, GlobalEntrySink};
+use metrique::writer::sink::FlushImmediately;
+use metrique::unit_of_work::metrics;
+
+#[metrics]
+struct MyMetrics {
+    value: u64,
+}
+
+fn main() {
+    let sink = FlushImmediately::new_boxed(
+        Emf::no_validations(
+            "MyNS".to_string(),
+            vec![vec![/*your dimensions here */]],
+        )
+        .output_to(std::io::stdout()),
+    );
+    let _handle = ServiceMetrics::attach((sink, ()));
+    handle_request();
+}
+
+fn handle_request() {
+    let mut metrics = MyMetrics { value: 0 }.append_on_drop(ServiceMetrics::sink());
+    metrics.value += 1;
+    // request will be flushed immediately here, as the request is dropped
+}
+```
+
+Note that `FlushImmediately` will block while writing each entry, so it's not suitable for
+latency-sensitive or high-throughput applications.
+
+### Non-default or non-global sinks
+
+In most applications, it is the easiest to emit metrics to the global [`ServiceMetrics`] sink,
+which is a global variable that serves as a rendezvous point between the part of the code that
+generates metrics (which calls [`sink`]) and the code that writes them
+to a destination (which calls [`attach_to_stream`] or [`attach`]).
+
+If use of this global is not desirable, you can do one of the following
+
+#### Creating a non-default global sink
+
+You can create a different global sink by using the [`global_entry_sink`] macro. That will create a new
+global sink that behaves exactly like, but is distinct from, [`ServiceMetrics`]. This is normally
+useful when some of your metrics need to go to a separate destination than the others.
+
+For example:
+
+```rust
+use metrique::emf::Emf;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use metrique::writer::sink::global_entry_sink;
+use metrique::unit_of_work::metrics;
+
+#[metrics]
+#[derive(Default)]
+struct MyEntry {
+    value: u32
+}
+
+global_entry_sink! { MyServiceMetrics }
+
+let handle = MyServiceMetrics::attach_to_stream(
+    Emf::builder("Ns".to_string(), vec![vec![]])
+        .build()
+        .output_to(std::io::stdout())
+);
+
+let metric = MyEntry::default().append_on_drop(MyServiceMetrics::sink());
+```
+
+#### Creating a non-global sink
+
+You can create your own metric sink (for example, using [`BackgroundQueue::new`]) directly,
+and then send metrics to it directly.
+
+Using a metric sink directly allows you to use the non-`dyn` API, by using a
+`BackgroundQueue<RootEntry<<MyMetricType as CloseValue>::Closed>>` instead of
+a `BackgroundQueue<BoxEntrySink>`. This is slightly faster, especially in
+*very*-high-throughput cases, as it avoids some dynamic dispatch. However,
+for most applications, this overhead is negligible.
+
+For example:
+
+```rust
+use metrique::{CloseValue, RootEntry};
+use metrique::emf::Emf;
+use metrique::writer::{EntrySink, FormatExt};
+use metrique::writer::sink::BackgroundQueue;
+use metrique::unit_of_work::metrics;
+
+#[metrics]
+#[derive(Default)]
+struct MyEntry {
+    value: u32
+}
+
+type MyRootEntry = RootEntry<<MyEntry as CloseValue>::Closed>;
+
+let (queue, handle) = BackgroundQueue::<MyRootEntry>::new(
+    Emf::builder("Ns".to_string(), vec![vec![]])
+        .build()
+        .output_to(std::io::stdout())
+);
+
+handle_request(&queue);
+
+fn handle_request(queue: &BackgroundQueue<MyRootEntry>) {
+    let mut metric = MyEntry::default();
+    metric.value += 1;
+    // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
+    // which has slightly negative performance impact
+    queue.append(MyRootEntry::new(metric.close()));
+}
+```
+
+[`global_entry_sink`]: crate::writer::sink::global_entry_sink
+[`BackgroundQueue::new`]: crate::writer::sink::BackgroundQueue::new
+
+## Sampling
+
+High-volume services may want to trade lower accuracy for lower CPU time spent on metric emission. Offloading metrics to
+CloudWatch can become bottlenecked if the agent isn't able to keep up with the rate of written metric entries.
+
+It is common to tee the metric into 2 destinations:
+
+ 1. A highly-compressed "log of record" that contains all entries and is eventually persisted to S3 or other long-term storage.
+ 1. An uncompressed, but sampled, metrics log that is published to CloudWatch.
+
+The sampling can be done naively at some [fixed fraction](`writer::sample::FixedFractionSample`), but at low rates can
+cause low-frequency events to be missed. This includes service errors or validation errors, especially when the service is
+designed to have an availability much higher than the chosen sample rate. Instead, we recommend the use of the
+[congressional sampler](`writer::sample::CongressSample`). It uses a fixed metric emisssion target rate and
+gives lower-frequency events a higher sampling rate to boost their accuracy.
+
+The example below uses the congressional sampler keyed by the request operation and the status code to
+ensure lower-frequency APIs and status codes have enough samples.
+
+When using EMF, you need to call [`with_sampling`] before calling a sampler, for example:
+
+```rust,no_run
+use metrique::unit_of_work::metrics;
+use metrique::emf::Emf;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use metrique::writer::sample::SampledFormatExt;
+use metrique::writer::stream::tee;
+use metrique::ServiceMetrics;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
+
+# let service_log_dir = "./service_log";
+# let metrics_log_dir = "./metrics_log";
+
+#[metrics(value(string))]
+enum Operation {
+    CountDucks,
+    // ...
+}
+
+#[metrics(rename_all="PascalCase")]
+struct RequestMetrics {
+    #[metrics(sample_group)]
+    operation: Operation,
+    #[metrics(sample_group)]
+    status_code: &'static str,
+    number_of_ducks: u32,
+    exception: Option<String>,
+}
+
+let _join_service_metrics = ServiceMetrics::attach_to_stream(
+    tee(
+        // non-uploaded, archived log of record
+        Emf::all_validations("MyNS".to_string(), /* dimensions */ vec![vec![], vec!["Operation".to_string()]])
+            .output_to_makewriter(RollingFileAppender::new(
+                Rotation::MINUTELY,
+                service_log_dir,
+                "service_log.log",
+            )),
+        // sampled log, will be uploaded to CloudWatch
+        Emf::all_validations("MyNS".to_string(), /* dimensions */ vec![vec![], vec!["Operation".to_string()]])
+            .with_sampling()
+            .sample_by_congress_at_fixed_entries_per_second(100)
+            .output_to_makewriter(RollingFileAppender::new(
+                Rotation::MINUTELY,
+                metrics_log_dir,
+                "metric_log.log",
+            )),
+    )
+);
+
+let metric = RequestMetrics {
+    operation: Operation::CountDucks,
+    status_code: "OK",
+    number_of_ducks: 2,
+    exception: None,
+}.append_on_drop(ServiceMetrics::sink());
+
+// _join_service_metrics drop (e.g. during service shutdown) blocks until the queue is drained
+```
+
+[`with_sampling`]: emf::Emf::with_sampling
 
 ## Testing
 
