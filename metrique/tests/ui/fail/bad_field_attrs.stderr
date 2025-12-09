@@ -87,3 +87,33 @@ error: You cannot use the character '@' with `prefix`. `prefix` will "inflect" t
    |
 55 | #[metrics(prefix = "foo@")]
    |           ^^^^^^
+
+error: `sample_group` as a top-level attribute can only be used with #[metrics(value)]
+  --> tests/ui/fail/bad_field_attrs.rs:60:11
+   |
+60 | #[metrics(sample_group)]
+   |           ^^^^^^^^^^^^
+
+error: Cannot combine `ignore` with `sample_group`
+  --> tests/ui/fail/bad_field_attrs.rs:67:23
+   |
+67 |     #[metrics(ignore, sample_group)]
+   |                       ^^^^^^^^^^^^
+
+error: Cannot combine `ignore` with `sample_group`
+  --> tests/ui/fail/bad_field_attrs.rs:69:15
+   |
+69 |     #[metrics(sample_group, ignore)]
+   |               ^^^^^^^^^^^^
+
+error: `sample_group` in value structs is used as a struct attribute, not a field attribute: `#[metrics(value, sample_group)]`
+  --> tests/ui/fail/bad_field_attrs.rs:76:5
+   |
+76 |     field: &'static str,
+   |     ^^^^^
+
+error: `sample_group` requires a non-ignore field
+  --> tests/ui/fail/bad_field_attrs.rs:80:8
+   |
+80 | struct SampleGroupValueAllIgnore {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^

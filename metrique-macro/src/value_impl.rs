@@ -77,7 +77,7 @@ pub fn validate_value_impl_for_struct(
             if name.is_some() {
                 return Err(syn::Error::new(
                     field.span,
-                    "`name` does not make sense in value stucts",
+                    "`name` does not make sense with #[metrics(value)]",
                 ));
             }
         }

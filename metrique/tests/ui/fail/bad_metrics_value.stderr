@@ -18,7 +18,7 @@ error: multiple non-ignored fields for #[metrics(value)]
 14 |     y: u32,
    |     ^
 
-error: `name` does not make sense in value stucts
+error: `name` does not make sense with #[metrics(value)]
   --> tests/ui/fail/bad_metrics_value.rs:33:5
    |
 33 |     u32,
@@ -106,6 +106,19 @@ help: consider importing one of these structs
    |
 1  + use metrique_writer_core::unit::Second;
    |
+
+error[E0277]: the trait bound `String: SampleGroup` is not satisfied
+  --> tests/ui/fail/bad_metrics_value.rs:78:15
+   |
+78 |       #[metrics(sample_group)]
+   |                 ^-----------
+   |                 |
+   |  _______________required by a bound introduced by this call
+   | |
+79 | |     group: String,
+   | |_________^ the trait `SampleGroup` is not implemented for `String`
+   |
+   = help: the trait `SampleGroup` is implemented for `&str`
 
 error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
   --> tests/ui/fail/bad_metrics_value.rs:26:5

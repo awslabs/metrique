@@ -371,7 +371,7 @@ impl RawRootAttributes {
                 true
             } else {
                 return Err(darling::Error::custom(
-                    "`sample_group` as a top-level attribute only works with `value`",
+                    "`sample_group` as a top-level attribute can only be used with #[metrics(value)]",
                 )
                 .with_span(&self.sample_group.span()));
             }
