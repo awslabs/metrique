@@ -33,6 +33,11 @@ pub trait SampledFormat: Format {
 /// and status code as sample groups, to ensure every (operation, status code) gets a metric.
 ///
 /// [congress sampling]: https://docs.rs/metrique-writer/0.1/metrique_writer/sample/struct.CongressSample.html
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be used as a sample group",
+    note = "sample groups must implement `SampleGroup`",
+    note = "consider using `&'static str` instead of `String`, or implement `SampleGroup` for `{Self}`"
+)]
 pub trait SampleGroup {
     /// Return the value as a sample group
     fn as_sample_group(&self) -> Cow<'static, str>;

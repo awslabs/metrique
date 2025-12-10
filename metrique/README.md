@@ -862,9 +862,12 @@ which is a global variable that serves as a rendezvous point between the part of
 generates metrics (which calls [`sink`]) and the code that writes them
 to a destination (which calls [`attach_to_stream`] or [`attach`]).
 
-If use of this global is not desirable, you can do one of the following
+If use of this global is not desirable, you can
+[create a locally-defined global sink](#creating-a-locally-defined-global-sink) or
+[use EntrySink directly](#creating-a-non-global-sink). When using `EntrySink` directly,
+it is possible, but not mandatory, to use a slightly-faster non-`dyn` API.
 
-#### Creating a non-default global sink
+#### Creating a locally-defined global sink
 
 You can create a different global sink by using the [`global_entry_sink`] macro. That will create a new
 global sink that behaves exactly like, but is distinct from, [`ServiceMetrics`]. This is normally
@@ -897,14 +900,14 @@ let metric = MyEntry::default().append_on_drop(MyServiceMetrics::sink());
 
 #### Creating a non-global sink
 
-You can create your own metric sink (for example, using [`BackgroundQueue::new`]) directly,
+You can create your own entry sink (for example, using [`BackgroundQueue::new`]) directly,
 and then send metrics to it directly.
 
-Using a metric sink directly allows you to use the non-`dyn` API, by using a
-`BackgroundQueue<RootEntry<<MyMetricType as CloseValue>::Closed>>` instead of
-a `BackgroundQueue<BoxEntrySink>`. This is slightly faster, especially in
-*very*-high-throughput cases, as it avoids some dynamic dispatch. However,
-for most applications, this overhead is negligible.
+Using an entry sink directly allows you to use the non-`dyn` API, by using a
+`BackgroundQueue<RootEntry<<MyMetricType as CloseValue>::Closed>>`, instead of
+the normal, dynamic `BackgroundQueue<BoxEntrySink>` which global sinks use. This
+is slightly faster, especially in *very*-high-throughput cases, as it avoids some
+dynamic dispatch. However, for most applications, this overhead is negligible.
 
 For example:
 

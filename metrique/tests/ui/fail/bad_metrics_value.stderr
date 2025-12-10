@@ -107,7 +107,7 @@ help: consider importing one of these structs
 1  + use metrique_writer_core::unit::Second;
    |
 
-error[E0277]: the trait bound `String: SampleGroup` is not satisfied
+error[E0277]: `String` cannot be used as a sample group
   --> tests/ui/fail/bad_metrics_value.rs:78:15
    |
 78 |       #[metrics(sample_group)]
@@ -118,6 +118,8 @@ error[E0277]: the trait bound `String: SampleGroup` is not satisfied
 79 | |     group: String,
    | |_________^ the trait `SampleGroup` is not implemented for `String`
    |
+   = note: sample groups must implement `SampleGroup`
+   = note: consider using `&'static str` instead of `String`, or implement `SampleGroup` for `String`
    = help: the trait `SampleGroup` is implemented for `&str`
 
 error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
