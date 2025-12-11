@@ -57,4 +57,29 @@ struct PrefixBadCharacter {
     a: usize,
 }
 
+#[metrics(sample_group)]
+struct SampleGroupTopLevelEntry {
+    foo: usize,
+}
+
+#[metrics]
+struct SampleGroupIgnore {
+    #[metrics(ignore, sample_group)]
+    foo: &'static str,
+    #[metrics(sample_group, ignore)]
+    foo2: &'static str,
+}
+
+#[metrics(value)]
+struct SampleGroupFieldOnStruct {
+    #[metrics(sample_group)]
+    field: &'static str,
+}
+
+#[metrics(value, sample_group)]
+struct SampleGroupValueAllIgnore {
+    #[metrics(ignore)]
+    ignore: u32,
+}
+
 fn main() {}

@@ -7,6 +7,7 @@
 
 pub use crate::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use crate::global::GlobalEntrySink;
+pub use crate::sample::SampleGroup;
 pub use crate::sink::{AnyEntrySink, BoxEntrySink, EntrySink};
 pub use crate::stream::{EntryIoStream, IoStreamError};
 pub use crate::unit::{Convert, Unit};

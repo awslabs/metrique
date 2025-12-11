@@ -18,7 +18,7 @@ error: multiple non-ignored fields for #[metrics(value)]
 14 |     y: u32,
    |     ^
 
-error: only plain fields are supported in #[metrics(value)]
+error: `name` does not make sense with #[metrics(value)]
   --> tests/ui/fail/bad_metrics_value.rs:33:5
    |
 33 |     u32,
@@ -54,7 +54,7 @@ error: Unknown field: `p`. Available values: `name`
 57 |     #[metrics(p="q")]
    |               ^
 
-error: Cannot combine value with subfield
+error: Cannot combine `value` with `subfield`
   --> tests/ui/fail/bad_metrics_value.rs:61:26
    |
 61 | #[metrics(value(string), subfield)]
@@ -106,6 +106,21 @@ help: consider importing one of these structs
    |
 1  + use metrique_writer_core::unit::Second;
    |
+
+error[E0277]: `String` cannot be used as a sample group
+  --> tests/ui/fail/bad_metrics_value.rs:78:15
+   |
+78 |       #[metrics(sample_group)]
+   |                 ^-----------
+   |                 |
+   |  _______________required by a bound introduced by this call
+   | |
+79 | |     group: String,
+   | |_________^ the trait `SampleGroup` is not implemented for `String`
+   |
+   = note: sample groups must implement `SampleGroup`
+   = note: consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`
+   = help: the trait `SampleGroup` is implemented for `&str`
 
 error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
   --> tests/ui/fail/bad_metrics_value.rs:26:5

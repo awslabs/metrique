@@ -15,8 +15,8 @@ emf = ["dep:metrique-writer-format-emf"]
 # utilities for tests
 test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util", "metrique-metricsrs/test-util"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
-# dep:tracing-appender is for rustdoc
-private-test-util = ["dep:tracing-appender"]
+# dep:tracing-appender and dep:tracing-subscriber is for rustdoc
+private-test-util = ["dep:tracing-appender", "dep:tracing-subscriber"]
 service-metrics = ["dep:metrique-service-metrics"]
 # re-export metrique-writer features
 metrics-rs-bridge = ["dep:metrique-metricsrs"]
@@ -35,6 +35,7 @@ metrique-timesource = { path = "../metrique-timesource", version = "0.1.5" }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.9", optional = true }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.4" }
 tracing-appender = { workspace = true, optional = true }
+tracing-subscriber = { workspace = true, optional = true }
 ryu = { workspace = true }
 itoa = { workspace = true }
 

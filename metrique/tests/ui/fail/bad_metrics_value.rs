@@ -73,6 +73,12 @@ struct WithString {
     field: String,
 }
 
+#[metrics]
+struct WithStringSampleGroup {
+    #[metrics(sample_group)]
+    group: String,
+}
+
 fn main() {
     let _ = Bad::Bad; // check that the enum is still generated
 }

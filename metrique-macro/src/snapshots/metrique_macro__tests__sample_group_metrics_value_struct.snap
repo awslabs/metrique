@@ -4,7 +4,7 @@ expression: parsed_file
 ---
 struct RequestValue {
     ignore: u32,
-    value: u32,
+    value: &'static str,
 }
 #[doc(hidden)]
 pub struct RequestValueValue {
@@ -12,7 +12,7 @@ pub struct RequestValueValue {
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    value: <u32 as metrique::CloseValue>::Closed,
+    value: <&'static str as metrique::CloseValue>::Closed,
 }
 impl ::metrique::writer::Value for RequestValueValue {
     fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
@@ -20,6 +20,12 @@ impl ::metrique::writer::Value for RequestValueValue {
         {
             ::metrique::writer::Value::write(&self.value, writer);
         }
+    }
+}
+impl ::metrique::writer::core::SampleGroup for RequestValueValue {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        #[allow(deprecated)]
+        { ::metrique::writer::core::SampleGroup::as_sample_group(&self.value) }
     }
 }
 impl metrique::CloseValue for &'_ RequestValue {

@@ -154,7 +154,7 @@ impl<F, R> CongressSample<F, R> {
     ///     #[entry(timestamp)]
     ///     start: SystemTime,
     ///     #[entry(sample_group)]
-    ///     operation: String,
+    ///     operation: &'static str,
     /// }
     ///
     /// #[derive(Entry)]
@@ -201,14 +201,14 @@ impl<F, R> CongressSample<F, R> {
     /// // this is sampled with a probability and potentially dropped
     /// stream.next(&MyMetrics {
     ///     start: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
-    ///     operation: "WillBePotentiallyDropped".to_string(),
+    ///     operation: "WillBePotentiallyDropped",
     /// }).unwrap();
     ///
     /// // this bypasses sampling
     /// bypass_sampling.store(true, atomic::Ordering::Relaxed);
     /// stream.next(&MyMetrics {
     ///     start: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
-    ///     operation: "WillRemain".to_string(),
+    ///     operation: "WillRemain",
     /// }).unwrap();
     /// ```
     ///

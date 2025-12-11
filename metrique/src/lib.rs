@@ -165,14 +165,12 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
-pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
+pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Parent<AppendAndCloseOnDropInner<E, S>>,
 }
 
-impl<
-    E: CloseEntry + Send + Sync + 'static,
-    S: EntrySink<RootEntry<E::Closed>> + Send + Sync + 'static,
-> AppendAndCloseOnDrop<E, S>
+impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send + Sync + 'static>
+    AppendAndCloseOnDrop<E, S>
 {
     /// Create a `flush_guard` to delay flushing the entry to the backing sink
     ///
@@ -324,12 +322,12 @@ impl<
     }
 }
 
-struct AppendAndCloseOnDropInner<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
+struct AppendAndCloseOnDropInner<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     entry: Option<E>,
     sink: S,
 }
 
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndCloseOnDrop<E, S> {
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Deref for AppendAndCloseOnDrop<E, S> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {
@@ -337,13 +335,13 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndClose
     }
 }
 //
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> DerefMut for AppendAndCloseOnDrop<E, S> {
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> DerefMut for AppendAndCloseOnDrop<E, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.deref_mut()
     }
 }
 
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndCloseOnDropInner<E, S> {
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Deref for AppendAndCloseOnDropInner<E, S> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {
@@ -351,15 +349,13 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Deref for AppendAndClose
     }
 }
 
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> DerefMut
-    for AppendAndCloseOnDropInner<E, S>
-{
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> DerefMut for AppendAndCloseOnDropInner<E, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.entry.as_mut().unwrap()
     }
 }
 
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Drop for AppendAndCloseOnDropInner<E, S> {
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Drop for AppendAndCloseOnDropInner<E, S> {
     fn drop(&mut self) {
         let entry = self.entry.take().expect("only drop calls this");
         let entry = entry.close();
@@ -376,11 +372,11 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Drop for AppendAndCloseO
 /// of mentioning `AppendAndCloseOnDropHandle` directly.
 ///
 /// [`metrics`]: crate::unit_of_work::metrics
-pub struct AppendAndCloseOnDropHandle<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> {
+pub struct AppendAndCloseOnDropHandle<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Arc<AppendAndCloseOnDrop<E, S>>,
 }
 
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Clone for AppendAndCloseOnDropHandle<E, S> {
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Clone for AppendAndCloseOnDropHandle<E, S> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -388,7 +384,7 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> Clone for AppendAndClose
     }
 }
 
-impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> std::ops::Deref
     for AppendAndCloseOnDropHandle<E, S>
 {
     type Target = E;
@@ -444,7 +440,7 @@ impl<E: CloseEntry, S: EntrySink<RootEntry<E::Closed>>> std::ops::Deref
 /// ```
 pub fn append_and_close<
     C: CloseEntry + Send + Sync + 'static,
-    S: EntrySink<RootEntry<C::Closed>> + Send + Sync + 'static,
+    S: EntrySink<RootMetric<C>> + Send + Sync + 'static,
 >(
     base: C,
     sink: S,
@@ -508,6 +504,53 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
     }
 }
 
+/// Type alias to a [`RootEntry`] that wraps around a metric entry. This
+/// is used to turn a metric into a concrete metric entry that can be sent
+/// to an [`EntrySink`]. This is normally the type entry sinks are
+/// instantiated for.
+///
+/// See the [`RootEntry`] docs for more details.
+///
+/// # Example
+///
+/// This creates a [`BackgroundQueue`] that is specialized for the entry
+/// type from `MyEntry`
+///
+/// [`BackgroundQueue`]: crate::writer::sink::BackgroundQueue
+///
+/// ```
+/// use metrique::{CloseValue, RootMetric};
+/// use metrique::emf::Emf;
+/// use metrique::writer::{EntrySink, FormatExt};
+/// use metrique::writer::sink::BackgroundQueue;
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct MyEntry {
+///     value: u32
+/// }
+///
+/// type MyRootEntry = RootMetric<MyEntry>;
+///
+/// let (queue, handle) = BackgroundQueue::<MyRootEntry>::new(
+///     Emf::builder("Ns".to_string(), vec![vec![]])
+///         .build()
+///         .output_to(std::io::stdout())
+/// );
+///
+/// handle_request(&queue);
+///
+/// fn handle_request(queue: &BackgroundQueue<MyRootEntry>) {
+///     let mut metric = MyEntry::default();
+///     metric.value += 1;
+///     // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
+///     // which has slightly negative performance impact
+///     queue.append(MyRootEntry::new(metric.close()));
+/// }
+/// ```
+pub type RootMetric<E> = RootEntry<<E as CloseValue>::Closed>;
+
 /// "Roots" an [`InflectableEntry`] to turn it into an [`Entry`] that can be passed
 /// to an [`EntrySink`].
 ///
@@ -518,6 +561,9 @@ impl<T: CloseValue> CloseValue for SharedChild<T> {
 ///
 /// When using [`append_and_close`], the metrics are rooted for you, but it is also possible
 /// to root a metric entry in your own code.
+///
+/// The [`RootMetric`] alias exists to help avoid writing
+/// `RootEntry<<E as CloseValue>::Closed>` explicitly.
 ///
 /// # Example
 ///
