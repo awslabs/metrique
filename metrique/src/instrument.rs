@@ -134,7 +134,7 @@ impl<T, E, U> Instrumented<std::result::Result<T, E>, U> {
 impl<T, Entry, Sink> Instrumented<T, crate::AppendAndCloseOnDrop<Entry, Sink>>
 where
     Entry: crate::CloseEntry,
-    Sink: crate::EntrySink<crate::RootEntry<Entry::Closed>>,
+    Sink: crate::EntrySink<crate::RootMetric<Entry>>,
 {
     /// Emit the metrics and return the value
     ///

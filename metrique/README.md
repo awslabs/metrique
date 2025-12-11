@@ -19,7 +19,8 @@ rendezvous point - you can attach a destination by using [`attach`] or [`attach_
 by using the [`sink`] method (you must attach a destination before calling [`sink`], otherwise you will encounter
 a panic!).
 
-If the global sink is not suitable, see [non-default and non-global sinks](#non-default-and-non-global-sinks).
+If the global sink is not suitable, see
+[sinks other than `ServiceMetrics`](#sinks-other-than-servicemetrics).
 
 The example below will write the metrics to an [`tracing_appender::rolling::RollingFileAppender`]
 in EMF format.
@@ -855,7 +856,7 @@ fn handle_request() {
 Note that `FlushImmediately` will block while writing each entry, so it's not suitable for
 latency-sensitive or high-throughput applications.
 
-### Non-default or non-global sinks
+### Sinks other than `ServiceMetrics`
 
 In most applications, it is the easiest to emit metrics to the global [`ServiceMetrics`] sink,
 which is a global variable that serves as a rendezvous point between the part of the code that
@@ -898,21 +899,22 @@ let handle = MyServiceMetrics::attach_to_stream(
 let metric = MyEntry::default().append_on_drop(MyServiceMetrics::sink());
 ```
 
-#### Creating a non-global sink
+#### Creating a specifically-typed non-global sink
 
-You can create your own entry sink (for example, using [`BackgroundQueue::new`]) directly,
-and then send metrics to it directly.
+If you are not using a global sink, you can also create a sink that is specific to
+your entry type. While the global sink API, which uses [`BoxEntrySink`] and dynamic dispatch,
+is plenty fast for most purposes, using a fixed entry type avoids virtual dispatch which
+improves performance in *very*-high-throughput cases.
 
-Using an entry sink directly allows you to use the non-`dyn` API, by using a
-`BackgroundQueue<RootEntry<<MyMetricType as CloseValue>::Closed>>`, instead of
-the normal, dynamic `BackgroundQueue<BoxEntrySink>` which global sinks use. This
-is slightly faster, especially in *very*-high-throughput cases, as it avoids some
-dynamic dispatch. However, for most applications, this overhead is negligible.
+To use this API, create a sink for `RootMetric<MyEntry>`, for example a
+`BackgroundQueue<RootMetric<MyEntry>>`. Of course, you can use sink types
+other than `BackgroundQueue`, like
+[`FlushImmediately`](#immediate-flushing-for-ephemeral-environments).
 
 For example:
 
 ```rust
-use metrique::{CloseValue, RootEntry};
+use metrique::{CloseValue, RootMetric};
 use metrique::emf::Emf;
 use metrique::writer::{EntrySink, FormatExt};
 use metrique::writer::sink::BackgroundQueue;
@@ -924,7 +926,7 @@ struct MyEntry {
     value: u32
 }
 
-type MyRootEntry = RootEntry<<MyEntry as CloseValue>::Closed>;
+type MyRootEntry = RootMetric<MyEntry>;
 
 let (queue, handle) = BackgroundQueue::<MyRootEntry>::new(
     Emf::builder("Ns".to_string(), vec![vec![]])
@@ -945,6 +947,45 @@ fn handle_request(queue: &BackgroundQueue<MyRootEntry>) {
 
 [`global_entry_sink`]: crate::writer::sink::global_entry_sink
 [`BackgroundQueue::new`]: crate::writer::sink::BackgroundQueue::new
+[`BoxEntrySink`]: crate::writer::BoxEntrySink
+
+#### Creating a boxing non-global sink
+
+[`BoxEntrySink`] can be used without the global sink API, to create a non-global
+sink that accepts arbitrary entry types using the same amount of boxing and dynamic
+dispatch as a global sink.
+
+Example:
+
+```rust
+use metrique::{CloseValue, RootEntry};
+use metrique::emf::Emf;
+use metrique::writer::{AnyEntrySink, BoxEntrySink, EntrySink, FormatExt};
+use metrique::writer::sink::BackgroundQueueBuilder;
+use metrique::unit_of_work::metrics;
+
+#[metrics]
+#[derive(Default)]
+struct MyEntry {
+    value: u32
+}
+
+let (queue, handle) = BackgroundQueueBuilder::new().build_boxed(
+    Emf::builder("Ns".to_string(), vec![vec![]])
+        .build()
+        .output_to(std::io::stdout())
+);
+
+handle_request(&queue);
+
+fn handle_request(queue: &BoxEntrySink) {
+    let mut metric = MyEntry::default();
+    metric.value += 1;
+    // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
+    // which has slightly negative performance impact
+    queue.append(RootEntry::new(metric.close()));
+}
+```
 
 ## Sampling
 
