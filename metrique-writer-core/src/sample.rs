@@ -36,7 +36,7 @@ pub trait SampledFormat: Format {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be used as a sample group",
     note = "sample groups must implement `SampleGroup`",
-    note = "consider using `&'static str` instead of `String`, or implement `SampleGroup` for `{Self}`"
+    note = "consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`"
 )]
 pub trait SampleGroup {
     /// Return the value as a sample group

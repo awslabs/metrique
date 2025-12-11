@@ -119,7 +119,7 @@ error[E0277]: `String` cannot be used as a sample group
    | |_________^ the trait `SampleGroup` is not implemented for `String`
    |
    = note: sample groups must implement `SampleGroup`
-   = note: consider using `&'static str` instead of `String`, or implement `SampleGroup` for `String`
+   = note: consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`
    = help: the trait `SampleGroup` is implemented for `&str`
 
 error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
