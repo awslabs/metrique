@@ -987,12 +987,16 @@ fn generate_on_drop_wrapper(
     target: &Ident,
     handle: &Ident,
 ) -> Ts2 {
+    let inner_str = inner.to_string();
+    let guard_str = guard.to_string();
     quote! {
+        #[doc = concat!("Metrics guard returned from [`", #inner_str, "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped.")]
         #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner, Q>;
+        #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
         #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner, Q>;
 
         impl #inner {
-            #[doc = "Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
+            #[doc = "Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
             #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
