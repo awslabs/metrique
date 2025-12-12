@@ -15,6 +15,7 @@ mod namestyle;
 
 pub use atomics::Counter;
 pub use namestyle::NameStyle;
+pub use namestyle::NoPrefix;
 
 /// Close a given value
 ///
