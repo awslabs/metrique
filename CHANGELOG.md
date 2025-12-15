@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.10](https://github.com/awslabs/metrique/compare/metrique-v0.1.9...metrique-v0.1.10) - 2025-12-15
+
+### Added
+
+- generate docs for guard and handle types ([#134](https://github.com/awslabs/metrique/pull/134))
+
+### Other
+
+- Update MSRV to 1.89, darling to 0.23 ([#135](https://github.com/awslabs/metrique/pull/135))
+- Add support for sampling, improve docs ([#133](https://github.com/awslabs/metrique/pull/133))
+- add examples for WithDimensions, clean up metrics docs ([#132](https://github.com/awslabs/metrique/pull/132))
+
 ## [0.1.9](https://github.com/arielb1/metrique-fork/compare/metrique-v0.1.8...metrique-v0.1.9) - 2025-12-04
 
 ### Added
