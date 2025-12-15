@@ -1,8 +1,8 @@
 [package]
 name = "metrique-writer"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2024"
-rust-version = "1.89"                                                                 # MSRV is 1.88 due to darling 0.23, 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts] [and 1.86 due to trait upcasts]
+rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
 description = "Library for working with unit of work metrics - writer-side interface"
 repository = "https://github.com/awslabs/metrique"
@@ -26,8 +26,8 @@ tokio = { workspace = true, optional = true, default-features = false, features 
 tracing = { workspace = true, optional = true }
 metrics_024 = { workspace = true, optional = true }
 metrics-util_020 = { workspace = true, optional = true }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.7" }
-metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.4" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.8" }
+metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.5" }
 
 [dev-dependencies]
 enum-map = { workspace = true }
