@@ -6,7 +6,7 @@ license = "Apache-2.0"
 description = "Library for generating unit of work metrics"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
-rust-version = "1.89" # MSRV is 1.88 due to darling 0.23, 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
+rust-version = "1.89" # See build.yml for why this MSRV
 
 [features]
 default = ["service-metrics"]

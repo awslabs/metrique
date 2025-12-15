@@ -2,7 +2,7 @@
 name = "metrique-timesource"
 version = "0.1.5"
 edition = "2024"
-rust-version = "1.89" # MSRV is 1.88 due to darling 0.23, 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts] [and 1.86 due to trait upcasts]
+rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
 description = "Utilities for mocking Instant and SystemTime (part of metrique)"
 repository = "https://github.com/awslabs/metrique"

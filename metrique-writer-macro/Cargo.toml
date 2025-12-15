@@ -2,7 +2,7 @@
 name = "metrique-writer-macro"
 version = "0.1.4"
 edition = "2024"
-rust-version = "1.89" # MSRV is 1.88 due to `extend_from_within` [and 1.86 due to trait upcasts]
+rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
 description = "Library for working with unit of work metrics - derive(Entry) macro"
 repository = "https://github.com/awslabs/metrique"
