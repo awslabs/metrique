@@ -2,7 +2,7 @@
 name = "metrique-writer-format-emf"
 version = "0.1.9"
 edition = "2024"
-rust-version = "1.87" # MSRV is 1.87 due to `extend_from_within` [and 1.86 due to trait upcasts]
+rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
 description = "Library for working with unit of work metrics - Amazon CloudWatch Embedded Metric Format (EMF) formatter"
 repository = "https://github.com/awslabs/metrique"

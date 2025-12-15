@@ -143,6 +143,13 @@ correct places, which are:
 2. The Cargo.toml of all packages
 3. The UI tests
 4. The test version in CI
+5. The test version in the CI ruleset:
+ 5.a. go to <https://github.com/awslabs/metrique/settings/rules>
+ 5.b. go to branch `main`
+ 5.c. go to "Require status checks to pass > Show additional settings"
+ 5.d. Remove the `Build (1.{{old}}.0, --all-features)` and `Build (1.{{old}}.0, --no-default-features)` status checks via the trash can icon
+ 5.e. Add `Build (1.{{new}}.0, --all-features)` and `Build (1.{{new}}.0, --no-default-features)` status checks via the "Add checks" button
+ 5.f. Click on "Save changes"
 
 ## Code of Conduct
 
