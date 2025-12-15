@@ -9,10 +9,10 @@
 // when Rust releases a new version. So, MAKE SURE THAT THIS RUSTC VERSION IS IN SYNC
 // WITH AN EXPLICIT RUSTC VERSION IN `.github/workflows/build.yml` (TYPICALLY THE
 // MSRV), OTHERWISE THE UI TESTS WILL BE SKIPPED IN CI.
-#[rustversion::attr(not(stable(1.87.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
+#[rustversion::attr(not(stable(1.89.0)), deprecated(note = "Update the rustc version (you may need to update UI tests)"))]
 #[allow(dead_code)]
 fn matching_rust_version() -> bool {
-    rustversion::cfg!(stable(1.87.0))
+    rustversion::cfg!(stable(1.89.0))
 }
 
 #[test]

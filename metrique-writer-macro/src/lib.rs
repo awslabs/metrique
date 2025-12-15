@@ -180,10 +180,10 @@ impl FieldMetricAttr {
                 flatten: None,
                 timestamp: None,
             } => {
-                if let Some(name) = name.as_ref() {
-                    if name.is_empty() {
-                        return Err(syn::Error::new(name.span(), "`name` can't be empty"));
-                    }
+                if let Some(name) = name.as_ref()
+                    && name.is_empty()
+                {
+                    return Err(syn::Error::new(name.span(), "`name` can't be empty"));
                 }
                 Ok(Self::NamedValue {
                     name,

@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         toolchain:
-          - "1.87.0" # Current MSRV due to extend_from_within
+          - "1.89.0" # Current MSRV due to darling 0.23
           - stable
           - nightly
         flags:
