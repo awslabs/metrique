@@ -25,7 +25,9 @@ use syn::{
     Result, Type, Visibility, parse_macro_input, spanned::Spanned,
 };
 
-use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectables};
+use crate::inflect::{
+    metric_name, name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter,
+};
 
 /// Transforms a struct or enum into a unit-of-work metric.
 ///
@@ -385,8 +387,12 @@ impl RawRootAttributes {
             );
         }
         Ok(RootAttributes {
-            prefix: Prefix::from_inflectable_and_exact(&self.prefix, &self.exact_prefix)?
-                .map(SpannedValue::into_inner),
+            prefix: Prefix::from_inflectable_and_exact(
+                &self.prefix,
+                &self.exact_prefix,
+                PrefixLevel::Root,
+            )?
+            .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
             sample_group,
@@ -587,7 +593,11 @@ impl RawMetricsFieldAttrs {
             return Err(cannot_combine_error("no_close", "ignore", *span));
         }
 
-        let prefix = Prefix::from_inflectable_and_exact(&self.prefix, &self.exact_prefix)?;
+        let prefix = Prefix::from_inflectable_and_exact(
+            &self.prefix,
+            &self.exact_prefix,
+            PrefixLevel::Field,
+        )?;
         if let Some(prefix_) = prefix {
             match &mut out {
                 Some((MetricsFieldKind::Flatten { prefix, .. }, _)) => {
@@ -646,6 +656,11 @@ struct MetricsFieldAttrs {
     kind: MetricsFieldKind,
 }
 
+enum PrefixLevel {
+    Root,
+    Field,
+}
+
 #[derive(Debug, Clone)]
 enum Prefix {
     Inflectable { prefix: String },
@@ -670,9 +685,19 @@ impl Prefix {
         )
     }
 
+    fn prefix_should_end_with_delimiter_message(prefix: &str) -> String {
+        let delimiter = if prefix.contains('-') { '-' } else { '_' };
+        let prefix_fixed = format!("{prefix}{delimiter}");
+        format!(
+            "The root-level prefix `{prefix:?}` must end with a delimiter. Use `prefix = {prefix_fixed:?}`, which inflects \
+            correctly in all inflections"
+        )
+    }
+
     fn from_inflectable_and_exact(
         inflectable: &Option<SpannedKv<String>>,
         exact: &Option<SpannedKv<String>>,
+        level: PrefixLevel,
     ) -> darling::Result<Option<SpannedValue<Self>>> {
         match (inflectable, exact) {
             (Some(prefix), None) => {
@@ -680,6 +705,15 @@ impl Prefix {
                     Err(
                         darling::Error::custom(Self::inflected_prefix_message(&prefix.value, c))
                             .with_span(&prefix.key_span),
+                    )
+                } else if let PrefixLevel::Root = level
+                    && !name_ends_with_delimiter(&prefix.value)
+                {
+                    Err(
+                        darling::Error::custom(Self::prefix_should_end_with_delimiter_message(
+                            &prefix.value,
+                        ))
+                        .with_span(&prefix.key_span),
                     )
                 } else {
                     Ok(Some(SpannedValue::new(

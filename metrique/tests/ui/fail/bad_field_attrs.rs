@@ -82,4 +82,14 @@ struct SampleGroupValueAllIgnore {
     ignore: u32,
 }
 
+#[metrics(prefix="foo")]
+struct MetricPrefixNoDelim {
+    field: &'static str,
+}
+
+#[metrics(prefix="foo-bar")]
+struct MetricPrefixNoDelimWithSnake {
+    field: &'static str,
+}
+
 fn main() {}
