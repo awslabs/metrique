@@ -7,7 +7,7 @@ use syn::Ident;
 
 use crate::{
     MetricsField, MetricsFieldKind, NameStyle, Prefix, RootAttributes, inflect::metric_name,
-    proc_macro_warning, value_impl::format_value,
+    value_impl::format_value,
 };
 
 /// Generate the implementation of the Entry trait directly instead of using derive(Entry).
@@ -17,14 +17,12 @@ pub fn generate_entry_impl(
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
-    let (writes, warnings) = generate_write_statements(fields, root_attrs);
+    let writes = generate_write_statements(fields, root_attrs);
     let sample_groups = generate_sample_group_statements(fields, root_attrs);
     // we generate one entry impl for each namestyle. This will then allow the parent to
     // transitively set the namestyle
     quote! {
         const _: () = {
-            #(#warnings)*
-
             #[expect(deprecated)]
             impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for #entry_name {
                 fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
@@ -48,12 +46,8 @@ fn make_ns(ns: NameStyle, span: proc_macro2::Span) -> Ts2 {
     }
 }
 
-fn generate_write_statements(
-    fields: &[MetricsField],
-    root_attrs: &RootAttributes,
-) -> (Vec<Ts2>, Vec<Ts2>) {
+fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<Ts2> {
     let mut writes = Vec::new();
-    let mut warnings = Vec::new();
 
     for field_ident in root_attrs.configuration_field_names() {
         writes.push(quote! {
@@ -81,30 +75,18 @@ fn generate_write_statements(
                 });
             }
             MetricsFieldKind::Flatten { span, prefix } => {
-                let mut dot_warning = quote! {};
                 let (extra, ns) = match prefix {
                     None => (quote!(), ns),
-                    Some(Prefix::Inflectable {
-                        prefix,
-                        contains_dot,
-                    }) => {
-                        if let Some(span) = contains_dot {
-                            dot_warning = proc_macro_warning(
-                                *span,
-                                &Prefix::inflected_prefix_message(prefix, '.', true),
-                            );
-                        }
-                        append_prefix_to_ns(
+                    Some(Prefix::Inflectable { prefix }) => append_prefix_to_ns(
+                        &ns,
+                        make_inflect(
                             &ns,
-                            make_inflect(
-                                &ns,
-                                format_ident!("InflectAffix", span = field_span),
-                                |style| style.apply_prefix(prefix),
-                                field,
-                            ),
+                            format_ident!("InflectAffix", span = field_span),
+                            |style| style.apply_prefix(prefix),
                             field,
-                        )
-                    }
+                        ),
+                        field,
+                    ),
                     Some(Prefix::Exact(exact_prefix)) => append_prefix_to_ns(
                         &ns,
                         make_const_str_noinflect(exact_prefix.clone(), field),
@@ -115,7 +97,6 @@ fn generate_write_statements(
                     #extra
                     ::metrique::InflectableEntry::<#ns>::write(&self.#field_ident, writer);
                 });
-                warnings.push(dot_warning);
             }
             MetricsFieldKind::Ignore(_) => {
                 continue;
@@ -135,7 +116,7 @@ fn generate_write_statements(
         }
     }
 
-    (writes, warnings)
+    writes
 }
 
 fn append_prefix_to_ns(ns: &Ts2, (extra, prefix): (Ts2, Ts2), field: &MetricsField) -> (Ts2, Ts2) {

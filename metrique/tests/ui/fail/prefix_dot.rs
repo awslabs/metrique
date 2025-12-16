@@ -1,5 +1,3 @@
-#![deny(deprecated)]
-
 use metrique::unit_of_work::metrics;
 
 #[metrics(subfield)]

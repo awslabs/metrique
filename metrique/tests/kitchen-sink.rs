@@ -160,19 +160,12 @@ struct PrefixSnake2 {
     inner: Prefix2,
 }
 
-// put PrefixSnake2 in a separate module for expect(deprecated) to work
-#[expect(deprecated)]
-mod prefix_3 {
-    use super::*;
-    #[metrics(rename_all = "kebab-case")]
-    #[derive(Clone, Default)]
-    pub(super) struct PrefixSnake3 {
-        #[metrics(flatten, prefix = "foo-x.")]
-        inner: PrefixSnake2,
-    }
+#[metrics(rename_all = "kebab-case")]
+#[derive(Clone, Default)]
+struct PrefixSnake3 {
+    #[metrics(flatten, prefix = "foo-x-")]
+    inner: PrefixSnake2,
 }
-
-use prefix_3::PrefixSnake3;
 
 #[metrics(rename_all = "kebab-case")]
 #[derive(Clone, Default)]

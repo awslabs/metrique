@@ -4,7 +4,7 @@ use crate::{MetricsField, MetricsFieldKind, MetricsVariant, Prefix, RootAttribut
 
 pub(crate) fn name_contains_uninflectables(name: &str) -> Option<char> {
     name.chars()
-        .find(|&c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.')
+        .find(|&c| !c.is_alphanumeric() && c != '_' && c != '-')
 }
 
 // `.` is currently used in production, make it a warning instead of an error
@@ -158,6 +158,6 @@ mod test {
     fn test_uninflectables() {
         assert_eq!(name_contains_uninflectables("foo-bar_baz"), None);
         assert_eq!(name_contains_uninflectables("foo:bar"), Some(':'));
-        assert_eq!(name_contains_uninflectables("foo.bar"), None);
+        assert_eq!(name_contains_uninflectables("foo.bar"), Some('.'));
     }
 }

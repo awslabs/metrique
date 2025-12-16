@@ -433,13 +433,7 @@ impl RootAttributes {
     }
 
     fn warnings(&self) -> Ts2 {
-        match &self.prefix {
-            Some(Prefix::Inflectable {
-                prefix,
-                contains_dot: Some(span),
-            }) => proc_macro_warning(*span, &Prefix::inflected_prefix_message(prefix, '.', true)),
-            _ => quote! {},
-        }
+        quote! {}
     }
 }
 
@@ -654,17 +648,14 @@ struct MetricsFieldAttrs {
 
 #[derive(Debug, Clone)]
 enum Prefix {
-    Inflectable {
-        prefix: String,
-        contains_dot: Option<Span>,
-    },
+    Inflectable { prefix: String },
     Exact(String),
 }
 
 impl Prefix {
-    fn inflected_prefix_message(prefix: &str, c: char, is_warning: bool) -> String {
-        let warning_text = if is_warning {
-            ". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required"
+    fn inflected_prefix_message(prefix: &str, c: char) -> String {
+        let warning_text = if name_contains_dot(prefix) {
+            " '.' used to be allowed in `prefix` but is now forbidden."
         } else {
             ""
         };
@@ -675,7 +666,7 @@ impl Prefix {
         format!(
             "You cannot use the character {c:?} with `prefix`. `prefix` will \"inflect\" to match the name scheme specified by `rename_all`. For example, \
             it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = {prefix_fixed:?}`. If you want to preserve {c:?} \
-            in the final metric name use `exact_prefix = {prefix:?}{warning_text}"
+            in the final metric name use `exact_prefix = {prefix:?}.{warning_text}"
         )
     }
 
@@ -686,21 +677,14 @@ impl Prefix {
         match (inflectable, exact) {
             (Some(prefix), None) => {
                 if let Some(c) = name_contains_uninflectables(&prefix.value) {
-                    Err(darling::Error::custom(Self::inflected_prefix_message(
-                        &prefix.value,
-                        c,
-                        false,
-                    ))
-                    .with_span(&prefix.key_span))
+                    Err(
+                        darling::Error::custom(Self::inflected_prefix_message(&prefix.value, c))
+                            .with_span(&prefix.key_span),
+                    )
                 } else {
                     Ok(Some(SpannedValue::new(
                         Self::Inflectable {
                             prefix: prefix.value.clone(),
-                            contains_dot: if name_contains_dot(&prefix.value) {
-                                Some(prefix.value_span)
-                            } else {
-                                None
-                            },
                         },
                         prefix.key_span,
                     )))
@@ -737,6 +721,11 @@ enum MetricsFieldKind {
     },
 }
 
+// produce a warning that the user can see
+//
+// currently, we do not have any logic that produces warnings, but leave this
+// in for the next time
+#[allow(unused)]
 fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
     quote_spanned! {span=>
         const _: () = {
@@ -1568,33 +1557,5 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
-    }
-
-    #[test]
-    fn test_field_prefix_warning_dot() {
-        let input = quote! {
-            struct RequestMetrics {
-                #[metrics(flatten, prefix = "API.")]
-                nested: NestedMetrics,
-                #[metrics(flatten, prefix = "API2.")]
-                nested2: NestedMetrics,
-                operation: &'static str
-            }
-        };
-
-        let parsed_file = metrics_impl_string(input, quote!(metrics()));
-        assert_snapshot!("field_prefix_warning_dot", parsed_file);
-    }
-
-    #[test]
-    fn test_struct_prefix_warning_dot() {
-        let input = quote! {
-            struct RequestMetrics {
-                operation: &'static str
-            }
-        };
-
-        let parsed_file = metrics_impl_string(input, quote!(metrics(prefix = "X.")));
-        assert_snapshot!("root_prefix_warning_dot", parsed_file);
     }
 }
