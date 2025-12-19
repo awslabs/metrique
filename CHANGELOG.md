@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/awslabs/metrique/compare/metrique-v0.1.10...metrique-v0.1.11) - 2025-12-19
+
+### Breaking Changes
+
+- forbid `.` in non-exact prefixes ([#138](https://github.com/awslabs/metrique/pull/138))
+- forbid root-level prefixes that do not end with a delimiter ([#138](https://github.com/awslabs/metrique/pull/138))
+
 ## [0.1.10](https://github.com/awslabs/metrique/compare/metrique-v0.1.9...metrique-v0.1.10) - 2025-12-15
 
 ### Added
