@@ -1,6 +1,6 @@
 [package]
 name = "metrique-macro"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
