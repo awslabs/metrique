@@ -1,5 +1,7 @@
 use metrique_timesource::{TimeSource, set_time_source};
 
+use std::time::UNIX_EPOCH;
+
 fn assert_sync<S: Sync>(_s: &S) {}
 fn assert_send<S: Send>(_s: &S) {}
 

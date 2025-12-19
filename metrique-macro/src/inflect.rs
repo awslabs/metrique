@@ -4,7 +4,12 @@ use crate::{MetricsField, MetricsFieldKind, MetricsVariant, Prefix, RootAttribut
 
 pub(crate) fn name_contains_uninflectables(name: &str) -> Option<char> {
     name.chars()
-        .find(|&c| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.')
+        .find(|&c| !c.is_alphanumeric() && c != '_' && c != '-')
+}
+
+pub(crate) fn name_ends_with_delimiter(name: &str) -> bool {
+    let last = name.chars().last();
+    last == Some('_') || last == Some('-')
 }
 
 // `.` is currently used in production, make it a warning instead of an error
@@ -127,7 +132,7 @@ impl HasInflectableName for MetricsVariant {
 #[cfg(test)]
 mod test {
     use super::name_contains_uninflectables;
-    use crate::NameStyle;
+    use crate::{NameStyle, inflect::name_ends_with_delimiter};
 
     #[test]
     fn test_inflect_prefix() {
@@ -158,6 +163,14 @@ mod test {
     fn test_uninflectables() {
         assert_eq!(name_contains_uninflectables("foo-bar_baz"), None);
         assert_eq!(name_contains_uninflectables("foo:bar"), Some(':'));
-        assert_eq!(name_contains_uninflectables("foo.bar"), None);
+        assert_eq!(name_contains_uninflectables("foo.bar"), Some('.'));
+    }
+
+    #[test]
+    fn test_delimiter() {
+        assert!(name_ends_with_delimiter("foo-"));
+        assert!(name_ends_with_delimiter("foo_"));
+        assert!(!name_ends_with_delimiter("foo."));
+        assert!(!name_ends_with_delimiter("foo"));
     }
 }

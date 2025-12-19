@@ -39,7 +39,7 @@ struct Baz5 {
     x: u32,
 }
 
-#[metrics(value, prefix = "foo")]
+#[metrics(value, prefix = "foo_")]
 struct Baz6 {
     x: u32,
 }

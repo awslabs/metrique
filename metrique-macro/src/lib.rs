@@ -25,7 +25,9 @@ use syn::{
     Result, Type, Visibility, parse_macro_input, spanned::Spanned,
 };
 
-use crate::inflect::{metric_name, name_contains_dot, name_contains_uninflectables};
+use crate::inflect::{
+    metric_name, name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter,
+};
 
 /// Transforms a struct or enum into a unit-of-work metric.
 ///
@@ -385,8 +387,12 @@ impl RawRootAttributes {
             );
         }
         Ok(RootAttributes {
-            prefix: Prefix::from_inflectable_and_exact(&self.prefix, &self.exact_prefix)?
-                .map(SpannedValue::into_inner),
+            prefix: Prefix::from_inflectable_and_exact(
+                &self.prefix,
+                &self.exact_prefix,
+                PrefixLevel::Root,
+            )?
+            .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
             sample_group,
@@ -433,13 +439,7 @@ impl RootAttributes {
     }
 
     fn warnings(&self) -> Ts2 {
-        match &self.prefix {
-            Some(Prefix::Inflectable {
-                prefix,
-                contains_dot: Some(span),
-            }) => proc_macro_warning(*span, &Prefix::inflected_prefix_message(prefix, '.', true)),
-            _ => quote! {},
-        }
+        quote! {}
     }
 }
 
@@ -593,7 +593,11 @@ impl RawMetricsFieldAttrs {
             return Err(cannot_combine_error("no_close", "ignore", *span));
         }
 
-        let prefix = Prefix::from_inflectable_and_exact(&self.prefix, &self.exact_prefix)?;
+        let prefix = Prefix::from_inflectable_and_exact(
+            &self.prefix,
+            &self.exact_prefix,
+            PrefixLevel::Field,
+        )?;
         if let Some(prefix_) = prefix {
             match &mut out {
                 Some((MetricsFieldKind::Flatten { prefix, .. }, _)) => {
@@ -652,19 +656,21 @@ struct MetricsFieldAttrs {
     kind: MetricsFieldKind,
 }
 
+enum PrefixLevel {
+    Root,
+    Field,
+}
+
 #[derive(Debug, Clone)]
 enum Prefix {
-    Inflectable {
-        prefix: String,
-        contains_dot: Option<Span>,
-    },
+    Inflectable { prefix: String },
     Exact(String),
 }
 
 impl Prefix {
-    fn inflected_prefix_message(prefix: &str, c: char, is_warning: bool) -> String {
-        let warning_text = if is_warning {
-            ". '.' is currently allowed when used with `prefix`, but in future versions, `exact_prefix` will be required"
+    fn inflected_prefix_message(prefix: &str, c: char) -> String {
+        let warning_text = if name_contains_dot(prefix) {
+            " '.' used to be allowed in `prefix` but is now forbidden."
         } else {
             ""
         };
@@ -675,32 +681,44 @@ impl Prefix {
         format!(
             "You cannot use the character {c:?} with `prefix`. `prefix` will \"inflect\" to match the name scheme specified by `rename_all`. For example, \
             it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = {prefix_fixed:?}`. If you want to preserve {c:?} \
-            in the final metric name use `exact_prefix = {prefix:?}{warning_text}"
+            in the final metric name use `exact_prefix = {prefix:?}.{warning_text}"
+        )
+    }
+
+    fn prefix_should_end_with_delimiter_message(prefix: &str) -> String {
+        let delimiter = if prefix.contains('-') { '-' } else { '_' };
+        let prefix_fixed = format!("{prefix}{delimiter}");
+        format!(
+            "The root-level prefix `{prefix:?}` must end with a delimiter. Use `prefix = {prefix_fixed:?}`, which inflects \
+            correctly in all inflections"
         )
     }
 
     fn from_inflectable_and_exact(
         inflectable: &Option<SpannedKv<String>>,
         exact: &Option<SpannedKv<String>>,
+        level: PrefixLevel,
     ) -> darling::Result<Option<SpannedValue<Self>>> {
         match (inflectable, exact) {
             (Some(prefix), None) => {
                 if let Some(c) = name_contains_uninflectables(&prefix.value) {
-                    Err(darling::Error::custom(Self::inflected_prefix_message(
-                        &prefix.value,
-                        c,
-                        false,
-                    ))
-                    .with_span(&prefix.key_span))
+                    Err(
+                        darling::Error::custom(Self::inflected_prefix_message(&prefix.value, c))
+                            .with_span(&prefix.key_span),
+                    )
+                } else if let PrefixLevel::Root = level
+                    && !name_ends_with_delimiter(&prefix.value)
+                {
+                    Err(
+                        darling::Error::custom(Self::prefix_should_end_with_delimiter_message(
+                            &prefix.value,
+                        ))
+                        .with_span(&prefix.key_span),
+                    )
                 } else {
                     Ok(Some(SpannedValue::new(
                         Self::Inflectable {
                             prefix: prefix.value.clone(),
-                            contains_dot: if name_contains_dot(&prefix.value) {
-                                Some(prefix.value_span)
-                            } else {
-                                None
-                            },
                         },
                         prefix.key_span,
                     )))
@@ -737,6 +755,11 @@ enum MetricsFieldKind {
     },
 }
 
+// produce a warning that the user can see
+//
+// currently, we do not have any logic that produces warnings, but leave this
+// in for the next time
+#[allow(unused)]
 fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
     quote_spanned! {span=>
         const _: () = {
@@ -1568,33 +1591,5 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
-    }
-
-    #[test]
-    fn test_field_prefix_warning_dot() {
-        let input = quote! {
-            struct RequestMetrics {
-                #[metrics(flatten, prefix = "API.")]
-                nested: NestedMetrics,
-                #[metrics(flatten, prefix = "API2.")]
-                nested2: NestedMetrics,
-                operation: &'static str
-            }
-        };
-
-        let parsed_file = metrics_impl_string(input, quote!(metrics()));
-        assert_snapshot!("field_prefix_warning_dot", parsed_file);
-    }
-
-    #[test]
-    fn test_struct_prefix_warning_dot() {
-        let input = quote! {
-            struct RequestMetrics {
-                operation: &'static str
-            }
-        };
-
-        let parsed_file = metrics_impl_string(input, quote!(metrics(prefix = "X.")));
-        assert_snapshot!("root_prefix_warning_dot", parsed_file);
     }
 }
