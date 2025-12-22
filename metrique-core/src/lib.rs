@@ -122,8 +122,10 @@ pub use namestyle::NameStyle;
 ///     }
 ///    ```
 #[diagnostic::on_unimplemented(
+    label = "This type must implement `CloseValue`",
     message = "CloseValue is not implemented for {Self}",
-    note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly."
+    note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly.",
+    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`"
 )]
 pub trait CloseValue {
     /// The type produced by closing this value
