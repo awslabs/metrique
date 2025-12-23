@@ -1,5 +1,6 @@
 use metrique_core::CloseValue;
 use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
+use smallvec::SmallVec;
 use std::marker::PhantomData;
 
 pub trait AggregationStrategy {
@@ -126,6 +127,42 @@ impl AggregationStrategy for LinearAggregationStrategy {
             })
             .collect();
         self.counts.fill(0);
+        observations
+    }
+}
+
+pub struct SortAndMerge<const N: usize = 128> {
+    values: SmallVec<[f64; N]>,
+}
+
+impl<const N: usize> SortAndMerge<N> {
+    pub fn new() -> Self {
+        Self {
+            values: SmallVec::new(),
+        }
+    }
+}
+
+impl<const N: usize> Default for SortAndMerge<N> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
+    fn add_value(&mut self, value: f64) {
+        self.values.push(value);
+    }
+
+    fn drain(&mut self) -> Vec<Observation> {
+        self.values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        let observations = self
+            .values
+            .iter()
+            .copied()
+            .map(Observation::Floating)
+            .collect();
+        self.values.clear();
         observations
     }
 }

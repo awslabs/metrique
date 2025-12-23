@@ -39,3 +39,36 @@ fn test_histogram() {
     let size_metric = &entries[0].metrics["Size"];
     assert_eq!(size_metric.unit.to_string(), "Bytes");
 }
+
+#[test]
+fn test_sort_and_merge() {
+    use metrique_aggregation::histogram::SortAndMerge;
+
+    let sink = test_entry_sink();
+    
+    #[metrics(rename_all = "PascalCase")]
+    struct Metrics {
+        #[metrics(unit = Millisecond)]
+        latency: Histogram<Duration, SortAndMerge>,
+    }
+    
+    let mut metrics = Metrics {
+        latency: Histogram::new(SortAndMerge::new()),
+    };
+
+    metrics.latency.add_entry(Duration::from_millis(25));
+    metrics.latency.add_entry(Duration::from_millis(5));
+    metrics.latency.add_entry(Duration::from_millis(15));
+
+    metrics.append_on_drop(sink.sink);
+
+    let entries = sink.inspector.entries();
+    assert_eq!(entries.len(), 1);
+
+    let latency_metric = &entries[0].metrics["Latency"];
+    assert_eq!(latency_metric.unit.to_string(), "Milliseconds");
+    
+    // Verify values are sorted
+    let dist = &latency_metric.distribution;
+    assert_eq!(dist.len(), 3);
+}

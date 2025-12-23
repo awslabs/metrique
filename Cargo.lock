@@ -644,6 +644,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-writer",
+ "smallvec",
 ]
 
 [[package]]
