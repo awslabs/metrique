@@ -20,7 +20,7 @@
 //!
 //! ```
 //! use metrique::unit_of_work::metrics;
-//! use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
+//! use metrique_aggregation::histogram::Histogram;
 //! use metrique_writer::unit::Millisecond;
 //! use std::time::Duration;
 //!
@@ -29,13 +29,13 @@
 //!     query_id: String,
 //!     
 //!     #[metrics(unit = Millisecond)]
-//!     backend_latency: Histogram<Duration, ExponentialAggregationStrategy>,
+//!     backend_latency: Histogram<Duration>,
 //! }
 //!
 //! fn execute_query(query_id: String) {
 //!     let mut metrics = QueryMetrics {
 //!         query_id,
-//!         backend_latency: Histogram::new(ExponentialAggregationStrategy::new()),
+//!         backend_latency: Histogram::default(),
 //!     };
 //!     
 //!     // Record multiple observations
@@ -49,7 +49,17 @@
 //!
 //! # Choosing an aggregation strategy
 //!
-//! ## ExponentialAggregationStrategy (recommended)
+//! By default, histograms use [`ExponentialAggregationStrategy`]. To use a different strategy,
+//! specify it as the second type parameter:
+//!
+//! ```
+//! use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+//! use std::time::Duration;
+//!
+//! let histogram: Histogram<Duration, SortAndMerge> = Histogram::new(SortAndMerge::new());
+//! ```
+//!
+//! ## ExponentialAggregationStrategy (default)
 //!
 //! Uses exponential bucketing with ~6.25% error. This is the best choice for most use cases:
 //!
@@ -63,7 +73,15 @@
 //! ## AtomicExponentialAggregationStrategy
 //!
 //! Thread-safe version of exponential bucketing. Use with [`crate::histogram::AtomicHistogram`] when you need
-//! to record values from multiple threads concurrently.
+//! to record values from multiple threads concurrently:
+//!
+//! ```
+//! use metrique_aggregation::histogram::{AtomicHistogram, AtomicExponentialAggregationStrategy};
+//! use std::time::Duration;
+//!
+//! let histogram: AtomicHistogram<Duration, AtomicExponentialAggregationStrategy> = 
+//!     AtomicHistogram::new(AtomicExponentialAggregationStrategy::new());
+//! ```
 //!
 //! ## SortAndMerge
 //!
@@ -113,7 +131,7 @@ pub trait AtomicAggregationStrategy {
 /// The histogram aggregates values in memory and emits them as a single metric entry.
 ///
 /// Requires `&mut self` to add values. For thread-safe access, use [`AtomicHistogram`].
-pub struct Histogram<T, S> {
+pub struct Histogram<T, S = ExponentialAggregationStrategy> {
     strategy: S,
     _value: PhantomData<T>,
 }
@@ -164,6 +182,12 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
 
         let capturer = Capturer(&mut self.strategy);
         value.write(capturer);
+    }
+}
+
+impl<T> Default for Histogram<T, ExponentialAggregationStrategy> {
+    fn default() -> Self {
+        Self::new(ExponentialAggregationStrategy::default())
     }
 }
 
