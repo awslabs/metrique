@@ -62,7 +62,7 @@
 //!
 //! ## AtomicExponentialAggregationStrategy
 //!
-//! Thread-safe version of exponential bucketing. Use with [`AtomicHistogram`] when you need
+//! Thread-safe version of exponential bucketing. Use with [`crate::histogram::AtomicHistogram`] when you need
 //! to record values from multiple threads concurrently.
 //!
 //! ## SortAndMerge
