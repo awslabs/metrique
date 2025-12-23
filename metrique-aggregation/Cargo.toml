@@ -1,0 +1,11 @@
+[package]
+name = "metrique-aggregation"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+metrique-writer = { path = "../metrique-writer" }
+metrique-core = { path = "../metrique-core" }
+
+[dev-dependencies]
+metrique = { path = "../metrique", features = ["test-util"] }

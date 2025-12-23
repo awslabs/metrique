@@ -638,6 +638,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "metrique-aggregation"
+version = "0.1.0"
+dependencies = [
+ "metrique",
+ "metrique-core",
+ "metrique-writer",
+]
+
+[[package]]
 name = "metrique-core"
 version = "0.1.9"
 dependencies = [
