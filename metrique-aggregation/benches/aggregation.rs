@@ -1,7 +1,7 @@
 use divan::{AllocProfiler, Bencher, black_box};
 use metrique_aggregation::histogram::{
     AggregationStrategy, AtomicAggregationStrategy, AtomicHistogram,
-    AtomicLinearAggregationStrategy, Histogram, LinearAggregationStrategy, SortAndMerge,
+    AtomicExponentialAggregationStrategy, Histogram, ExponentialAggregationStrategy, SortAndMerge,
 };
 use metrique_core::CloseValue;
 use rand::{Rng, SeedableRng};
@@ -19,7 +19,7 @@ const THREADS: &[usize] = &[1, 2, 4, 8];
 const ITEMS: &[usize] = &[100, 1000, 10000];
 
 #[divan::bench(
-    types = [LinearAggregationStrategy, SortAndMerge<128>],
+    types = [ExponentialAggregationStrategy, SortAndMerge<128>],
     threads = THREADS,
     args = ITEMS,
 )]
@@ -43,7 +43,7 @@ fn add<S: AggregationStrategy + Default + Send>(bencher: Bencher, items: usize) 
 }
 
 #[divan::bench(
-    types = [LinearAggregationStrategy, SortAndMerge<128>],
+    types = [ExponentialAggregationStrategy, SortAndMerge<128>],
     args = ITEMS,
 )]
 fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
@@ -61,7 +61,7 @@ fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
 }
 
 #[divan::bench(
-    types = [AtomicLinearAggregationStrategy],
+    types = [AtomicExponentialAggregationStrategy],
     threads = THREADS,
     args = ITEMS,
 )]
@@ -88,7 +88,7 @@ fn add_atomic<S: AtomicAggregationStrategy + Default + Send + Sync>(
 }
 
 #[divan::bench(
-    types = [AtomicLinearAggregationStrategy],
+    types = [AtomicExponentialAggregationStrategy],
     args = ITEMS,
 )]
 fn drain_atomic<S: AtomicAggregationStrategy + Default>(bencher: Bencher, items: usize) {
