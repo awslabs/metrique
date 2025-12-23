@@ -190,64 +190,52 @@ impl MetricValue for HistogramClosed {
     type Unit = metrique_writer::unit::None;
 }
 
-/// Linear bucketing strategy that groups observations into fixed-width buckets.
+/// Exponential bucketing strategy using the histogram crate.
 ///
-/// Values are grouped into buckets of equal width. For example, with `bucket_size = 10.0`,
-/// values 0-9.99 go in bucket 0, 10-19.99 in bucket 1, etc.
-///
-/// This strategy uses less memory than storing all observations but loses some precision
-/// since values are grouped into buckets.
-pub struct LinearAggregationStrategy {
-    /// Width of each bucket.
-    pub bucket_size: f64,
-    /// Total number of buckets.
-    pub num_buckets: usize,
-    counts: Vec<u64>,
+/// Uses exponential bucketing with configurable precision. Default configuration
+/// uses 4-bit mantissa precision (16 buckets per order of magnitude, ~6.25% error).
+pub struct ExponentialAggregationStrategy {
+    inner: histogram::Histogram,
 }
 
-impl LinearAggregationStrategy {
-    /// Create a new linear aggregation strategy.
-    ///
-    /// # Arguments
-    /// * `bucket_size` - Width of each bucket
-    /// * `num_buckets` - Total number of buckets
-    pub fn new(bucket_size: f64, num_buckets: usize) -> Self {
+impl ExponentialAggregationStrategy {
+    /// Create a new exponential aggregation strategy with default configuration.
+    pub fn new() -> Self {
+        let config = histogram::Config::new(4, 32).expect("known good configuration");
         Self {
-            bucket_size,
-            num_buckets,
-            counts: vec![0; num_buckets],
+            inner: histogram::Histogram::with_config(&config),
         }
     }
 }
 
-impl Default for LinearAggregationStrategy {
+impl Default for ExponentialAggregationStrategy {
     fn default() -> Self {
-        Self::new(10.0, 100)
+        Self::new()
     }
 }
 
-impl AggregationStrategy for LinearAggregationStrategy {
+impl AggregationStrategy for ExponentialAggregationStrategy {
     fn record(&mut self, value: f64) {
-        let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
-        self.counts[bucket] += 1;
+        self.inner.add(value as u64, 1).ok();
     }
 
     fn drain(&mut self) -> Vec<Observation> {
-        let observations = self
-            .counts
+        let snapshot = std::mem::replace(
+            &mut self.inner,
+            histogram::Histogram::with_config(&histogram::Config::new(4, 32).unwrap()),
+        );
+        snapshot
             .iter()
-            .enumerate()
-            .filter(|(_, count)| **count > 0)
-            .map(|(bucket, count)| {
-                let bucket_value = bucket as f64 * self.bucket_size;
+            .filter(|bucket| bucket.count() > 0)
+            .map(|bucket| {
+                let range = bucket.range();
+                let midpoint = range.start() + (range.end() - range.start()) / 2;
                 Observation::Repeated {
-                    total: bucket_value * *count as f64,
-                    occurrences: *count,
+                    total: midpoint as f64 * bucket.count() as f64,
+                    occurrences: bucket.count(),
                 }
             })
-            .collect();
-        self.counts.fill(0);
-        observations
+            .collect()
     }
 }
 
@@ -294,61 +282,46 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
     }
 }
 
-/// Thread-safe linear bucketing strategy using atomic counters.
+/// Thread-safe exponential bucketing strategy using atomic counters.
 ///
-/// Like [`LinearAggregationStrategy`] but uses atomic operations to allow concurrent
+/// Like [`ExponentialAggregationStrategy`] but uses atomic operations to allow concurrent
 /// recording from multiple threads.
-pub struct AtomicLinearAggregationStrategy {
-    /// Width of each bucket.
-    pub bucket_size: f64,
-    /// Total number of buckets.
-    pub num_buckets: usize,
-    counts: Vec<std::sync::atomic::AtomicU64>,
+pub struct AtomicExponentialAggregationStrategy {
+    inner: histogram::AtomicHistogram,
 }
 
-impl AtomicLinearAggregationStrategy {
-    /// Create a new atomic linear aggregation strategy.
-    ///
-    /// # Arguments
-    /// * `bucket_size` - Width of each bucket
-    /// * `num_buckets` - Total number of buckets
-    pub fn new(bucket_size: f64, num_buckets: usize) -> Self {
+impl AtomicExponentialAggregationStrategy {
+    /// Create a new atomic exponential aggregation strategy with default configuration.
+    pub fn new() -> Self {
+        let config = histogram::Config::new(4, 32).expect("known good configuration");
         Self {
-            bucket_size,
-            num_buckets,
-            counts: (0..num_buckets)
-                .map(|_| std::sync::atomic::AtomicU64::new(0))
-                .collect(),
+            inner: histogram::AtomicHistogram::with_config(&config),
         }
     }
 }
 
-impl Default for AtomicLinearAggregationStrategy {
+impl Default for AtomicExponentialAggregationStrategy {
     fn default() -> Self {
-        Self::new(10.0, 100)
+        Self::new()
     }
 }
 
-impl AtomicAggregationStrategy for AtomicLinearAggregationStrategy {
+impl AtomicAggregationStrategy for AtomicExponentialAggregationStrategy {
     fn record(&self, value: f64) {
-        let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
-        self.counts[bucket].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.inner.add(value as u64, 1).ok();
     }
 
     fn drain(&self) -> Vec<Observation> {
-        self.counts
+        self.inner
+            .drain()
             .iter()
-            .enumerate()
-            .filter_map(|(bucket, count)| {
-                let c = count.swap(0, std::sync::atomic::Ordering::Relaxed);
-                if c > 0 {
-                    let bucket_value = bucket as f64 * self.bucket_size;
-                    Some(Observation::Repeated {
-                        total: bucket_value * c as f64,
-                        occurrences: c,
-                    })
-                } else {
-                    None
+            .filter(|bucket| bucket.count() > 0)
+            .map(|bucket| {
+                let range = bucket.range();
+                let midpoint = range.start() + (range.end() - range.start()) / 2;
+                Observation::Repeated {
+                    total: midpoint as f64 * bucket.count() as f64,
+                    occurrences: bucket.count(),
                 }
             })
             .collect()

@@ -705,6 +705,7 @@ name = "metrique-aggregation"
 version = "0.1.0"
 dependencies = [
  "divan",
+ "histogram",
  "metrique",
  "metrique-core",
  "metrique-writer",

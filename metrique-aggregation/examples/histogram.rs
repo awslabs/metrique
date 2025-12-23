@@ -1,21 +1,21 @@
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{Histogram, LinearAggregationStrategy};
+use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
 use metrique_writer::unit::{Byte, Millisecond};
 use std::time::Duration;
 
 #[metrics(rename_all = "PascalCase")]
 struct TestMetrics {
     #[metrics(unit = Millisecond)]
-    latency: Histogram<Duration, LinearAggregationStrategy>,
+    latency: Histogram<Duration, ExponentialAggregationStrategy>,
     #[metrics(unit = Byte)]
-    size: Histogram<u32, LinearAggregationStrategy>,
+    size: Histogram<u32, ExponentialAggregationStrategy>,
 }
 
 fn main() {
     let sink = test_entry_sink();
     let mut metrics = TestMetrics {
-        latency: Histogram::new(LinearAggregationStrategy::new(10.0, 10)),
-        size: Histogram::new(LinearAggregationStrategy::new(1024.0, 5)),
+        latency: Histogram::new(ExponentialAggregationStrategy::new()),
+        size: Histogram::new(ExponentialAggregationStrategy::new()),
     };
 
     metrics.latency.add_value(Duration::from_millis(5));

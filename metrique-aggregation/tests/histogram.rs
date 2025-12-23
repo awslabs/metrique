@@ -1,5 +1,5 @@
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{AtomicHistogram, Histogram, LinearAggregationStrategy};
+use metrique_aggregation::histogram::{AtomicHistogram, Histogram, ExponentialAggregationStrategy};
 use metrique_writer::unit::{Byte, Millisecond};
 use metrique_writer::value::WithDimensions;
 use std::time::Duration;
@@ -7,17 +7,17 @@ use std::time::Duration;
 #[metrics(rename_all = "PascalCase")]
 struct TestMetrics {
     #[metrics(unit = Millisecond)]
-    latency: Histogram<Duration, LinearAggregationStrategy>,
+    latency: Histogram<Duration, ExponentialAggregationStrategy>,
     #[metrics(unit = Byte)]
-    size: Histogram<u32, LinearAggregationStrategy>,
+    size: Histogram<u32, ExponentialAggregationStrategy>,
 }
 
 #[test]
 fn test_histogram() {
     let sink = test_entry_sink();
     let mut metrics = TestMetrics {
-        latency: Histogram::new(LinearAggregationStrategy::new(10.0, 10)),
-        size: Histogram::new(LinearAggregationStrategy::new(1024.0, 5)),
+        latency: Histogram::new(ExponentialAggregationStrategy::new()),
+        size: Histogram::new(ExponentialAggregationStrategy::new()),
     };
 
     metrics.latency.add_value(Duration::from_millis(5));
@@ -76,18 +76,18 @@ fn test_sort_and_merge() {
 
 #[test]
 fn test_atomic_histogram() {
-    use metrique_aggregation::histogram::AtomicLinearAggregationStrategy;
+    use metrique_aggregation::histogram::AtomicExponentialAggregationStrategy;
 
     let sink = test_entry_sink();
 
     #[metrics(rename_all = "PascalCase")]
     struct Metrics {
         #[metrics(unit = Millisecond)]
-        latency: AtomicHistogram<Duration, AtomicLinearAggregationStrategy>,
+        latency: AtomicHistogram<Duration, AtomicExponentialAggregationStrategy>,
     }
 
     let metrics = Metrics {
-        latency: AtomicHistogram::new(AtomicLinearAggregationStrategy::new(10.0, 10)),
+        latency: AtomicHistogram::new(AtomicExponentialAggregationStrategy::new()),
     };
 
     metrics.latency.add_value(Duration::from_millis(5));
@@ -110,12 +110,12 @@ fn test_histogram_with_dimensions() {
     #[metrics(rename_all = "PascalCase")]
     struct Metrics {
         #[metrics(unit = Millisecond)]
-        latency: WithDimensions<Histogram<Duration, LinearAggregationStrategy>, 1>,
+        latency: WithDimensions<Histogram<Duration, ExponentialAggregationStrategy>, 1>,
     }
 
     let mut metrics = Metrics {
         latency: WithDimensions::new(
-            Histogram::new(LinearAggregationStrategy::new(10.0, 10)),
+            Histogram::new(ExponentialAggregationStrategy::new()),
             "Operation",
             "GetItem",
         ),

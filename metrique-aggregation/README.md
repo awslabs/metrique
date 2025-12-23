@@ -18,7 +18,7 @@ For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/
 
 ```rust
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::histogram::{Histogram, LinearAggregationStrategy};
+use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
@@ -27,13 +27,13 @@ struct QueryMetrics {
     query_id: String,
     
     #[metrics(unit = Millisecond)]
-    backend_latency: Histogram<Duration, LinearAggregationStrategy>,
+    backend_latency: Histogram<Duration, ExponentialAggregationStrategy>,
 }
 
 fn execute_query(query_id: String) {
     let mut metrics = QueryMetrics {
         query_id,
-        backend_latency: Histogram::new(LinearAggregationStrategy::new(10.0, 10)),
+        backend_latency: Histogram::new(ExponentialAggregationStrategy::new()),
     };
     
     // Record multiple observations
@@ -54,11 +54,11 @@ fn execute_query(query_id: String) {
 
 Strategies determine how observations are stored and emitted:
 
-- **`LinearAggregationStrategy`** - Fixed-width buckets (e.g., 0-10ms, 10-20ms, 20-30ms)
-- **`AtomicLinearAggregationStrategy`** - Thread-safe version of linear bucketing
+- **`ExponentialAggregationStrategy`** - Exponential bucketing with configurable precision (default: ~6.25% error)
+- **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing
 - **`SortAndMerge`** - Stores all observations and sorts them on emission
 
-Choose your strategy based on your precision needs and memory constraints. Linear strategies use less memory but lose some precision. SortAndMerge preserves all observations but uses more memory.
+Exponential strategies provide better precision across a wide range of values compared to linear bucketing. SortAndMerge preserves all observations exactly but uses more memory.
 
 ## Future work
 
