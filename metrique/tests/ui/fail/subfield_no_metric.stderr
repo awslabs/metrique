@@ -2,9 +2,11 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:8:5
   |
 8 |     child: ChildMetrics,
-  |     ^^^^^ the trait `CloseValue` is not implemented for `ChildMetrics`
+  |     ^^^^^ This type must implement `CloseValue`
   |
+  = help: the trait `CloseValue` is not implemented for `ChildMetrics`
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
   = help: the following other types implement trait `CloseValue`:
             &&'static str
             &'static str
@@ -20,9 +22,11 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:7:8
   |
 7 | struct RootMetrics {
-  |        ^^^^^^^^^^^ within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  |        ^^^^^^^^^^^ This type must implement `CloseValue`
   |
+  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
   = help: the following other types implement trait `CloseValue`:
             &&'static str
             &'static str
@@ -48,9 +52,11 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:6:1
   |
 6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
   |
+  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
   = help: the following other types implement trait `CloseValue`:
             &&'static str
             &'static str
@@ -73,9 +79,11 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:6:1
   |
 6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
   |
+  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
   = help: the following other types implement trait `CloseValue`:
             &&'static str
             &'static str
@@ -103,9 +111,11 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:6:1
   |
 6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ the trait `CloseValue` is not implemented for `ChildMetrics`
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
   |
+  = help: the trait `CloseValue` is not implemented for `ChildMetrics`
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
   = help: the following other types implement trait `CloseValue`:
             &&'static str
             &'static str
@@ -122,9 +132,11 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
  --> tests/ui/fail/subfield_no_metric.rs:6:1
   |
 6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
   |
+  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
   = help: the following other types implement trait `CloseValue`:
             &&'static str
             &'static str
