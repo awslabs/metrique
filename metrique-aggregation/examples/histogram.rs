@@ -11,14 +11,8 @@ struct TestMetrics {
 fn main() {
     let sink = test_entry_sink();
     let mut metrics = TestMetrics {
-        latency: Histogram::new(LinearBucketer {
-            bucket_size: 10.0,
-            num_buckets: 10,
-        }),
-        size: Histogram::new(LinearBucketer {
-            bucket_size: 1024.0,
-            num_buckets: 5,
-        }),
+        latency: Histogram::new(LinearBucketer::new(10.0, 10)),
+        size: Histogram::new(LinearBucketer::new(1024.0, 5)),
     };
 
     metrics.latency.add_entry(5u32);

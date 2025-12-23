@@ -3,46 +3,35 @@ use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter}
 use std::marker::PhantomData;
 
 pub trait Bucketer {
-    fn bucket(&self, value: f64) -> usize;
-    fn num_buckets(&self) -> usize;
-    fn distribution(&self, counts: &[u64]) -> Vec<Observation>;
+    fn add_value(&mut self, value: f64);
+    fn drain(&mut self) -> Vec<Observation>;
 }
 
 pub struct Histogram<T, U, B> {
     bucketer: B,
-    counts: Vec<u64>,
     _value: PhantomData<T>,
     _unit: PhantomData<U>,
 }
 
 impl<T, U, B: Bucketer> Histogram<T, U, B> {
     pub fn new(bucketer: B) -> Self {
-        let num_buckets = bucketer.num_buckets();
         Self {
             bucketer,
-            counts: vec![0; num_buckets],
             _value: PhantomData,
             _unit: PhantomData,
         }
     }
 
-    pub fn add_value(&mut self, value: Observation) {
-        match value {
-            Observation::Unsigned(v) => self.counts[self.bucketer.bucket(v as f64)] += 1,
-            Observation::Floating(v) => self.counts[self.bucketer.bucket(v)] += 1,
-            Observation::Repeated { total, occurrences } => {
-                self.counts[self.bucketer.bucket(total / occurrences as f64)] += occurrences
-            }
-            _ => {}
-        }
+    pub fn add_value(&mut self, value: f64) {
+        self.bucketer.add_value(value);
     }
 
     pub fn add_entry(&mut self, value: T)
     where
         T: MetricValue,
     {
-        struct Capturer<'a, T, U, B>(&'a mut Histogram<T, U, B>);
-        impl<'b, T, U, B: Bucketer> ValueWriter for Capturer<'b, T, U, B> {
+        struct Capturer<'a, B>(&'a mut B);
+        impl<'b, B: Bucketer> ValueWriter for Capturer<'b, B> {
             fn string(self, _value: &str) {}
             fn metric<'a>(
                 self,
@@ -52,62 +41,74 @@ impl<T, U, B: Bucketer> Histogram<T, U, B> {
                 _flags: MetricFlags<'_>,
             ) {
                 for obs in distribution {
-                    self.0.add_value(obs);
+                    match obs {
+                        Observation::Unsigned(v) => self.0.add_value(v as f64),
+                        Observation::Floating(v) => self.0.add_value(v),
+                        Observation::Repeated { total, occurrences } => {
+                            let avg = total / occurrences as f64;
+                            for _ in 0..occurrences {
+                                self.0.add_value(avg);
+                            }
+                        }
+                        _ => {}
+                    }
                 }
             }
             fn error(self, _error: metrique_writer::ValidationError) {}
         }
 
-        let capturer = Capturer(self);
+        let capturer = Capturer(&mut self.bucketer);
         value.write(capturer);
     }
 }
 
 impl<T, U: metrique_writer::unit::UnitTag, B: Bucketer> CloseValue for Histogram<T, U, B> {
-    type Closed = HistogramClosed<U, B>;
+    type Closed = HistogramClosed<U>;
 
-    fn close(self) -> Self::Closed {
+    fn close(mut self) -> Self::Closed {
         HistogramClosed {
-            bucketer: self.bucketer,
-            counts: self.counts,
+            observations: self.bucketer.drain(),
             _unit: PhantomData,
         }
     }
 }
 
-pub struct HistogramClosed<U, B> {
-    bucketer: B,
-    counts: Vec<u64>,
+pub struct HistogramClosed<U> {
+    observations: Vec<Observation>,
     _unit: PhantomData<U>,
 }
 
-impl<U: metrique_writer::unit::UnitTag, B: Bucketer> Value for HistogramClosed<U, B> {
+impl<U: metrique_writer::unit::UnitTag> Value for HistogramClosed<U> {
     fn write(&self, writer: impl ValueWriter) {
-        writer.metric(
-            self.bucketer.distribution(&self.counts),
-            U::UNIT,
-            [],
-            MetricFlags::empty(),
-        )
+        writer.metric(self.observations.clone(), U::UNIT, [], MetricFlags::empty())
     }
 }
 
 pub struct LinearBucketer {
     pub bucket_size: f64,
     pub num_buckets: usize,
+    counts: Vec<u64>,
+}
+
+impl LinearBucketer {
+    pub fn new(bucket_size: f64, num_buckets: usize) -> Self {
+        Self {
+            bucket_size,
+            num_buckets,
+            counts: vec![0; num_buckets],
+        }
+    }
 }
 
 impl Bucketer for LinearBucketer {
-    fn bucket(&self, value: f64) -> usize {
-        ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1)
+    fn add_value(&mut self, value: f64) {
+        let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
+        self.counts[bucket] += 1;
     }
 
-    fn num_buckets(&self) -> usize {
-        self.num_buckets
-    }
-
-    fn distribution(&self, counts: &[u64]) -> Vec<Observation> {
-        counts
+    fn drain(&mut self) -> Vec<Observation> {
+        let observations = self
+            .counts
             .iter()
             .enumerate()
             .filter(|(_, count)| **count > 0)
@@ -118,6 +119,8 @@ impl Bucketer for LinearBucketer {
                     occurrences: *count,
                 }
             })
-            .collect()
+            .collect();
+        self.counts.fill(0);
+        observations
     }
 }
