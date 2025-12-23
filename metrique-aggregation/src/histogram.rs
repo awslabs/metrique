@@ -106,6 +106,12 @@ impl LinearAggregationStrategy {
     }
 }
 
+impl Default for LinearAggregationStrategy {
+    fn default() -> Self {
+        Self::new(10.0, 100)
+    }
+}
+
 impl AggregationStrategy for LinearAggregationStrategy {
     fn add_value(&mut self, value: f64) {
         let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
