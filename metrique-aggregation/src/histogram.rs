@@ -198,6 +198,14 @@ pub struct ExponentialAggregationStrategy {
     inner: histogram::Histogram,
 }
 
+/// Sparse exponential bucketing strategy using a HashMap.
+///
+/// Like [`ExponentialAggregationStrategy`] but stores buckets in a HashMap instead of
+/// allocating a full vector. More memory efficient for sparse data.
+pub struct SparseExponentialAggregationStrategy {
+    inner: histogram::Histogram,
+}
+
 impl ExponentialAggregationStrategy {
     /// Create a new exponential aggregation strategy with default configuration.
     pub fn new() -> Self {
@@ -209,6 +217,22 @@ impl ExponentialAggregationStrategy {
 }
 
 impl Default for ExponentialAggregationStrategy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SparseExponentialAggregationStrategy {
+    /// Create a new sparse exponential aggregation strategy with default configuration.
+    pub fn new() -> Self {
+        let config = histogram::Config::new(4, 32).expect("known good configuration");
+        Self {
+            inner: histogram::Histogram::with_config(&config),
+        }
+    }
+}
+
+impl Default for SparseExponentialAggregationStrategy {
     fn default() -> Self {
         Self::new()
     }
@@ -226,6 +250,31 @@ impl AggregationStrategy for ExponentialAggregationStrategy {
         );
         snapshot
             .iter()
+            .filter(|bucket| bucket.count() > 0)
+            .map(|bucket| {
+                let range = bucket.range();
+                let midpoint = range.start() + (range.end() - range.start()) / 2;
+                Observation::Repeated {
+                    total: midpoint as f64 * bucket.count() as f64,
+                    occurrences: bucket.count(),
+                }
+            })
+            .collect()
+    }
+}
+
+impl AggregationStrategy for SparseExponentialAggregationStrategy {
+    fn record(&mut self, value: f64) {
+        self.inner.add(value as u64, 1).ok();
+    }
+
+    fn drain(&mut self) -> Vec<Observation> {
+        let sparse = histogram::SparseHistogram::from(&self.inner);
+        let config = histogram::Config::new(4, 32).unwrap();
+        self.inner = histogram::Histogram::with_config(&config);
+        
+        sparse
+            .into_iter()
             .filter(|bucket| bucket.count() > 0)
             .map(|bucket| {
                 let range = bucket.range();

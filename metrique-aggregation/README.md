@@ -55,10 +55,11 @@ fn execute_query(query_id: String) {
 Strategies determine how observations are stored and emitted:
 
 - **`ExponentialAggregationStrategy`** - Exponential bucketing with configurable precision (default: ~6.25% error)
+- **`SparseExponentialAggregationStrategy`** - Exponential bucketing optimized for sparse data (converts to sparse representation on drain)
 - **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing
 - **`SortAndMerge`** - Stores all observations and sorts them on emission
 
-Exponential strategies provide better precision across a wide range of values compared to linear bucketing. SortAndMerge preserves all observations exactly but uses more memory.
+Exponential strategies provide better precision across a wide range of values compared to linear bucketing. Use `SparseExponentialAggregationStrategy` when you have sparse data with many empty buckets. SortAndMerge preserves all observations exactly but uses more memory.
 
 ## Future work
 
