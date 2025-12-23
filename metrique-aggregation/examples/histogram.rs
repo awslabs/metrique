@@ -1,22 +1,27 @@
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
+use metrique_aggregation::histogram::{AtomicHistogram, Histogram, SortAndMerge};
 use metrique_writer::unit::{Byte, Millisecond};
 use std::time::Duration;
 
 #[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
 struct TestMetrics {
     #[metrics(unit = Millisecond)]
-    latency: Histogram<Duration, ExponentialAggregationStrategy>,
+    latency: Histogram<Duration>,
     #[metrics(unit = Byte)]
-    size: Histogram<u32, ExponentialAggregationStrategy>,
+    size: Histogram<u32>,
+
+    // for thread safe, use AtomicHistogram
+    atomics: AtomicHistogram<usize>,
+
+    // other strategies are available, e.g. SortAndMerge preserves all
+    // data points
+    all_values: Histogram<SortAndMerge>,
 }
 
 fn main() {
     let sink = test_entry_sink();
-    let mut metrics = TestMetrics {
-        latency: Histogram::new(ExponentialAggregationStrategy::new()),
-        size: Histogram::new(ExponentialAggregationStrategy::new()),
-    };
+    let mut metrics = TestMetrics::default();
 
     metrics.latency.add_value(Duration::from_millis(5));
     metrics.latency.add_value(Duration::from_millis(15));

@@ -27,7 +27,7 @@
 //! #[metrics(rename_all = "PascalCase")]
 //! struct QueryMetrics {
 //!     query_id: String,
-//!     
+//!
 //!     #[metrics(unit = Millisecond)]
 //!     backend_latency: Histogram<Duration>,
 //! }
@@ -37,12 +37,12 @@
 //!         query_id,
 //!         backend_latency: Histogram::default(),
 //!     };
-//!     
+//!
 //!     // Record multiple observations
 //!     metrics.backend_latency.add_value(Duration::from_millis(45));
 //!     metrics.backend_latency.add_value(Duration::from_millis(67));
 //!     metrics.backend_latency.add_value(Duration::from_millis(52));
-//!     
+//!
 //!     // When metrics drops, emits a single entry with the distribution
 //! }
 //! ```
@@ -79,7 +79,7 @@
 //! use metrique_aggregation::histogram::{AtomicHistogram, AtomicExponentialAggregationStrategy};
 //! use std::time::Duration;
 //!
-//! let histogram: AtomicHistogram<Duration, AtomicExponentialAggregationStrategy> = 
+//! let histogram: AtomicHistogram<Duration, AtomicExponentialAggregationStrategy> =
 //!     AtomicHistogram::new(AtomicExponentialAggregationStrategy::new());
 //! ```
 //!
@@ -105,7 +105,7 @@ use std::marker::PhantomData;
 pub trait AggregationStrategy {
     /// Record a single observation.
     fn record(&mut self, value: f64);
-    
+
     /// Drain all observations and return them as a vector.
     ///
     /// This resets the strategy's internal state.
@@ -118,7 +118,7 @@ pub trait AggregationStrategy {
 pub trait AtomicAggregationStrategy {
     /// Record a single observation through a shared reference.
     fn record(&self, value: f64);
-    
+
     /// Drain all observations and return them as a vector.
     ///
     /// This resets the strategy's internal state.
@@ -205,9 +205,18 @@ impl<T, S: AggregationStrategy> CloseValue for Histogram<T, S> {
 ///
 /// Like [`Histogram`] but allows adding values through a shared reference, making it
 /// suitable for concurrent access patterns.
-pub struct AtomicHistogram<T, S> {
+pub struct AtomicHistogram<T, S = AtomicExponentialAggregationStrategy> {
     strategy: S,
     _value: PhantomData<T>,
+}
+
+impl<T, S: Default> Default for AtomicHistogram<T, S> {
+    fn default() -> Self {
+        Self {
+            strategy: Default::default(),
+            _value: Default::default(),
+        }
+    }
 }
 
 impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
