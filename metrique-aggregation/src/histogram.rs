@@ -2,7 +2,7 @@ use metrique_core::CloseValue;
 use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
 use std::marker::PhantomData;
 
-pub trait Bucketer {
+pub trait AggregationStrategy {
     fn add_value(&mut self, value: f64);
     fn drain(&mut self) -> Vec<Observation>;
 }
@@ -13,7 +13,7 @@ pub struct Histogram<T, U, B> {
     _unit: PhantomData<U>,
 }
 
-impl<T, U, B: Bucketer> Histogram<T, U, B> {
+impl<T, U, B: AggregationStrategy> Histogram<T, U, B> {
     pub fn new(bucketer: B) -> Self {
         Self {
             bucketer,
@@ -31,7 +31,7 @@ impl<T, U, B: Bucketer> Histogram<T, U, B> {
         T: MetricValue,
     {
         struct Capturer<'a, B>(&'a mut B);
-        impl<'b, B: Bucketer> ValueWriter for Capturer<'b, B> {
+        impl<'b, B: AggregationStrategy> ValueWriter for Capturer<'b, B> {
             fn string(self, _value: &str) {}
             fn metric<'a>(
                 self,
@@ -62,7 +62,7 @@ impl<T, U, B: Bucketer> Histogram<T, U, B> {
     }
 }
 
-impl<T, U: metrique_writer::unit::UnitTag, B: Bucketer> CloseValue for Histogram<T, U, B> {
+impl<T, U: metrique_writer::unit::UnitTag, B: AggregationStrategy> CloseValue for Histogram<T, U, B> {
     type Closed = HistogramClosed<U>;
 
     fn close(mut self) -> Self::Closed {
@@ -84,13 +84,13 @@ impl<U: metrique_writer::unit::UnitTag> Value for HistogramClosed<U> {
     }
 }
 
-pub struct LinearBucketer {
+pub struct LinearAggregationStrategy {
     pub bucket_size: f64,
     pub num_buckets: usize,
     counts: Vec<u64>,
 }
 
-impl LinearBucketer {
+impl LinearAggregationStrategy {
     pub fn new(bucket_size: f64, num_buckets: usize) -> Self {
         Self {
             bucket_size,
@@ -100,7 +100,7 @@ impl LinearBucketer {
     }
 }
 
-impl Bucketer for LinearBucketer {
+impl AggregationStrategy for LinearAggregationStrategy {
     fn add_value(&mut self, value: f64) {
         let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
         self.counts[bucket] += 1;
