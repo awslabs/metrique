@@ -8,6 +8,11 @@ pub trait AggregationStrategy {
     fn drain(&mut self) -> Vec<Observation>;
 }
 
+pub trait AtomicAggregationStrategy {
+    fn add_value(&self, value: f64);
+    fn drain(&self) -> Vec<Observation>;
+}
+
 pub struct Histogram<T, S> {
     strategy: S,
     _value: PhantomData<T>,
@@ -65,6 +70,69 @@ impl<T, S: AggregationStrategy> CloseValue for Histogram<T, S> {
     type Closed = HistogramClosed;
 
     fn close(mut self) -> Self::Closed {
+        HistogramClosed {
+            observations: self.strategy.drain(),
+        }
+    }
+}
+
+pub struct AtomicHistogram<T, S> {
+    strategy: S,
+    _value: PhantomData<T>,
+}
+
+impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
+    pub fn new(strategy: S) -> Self {
+        Self {
+            strategy,
+            _value: PhantomData,
+        }
+    }
+
+    pub fn add_value(&self, value: f64) {
+        self.strategy.add_value(value);
+    }
+
+    pub fn add_entry(&self, value: T)
+    where
+        T: MetricValue,
+    {
+        struct Capturer<'a, S>(&'a S);
+        impl<'b, S: AtomicAggregationStrategy> ValueWriter for Capturer<'b, S> {
+            fn string(self, _value: &str) {}
+            fn metric<'a>(
+                self,
+                distribution: impl IntoIterator<Item = Observation>,
+                _unit: metrique_writer::Unit,
+                _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+                _flags: MetricFlags<'_>,
+            ) {
+                for obs in distribution {
+                    match obs {
+                        Observation::Unsigned(v) => self.0.add_value(v as f64),
+                        Observation::Floating(v) => self.0.add_value(v),
+                        Observation::Repeated { total, occurrences } => {
+                            let avg = total / occurrences as f64;
+                            for _ in 0..occurrences {
+                                self.0.add_value(avg);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            fn error(self, _error: metrique_writer::ValidationError) {}
+        }
+
+        let capturer = Capturer(&self.strategy);
+        value.write(capturer);
+    }
+}
+
+impl<T, S: AtomicAggregationStrategy> CloseValue for AtomicHistogram<T, S> {
+    type Closed = HistogramClosed;
+
+    fn close(self) -> Self::Closed {
         HistogramClosed {
             observations: self.strategy.drain(),
         }
@@ -170,5 +238,55 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
             .collect();
         self.values.clear();
         observations
+    }
+}
+
+pub struct AtomicLinearAggregationStrategy {
+    pub bucket_size: f64,
+    pub num_buckets: usize,
+    counts: Vec<std::sync::atomic::AtomicU64>,
+}
+
+impl AtomicLinearAggregationStrategy {
+    pub fn new(bucket_size: f64, num_buckets: usize) -> Self {
+        Self {
+            bucket_size,
+            num_buckets,
+            counts: (0..num_buckets)
+                .map(|_| std::sync::atomic::AtomicU64::new(0))
+                .collect(),
+        }
+    }
+}
+
+impl Default for AtomicLinearAggregationStrategy {
+    fn default() -> Self {
+        Self::new(10.0, 100)
+    }
+}
+
+impl AtomicAggregationStrategy for AtomicLinearAggregationStrategy {
+    fn add_value(&self, value: f64) {
+        let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
+        self.counts[bucket].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn drain(&self) -> Vec<Observation> {
+        self.counts
+            .iter()
+            .enumerate()
+            .filter_map(|(bucket, count)| {
+                let c = count.swap(0, std::sync::atomic::Ordering::Relaxed);
+                if c > 0 {
+                    let bucket_value = bucket as f64 * self.bucket_size;
+                    Some(Observation::Repeated {
+                        total: bucket_value * c as f64,
+                        occurrences: c,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }

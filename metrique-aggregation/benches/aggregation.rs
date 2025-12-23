@@ -1,6 +1,7 @@
 use divan::{Bencher, black_box};
 use metrique_aggregation::histogram::{
-    AggregationStrategy, Histogram, LinearAggregationStrategy, SortAndMerge,
+    AggregationStrategy, AtomicAggregationStrategy, AtomicHistogram,
+    AtomicLinearAggregationStrategy, Histogram, LinearAggregationStrategy, SortAndMerge,
 };
 use metrique_core::CloseValue;
 use std::sync::{Arc, Mutex};
@@ -43,6 +44,49 @@ fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
     bencher
         .with_inputs(|| {
             let mut hist = Histogram::<f64, S>::new(S::default());
+            for i in 0..items {
+                hist.add_value(i as f64);
+            }
+            hist
+        })
+        .counter(items)
+        .bench_values(|histogram| black_box(histogram.close()));
+}
+
+#[divan::bench(
+    types = [AtomicLinearAggregationStrategy],
+    consts = THREADS,
+    args = ITEMS,
+)]
+fn add_atomic<S: AtomicAggregationStrategy + Default + Send + Sync, const T: usize>(
+    bencher: Bencher,
+    items: usize,
+) {
+    bencher
+        .counter(items)
+        .with_inputs(|| Arc::new(AtomicHistogram::<f64, S>::new(S::default())))
+        .bench_values(|histogram| {
+            std::thread::scope(|s| {
+                for _ in 0..T {
+                    let hist = histogram.clone();
+                    s.spawn(move || {
+                        for i in 0..items {
+                            hist.add_value(black_box(i as f64));
+                        }
+                    });
+                }
+            });
+        });
+}
+
+#[divan::bench(
+    types = [AtomicLinearAggregationStrategy],
+    args = ITEMS,
+)]
+fn drain_atomic<S: AtomicAggregationStrategy + Default>(bencher: Bencher, items: usize) {
+    bencher
+        .with_inputs(|| {
+            let hist = AtomicHistogram::<f64, S>::new(S::default());
             for i in 0..items {
                 hist.add_value(i as f64);
             }
