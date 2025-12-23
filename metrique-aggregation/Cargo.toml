@@ -15,6 +15,7 @@ metrique = { path = "../metrique", features = ["test-util"] }
 divan = "0.1"
 rand.workspace = true
 rand_chacha.workspace = true
+assert2 = "0.3"
 
 [[bench]]
 name = "aggregation"
