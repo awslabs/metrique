@@ -18,14 +18,14 @@ fn main() {
         size: Histogram::new(LinearAggregationStrategy::new(1024.0, 5)),
     };
 
-    metrics.latency.add_entry(Duration::from_millis(5));
-    metrics.latency.add_entry(Duration::from_millis(15));
-    metrics.latency.add_entry(Duration::from_millis(25));
-    metrics.latency.add_entry(Duration::from_millis(25));
+    metrics.latency.add_value(Duration::from_millis(5));
+    metrics.latency.add_value(Duration::from_millis(15));
+    metrics.latency.add_value(Duration::from_millis(25));
+    metrics.latency.add_value(Duration::from_millis(25));
 
-    metrics.size.add_entry(512u32);
-    metrics.size.add_entry(2048u32);
-    metrics.size.add_entry(2048u32);
+    metrics.size.add_value(512u32);
+    metrics.size.add_value(2048u32);
+    metrics.size.add_value(2048u32);
 
     metrics.append_on_drop(sink.sink);
 

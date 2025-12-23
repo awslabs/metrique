@@ -4,12 +4,12 @@ use smallvec::SmallVec;
 use std::marker::PhantomData;
 
 pub trait AggregationStrategy {
-    fn add_f64(&mut self, value: f64);
+    fn record(&mut self, value: f64);
     fn drain(&mut self) -> Vec<Observation>;
 }
 
 pub trait AtomicAggregationStrategy {
-    fn add_f64(&self, value: f64);
+    fn record(&self, value: f64);
     fn drain(&self) -> Vec<Observation>;
 }
 
@@ -26,7 +26,7 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
         }
     }
 
-    pub fn add_entry(&mut self, value: T)
+    pub fn add_value(&mut self, value: T)
     where
         T: MetricValue,
     {
@@ -42,12 +42,12 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
             ) {
                 for obs in distribution {
                     match obs {
-                        Observation::Unsigned(v) => self.0.add_f64(v as f64),
-                        Observation::Floating(v) => self.0.add_f64(v),
+                        Observation::Unsigned(v) => self.0.record(v as f64),
+                        Observation::Floating(v) => self.0.record(v),
                         Observation::Repeated { total, occurrences } => {
                             let avg = total / occurrences as f64;
                             for _ in 0..occurrences {
-                                self.0.add_f64(avg);
+                                self.0.record(avg);
                             }
                         }
                         _ => {}
@@ -85,7 +85,7 @@ impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
         }
     }
 
-    pub fn add_entry(&self, value: T)
+    pub fn add_value(&self, value: T)
     where
         T: MetricValue,
     {
@@ -101,12 +101,12 @@ impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
             ) {
                 for obs in distribution {
                     match obs {
-                        Observation::Unsigned(v) => self.0.add_f64(v as f64),
-                        Observation::Floating(v) => self.0.add_f64(v),
+                        Observation::Unsigned(v) => self.0.record(v as f64),
+                        Observation::Floating(v) => self.0.record(v),
                         Observation::Repeated { total, occurrences } => {
                             let avg = total / occurrences as f64;
                             for _ in 0..occurrences {
-                                self.0.add_f64(avg);
+                                self.0.record(avg);
                             }
                         }
                         _ => {}
@@ -173,7 +173,7 @@ impl Default for LinearAggregationStrategy {
 }
 
 impl AggregationStrategy for LinearAggregationStrategy {
-    fn add_f64(&mut self, value: f64) {
+    fn record(&mut self, value: f64) {
         let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
         self.counts[bucket] += 1;
     }
@@ -216,7 +216,7 @@ impl<const N: usize> Default for SortAndMerge<N> {
 }
 
 impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
-    fn add_f64(&mut self, value: f64) {
+    fn record(&mut self, value: f64) {
         self.values.push(value);
     }
 
@@ -258,7 +258,7 @@ impl Default for AtomicLinearAggregationStrategy {
 }
 
 impl AtomicAggregationStrategy for AtomicLinearAggregationStrategy {
-    fn add_f64(&self, value: f64) {
+    fn record(&self, value: f64) {
         let bucket = ((value / self.bucket_size).floor() as usize).min(self.num_buckets - 1);
         self.counts[bucket].fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

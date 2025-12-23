@@ -12,6 +12,8 @@ smallvec = "1.13"
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }
 divan = "0.1"
+rand.workspace = true
+rand_chacha.workspace = true
 
 [[bench]]
 name = "aggregation"
