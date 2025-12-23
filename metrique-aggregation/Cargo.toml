@@ -11,3 +11,8 @@ smallvec = "1.13"
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }
+divan = "0.1"
+
+[[bench]]
+name = "aggregation"
+harness = false
