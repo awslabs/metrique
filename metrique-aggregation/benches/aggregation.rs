@@ -1,15 +1,12 @@
-use divan::{AllocProfiler, Bencher, black_box};
+use divan::{Bencher, black_box};
 use metrique_aggregation::histogram::{
-    AggregationStrategy, AtomicAggregationStrategy, AtomicHistogram,
-    AtomicExponentialAggregationStrategy, Histogram, ExponentialAggregationStrategy, SortAndMerge,
+    AggregationStrategy, AtomicAggregationStrategy, AtomicExponentialAggregationStrategy,
+    AtomicHistogram, ExponentialAggregationStrategy, Histogram, SortAndMerge,
 };
 use metrique_core::CloseValue;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::sync::{Arc, Mutex};
-
-//#[global_allocator]
-//static ALLOC: AllocProfiler = AllocProfiler::system();
 
 fn main() {
     divan::main();
