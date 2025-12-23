@@ -36,9 +36,40 @@ fn test_histogram() {
 
     let latency_metric = &entries[0].metrics["Latency"];
     assert_eq!(latency_metric.unit.to_string(), "Milliseconds");
+    
+    // Verify distribution values are approximately correct
+    let mut total_latency = 0.0;
+    let mut count_latency = 0;
+    for obs in &latency_metric.distribution {
+        match obs {
+            metrique_writer::Observation::Repeated { total, occurrences } => {
+                total_latency += total;
+                count_latency += occurrences;
+            }
+            _ => panic!("Expected Repeated observations"),
+        }
+    }
+    assert_eq!(count_latency, 4);
+    let avg_latency = total_latency / count_latency as f64;
+    assert!((avg_latency - 17.5).abs() < 0.5, "Average latency should be ~17.5ms, got {}", avg_latency);
 
     let size_metric = &entries[0].metrics["Size"];
     assert_eq!(size_metric.unit.to_string(), "Bytes");
+    
+    let mut total_size = 0.0;
+    let mut count_size = 0;
+    for obs in &size_metric.distribution {
+        match obs {
+            metrique_writer::Observation::Repeated { total, occurrences } => {
+                total_size += total;
+                count_size += occurrences;
+            }
+            _ => panic!("Expected Repeated observations"),
+        }
+    }
+    assert_eq!(count_size, 3);
+    let avg_size = total_size / count_size as f64;
+    assert!((avg_size - 1536.0).abs() < 50.0, "Average size should be ~1536 bytes, got {}", avg_size);
 }
 
 #[test]
@@ -69,9 +100,16 @@ fn test_sort_and_merge() {
     let latency_metric = &entries[0].metrics["Latency"];
     assert_eq!(latency_metric.unit.to_string(), "Milliseconds");
 
-    // Verify values are sorted
+    // Verify values are sorted and exact
     let dist = &latency_metric.distribution;
     assert_eq!(dist.len(), 3);
+    
+    let values: Vec<f64> = dist.iter().map(|obs| match obs {
+        metrique_writer::Observation::Floating(v) => *v,
+        _ => panic!("Expected Floating observations"),
+    }).collect();
+    
+    assert_eq!(values, vec![5.0, 15.0, 25.0]);
 }
 
 #[test]
@@ -101,6 +139,22 @@ fn test_atomic_histogram() {
 
     let latency_metric = &entries[0].metrics["Latency"];
     assert_eq!(latency_metric.unit.to_string(), "Milliseconds");
+    
+    // Verify distribution values are approximately correct
+    let mut total = 0.0;
+    let mut count = 0;
+    for obs in &latency_metric.distribution {
+        match obs {
+            metrique_writer::Observation::Repeated { total: t, occurrences } => {
+                total += t;
+                count += occurrences;
+            }
+            _ => panic!("Expected Repeated observations"),
+        }
+    }
+    assert_eq!(count, 3);
+    let avg = total / count as f64;
+    assert!((avg - 15.0).abs() < 0.5, "Average latency should be ~15ms, got {}", avg);
 }
 
 #[test]
