@@ -28,7 +28,7 @@ fn add<S: AggregationStrategy + Default + Send, const T: usize>(bencher: Bencher
                     let hist = histogram.clone();
                     s.spawn(move || {
                         for i in 0..items {
-                            hist.lock().unwrap().add_value(black_box(i as f64));
+                            hist.lock().unwrap().add_entry(black_box(i as f64));
                         }
                     });
                 }
@@ -45,7 +45,7 @@ fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
         .with_inputs(|| {
             let mut hist = Histogram::<f64, S>::new(S::default());
             for i in 0..items {
-                hist.add_value(i as f64);
+                hist.add_entry(i as f64);
             }
             hist
         })
@@ -71,7 +71,7 @@ fn add_atomic<S: AtomicAggregationStrategy + Default + Send + Sync, const T: usi
                     let hist = histogram.clone();
                     s.spawn(move || {
                         for i in 0..items {
-                            hist.add_value(black_box(i as f64));
+                            hist.add_entry(black_box(i as f64));
                         }
                     });
                 }
@@ -88,7 +88,7 @@ fn drain_atomic<S: AtomicAggregationStrategy + Default>(bencher: Bencher, items:
         .with_inputs(|| {
             let hist = AtomicHistogram::<f64, S>::new(S::default());
             for i in 0..items {
-                hist.add_value(i as f64);
+                hist.add_entry(i as f64);
             }
             hist
         })
