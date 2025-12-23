@@ -1,4 +1,4 @@
-use divan::{black_box, Bencher};
+use divan::{Bencher, black_box};
 use metrique_aggregation::histogram::{
     AggregationStrategy, Histogram, LinearAggregationStrategy, SortAndMerge,
 };
@@ -17,11 +17,9 @@ const ITEMS: &[usize] = &[100, 1000, 10000];
     consts = THREADS,
     args = ITEMS,
 )]
-fn add<S: AggregationStrategy + Default + Send, const T: usize>(
-    bencher: Bencher,
-    items: usize,
-) {
+fn add<S: AggregationStrategy + Default + Send, const T: usize>(bencher: Bencher, items: usize) {
     bencher
+        .counter(items)
         .with_inputs(|| Arc::new(Mutex::new(Histogram::<f64, S>::new(S::default()))))
         .bench_values(|histogram| {
             std::thread::scope(|s| {
@@ -50,5 +48,6 @@ fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
             }
             hist
         })
+        .counter(items)
         .bench_values(|histogram| black_box(histogram.close()));
 }
