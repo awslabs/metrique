@@ -1,3 +1,80 @@
+//! Histogram types for aggregating multiple observations into distributions.
+//!
+//! When emitting high-frequency metrics, you often want to aggregate multiple observations
+//! into a single metric entry rather than emitting each one individually. This module provides
+//! histogram types that collect observations and emit them as distributions.
+//!
+//! # When to use histograms
+//!
+//! Use histograms when you have many observations of the same metric within a single unit of work:
+//!
+//! - A distributed query that fans out to multiple backend services
+//! - Processing a batch of items where you want to track per-item latency
+//! - Any operation that generates multiple measurements you want to aggregate
+//!
+//! For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md)
+//! is a better approach than aggregation. Consider histograms when you need precise distributions
+//! for high-frequency events.
+//!
+//! # Example
+//!
+//! ```
+//! use metrique::unit_of_work::metrics;
+//! use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
+//! use metrique_writer::unit::Millisecond;
+//! use std::time::Duration;
+//!
+//! #[metrics(rename_all = "PascalCase")]
+//! struct QueryMetrics {
+//!     query_id: String,
+//!     
+//!     #[metrics(unit = Millisecond)]
+//!     backend_latency: Histogram<Duration, ExponentialAggregationStrategy>,
+//! }
+//!
+//! fn execute_query(query_id: String) {
+//!     let mut metrics = QueryMetrics {
+//!         query_id,
+//!         backend_latency: Histogram::new(ExponentialAggregationStrategy::new()),
+//!     };
+//!     
+//!     // Record multiple observations
+//!     metrics.backend_latency.add_value(Duration::from_millis(45));
+//!     metrics.backend_latency.add_value(Duration::from_millis(67));
+//!     metrics.backend_latency.add_value(Duration::from_millis(52));
+//!     
+//!     // When metrics drops, emits a single entry with the distribution
+//! }
+//! ```
+//!
+//! # Choosing an aggregation strategy
+//!
+//! ## ExponentialAggregationStrategy (recommended)
+//!
+//! Uses exponential bucketing with ~6.25% error. This is the best choice for most use cases:
+//!
+//! - Provides consistent relative precision across wide value ranges
+//! - Memory efficient with fixed bucket count (464 buckets)
+//! - Fast recording and draining operations
+//!
+//! Use this when you need good precision across values that span multiple orders of magnitude
+//! (e.g., latencies from microseconds to seconds).
+//!
+//! ## AtomicExponentialAggregationStrategy
+//!
+//! Thread-safe version of exponential bucketing. Use with [`AtomicHistogram`] when you need
+//! to record values from multiple threads concurrently.
+//!
+//! ## SortAndMerge
+//!
+//! Stores all observations exactly and sorts them on emission:
+//!
+//! - Perfect precision - no bucketing error
+//! - Memory usage grows with observation count
+//! - Slower drain operation due to sorting
+//!
+//! Use this when you need exact values and have a bounded number of observations (typically < 1000).
+
 use metrique_core::CloseValue;
 use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
 use smallvec::SmallVec;
