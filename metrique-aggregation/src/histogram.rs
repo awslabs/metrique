@@ -7,31 +7,29 @@ pub trait AggregationStrategy {
     fn drain(&mut self) -> Vec<Observation>;
 }
 
-pub struct Histogram<T, U, B> {
-    bucketer: B,
+pub struct Histogram<T, S> {
+    strategy: S,
     _value: PhantomData<T>,
-    _unit: PhantomData<U>,
 }
 
-impl<T, U, B: AggregationStrategy> Histogram<T, U, B> {
-    pub fn new(bucketer: B) -> Self {
+impl<T, S: AggregationStrategy> Histogram<T, S> {
+    pub fn new(strategy: S) -> Self {
         Self {
-            bucketer,
+            strategy,
             _value: PhantomData,
-            _unit: PhantomData,
         }
     }
 
     pub fn add_value(&mut self, value: f64) {
-        self.bucketer.add_value(value);
+        self.strategy.add_value(value);
     }
 
     pub fn add_entry(&mut self, value: T)
     where
         T: MetricValue,
     {
-        struct Capturer<'a, B>(&'a mut B);
-        impl<'b, B: AggregationStrategy> ValueWriter for Capturer<'b, B> {
+        struct Capturer<'a, S>(&'a mut S);
+        impl<'b, S: AggregationStrategy> ValueWriter for Capturer<'b, S> {
             fn string(self, _value: &str) {}
             fn metric<'a>(
                 self,
@@ -57,31 +55,38 @@ impl<T, U, B: AggregationStrategy> Histogram<T, U, B> {
             fn error(self, _error: metrique_writer::ValidationError) {}
         }
 
-        let capturer = Capturer(&mut self.bucketer);
+        let capturer = Capturer(&mut self.strategy);
         value.write(capturer);
     }
 }
 
-impl<T, U: metrique_writer::unit::UnitTag, B: AggregationStrategy> CloseValue for Histogram<T, U, B> {
-    type Closed = HistogramClosed<U>;
+impl<T, S: AggregationStrategy> CloseValue for Histogram<T, S> {
+    type Closed = HistogramClosed;
 
     fn close(mut self) -> Self::Closed {
         HistogramClosed {
-            observations: self.bucketer.drain(),
-            _unit: PhantomData,
+            observations: self.strategy.drain(),
         }
     }
 }
 
-pub struct HistogramClosed<U> {
+pub struct HistogramClosed {
     observations: Vec<Observation>,
-    _unit: PhantomData<U>,
 }
 
-impl<U: metrique_writer::unit::UnitTag> Value for HistogramClosed<U> {
+impl Value for HistogramClosed {
     fn write(&self, writer: impl ValueWriter) {
-        writer.metric(self.observations.clone(), U::UNIT, [], MetricFlags::empty())
+        writer.metric(
+            self.observations.clone(),
+            metrique_writer::Unit::None,
+            [],
+            MetricFlags::empty(),
+        )
     }
+}
+
+impl MetricValue for HistogramClosed {
+    type Unit = metrique_writer::unit::None;
 }
 
 pub struct LinearAggregationStrategy {

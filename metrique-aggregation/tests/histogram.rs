@@ -4,8 +4,10 @@ use metrique_writer::unit::{Byte, Millisecond};
 
 #[metrics(rename_all = "PascalCase")]
 struct TestMetrics {
-    latency: Histogram<u32, Millisecond, LinearAggregationStrategy>,
-    size: Histogram<u32, Byte, LinearAggregationStrategy>,
+    #[metrics(unit = Millisecond)]
+    latency: Histogram<u32, LinearAggregationStrategy>,
+    #[metrics(unit = Byte)]
+    size: Histogram<u32, LinearAggregationStrategy>,
 }
 
 #[test]

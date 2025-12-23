@@ -2,10 +2,11 @@
 name = "metrique-aggregation"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.89" # build.yml
 
 [dependencies]
-metrique-writer = { path = "../metrique-writer" }
-metrique-core = { path = "../metrique-core" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.9"}
+metrique-core = { path = "../metrique-core", version = "0.1.9"}
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }
