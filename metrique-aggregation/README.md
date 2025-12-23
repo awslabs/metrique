@@ -18,7 +18,7 @@ For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/
 
 ```rust
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
+use metrique_aggregation::histogram::Histogram;
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
@@ -27,13 +27,13 @@ struct QueryMetrics {
     query_id: String,
     
     #[metrics(unit = Millisecond)]
-    backend_latency: Histogram<Duration, ExponentialAggregationStrategy>,
+    backend_latency: Histogram<Duration>,
 }
 
 fn execute_query(query_id: String) {
     let mut metrics = QueryMetrics {
         query_id,
-        backend_latency: Histogram::new(ExponentialAggregationStrategy::new()),
+        backend_latency: Histogram::default(),
     };
     
     // Record multiple observations
@@ -47,18 +47,27 @@ fn execute_query(query_id: String) {
 
 ## Histogram types
 
-- **`Histogram<T, S>`** - Standard histogram that requires `&mut self` to add values
+- **`Histogram<T, S = ExponentialAggregationStrategy>`** - Standard histogram that requires `&mut self` to add values. Uses exponential bucketing by default.
 - **`AtomicHistogram<T, S>`** - Thread-safe histogram that can add values with `&self`
 
 ## Aggregation strategies
 
-Strategies determine how observations are stored and emitted:
+By default, histograms use `ExponentialAggregationStrategy`. To use a different strategy, specify it as the second type parameter:
 
-- **`ExponentialAggregationStrategy`** - Exponential bucketing with configurable precision (default: ~6.25% error)
-- **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing
-- **`SortAndMerge`** - Stores all observations and sorts them on emission
+```rust
+use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use std::time::Duration;
 
-Exponential strategies provide better precision across a wide range of values compared to linear bucketing. SortAndMerge preserves all observations exactly but uses more memory.
+let histogram: Histogram<Duration, SortAndMerge> = Histogram::new(SortAndMerge::new());
+```
+
+Available strategies:
+
+- **`ExponentialAggregationStrategy`** (default) - Exponential bucketing with ~6.25% error. Best for most use cases.
+- **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing for use with `AtomicHistogram`
+- **`SortAndMerge`** - Stores all observations exactly and sorts them on emission. Perfect precision but higher memory usage.
+
+Exponential strategies provide better precision across a wide range of values. SortAndMerge preserves all observations exactly but uses more memory.
 
 ## Future work
 
