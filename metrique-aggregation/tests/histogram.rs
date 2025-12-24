@@ -1,4 +1,6 @@
 use assert2::check;
+use metrique::test_util::TestEntrySink;
+use metrique::unit::Microsecond;
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
 use metrique_aggregation::histogram::{
     AggregationStrategy, AtomicExponentialAggregationStrategy, ExponentialAggregationStrategy,
@@ -13,21 +15,38 @@ use rstest::rstest;
 use std::time::Duration;
 
 #[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
 struct TestMetrics {
     #[metrics(unit = Millisecond)]
     latency: Histogram<Duration, ExponentialAggregationStrategy>,
     #[metrics(unit = Byte)]
     size: Histogram<u32, ExponentialAggregationStrategy>,
+
+    #[metrics(unit = Microsecond)]
+    high_precision: Histogram<Duration, SortAndMerge>,
+}
+
+#[test]
+fn units_correctly_emitted() {
+    let TestEntrySink { inspector, sink } = test_entry_sink();
+    let mut metrics = TestMetrics::default().append_on_drop(sink);
+    metrics.high_precision.add_value(Duration::from_secs(1));
+    metrics.high_precision.add_value(Duration::from_secs(1));
+    drop(metrics);
+    let entry = inspector.entries()[0].clone();
+    check!(
+        entry.metrics["HighPrecision"].distribution
+            == vec![Observation::Repeated {
+                total: 2_000_000 as f64,
+                occurrences: 2
+            }]
+    );
 }
 
 #[test]
 fn test_histogram() {
     let sink = test_entry_sink();
-    let mut metrics = TestMetrics {
-        latency: Histogram::new(ExponentialAggregationStrategy::new()),
-        size: Histogram::new(ExponentialAggregationStrategy::new()),
-    };
-
+    let mut metrics = TestMetrics::default();
     metrics.latency.add_value(Duration::from_millis(5));
     metrics.latency.add_value(Duration::from_millis(15));
     metrics.latency.add_value(Duration::from_millis(25));
@@ -337,7 +356,7 @@ fn calculate_percentile_from_buckets(observations: &[Observation], percentile: f
     // Build cumulative distribution from bucketed observations
     let mut buckets: Vec<(f64, u64)> = Vec::new();
     let mut total_count = 0u64;
-    
+
     for obs in observations {
         match obs {
             Observation::Repeated { total, occurrences } => {
@@ -356,14 +375,14 @@ fn calculate_percentile_from_buckets(observations: &[Observation], percentile: f
             _ => {}
         }
     }
-    
+
     // Sort by value
     buckets.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    
+
     // Use same formula as ground truth: (percentile / 100.0 * (total_count - 1)).round()
     let target_index = (percentile / 100.0 * (total_count - 1) as f64).round() as u64;
     let mut cumulative = 0u64;
-    
+
     for &(value, count) in &buckets {
         if cumulative + count > target_index {
             // Target index falls within this bucket
@@ -371,7 +390,7 @@ fn calculate_percentile_from_buckets(observations: &[Observation], percentile: f
         }
         cumulative += count;
     }
-    
+
     buckets.last().map(|(v, _)| *v).unwrap_or(0.0)
 }
 
@@ -465,7 +484,7 @@ fn test_sort_and_merge_accuracy(
 ) {
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     let values: Vec<f64> = (0..sample_size)
-        .map(|_| rng.random_range(min_val..=max_val).floor())  // Use integers to avoid floating point issues
+        .map(|_| rng.random_range(min_val..=max_val).floor()) // Use integers to avoid floating point issues
         .collect();
 
     test_histogram_accuracy(SortAndMerge::<128>::new(), values, 0.0);

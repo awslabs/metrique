@@ -392,7 +392,7 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
 
     fn record_many(&mut self, value: f64, count: u64) {
         self.values
-            .extend(std::iter::repeat(value).take(count as usize));
+            .extend(std::iter::repeat_n(value, count as usize));
     }
 
     fn drain(&mut self) -> Vec<Observation> {
