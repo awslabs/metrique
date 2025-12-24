@@ -37,9 +37,9 @@ fn execute_query(query_id: String) {
     };
     
     // Record multiple observations
-    metrics.backend_latency.add_value(Duration::from_millis(45));
-    metrics.backend_latency.add_value(Duration::from_millis(67));
-    metrics.backend_latency.add_value(Duration::from_millis(52));
+    metrics.backend_latency.add_value(&Duration::from_millis(45));
+    metrics.backend_latency.add_value(&Duration::from_millis(67));
+    metrics.backend_latency.add_value(&Duration::from_millis(52));
     
     // When metrics drops, emits a single entry with the distribution
 }

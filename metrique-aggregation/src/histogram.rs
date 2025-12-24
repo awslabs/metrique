@@ -39,9 +39,9 @@
 //!     };
 //!
 //!     // Record multiple observations
-//!     metrics.backend_latency.add_value(Duration::from_millis(45));
-//!     metrics.backend_latency.add_value(Duration::from_millis(67));
-//!     metrics.backend_latency.add_value(Duration::from_millis(52));
+//!     metrics.backend_latency.add_value(&Duration::from_millis(45));
+//!     metrics.backend_latency.add_value(&Duration::from_millis(67));
+//!     metrics.backend_latency.add_value(&Duration::from_millis(52));
 //!
 //!     // When metrics drops, emits a single entry with the distribution
 //! }
@@ -98,6 +98,8 @@ use metrique_core::CloseValue;
 use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
 use smallvec::SmallVec;
 use std::marker::PhantomData;
+
+use crate::aggregate::AggregateValue;
 
 /// Strategy for aggregating observations in a histogram.
 ///
@@ -158,7 +160,7 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
     ///
     /// The value is converted to observations using the metric value's implementation,
     /// then recorded in the aggregation strategy.
-    pub fn add_value(&mut self, value: T)
+    pub fn add_value(&mut self, value: &T)
     where
         T: MetricValue,
     {
@@ -242,7 +244,7 @@ impl<T, S: SharedAggregationStrategy> SharedHistogram<T, S> {
     ///
     /// The value is converted to observations using the metric value's implementation,
     /// then recorded in the aggregation strategy.
-    pub fn add_value(&self, value: T)
+    pub fn add_value(&self, value: &T)
     where
         T: MetricValue,
     {
@@ -533,5 +535,22 @@ mod tests {
     #[test]
     fn num_buckets() {
         check!(default_histogram_config().total_buckets() == 976);
+    }
+}
+
+// AggregateValue implementation for Histogram
+impl<T, S> AggregateValue<T> for Histogram<T, S>
+where
+    T: MetricValue,
+    S: AggregationStrategy + Default,
+{
+    type Aggregated = Histogram<T, S>;
+
+    fn init() -> Self::Aggregated {
+        Histogram::new(S::default())
+    }
+
+    fn aggregate(accum: &mut Self::Aggregated, value: &T) {
+        accum.add_value(value);
     }
 }

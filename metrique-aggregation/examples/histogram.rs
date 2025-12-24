@@ -23,14 +23,14 @@ fn main() {
     let sink = test_entry_sink();
     let mut metrics = TestMetrics::default();
 
-    metrics.latency.add_value(Duration::from_millis(5));
-    metrics.latency.add_value(Duration::from_millis(15));
-    metrics.latency.add_value(Duration::from_millis(25));
-    metrics.latency.add_value(Duration::from_millis(25));
+    metrics.latency.add_value(&Duration::from_millis(5));
+    metrics.latency.add_value(&Duration::from_millis(15));
+    metrics.latency.add_value(&Duration::from_millis(25));
+    metrics.latency.add_value(&Duration::from_millis(25));
 
-    metrics.size.add_value(512u32);
-    metrics.size.add_value(2048u32);
-    metrics.size.add_value(2048u32);
+    metrics.size.add_value(&512u32);
+    metrics.size.add_value(&2048u32);
+    metrics.size.add_value(&2048u32);
 
     metrics.append_on_drop(sink.sink);
 

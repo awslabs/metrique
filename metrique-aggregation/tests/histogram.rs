@@ -30,8 +30,8 @@ struct TestMetrics {
 fn units_correctly_emitted() {
     let TestEntrySink { inspector, sink } = test_entry_sink();
     let mut metrics = TestMetrics::default().append_on_drop(sink);
-    metrics.high_precision.add_value(Duration::from_secs(1));
-    metrics.high_precision.add_value(Duration::from_secs(1));
+    metrics.high_precision.add_value(&Duration::from_secs(1));
+    metrics.high_precision.add_value(&Duration::from_secs(1));
     drop(metrics);
     let entry = inspector.entries()[0].clone();
     check!(
@@ -47,14 +47,14 @@ fn units_correctly_emitted() {
 fn test_histogram() {
     let sink = test_entry_sink();
     let mut metrics = TestMetrics::default();
-    metrics.latency.add_value(Duration::from_millis(5));
-    metrics.latency.add_value(Duration::from_millis(15));
-    metrics.latency.add_value(Duration::from_millis(25));
-    metrics.latency.add_value(Duration::from_millis(25));
+    metrics.latency.add_value(&Duration::from_millis(5));
+    metrics.latency.add_value(&Duration::from_millis(15));
+    metrics.latency.add_value(&Duration::from_millis(25));
+    metrics.latency.add_value(&Duration::from_millis(25));
 
-    metrics.size.add_value(512u32);
-    metrics.size.add_value(2048u32);
-    metrics.size.add_value(2048u32);
+    metrics.size.add_value(&512u32);
+    metrics.size.add_value(&2048u32);
+    metrics.size.add_value(&2048u32);
 
     metrics.append_on_drop(sink.sink);
 
@@ -123,9 +123,9 @@ fn test_sort_and_merge() {
         latency: Histogram::new(SortAndMerge::new()),
     };
 
-    metrics.latency.add_value(Duration::from_millis(25));
-    metrics.latency.add_value(Duration::from_millis(5));
-    metrics.latency.add_value(Duration::from_millis(15));
+    metrics.latency.add_value(&Duration::from_millis(25));
+    metrics.latency.add_value(&Duration::from_millis(5));
+    metrics.latency.add_value(&Duration::from_millis(15));
 
     metrics.append_on_drop(sink.sink);
 
@@ -178,12 +178,12 @@ fn test_sort_and_merge_merges_duplicates() {
         latency: Histogram::new(SortAndMerge::new()),
     };
 
-    metrics.latency.add_value(Duration::from_millis(1));
-    metrics.latency.add_value(Duration::from_millis(2));
-    metrics.latency.add_value(Duration::from_millis(2));
-    metrics.latency.add_value(Duration::from_millis(3));
-    metrics.latency.add_value(Duration::from_millis(3));
-    metrics.latency.add_value(Duration::from_millis(3));
+    metrics.latency.add_value(&Duration::from_millis(1));
+    metrics.latency.add_value(&Duration::from_millis(2));
+    metrics.latency.add_value(&Duration::from_millis(2));
+    metrics.latency.add_value(&Duration::from_millis(3));
+    metrics.latency.add_value(&Duration::from_millis(3));
+    metrics.latency.add_value(&Duration::from_millis(3));
 
     metrics.append_on_drop(sink.sink);
 
@@ -233,9 +233,9 @@ fn test_atomic_histogram() {
         latency: SharedHistogram::new(AtomicExponentialAggregationStrategy::new()),
     };
 
-    metrics.latency.add_value(Duration::from_millis(5));
-    metrics.latency.add_value(Duration::from_millis(15));
-    metrics.latency.add_value(Duration::from_millis(25));
+    metrics.latency.add_value(&Duration::from_millis(5));
+    metrics.latency.add_value(&Duration::from_millis(15));
+    metrics.latency.add_value(&Duration::from_millis(25));
 
     metrics.append_on_drop(sink.sink);
 
@@ -287,8 +287,8 @@ fn test_histogram_with_dimensions() {
         ),
     };
 
-    metrics.latency.add_value(Duration::from_millis(5));
-    metrics.latency.add_value(Duration::from_millis(15));
+    metrics.latency.add_value(&Duration::from_millis(5));
+    metrics.latency.add_value(&Duration::from_millis(15));
 
     metrics.append_on_drop(sink.sink);
 
@@ -315,9 +315,9 @@ fn test_sort_and_merge_with_nan() {
         latency: Histogram::new(SortAndMerge::new()),
     };
 
-    metrics.latency.add_value(5.0);
-    metrics.latency.add_value(f64::NAN);
-    metrics.latency.add_value(15.0);
+    metrics.latency.add_value(&5.0);
+    metrics.latency.add_value(&f64::NAN);
+    metrics.latency.add_value(&15.0);
 
     metrics.append_on_drop(sink.sink);
 
@@ -536,7 +536,7 @@ impl metrique_writer::value::Value for ZeroOccurrences {
 fn test_histogram_ignores_zero_occurrences() {
     let mut histogram: Histogram<ZeroOccurrences, ExponentialAggregationStrategy> =
         Histogram::default();
-    histogram.add_value(ZeroOccurrences);
+    histogram.add_value(&ZeroOccurrences);
     // Should not panic, just ignore the invalid observation
 }
 
@@ -544,6 +544,6 @@ fn test_histogram_ignores_zero_occurrences() {
 fn test_shared_histogram_ignores_zero_occurrences() {
     let histogram: SharedHistogram<ZeroOccurrences, AtomicExponentialAggregationStrategy> =
         SharedHistogram::default();
-    histogram.add_value(ZeroOccurrences);
+    histogram.add_value(&ZeroOccurrences);
     // Should not panic, just ignore the invalid observation
 }

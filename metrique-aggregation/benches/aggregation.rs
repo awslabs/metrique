@@ -34,7 +34,7 @@ fn add<S: AggregationStrategy + Default + Send>(bencher: Bencher, items: usize) 
         .bench_values(|(histogram, values)| {
             let hist = histogram.clone();
             for &val in &values {
-                hist.lock().unwrap().add_value(black_box(val));
+                hist.lock().unwrap().add_value(&black_box(val));
             }
         });
 }
@@ -50,7 +50,7 @@ fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
             let mut hist = Histogram::<f64, S>::new(S::default());
             let mut rng = ChaCha8Rng::seed_from_u64(0);
             for _ in 0..items {
-                hist.add_value(rng.random_range(0.0..1000.0));
+                hist.add_value(&rng.random_range(0.0..1000.0));
             }
             hist
         })
@@ -79,7 +79,7 @@ fn add_atomic<S: SharedAggregationStrategy + Default + Send + Sync>(
         .bench_values(|(histogram, values)| {
             let hist = histogram.clone();
             for &val in &values {
-                hist.add_value(black_box(val));
+                hist.add_value(&black_box(val));
             }
         });
 }
@@ -95,7 +95,7 @@ fn drain_atomic<S: SharedAggregationStrategy + Default>(bencher: Bencher, items:
             let hist = SharedHistogram::<f64, S>::new(S::default());
             let mut rng = ChaCha8Rng::seed_from_u64(0);
             for _ in 0..items {
-                hist.add_value(rng.random_range(0.0..1000.0));
+                hist.add_value(&rng.random_range(0.0..1000.0));
             }
             hist
         })
