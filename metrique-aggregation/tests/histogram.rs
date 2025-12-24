@@ -7,8 +7,8 @@ use metrique_aggregation::histogram::{
     Histogram, SharedAggregationStrategy, SharedHistogram, SortAndMerge,
 };
 use metrique_writer::Observation;
-use metrique_writer::unit::{Byte, Millisecond};
-use metrique_writer::value::WithDimensions;
+use metrique_writer::unit::{Byte, Millisecond, UnitTag};
+use metrique_writer::value::{MetricFlags, MetricValue, ValueWriter, WithDimensions};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rstest::rstest;
@@ -509,4 +509,41 @@ fn test_atomic_exponential_accuracy(
         values,
         max_error_pct,
     );
+}
+
+// Custom metric value that emits zero occurrences
+struct ZeroOccurrences;
+
+impl MetricValue for ZeroOccurrences {
+    type Unit = Millisecond;
+}
+
+impl metrique_writer::value::Value for ZeroOccurrences {
+    fn write(&self, writer: impl ValueWriter) {
+        writer.metric(
+            [Observation::Repeated {
+                total: 100.0,
+                occurrences: 0,
+            }],
+            Millisecond::UNIT,
+            [],
+            MetricFlags::empty(),
+        );
+    }
+}
+
+#[test]
+fn test_histogram_ignores_zero_occurrences() {
+    let mut histogram: Histogram<ZeroOccurrences, ExponentialAggregationStrategy> =
+        Histogram::default();
+    histogram.add_value(ZeroOccurrences);
+    // Should not panic, just ignore the invalid observation
+}
+
+#[test]
+fn test_shared_histogram_ignores_zero_occurrences() {
+    let histogram: SharedHistogram<ZeroOccurrences, AtomicExponentialAggregationStrategy> =
+        SharedHistogram::default();
+    histogram.add_value(ZeroOccurrences);
+    // Should not panic, just ignore the invalid observation
 }

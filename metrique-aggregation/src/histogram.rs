@@ -177,8 +177,10 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
                         Observation::Unsigned(v) => self.0.record(v as f64),
                         Observation::Floating(v) => self.0.record(v),
                         Observation::Repeated { total, occurrences } => {
-                            let avg = total / occurrences as f64;
-                            self.0.record_many(avg, occurrences);
+                            if occurrences > 0 {
+                                let avg = total / occurrences as f64;
+                                self.0.record_many(avg, occurrences);
+                            }
                         }
                         _ => {}
                     }
@@ -259,8 +261,10 @@ impl<T, S: SharedAggregationStrategy> SharedHistogram<T, S> {
                         Observation::Unsigned(v) => self.0.record(v as f64),
                         Observation::Floating(v) => self.0.record(v),
                         Observation::Repeated { total, occurrences } => {
-                            let avg = total / occurrences as f64;
-                            self.0.record_many(avg, occurrences);
+                            if occurrences > 0 {
+                                let avg = total / occurrences as f64;
+                                self.0.record_many(avg, occurrences);
+                            }
                         }
                         _ => {}
                     }
