@@ -54,7 +54,6 @@ However, if your goal is to emit structured events that produce metrics with as 
 - Metrique avoids `HashMap`-based metric storage, reducing allocation pressure and the overhead of recording metrics
 - Compile-time metric definition prevents typos and makes it obvious exactly what metrics your application produces
 
-
 ## Getting Started
 
 Most applications and libraries will use [`metrique`](metrique) directly and configure a writer with [`metrique-writer`](metrique-writer). See the [examples](metrique/examples) for several examples of different common patterns.
