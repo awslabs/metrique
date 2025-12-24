@@ -396,9 +396,9 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
     }
 
     fn drain(&mut self) -> Vec<Observation> {
-        self.values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        self.values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
         let mut observations = Vec::new();
-        let mut iter = self.values.iter().copied();
+        let mut iter = self.values.iter().copied().filter(|v| !v.is_nan());
 
         if let Some(first) = iter.next() {
             let mut current_value = first;
