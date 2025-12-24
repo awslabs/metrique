@@ -1,7 +1,7 @@
 use divan::{Bencher, black_box};
 use metrique_aggregation::histogram::{
-    AggregationStrategy, SharedAggregationStrategy, AtomicExponentialAggregationStrategy,
-    SharedHistogram, ExponentialAggregationStrategy, Histogram, SortAndMerge,
+    AggregationStrategy, AtomicExponentialAggregationStrategy, ExponentialAggregationStrategy,
+    Histogram, SharedAggregationStrategy, SharedHistogram, SortAndMerge,
 };
 use metrique_core::CloseValue;
 use rand::{Rng, SeedableRng};

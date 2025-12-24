@@ -1,6 +1,6 @@
 use assert2::check;
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{SharedHistogram, ExponentialAggregationStrategy, Histogram};
+use metrique_aggregation::histogram::{ExponentialAggregationStrategy, Histogram, SharedHistogram};
 use metrique_writer::unit::{Byte, Millisecond};
 use metrique_writer::value::WithDimensions;
 use std::time::Duration;
@@ -113,9 +113,27 @@ fn test_sort_and_merge() {
     let dist = &latency_metric.distribution;
     check!(dist.len() == 3);
 
-    check!(dist[0] == metrique_writer::Observation::Repeated { total: 5.0, occurrences: 1 });
-    check!(dist[1] == metrique_writer::Observation::Repeated { total: 15.0, occurrences: 1 });
-    check!(dist[2] == metrique_writer::Observation::Repeated { total: 25.0, occurrences: 1 });
+    check!(
+        dist[0]
+            == metrique_writer::Observation::Repeated {
+                total: 5.0,
+                occurrences: 1
+            }
+    );
+    check!(
+        dist[1]
+            == metrique_writer::Observation::Repeated {
+                total: 15.0,
+                occurrences: 1
+            }
+    );
+    check!(
+        dist[2]
+            == metrique_writer::Observation::Repeated {
+                total: 25.0,
+                occurrences: 1
+            }
+    );
 }
 
 #[test]
@@ -150,9 +168,27 @@ fn test_sort_and_merge_merges_duplicates() {
     let dist = &latency_metric.distribution;
     check!(dist.len() == 3);
 
-    check!(dist[0] == metrique_writer::Observation::Repeated { total: 1.0, occurrences: 1 });
-    check!(dist[1] == metrique_writer::Observation::Repeated { total: 4.0, occurrences: 2 });
-    check!(dist[2] == metrique_writer::Observation::Repeated { total: 9.0, occurrences: 3 });
+    check!(
+        dist[0]
+            == metrique_writer::Observation::Repeated {
+                total: 1.0,
+                occurrences: 1
+            }
+    );
+    check!(
+        dist[1]
+            == metrique_writer::Observation::Repeated {
+                total: 4.0,
+                occurrences: 2
+            }
+    );
+    check!(
+        dist[2]
+            == metrique_writer::Observation::Repeated {
+                total: 9.0,
+                occurrences: 3
+            }
+    );
 }
 
 #[test]

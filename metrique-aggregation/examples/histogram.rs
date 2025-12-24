@@ -1,5 +1,5 @@
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{SharedHistogram, Histogram, SortAndMerge};
+use metrique_aggregation::histogram::{Histogram, SharedHistogram, SortAndMerge};
 use metrique_writer::unit::{Byte, Millisecond};
 use std::time::Duration;
 

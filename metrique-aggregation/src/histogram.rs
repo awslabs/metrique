@@ -106,6 +106,9 @@ pub trait AggregationStrategy {
     /// Record a single observation.
     fn record(&mut self, value: f64);
 
+    /// Record multiple observations of the same value.
+    fn record_many(&mut self, value: f64, count: u64);
+
     /// Drain all observations and return them as a vector.
     ///
     /// This resets the strategy's internal state.
@@ -118,6 +121,9 @@ pub trait AggregationStrategy {
 pub trait SharedAggregationStrategy {
     /// Record a single observation through a shared reference.
     fn record(&self, value: f64);
+
+    /// Record multiple observations of the same value through a shared reference.
+    fn record_many(&self, value: f64, count: u64);
 
     /// Drain all observations and return them as a vector.
     ///
@@ -169,9 +175,7 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
                         Observation::Floating(v) => self.0.record(v),
                         Observation::Repeated { total, occurrences } => {
                             let avg = total / occurrences as f64;
-                            for _ in 0..occurrences {
-                                self.0.record(avg);
-                            }
+                            self.0.record_many(avg, occurrences);
                         }
                         _ => {}
                     }
@@ -253,9 +257,7 @@ impl<T, S: SharedAggregationStrategy> SharedHistogram<T, S> {
                         Observation::Floating(v) => self.0.record(v),
                         Observation::Repeated { total, occurrences } => {
                             let avg = total / occurrences as f64;
-                            for _ in 0..occurrences {
-                                self.0.record(avg);
-                            }
+                            self.0.record_many(avg, occurrences);
                         }
                         _ => {}
                     }
@@ -339,6 +341,10 @@ impl AggregationStrategy for ExponentialAggregationStrategy {
         self.inner.add(value as u64, 1).ok();
     }
 
+    fn record_many(&mut self, value: f64, count: u64) {
+        self.inner.add(value as u64, count).ok();
+    }
+
     fn drain(&mut self) -> Vec<Observation> {
         let snapshot = std::mem::replace(
             &mut self.inner,
@@ -382,6 +388,11 @@ impl<const N: usize> SortAndMerge<N> {
 impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
     fn record(&mut self, value: f64) {
         self.values.push(value);
+    }
+
+    fn record_many(&mut self, value: f64, count: u64) {
+        self.values
+            .extend(std::iter::repeat(value).take(count as usize));
     }
 
     fn drain(&mut self) -> Vec<Observation> {
@@ -444,6 +455,10 @@ impl Default for AtomicExponentialAggregationStrategy {
 impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
     fn record(&self, value: f64) {
         self.inner.add(value as u64, 1).ok();
+    }
+
+    fn record_many(&self, value: f64, count: u64) {
+        self.inner.add(value as u64, count).ok();
     }
 
     fn drain(&self) -> Vec<Observation> {
