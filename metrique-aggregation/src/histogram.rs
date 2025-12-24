@@ -295,7 +295,7 @@ where
     fn write(&self, writer: impl ValueWriter) {
         use metrique_writer::unit::UnitTag;
         writer.metric(
-            self.observations.clone(),
+            self.observations.iter().copied(),
             T::Unit::UNIT,
             [],
             MetricFlags::empty(),
@@ -388,11 +388,11 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
         self.values.sort_by(|a, b| a.partial_cmp(b).unwrap());
         let mut observations = Vec::new();
         let mut iter = self.values.iter().copied();
-        
+
         if let Some(first) = iter.next() {
             let mut current_value = first;
             let mut current_count = 1;
-            
+
             for value in iter {
                 if value == current_value {
                     current_count += 1;
@@ -405,13 +405,13 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
                     current_count = 1;
                 }
             }
-            
+
             observations.push(Observation::Repeated {
                 total: current_value * current_count as f64,
                 occurrences: current_count,
             });
         }
-        
+
         self.values.clear();
         observations
     }
