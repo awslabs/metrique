@@ -205,7 +205,7 @@ For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/
 [`Entry`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.Entry.html
 [`EntryIoStream`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntryIoStream.html
 [`EntrySink`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntrySink.html
-[`Format`]: https://docs.rs/metrique/0.1/metrique/writer/format/trait.Format.html
+[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
 [`FlushGuard`]: https://docs.rs/metrique/0.1/metrique/slot/struct.FlushGuard.html
 [`FlushImmediately`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sink/struct.FlushImmediately.html
 [`InflectableEntry`]: https://docs.rs/metrique/0.1/metrique/trait.InflectableEntry.html

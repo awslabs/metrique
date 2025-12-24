@@ -231,4 +231,4 @@ queue.append_any(metric);
 ```
 
 [emf-docs]: htps://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
-[`Format`]: https://docs.rs/metrique/0.1/metrique/writer/format/trait.Format.html
+[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
