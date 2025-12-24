@@ -57,9 +57,11 @@ It is also possible to implement `Entry` manually (see the docs for [`Entry`]).
 
 This library currently only comes with `metrique-writer-format-emf`,
 which formats to [Amazon CloudWatch Embedded Metric Format (EMF)][emf-docs],
-but more formatters might be added in the future. You can also implement a custom
-format using the [`Format`] trait. If you do, you can optionally implement a custom
-[`EntrySink`] if you need flush functionality beyond writing bytes to an arbitrary I/O destination.
+but more formatters might be added in the future.
+
+You can also implement a custom format using the [`Format`] trait.
+If you do, you can optionally implement a custom [`EntrySink`] if you need flush
+functionality beyond writing bytes to an arbitrary I/O destination.
 
 Entries are sent to an [`EntrySink`] in order to be written to a destination.
 

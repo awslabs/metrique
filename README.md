@@ -127,9 +127,10 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 > See [`metrique-writer`](metrique-writer) for more information about queues and destinations.
 
 You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future.
-You can also implement a custom
-format using the [`Format`] trait. If you do, you can optionally implement a custom
-[`EntrySink`] if you need flush functionality beyond writing bytes to an arbitrary I/O destination.
+
+You can also implement a custom format using the [`Format`] trait.
+If you do, you can optionally implement a custom [`EntrySink`] if you need flush
+functionality beyond writing bytes to an arbitrary I/O destination.
 
 ## Aggregation
 
