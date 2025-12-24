@@ -348,7 +348,9 @@ impl AggregationStrategy for ExponentialAggregationStrategy {
     fn drain(&mut self) -> Vec<Observation> {
         let snapshot = std::mem::replace(
             &mut self.inner,
-            histogram::Histogram::with_config(&histogram::Config::new(4, 32).unwrap()),
+            histogram::Histogram::with_config(
+                &histogram::Config::new(4, 32).expect("known good configuration"),
+            ),
         );
         snapshot
             .iter()
@@ -368,11 +370,11 @@ impl AggregationStrategy for ExponentialAggregationStrategy {
 /// Strategy that stores all observations and sorts them on emission.
 ///
 /// This preserves all observations exactly but uses more memory than bucketing strategies.
-/// Uses a `SmallVec` to avoid allocations for small numbers of observations.
+/// This uses a `SmallVec` (default size 32, memory usage of 256 bytes) to avoid allocations for small numbers of observations.
 ///
 /// The const generic `N` controls the inline capacity before heap allocation.
 #[derive(Default)]
-pub struct SortAndMerge<const N: usize = 128> {
+pub struct SortAndMerge<const N: usize = 32> {
     values: SmallVec<[f64; N]>,
 }
 
