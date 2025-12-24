@@ -1,6 +1,6 @@
 use assert2::check;
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{AtomicHistogram, ExponentialAggregationStrategy, Histogram};
+use metrique_aggregation::histogram::{SharedHistogram, ExponentialAggregationStrategy, Histogram};
 use metrique_writer::unit::{Byte, Millisecond};
 use metrique_writer::value::WithDimensions;
 use std::time::Duration;
@@ -164,11 +164,11 @@ fn test_atomic_histogram() {
     #[metrics(rename_all = "PascalCase")]
     struct Metrics {
         #[metrics(unit = Millisecond)]
-        latency: AtomicHistogram<Duration, AtomicExponentialAggregationStrategy>,
+        latency: SharedHistogram<Duration, AtomicExponentialAggregationStrategy>,
     }
 
     let metrics = Metrics {
-        latency: AtomicHistogram::new(AtomicExponentialAggregationStrategy::new()),
+        latency: SharedHistogram::new(AtomicExponentialAggregationStrategy::new()),
     };
 
     metrics.latency.add_value(Duration::from_millis(5));

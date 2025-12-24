@@ -72,15 +72,15 @@
 //!
 //! ## AtomicExponentialAggregationStrategy
 //!
-//! Thread-safe version of exponential bucketing. Use with [`crate::histogram::AtomicHistogram`] when you need
+//! Thread-safe version of exponential bucketing. Use with [`crate::histogram::SharedHistogram`] when you need
 //! to record values from multiple threads concurrently:
 //!
 //! ```
-//! use metrique_aggregation::histogram::{AtomicHistogram, AtomicExponentialAggregationStrategy};
+//! use metrique_aggregation::histogram::{SharedHistogram, AtomicExponentialAggregationStrategy};
 //! use std::time::Duration;
 //!
-//! let histogram: AtomicHistogram<Duration, AtomicExponentialAggregationStrategy> =
-//!     AtomicHistogram::new(AtomicExponentialAggregationStrategy::new());
+//! let histogram: SharedHistogram<Duration, AtomicExponentialAggregationStrategy> =
+//!     SharedHistogram::new(AtomicExponentialAggregationStrategy::new());
 //! ```
 //!
 //! ## SortAndMerge
@@ -115,7 +115,7 @@ pub trait AggregationStrategy {
 /// Thread-safe strategy for aggregating observations in a histogram.
 ///
 /// Like [`AggregationStrategy`] but allows recording values through a shared reference.
-pub trait AtomicAggregationStrategy {
+pub trait SharedAggregationStrategy {
     /// Record a single observation through a shared reference.
     fn record(&self, value: f64);
 
@@ -130,7 +130,7 @@ pub trait AtomicAggregationStrategy {
 /// Use this when you have many observations of the same metric within a single unit of work.
 /// The histogram aggregates values in memory and emits them as a single metric entry.
 ///
-/// Requires `&mut self` to add values. For thread-safe access, use [`AtomicHistogram`].
+/// Requires `&mut self` to add values. For thread-safe access, use [`SharedHistogram`].
 pub struct Histogram<T, S = ExponentialAggregationStrategy> {
     strategy: S,
     _value: PhantomData<T>,
@@ -206,12 +206,12 @@ impl<T: MetricValue, S: AggregationStrategy> CloseValue for Histogram<T, S> {
 ///
 /// Like [`Histogram`] but allows adding values through a shared reference, making it
 /// suitable for concurrent access patterns.
-pub struct AtomicHistogram<T, S = AtomicExponentialAggregationStrategy> {
+pub struct SharedHistogram<T, S = AtomicExponentialAggregationStrategy> {
     strategy: S,
     _value: PhantomData<T>,
 }
 
-impl<T, S: Default> Default for AtomicHistogram<T, S> {
+impl<T, S: Default> Default for SharedHistogram<T, S> {
     fn default() -> Self {
         Self {
             strategy: Default::default(),
@@ -220,7 +220,7 @@ impl<T, S: Default> Default for AtomicHistogram<T, S> {
     }
 }
 
-impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
+impl<T, S: SharedAggregationStrategy> SharedHistogram<T, S> {
     /// Create a new atomic histogram with the given aggregation strategy.
     pub fn new(strategy: S) -> Self {
         Self {
@@ -238,7 +238,7 @@ impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
         T: MetricValue,
     {
         struct Capturer<'a, S>(&'a S);
-        impl<'b, S: AtomicAggregationStrategy> ValueWriter for Capturer<'b, S> {
+        impl<'b, S: SharedAggregationStrategy> ValueWriter for Capturer<'b, S> {
             fn string(self, _value: &str) {}
             fn metric<'a>(
                 self,
@@ -269,7 +269,7 @@ impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
     }
 }
 
-impl<T: MetricValue, S: AtomicAggregationStrategy> CloseValue for AtomicHistogram<T, S> {
+impl<T: MetricValue, S: SharedAggregationStrategy> CloseValue for SharedHistogram<T, S> {
     type Closed = HistogramClosed<T>;
 
     fn close(self) -> Self::Closed {
@@ -441,7 +441,7 @@ impl Default for AtomicExponentialAggregationStrategy {
     }
 }
 
-impl AtomicAggregationStrategy for AtomicExponentialAggregationStrategy {
+impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
     fn record(&self, value: f64) {
         self.inner.add(value as u64, 1).ok();
     }

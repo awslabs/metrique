@@ -48,7 +48,7 @@ fn execute_query(query_id: String) {
 ## Histogram types
 
 - **`Histogram<T, S = ExponentialAggregationStrategy>`** - Standard histogram that requires `&mut self` to add values. Uses exponential bucketing by default.
-- **`AtomicHistogram<T, S>`** - Thread-safe histogram that can add values with `&self`
+- **`SharedHistogram<T, S>`** - Thread-safe histogram that can add values with `&self`
 
 ## Aggregation strategies
 
@@ -64,7 +64,7 @@ let histogram: Histogram<Duration, SortAndMerge> = Histogram::new(SortAndMerge::
 Available strategies:
 
 - **`ExponentialAggregationStrategy`** (default) - Exponential bucketing with ~6.25% error. Best for most use cases.
-- **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing for use with `AtomicHistogram`
+- **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing for use with `SharedHistogram`
 - **`SortAndMerge`** - Stores all observations exactly and sorts them on emission. Perfect precision but higher memory usage.
 
 Exponential strategies provide better precision across a wide range of values. SortAndMerge preserves all observations exactly but uses more memory.

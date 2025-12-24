@@ -1,5 +1,5 @@
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{AtomicHistogram, Histogram, SortAndMerge};
+use metrique_aggregation::histogram::{SharedHistogram, Histogram, SortAndMerge};
 use metrique_writer::unit::{Byte, Millisecond};
 use std::time::Duration;
 
@@ -11,8 +11,8 @@ struct TestMetrics {
     #[metrics(unit = Byte)]
     size: Histogram<u32>,
 
-    // for thread safe, use AtomicHistogram
-    atomics: AtomicHistogram<usize>,
+    // for thread safe, use SharedHistogram
+    atomics: SharedHistogram<usize>,
 
     // other strategies are available, e.g. SortAndMerge preserves all
     // data points

@@ -1,7 +1,7 @@
 use divan::{Bencher, black_box};
 use metrique_aggregation::histogram::{
-    AggregationStrategy, AtomicAggregationStrategy, AtomicExponentialAggregationStrategy,
-    AtomicHistogram, ExponentialAggregationStrategy, Histogram, SortAndMerge,
+    AggregationStrategy, SharedAggregationStrategy, AtomicExponentialAggregationStrategy,
+    SharedHistogram, ExponentialAggregationStrategy, Histogram, SortAndMerge,
 };
 use metrique_core::CloseValue;
 use rand::{Rng, SeedableRng};
@@ -62,7 +62,7 @@ fn drain<S: AggregationStrategy + Default>(bencher: Bencher, items: usize) {
     threads = THREADS,
     args = ITEMS,
 )]
-fn add_atomic<S: AtomicAggregationStrategy + Default + Send + Sync>(
+fn add_atomic<S: SharedAggregationStrategy + Default + Send + Sync>(
     bencher: Bencher,
     items: usize,
 ) {
@@ -73,7 +73,7 @@ fn add_atomic<S: AtomicAggregationStrategy + Default + Send + Sync>(
                 let mut rng = ChaCha8Rng::seed_from_u64(0 as u64);
                 (0..items).map(|_| rng.random_range(0.0..1000.0)).collect()
             };
-            let histogram = Arc::new(AtomicHistogram::<f64, S>::new(S::default()));
+            let histogram = Arc::new(SharedHistogram::<f64, S>::new(S::default()));
             (histogram, values)
         })
         .bench_values(|(histogram, values)| {
@@ -88,11 +88,11 @@ fn add_atomic<S: AtomicAggregationStrategy + Default + Send + Sync>(
     types = [AtomicExponentialAggregationStrategy],
     args = ITEMS,
 )]
-fn drain_atomic<S: AtomicAggregationStrategy + Default>(bencher: Bencher, items: usize) {
+fn drain_atomic<S: SharedAggregationStrategy + Default>(bencher: Bencher, items: usize) {
     bencher
         .counter(items)
         .with_inputs(|| {
-            let hist = AtomicHistogram::<f64, S>::new(S::default());
+            let hist = SharedHistogram::<f64, S>::new(S::default());
             let mut rng = ChaCha8Rng::seed_from_u64(0);
             for _ in 0..items {
                 hist.add_value(rng.random_range(0.0..1000.0));
