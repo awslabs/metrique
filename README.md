@@ -70,7 +70,7 @@ enum Operation {
 
 #[metrics]
 struct RequestMetrics {
-    operation: Operation, /* you can use `operation: &'static str` if you prefer */
+    operation: Operation, // you can use `operation: &'static str` if you prefer
     #[metrics(timestamp)]
     timestamp: Timestamp,
     number_of_ducks: usize,
