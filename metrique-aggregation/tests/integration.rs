@@ -10,8 +10,6 @@ use metrique_aggregation::aggregate::{
 };
 //use metrique_aggregation::sink::TypedAggregatingEntrySink;
 use metrique_aggregation::{Counter, histogram::Histogram};
-use metrique_writer::{Entry, EntryWriter};
-use std::borrow::Cow;
 use std::time::Duration;
 
 /// A request metric that tracks operation, status, count, and latency.
@@ -35,7 +33,7 @@ impl AggregatableEntry for ApiCall {
 
     type Aggregated = AggregatedApiCall;
 
-    fn new_aggregated(key: Self::Key) -> Self::Aggregated {
+    fn new_aggregated(_key: Self::Key) -> Self::Aggregated {
         AggregatedApiCall {
             latency: Default::default(),
             number_of_tokens: Default::default(),
@@ -69,7 +67,9 @@ impl AggregatedEntry for AggregatedApiCall {
     }
 }
 
+#[metrics]
 struct ManyRequests {
+    #[metrics(flatten)]
     requests: Aggregated<ApiCall>,
 }
 
@@ -112,4 +112,26 @@ impl AggregatedEntry for AggregatedRequestMetrics {
             &entry.latency,
         );
     }
+}
+
+#[test]
+fn test_many_requests() {
+    let mut metrics = ManyRequests {
+        requests: Aggregated::default(),
+    };
+
+    metrics.requests.add(ApiCall {
+        latency: Duration::from_millis(100),
+        number_of_tokens: 50,
+    });
+
+    metrics.requests.add(ApiCall {
+        latency: Duration::from_millis(200),
+        number_of_tokens: 75,
+    });
+
+    metrics.requests.add(ApiCall {
+        latency: Duration::from_millis(150),
+        number_of_tokens: 60,
+    });
 }

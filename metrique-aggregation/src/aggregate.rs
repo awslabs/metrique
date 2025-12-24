@@ -76,7 +76,7 @@
 //! }
 //! ```
 
-use metrique_writer::Entry;
+use metrique_core::{CloseEntry, CloseValue};
 use std::hash::Hash;
 
 /// Defines how individual field values are aggregated.
@@ -103,11 +103,11 @@ use std::hash::Hash;
 ///
 /// impl<T: Default + AddAssign + Copy> AggregateValue<T> for Counter {
 ///     type Aggregated = T;
-///     
+///
 ///     fn init() -> T {
 ///         T::default()
 ///     }
-///     
+///
 ///     fn aggregate(accum: &mut T, value: &T) {
 ///         *accum += *value;
 ///     }
@@ -182,7 +182,7 @@ pub trait AggregateValue<T> {
 ///     }
 /// }
 /// ```
-pub trait AggregatableEntry: Entry {
+pub trait AggregatableEntry: CloseEntry {
     /// Key type that identifies which entries can be aggregated together.
     type Key: Eq + Hash + Clone;
 
@@ -254,7 +254,7 @@ pub trait AggregatableEntry: Entry {
 ///     }
 /// }
 /// ```
-pub trait AggregatedEntry: Entry {
+pub trait AggregatedEntry: CloseEntry {
     /// The key type for this aggregated entry.
     type Key: Eq + Hash + Clone;
 
@@ -263,4 +263,37 @@ pub trait AggregatedEntry: Entry {
 
     /// Aggregate another entry into this accumulator.
     fn aggregate_into(&mut self, entry: &Self::Source);
+}
+
+/// Aggregated allows inline-aggregation of a metric
+pub struct Aggregated<T: AggregatableEntry<Key = ()>> {
+    aggregated: Option<T::Aggregated>,
+}
+
+impl<T: AggregatableEntry<Key = ()>> CloseValue for Aggregated<T> {
+    type Closed = Option<<<T as AggregatableEntry>::Aggregated as CloseValue>::Closed>;
+
+    fn close(self) -> <Self as CloseValue>::Closed {
+        self.aggregated.map(|t| CloseValue::close(t))
+    }
+}
+
+impl<T: AggregatableEntry<Key = ()>> Aggregated<T> {
+    /// Add a new entry into this aggregate
+    pub fn add(&mut self, entry: T) {
+        match &mut self.aggregated {
+            Some(agg) => agg.aggregate_into(&entry),
+            None => {
+                let mut agg = T::new_aggregated(());
+                agg.aggregate_into(&entry);
+                self.aggregated = Some(agg);
+            }
+        }
+    }
+}
+
+impl<T: AggregatableEntry<Key = ()>> Default for Aggregated<T> {
+    fn default() -> Self {
+        Self { aggregated: None }
+    }
 }

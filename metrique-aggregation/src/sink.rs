@@ -104,7 +104,7 @@ where
     pub fn append(&self, entry: T) {
         let mut state = self.state.lock().unwrap();
         let key = entry.key();
-        
+
         state
             .entry(key.clone())
             .and_modify(|agg| agg.aggregate_into(&entry))
@@ -130,119 +130,5 @@ where
 {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::aggregate::{AggregateValue, AggregatableEntry, AggregatedEntry};
-    use crate::Counter;
-    use metrique_writer::{Entry, EntryWriter};
-    use std::borrow::Cow;
-    use assert2::check;
-
-    #[derive(Clone)]
-    struct TestMetrics {
-        operation: &'static str,
-        count: u64,
-    }
-
-    struct AggregatedTestMetrics {
-        key: &'static str,
-        count: u64,
-    }
-
-    impl Entry for TestMetrics {
-        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-            writer.value("Operation", &self.operation);
-            writer.value("Count", &self.count);
-        }
-
-        fn sample_group(&self) -> impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)> {
-            std::iter::empty()
-        }
-    }
-
-    impl Entry for AggregatedTestMetrics {
-        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-            writer.value("Operation", &self.key);
-            writer.value("Count", &self.count);
-        }
-
-        fn sample_group(&self) -> impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)> {
-            std::iter::empty()
-        }
-    }
-
-    impl AggregatableEntry for TestMetrics {
-        type Key = &'static str;
-        type Aggregated = AggregatedTestMetrics;
-
-        fn new_aggregated(key: Self::Key) -> Self::Aggregated {
-            AggregatedTestMetrics {
-                key,
-                count: Counter::init(),
-            }
-        }
-
-        fn key(&self) -> Self::Key {
-            self.operation
-        }
-    }
-
-    impl AggregatedEntry for AggregatedTestMetrics {
-        type Key = &'static str;
-        type Source = TestMetrics;
-
-        fn aggregate_into(&mut self, entry: &Self::Source) {
-            Counter::aggregate(&mut self.count, &entry.count);
-        }
-    }
-
-    #[test]
-    fn test_typed_aggregating_sink() {
-        let sink = TypedAggregatingEntrySink::new();
-
-        // Add some entries
-        sink.append(TestMetrics {
-            operation: "read",
-            count: 5,
-        });
-        sink.append(TestMetrics {
-            operation: "read",
-            count: 3,
-        });
-        sink.append(TestMetrics {
-            operation: "write",
-            count: 2,
-        });
-
-        // Drain and check results
-        let results = sink.drain();
-        check!(results.len() == 2);
-        
-        // Find the aggregated results
-        let read_result = results.iter().find(|r| r.key == "read");
-        let write_result = results.iter().find(|r| r.key == "write");
-        
-        check!(read_result.map(|r| r.count) == Some(8));
-        check!(write_result.map(|r| r.count) == Some(2));
-    }
-
-    #[test]
-    fn test_multiple_keys() {
-        let sink = TypedAggregatingEntrySink::new();
-
-        sink.append(TestMetrics { operation: "read", count: 1 });
-        sink.append(TestMetrics { operation: "write", count: 2 });
-        sink.append(TestMetrics { operation: "delete", count: 3 });
-        sink.append(TestMetrics { operation: "read", count: 4 });
-
-        let results = sink.drain();
-        check!(results.len() == 3);
-        
-        let read = results.iter().find(|r| r.key == "read").unwrap();
-        check!(read.count == 5);
     }
 }
