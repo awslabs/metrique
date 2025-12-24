@@ -7,5 +7,6 @@
 pub mod aggregate;
 pub mod counter;
 pub mod histogram;
+pub mod sink;
 
 pub use counter::Counter;
