@@ -6,7 +6,7 @@ use quote::{format_ident, quote, quote_spanned};
 use syn::Ident;
 
 use crate::{
-    MetricsField, MetricsFieldKind, NameStyle, RootAttributes, inflect::metric_name,
+    MetricsField, MetricsFieldKind, NameStyle, Prefix, RootAttributes, inflect::metric_name,
     value_impl::format_value,
 };
 
@@ -23,7 +23,6 @@ pub fn generate_entry_impl(
     // transitively set the namestyle
     quote! {
         const _: () = {
-            // The fields of the entry are all marked "deprecated" so that people don't use them directly.
             #[expect(deprecated)]
             impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for #entry_name {
                 fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
@@ -78,20 +77,21 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
             MetricsFieldKind::Flatten { span, prefix } => {
                 let (extra, ns) = match prefix {
                     None => (quote!(), ns),
-                    Some(prefix) => {
-                        let (extra, prefix) = make_inflect(
+                    Some(Prefix::Inflectable { prefix }) => append_prefix_to_ns(
+                        &ns,
+                        make_inflect(
                             &ns,
                             format_ident!("InflectAffix", span = field_span),
                             |style| style.apply_prefix(prefix),
                             field,
-                        );
-                        (
-                            extra,
-                            quote_spanned! {field.span=>
-                                <#ns as ::metrique::NameStyle>::AppendPrefix<#prefix>
-                            },
-                        )
-                    }
+                        ),
+                        field,
+                    ),
+                    Some(Prefix::Exact(exact_prefix)) => append_prefix_to_ns(
+                        &ns,
+                        make_const_str_noinflect(exact_prefix.clone(), field),
+                        field,
+                    ),
                 };
                 writes.push(quote_spanned! {*span=>
                     #extra
@@ -102,12 +102,7 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
                 continue;
             }
             MetricsFieldKind::Field { format, .. } => {
-                let (extra, name) = make_inflect(
-                    &ns,
-                    format_ident!("Inflect", span = field_span),
-                    |style| metric_name(root_attrs, style, field),
-                    field,
-                );
+                let (extra, name) = make_inflect_metric_name(root_attrs, field);
                 let value = format_value(format, field_span, quote! { &self.#field_ident });
                 writes.push(quote_spanned! {field_span=>
                     ::metrique::writer::EntryWriter::value(writer,
@@ -122,6 +117,24 @@ fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttribute
     }
 
     writes
+}
+
+fn append_prefix_to_ns(ns: &Ts2, (extra, prefix): (Ts2, Ts2), field: &MetricsField) -> (Ts2, Ts2) {
+    (
+        extra,
+        quote_spanned! {field.span=>
+            <#ns as ::metrique::NameStyle>::AppendPrefix<#prefix>
+        },
+    )
+}
+
+fn make_inflect_metric_name(root_attrs: &RootAttributes, field: &MetricsField) -> (Ts2, Ts2) {
+    make_inflect(
+        &make_ns(root_attrs.rename_all, field.span),
+        format_ident!("Inflect", span = field.span),
+        |style| metric_name(root_attrs, style, field),
+        field,
+    )
 }
 
 fn make_inflect(
@@ -146,12 +159,19 @@ fn make_inflect(
             #extra_kebab
             #extra_pascal
             #extra_snake
-
         ),
         quote!(
             <#ns as ::metrique::NameStyle>::#inflect<#name_ident, #name_pascal, #name_snake, #name_kebab>
         ),
     )
+}
+
+fn make_const_str_noinflect(name: String, field: &MetricsField) -> (Ts2, Ts2) {
+    let name_ident = const_str_struct_name(NameStyle::Preserve, field);
+
+    let extra = const_str(&name_ident, &name);
+
+    (extra, quote! { #name_ident })
 }
 
 pub fn const_str(ident: &syn::Ident, value: &str) -> Ts2 {
@@ -190,9 +210,32 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
                     ::metrique::InflectableEntry::<#ns>::sample_group(&self.#field_ident)
                 });
             }
-            _ => {
-                // TODO: support sample_group
+            MetricsFieldKind::FlattenEntry(span) => {
+                sample_group_fields.push(quote_spanned! {*span=>
+                    ::metrique::writer::Entry::sample_group(&self.#field_ident)
+                });
             }
+            MetricsFieldKind::Field {
+                sample_group: Some(span),
+                ..
+            } => {
+                let (extra, name) = make_inflect_metric_name(root_attrs, field);
+                sample_group_fields.push(quote_spanned! {*span=>
+                    {
+                        #extra
+                        ::std::iter::once((
+                            ::metrique::concat::const_str_value::<#name>(),
+                            ::metrique::writer::core::SampleGroup::as_sample_group(&self.#field_ident)
+                        ))
+                    }
+                });
+            }
+            // these don't have sample groups
+            MetricsFieldKind::Field {
+                sample_group: None, ..
+            }
+            | MetricsFieldKind::Ignore { .. }
+            | MetricsFieldKind::Timestamp { .. } => {}
         }
     }
 

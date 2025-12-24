@@ -72,7 +72,7 @@ enum Operation {
 
 #[metrics]
 struct RequestMetrics {
-    operation: Operation, /* you can use `operation: &'static str` if you prefer */
+    operation: Operation, // you can use `operation: &'static str` if you prefer
     #[metrics(timestamp)]
     timestamp: Timestamp,
     number_of_ducks: usize,
@@ -130,6 +130,34 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future. You can also configure a custom
 format using the [`Format`] trait.
+
+## Aggregation
+
+When you have many observations of the same metric within a single unit of work, you can use histograms to aggregate them into a distribution rather than emitting each observation individually.
+
+The [`metrique-aggregation`](metrique-aggregation) crate provides histogram types that collect observations and emit them as distributions:
+
+```rust
+use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::{Histogram, ExponentialAggregationStrategy};
+use metrique_writer::unit::Millisecond;
+use std::time::Duration;
+
+#[metrics(rename_all = "PascalCase")]
+struct QueryMetrics {
+    query_id: String,
+    
+    #[metrics(unit = Millisecond)]
+    backend_latency: Histogram<Duration, ExponentialAggregationStrategy>,
+}
+```
+
+Common use cases include:
+- Distributed queries that fan out to multiple backend services
+- Batch processing where you want to track per-item latency
+- Any operation that generates multiple measurements to aggregate
+
+For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md) is a better approach than aggregation. Consider histograms when you need precise distributions for high-frequency events.
 
 ## Glossary
 

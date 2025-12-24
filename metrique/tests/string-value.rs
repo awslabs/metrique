@@ -31,6 +31,9 @@ struct TimeAsEpochMillis {
     time: Timestamp,
 }
 
+#[metrics(value, sample_group)]
+struct Operation(&'static str);
+
 #[metrics(value)]
 struct Empty {}
 

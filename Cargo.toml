@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "metrique", "metrique-metricsrs", "metrique-service-metrics", "metrique-core", "metrique-macro", "metrique-timesource", "metrique-writer","metrique-writer-core", "metrique-writer-format-emf", "metrique-writer-macro"]
+members = [ "metrique", "metrique-metricsrs", "metrique-service-metrics", "metrique-core", "metrique-macro", "metrique-timesource", "metrique-writer","metrique-writer-core", "metrique-writer-format-emf", "metrique-writer-macro", "metrique-aggregation"]
 
 [workspace.dependencies]
 ahash = "0.8.6"
@@ -11,12 +11,12 @@ bit-set = "0.8"
 chrono = "0.4"
 crossbeam-queue = "0.3"
 crossbeam-utils = "0.8"
-darling = "0.21"
+darling = "0.23"
 derive-where = "1"
 dtoa = "1"
 enum-map = "2"
 futures = { version = "0.3", default-features = false }
-hashbrown = "0.15"
+hashbrown = "0.16"
 histogram = "0.11"
 Inflector = "0.11.4"
 insta = "1.36"
@@ -41,7 +41,7 @@ strum_macros = "0.27"
 syn = "2.0"
 synstructure = "0.13"
 tempfile = "3"
-tokio = { version = "1.47.0", default-features = false }
+tokio = { version = "1.38", default-features = false }
 tokio-util = "0.7.13"
 tracing = "0.1.41"
 tracing-appender = "0.2"

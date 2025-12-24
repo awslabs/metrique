@@ -3,14 +3,18 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod emf;
 mod entry_impl;
 mod inflect;
 mod value_impl;
 
-use darling::{FromField, FromMeta, FromVariant, ast::NestedMeta, util::Flag};
+use darling::{
+    FromField, FromMeta, FromVariant,
+    ast::NestedMeta,
+    util::{Flag, SpannedValue},
+};
 use emf::DimensionSets;
 use inflect::NameStyle;
 use proc_macro::TokenStream;
@@ -21,7 +25,9 @@ use syn::{
     Result, Type, Visibility, parse_macro_input, spanned::Spanned,
 };
 
-use crate::inflect::metric_name;
+use crate::inflect::{
+    metric_name, name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter,
+};
 
 /// Transforms a struct or enum into a unit-of-work metric.
 ///
@@ -32,8 +38,10 @@ use crate::inflect::metric_name;
 /// | Attribute | Type | Description | Example |
 /// |-----------|------|-------------|---------|
 /// | `rename_all` | String | Changes the case style of all field names | `#[metrics(rename_all = "PascalCase")]` |
-/// | `prefix` | String | Adds a prefix to all field names | `#[metrics(prefix = "api_")]` |
+/// | `prefix` | String | Adds a prefix to all field names (prefix gets inflected) | `#[metrics(prefix = "api_")]` |
+/// | `exact_prefix` | String | Adds a prefix to all field names without inflection | `#[metrics(exact_prefix = "API_")]` |
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
+/// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
 /// | `subfield` | Flag | When set, this metric can only be used when nested within other metrics, and can be consumed by reference (has both `impl CloseValue for &MyStruct` and `impl CloseValue for MyStruct`). It cannot be added to a sink directly. | `#[metrics(subfield)]` |
 /// | `subfield_owned` | Flag | When set, this metric can only be used when nested within other metrics. It cannot be added to a sink directly. | `#[metrics(subfield_owned)]` |
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
@@ -47,9 +55,11 @@ use crate::inflect::metric_name;
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `format` | Path | Specifies the formatter (`ValueFormatter`) for the metric value | `#[metrics(format=EpochSeconds)]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
+/// | `sample_group` | Flag | Marks a field as a sample group - it will still be emitted as a value | `#[metrics(sample_group)]` |
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
+/// | `exact_prefix` | String | Adds a prefix to flattened entries without inflection | `#[metrics(flatten, exact_prefix="API_")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
-/// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs | `#[metrics(flatten_entry)]` |
+/// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 ///
@@ -59,13 +69,135 @@ use crate::inflect::metric_name;
 /// |-----------|------|-------------|---------|
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 ///
+/// # Metric Names
+///
+/// ## Prefixes
+///
+/// Prefixes can be attached to metrics in 2 different ways:
+///
+/// 1. Prefixes on flattened subfields, which affect all the metrics contained within
+///    the flattened subfield:
+///
+///    ```rust
+///    # use metrique::unit_of_work::metrics;
+///    # use std::time::Duration;
+///    #[metrics(subfield)]
+///    struct Subfield {
+///        request_latency: Duration, // inflected
+///        #[metrics(name="NDucks")] // not inflected (since `name` is not inflected), prefixed
+///        number_of_ducks: u32,
+///    }
+///
+///    #[metrics(rename_all = "kebab-case")]
+///    struct Base {
+///        // uses `exact_prefix`, not inflected
+///        #[metrics(flatten, exact_prefix = "API:")]
+///        api: Subfield,
+///        // uses `prefix`, inflected
+///        #[metrics(flatten, prefix = "alt")]
+///        alt: Subfield,
+///    }
+///
+///    let vec_sink = metrique::writer::sink::VecEntrySink::new();
+///    Base {
+///        api: Subfield { request_latency: Duration::from_millis(1), number_of_ducks: 0 },
+///        alt: Subfield { request_latency: Duration::from_millis(1), number_of_ducks: 0 }
+///    }.append_on_drop(vec_sink.clone());
+///    let entries = vec_sink.drain();
+///    let entry = metrique::test_util::to_test_entry(&entries[0]);
+///    assert_eq!(entry.metrics["API:request-latency"], 1.0);
+///    assert_eq!(entry.metrics["alt-request-latency"], 1.0);
+///    assert_eq!(entry.metrics["API:NDucks"], 0);
+///    assert_eq!(entry.metrics["alt-NDucks"], 0);
+///    ```
+/// 2. Prefixes on the struct itself, which *only* affect fields within the metric
+///    that don't have a `name` or a `flatten` attribute:
+///
+///    ```rust
+///    # use metrique::unit_of_work::metrics;
+///    # use std::time::Duration;
+///    #[metrics(subfield)]
+///    struct Subfield {
+///        request_latency: Duration, // inflected
+///    }
+///
+///    #[metrics(prefix = "Foo-" /* prefix gets inflected */, rename_all = "kebab-case")]
+///    struct Base {
+///        // prefix does not propagate to subfield. Use `prefix = "Foo-"` to propagate
+///        #[metrics(flatten)]
+///        sub: Subfield,
+///        // prefix does not propagate to named field
+///        #[metrics(name = "n-ducks")]
+///        number_of_ducks: u32,
+///        // prefix does propagate to other
+///        number_of_geese: u32,
+///    }
+///
+///    let vec_sink = metrique::writer::sink::VecEntrySink::new();
+///    Base {
+///        sub: Subfield { request_latency: Duration::from_millis(1) },
+///        number_of_ducks: 0,
+///        number_of_geese: 0
+///    }.append_on_drop(vec_sink.clone());
+///    let entries = vec_sink.drain();
+///    let entry = metrique::test_util::to_test_entry(&entries[0]);
+///    assert_eq!(entry.metrics["request-latency"], 1.0);
+///    assert_eq!(entry.metrics["n-ducks"], 0);
+///    // prefix-on-struct only applies to this
+///    assert_eq!(entry.metrics["foo-number-of-geese"], 0);
+///    ```
+///
+/// Note that prefix-attribute-on-flatten *does* apply to nested fields that have
+/// a `name` attribute.
+///
+/// Prefixes can either be inflectable (with the `prefix` attribute) or non-inflectable
+/// (with the `exact_prefix` attribute).
+///
+/// ## Inflection
+///
+/// Metric names are inflected to allow them to fit into the name style used by the
+/// application. This uses the `Inflector` crate and supports inflecting metrics into
+/// PascalCase, snake_case, and kebab-case.
+///
+/// Metric names assigned via the `name` attribute are not inflected, but if they are
+/// contained in a metric with a prefix, the prefix can be inflected. Prefixes assigned via
+/// `exact_prefix` are similarly not inflected.
+///
+/// For example, this emits a metric named "foo_Bar", since "Bar" is assigned via a
+/// `name` attribute and therefore not inflected, but the prefix is assigned
+/// via `prefix` and is therefore inflected.
+///
+/// ```rust
+/// # use metrique::unit_of_work::metrics;
+///
+/// #[metrics(subfield)]
+/// struct Subfield {
+///     #[metrics(name = "NDucks")]
+///     number_of_ducks: u32,
+/// }
+///
+/// #[metrics(rename_all = "snake_case")]
+/// struct Base {
+///     #[metrics(flatten, prefix = "Waterfowl_")]
+///     waterfowl: Subfield,
+/// }
+///
+/// let vec_sink = metrique::writer::sink::VecEntrySink::new();
+/// Base { waterfowl: Subfield { number_of_ducks: 0 } }
+///     .append_on_drop(vec_sink.clone());
+/// let entries = vec_sink.drain();
+/// let entry = metrique::test_util::to_test_entry(&entries[0]);
+/// assert_eq!(entry.metrics["waterfowl_NDucks"], 0);
+/// ```
+///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
 /// use metrique::unit_of_work::metrics;
 /// use metrique::timers::{Timestamp, Timer};
 /// use metrique::unit::{Count, Millisecond};
-/// use metrique::writer::{GlobalEntrySink, ServiceMetrics};
+/// use metrique::writer::GlobalEntrySink;
+/// use metrique::ServiceMetrics;
 /// use std::time::SystemTime;
 ///
 /// #[metrics(value(string), rename_all = "snake_case")]
@@ -78,6 +210,7 @@ use crate::inflect::metric_name;
 ///
 /// #[metrics(rename_all = "PascalCase")]
 /// struct RequestMetrics {
+///     #[metrics(sample_group)]
 ///     operation: Operation,
 ///
 ///     #[metrics(timestamp)]
@@ -86,13 +219,13 @@ use crate::inflect::metric_name;
 ///     #[metrics(unit = Millisecond)]
 ///     operation_time: Timer,
 ///
-///     #[metrics(flatten)]
+///     #[metrics(flatten, prefix = "sub_")]
 ///     nested: NestedMetrics,
 ///
 ///     request_count: RequestCount,
 /// }
 ///
-/// #[metrics(subfield, prefix = "sub_")]
+/// #[metrics(subfield)]
 /// struct NestedMetrics {
 ///     #[metrics(name = "CustomCounter")]
 ///     counter: usize,
@@ -114,9 +247,11 @@ use crate::inflect::metric_name;
 /// # Generated Types
 ///
 /// For a struct named `MyMetrics`, the macro generates:
-/// - `MyMetricsEntry`: The internal representation used for serialization
-/// - `MyMetricsGuard`: A wrapper that implements `Deref`/`DerefMut` to the original struct and handles emission on drop
-/// - `MyMetricsHandle`: A shareable handle for concurrent access to the metrics
+/// - `MyMetricsEntry`: The internal representation used for serialization, implements `InflectableEntry`
+/// - `MyMetricsGuard`: A wrapper that implements `Deref`/`DerefMut` to the original struct and handles emission on drop.
+///   A type alias to ``AppendAndCloseOnDrop`.
+/// - `MyMetricsHandle`: A shareable handle for concurrent access to the metrics.
+///   A type alias to ``AppendAndCloseOnDropHandle`.
 #[proc_macro_attribute]
 pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -170,7 +305,8 @@ impl ValueAttributes {
 
 #[derive(Debug, Default, FromMeta)]
 struct RawRootAttributes {
-    prefix: Option<String>,
+    prefix: Option<SpannedKv<String>>,
+    exact_prefix: Option<SpannedKv<String>>,
 
     #[darling(default)]
     rename_all: NameStyle,
@@ -181,6 +317,8 @@ struct RawRootAttributes {
     subfield: Flag,
     #[darling(rename = "subfield_owned")]
     subfield_owned: Flag,
+    #[darling(rename = "sample_group")]
+    sample_group: Flag,
     value: Option<ValueAttributes>,
 }
 
@@ -196,11 +334,13 @@ enum MetricMode {
 
 #[derive(Debug, Default)]
 struct RootAttributes {
-    prefix: Option<String>,
+    prefix: Option<Prefix>,
 
     rename_all: NameStyle,
 
     emf_dimensions: Option<DimensionSets>,
+
+    sample_group: bool,
 
     mode: MetricMode,
 }
@@ -227,7 +367,19 @@ impl RawRootAttributes {
             out,
             &self.subfield_owned,
         )?;
-        let mode = out.map(|(s, _)| s).unwrap_or_default();
+        let mut mode = out.map(|(s, _)| s).unwrap_or_default();
+        let sample_group = if self.sample_group.is_present() {
+            if let MetricMode::Value = &mut mode {
+                true
+            } else {
+                return Err(darling::Error::custom(
+                    "`sample_group` as a top-level attribute can only be used with #[metrics(value)]",
+                )
+                .with_span(&self.sample_group.span()));
+            }
+        } else {
+            false
+        };
         if let (MetricMode::ValueString, Some(ds)) = (mode, &self.emf_dimensions) {
             return Err(
                 darling::Error::custom("value does not make sense with dimension-sets")
@@ -235,9 +387,15 @@ impl RawRootAttributes {
             );
         }
         Ok(RootAttributes {
-            prefix: self.prefix,
+            prefix: Prefix::from_inflectable_and_exact(
+                &self.prefix,
+                &self.exact_prefix,
+                PrefixLevel::Root,
+            )?
+            .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
+            sample_group,
             mode,
         })
     }
@@ -279,6 +437,10 @@ impl RootAttributes {
             }
         }
     }
+
+    fn warnings(&self) -> Ts2 {
+        quote! {}
+    }
 }
 
 #[derive(Debug, FromField)]
@@ -291,6 +453,8 @@ struct RawMetricsFieldAttrs {
     no_close: Flag,
 
     timestamp: Flag,
+
+    sample_group: Flag,
 
     ignore: Flag,
 
@@ -305,6 +469,9 @@ struct RawMetricsFieldAttrs {
 
     #[darling(default)]
     prefix: Option<SpannedKv<String>>,
+
+    #[darling(default)]
+    exact_prefix: Option<SpannedKv<String>>,
 }
 
 #[derive(Debug, FromVariant)]
@@ -339,6 +506,10 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
     }
 }
 
+fn cannot_combine_error(existing: &str, new: &str, new_span: Span) -> darling::Error {
+    darling::Error::custom(format!("Cannot combine `{existing}` with `{new}`")).with_span(&new_span)
+}
+
 // Set metrics to `new`, enforcing the fact that this field is exclusive and cannot be combined
 fn set_exclusive<T>(
     new: impl Fn(Span) -> T,
@@ -347,10 +518,7 @@ fn set_exclusive<T>(
     flag: &Flag,
 ) -> darling::Result<Option<(T, &'static str)>> {
     match (flag.is_present(), &existing) {
-        (true, Some((_, other))) => Err(darling::Error::custom(format!(
-            "Cannot combine {other} with {name}"
-        ))
-        .with_span(&flag.span())),
+        (true, Some((_, other))) => Err(cannot_combine_error(other, name, flag.span())),
         (true, None) => Ok(Some((new(flag.span()), name))),
         _ => Ok(existing),
     }
@@ -363,11 +531,23 @@ fn get_field_option<'a, T>(
     span: &'a Option<SpannedKv<T>>,
 ) -> darling::Result<Option<&'a T>> {
     match (span, &existing) {
-        (Some(input), Some((_, other))) => Err(darling::Error::custom(format!(
-            "Cannot combine {other} with {field_name}"
-        ))
-        .with_span(&input.key_span)),
+        (Some(input), Some((_, other))) => {
+            Err(cannot_combine_error(other, field_name, input.key_span))
+        }
         (Some(v), None) => Ok(Some(&v.value)),
+        _ => Ok(None),
+    }
+}
+
+// retrieve the value for a flag that requires a value to be a field
+fn get_field_flag(
+    field_name: &'static str,
+    existing: &Option<(MetricsFieldKind, &'static str)>,
+    flag: &Flag,
+) -> darling::Result<Option<Span>> {
+    match (flag.is_present(), &existing) {
+        (true, Some((_, other))) => Err(cannot_combine_error(other, field_name, flag.span())),
+        (true, None) => Ok(Some(flag.span())),
         _ => Ok(None),
     }
 }
@@ -407,30 +587,37 @@ impl RawMetricsFieldAttrs {
         let name = get_field_option("name", &out, &name)?;
         let unit = get_field_option("unit", &out, &self.unit)?;
         let format = get_field_option("format", &out, &self.format)?;
+        let sample_group = get_field_flag("sample_group", &out, &self.sample_group)?;
         let close = !self.no_close.is_present();
         if let (false, Some((MetricsFieldKind::Ignore(span), _))) = (close, &out) {
-            return Err(
-                darling::Error::custom("Cannot combine ignore with no_close").with_span(span),
-            );
+            return Err(cannot_combine_error("no_close", "ignore", *span));
         }
-        if let Some(prefix_val) = self.prefix {
+
+        let prefix = Prefix::from_inflectable_and_exact(
+            &self.prefix,
+            &self.exact_prefix,
+            PrefixLevel::Field,
+        )?;
+        if let Some(prefix_) = prefix {
             match &mut out {
-                Some((MetricsFieldKind::Flatten { span: _, prefix }, _)) => {
-                    *prefix = Some(prefix_val.value);
+                Some((MetricsFieldKind::Flatten { prefix, .. }, _)) => {
+                    *prefix = Some(prefix_.into_inner());
                 }
                 _ => {
                     return Err(
-                        darling::Error::custom("prefix can only be used with flatten")
-                            .with_span(&prefix_val.key_span),
+                        darling::Error::custom("prefix can only be used with `flatten`")
+                            .with_span(&prefix_.span()),
                     );
                 }
             }
         }
+
         Ok(MetricsFieldAttrs {
             close,
             kind: match out {
                 Some((out, _)) => out,
                 None => MetricsFieldKind::Field {
+                    sample_group,
                     name: name.cloned(),
                     unit: unit.cloned(),
                     format: format.cloned(),
@@ -469,12 +656,94 @@ struct MetricsFieldAttrs {
     kind: MetricsFieldKind,
 }
 
+enum PrefixLevel {
+    Root,
+    Field,
+}
+
+#[derive(Debug, Clone)]
+enum Prefix {
+    Inflectable { prefix: String },
+    Exact(String),
+}
+
+impl Prefix {
+    fn inflected_prefix_message(prefix: &str, c: char) -> String {
+        let warning_text = if name_contains_dot(prefix) {
+            " '.' used to be allowed in `prefix` but is now forbidden."
+        } else {
+            ""
+        };
+        let prefix_fixed: String = prefix
+            .chars()
+            .map(|c| if !c.is_alphanumeric() { '-' } else { c })
+            .collect();
+        format!(
+            "You cannot use the character {c:?} with `prefix`. `prefix` will \"inflect\" to match the name scheme specified by `rename_all`. For example, \
+            it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = {prefix_fixed:?}`. If you want to preserve {c:?} \
+            in the final metric name use `exact_prefix = {prefix:?}.{warning_text}"
+        )
+    }
+
+    fn prefix_should_end_with_delimiter_message(prefix: &str) -> String {
+        let delimiter = if prefix.contains('-') { '-' } else { '_' };
+        let prefix_fixed = format!("{prefix}{delimiter}");
+        format!(
+            "The root-level prefix `{prefix:?}` must end with a delimiter. Use `prefix = {prefix_fixed:?}`, which inflects \
+            correctly in all inflections"
+        )
+    }
+
+    fn from_inflectable_and_exact(
+        inflectable: &Option<SpannedKv<String>>,
+        exact: &Option<SpannedKv<String>>,
+        level: PrefixLevel,
+    ) -> darling::Result<Option<SpannedValue<Self>>> {
+        match (inflectable, exact) {
+            (Some(prefix), None) => {
+                if let Some(c) = name_contains_uninflectables(&prefix.value) {
+                    Err(
+                        darling::Error::custom(Self::inflected_prefix_message(&prefix.value, c))
+                            .with_span(&prefix.key_span),
+                    )
+                } else if let PrefixLevel::Root = level
+                    && !name_ends_with_delimiter(&prefix.value)
+                {
+                    Err(
+                        darling::Error::custom(Self::prefix_should_end_with_delimiter_message(
+                            &prefix.value,
+                        ))
+                        .with_span(&prefix.key_span),
+                    )
+                } else {
+                    Ok(Some(SpannedValue::new(
+                        Self::Inflectable {
+                            prefix: prefix.value.clone(),
+                        },
+                        prefix.key_span,
+                    )))
+                }
+            }
+            (None, Some(p)) => Ok(Some(SpannedValue::new(
+                Prefix::Exact(p.value.clone()),
+                p.key_span,
+            ))),
+            (None, None) => Ok(None),
+            (Some(inflectable), Some(_)) => Err(cannot_combine_error(
+                "prefix",
+                "exact_prefix",
+                inflectable.key_span,
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 enum MetricsFieldKind {
     Ignore(Span),
     Flatten {
         span: Span,
-        prefix: Option<String>,
+        prefix: Option<Prefix>,
     },
     FlattenEntry(Span),
     Timestamp(Span),
@@ -482,7 +751,23 @@ enum MetricsFieldKind {
         unit: Option<syn::Path>,
         name: Option<String>,
         format: Option<syn::Path>,
+        sample_group: Option<Span>,
     },
+}
+
+// produce a warning that the user can see
+//
+// currently, we do not have any logic that produces warnings, but leave this
+// in for the next time
+#[allow(unused)]
+fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
+    quote_spanned! {span=>
+        const _: () = {
+            #[deprecated(note=#warning)]
+            const _W: () = ();
+            _W
+        };
+    }
 }
 
 fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
@@ -557,6 +842,7 @@ fn generate_metrics_for_enum(
         &input.attrs,
         &parsed_variants,
     );
+    let warnings = root_attrs.warnings();
 
     let value_enum =
         generate_value_enum(&value_name, &input.generics, &parsed_variants, &root_attrs)?;
@@ -578,6 +864,7 @@ fn generate_metrics_for_enum(
         #value_enum
         #value_impl
         #close_value_impl
+        #warnings
     })
 }
 
@@ -605,6 +892,7 @@ fn generate_metrics_for_struct(
         &input.attrs,
         &parsed_fields,
     )?;
+    let warnings = root_attributes.warnings();
 
     // No longer need to derive Entry since we're implementing it directly in entry_impl.rs
     let entry_struct = generate_entry_struct(
@@ -661,6 +949,9 @@ fn generate_metrics_for_struct(
     Ok(quote! {
         // The struct provided to the proc macro, minus the #[metrics] attrs
         #base_struct
+
+        // Any warnings we emit
+        #warnings
 
         // The struct that implements the entry trait
         #entry_struct
@@ -719,12 +1010,16 @@ fn generate_on_drop_wrapper(
     target: &Ident,
     handle: &Ident,
 ) -> Ts2 {
+    let inner_str = inner.to_string();
+    let guard_str = guard.to_string();
     quote! {
+        #[doc = concat!("Metrics guard returned from [`", #inner_str, "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped.")]
         #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner, Q>;
+        #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
         #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner, Q>;
 
         impl #inner {
-            #[doc = "Creates a AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
+            #[doc = "Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
             #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
@@ -1164,6 +1459,19 @@ mod tests {
         super::generate_metrics(root_attrs, input).unwrap()
     }
 
+    fn metrics_impl_string(input: Ts2, attrs: Ts2) -> String {
+        let output = metrics_impl(input, attrs);
+
+        // Parse the output back into a syn::File for pretty printing
+        match parse2::<syn::File>(output.clone()) {
+            Ok(file) => prettyplease::unparse(&file),
+            Err(_) => {
+                // If parsing fails, use the raw string output
+                output.to_string()
+            }
+        }
+    }
+
     #[test]
     fn test_darling_root_attrs() {
         use darling::FromMeta;
@@ -1187,19 +1495,22 @@ mod tests {
             }
         };
 
-        // Process the input through the metrics macro
-        let output = metrics_impl(input, quote!(metrics()));
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("simple_metrics_struct", parsed_file);
+    }
 
-        // Parse the output back into a syn::File for pretty printing
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
-            Ok(file) => prettyplease::unparse(&file),
-            Err(_) => {
-                // If parsing fails, use the raw string output
-                output.to_string()
+    #[test]
+    fn test_sample_group_metrics_struct() {
+        let input = quote! {
+            struct RequestMetrics {
+                #[metrics(sample_group)]
+                operation: &'static str,
+                number_of_ducks: usize
             }
         };
 
-        assert_snapshot!("simple_metrics_struct", parsed_file);
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("sample_group_metrics_struct", parsed_file);
     }
 
     #[test]
@@ -1212,19 +1523,22 @@ mod tests {
             }
         };
 
-        // Process the input through the metrics macro
-        let output = metrics_impl(input, quote!(metrics(value)));
+        let parsed_file = metrics_impl_string(input, quote!(metrics(value)));
+        assert_snapshot!("simple_metrics_value_struct", parsed_file);
+    }
 
-        // Parse the output back into a syn::File for pretty printing
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
-            Ok(file) => prettyplease::unparse(&file),
-            Err(_) => {
-                // If parsing fails, use the raw string output
-                output.to_string()
+    #[test]
+    fn test_sample_group_metrics_value_struct() {
+        let input = quote! {
+            struct RequestValue {
+                #[metrics(ignore)]
+                ignore: u32,
+                value: &'static str,
             }
         };
 
-        assert_snapshot!("simple_metrics_value_struct", parsed_file);
+        let parsed_file = metrics_impl_string(input, quote!(metrics(value, sample_group)));
+        assert_snapshot!("sample_group_metrics_value_struct", parsed_file);
     }
 
     #[test]
@@ -1236,18 +1550,7 @@ mod tests {
                 u32);
         };
 
-        // Process the input through the metrics macro
-        let output = metrics_impl(input, quote!(metrics(value)));
-
-        // Parse the output back into a syn::File for pretty printing
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
-            Ok(file) => prettyplease::unparse(&file),
-            Err(_) => {
-                // If parsing fails, use the raw string output
-                output.to_string()
-            }
-        };
-
+        let parsed_file = metrics_impl_string(input, quote!(metrics(value)));
         assert_snapshot!("simple_metrics_value_unnamed_struct", parsed_file);
     }
 
@@ -1259,18 +1562,34 @@ mod tests {
             }
         };
 
-        // Process the input through the metrics macro
-        let output = metrics_impl(input, quote!(metrics(value(string))));
+        let parsed_file = metrics_impl_string(input, quote!(metrics(value(string))));
+        assert_snapshot!("simple_metrics_enum", parsed_file);
+    }
 
-        // Parse the output back into a syn::File for pretty printing
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
-            Ok(file) => prettyplease::unparse(&file),
-            Err(_) => {
-                // If parsing fails, use the raw string output
-                output.to_string()
+    #[test]
+    fn test_exact_prefix_struct() {
+        let input = quote! {
+            struct RequestMetrics {
+                operation: &'static str,
+                number_of_ducks: usize
             }
         };
 
-        assert_snapshot!("simple_metrics_enum", parsed_file);
+        let parsed_file = metrics_impl_string(input, quote!(metrics(exact_prefix = "API@")));
+        assert_snapshot!("exact_prefix_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_field_exact_prefix_struct() {
+        let input = quote! {
+            struct RequestMetrics {
+                #[metrics(flatten, exact_prefix = "API@")]
+                nested: NestedMetrics,
+                operation: &'static str
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("field_exact_prefix_struct", parsed_file);
     }
 }

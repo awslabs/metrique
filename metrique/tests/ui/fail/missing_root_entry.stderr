@@ -1,0 +1,27 @@
+error[E0277]: `MyMetricsEntry` is not a metric entry
+  --> tests/ui/fail/missing_root_entry.rs:15:35
+   |
+15 |     ServiceMetrics::sink().append(metrics.close());
+   |                            ------ ^^^^^^^^^^^^^^^ the trait `metrique::writer::Entry` is not implemented for `MyMetricsEntry`
+   |                            |
+   |                            required by a bound introduced by this call
+   |
+   = note: Entry structs created by the `#[metrics]` macro implement `InflectableEntry` rather than `Entry`, and need to be rooted via `RootEntry`
+   = help: the following other types implement trait `metrique::writer::Entry`:
+             &T
+             Arc<T>
+             BTreeMap<K, V>
+             Box<T>
+             BoxEntry
+             Cow<'_, T>
+             EmptyEntry
+             EnumMapEntry<E>
+           and $N others
+note: required by a bound in `metrique::writer::EntrySink::append`
+  --> $WORKSPACE/metrique-writer-core/src/sink.rs
+   |
+   | pub trait EntrySink<E: Entry> {
+   |                        ^^^^^ required by this bound in `EntrySink::append`
+...
+   |     fn append(&self, entry: E);
+   |        ------ required by a bound in this associated function

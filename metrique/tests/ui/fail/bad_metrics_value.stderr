@@ -18,58 +18,70 @@ error: multiple non-ignored fields for #[metrics(value)]
 14 |     y: u32,
    |     ^
 
-error: only plain fields are supported in #[metrics(value)]
+error: `name` does not make sense with #[metrics(value)]
   --> tests/ui/fail/bad_metrics_value.rs:33:5
    |
 33 |     u32,
    |     ^^^
 
-error: Unknown field: `p`. Available values: `flatten`, `flatten_entry`, `format`, `ignore`, `name`, `no_close`, `prefix`, `timestamp`, `unit`
+error: Unknown field: `p`
   --> tests/ui/fail/bad_metrics_value.rs:38:15
    |
 38 |     #[metrics(p = q)]
    |               ^
 
-error: Only named fields are supported
-  --> tests/ui/fail/bad_metrics_value.rs:43:1
+error: prefix is not supported for #[metrics(value)]
+  --> tests/ui/fail/bad_metrics_value.rs:43:8
    |
-43 | struct Unit; /* not supported right now */
+43 | struct Baz6 {
+   |        ^^^^
+
+error: prefix is not supported for #[metrics(value)]
+  --> tests/ui/fail/bad_metrics_value.rs:48:8
+   |
+48 | struct Baz7 {
+   |        ^^^^
+
+error: Only named fields are supported
+  --> tests/ui/fail/bad_metrics_value.rs:53:1
+   |
+53 | struct Unit; /* not supported right now */
    | ^^^^^^^^^^^^
 
 error: Unknown field: `p`. Available values: `name`
-  --> tests/ui/fail/bad_metrics_value.rs:47:15
+  --> tests/ui/fail/bad_metrics_value.rs:57:15
    |
-47 |     #[metrics(p="q")]
+57 |     #[metrics(p="q")]
    |               ^
 
-error: Cannot combine value with subfield
-  --> tests/ui/fail/bad_metrics_value.rs:51:26
+error: Cannot combine `value` with `subfield`
+  --> tests/ui/fail/bad_metrics_value.rs:61:26
    |
-51 | #[metrics(value(string), subfield)]
+61 | #[metrics(value(string), subfield)]
    |                          ^^^^^^^^
 
 error: Only structs are supported for entries
-  --> tests/ui/fail/bad_metrics_value.rs:52:1
+  --> tests/ui/fail/bad_metrics_value.rs:62:1
    |
-52 | / enum Multi {
-53 | |     X
-54 | | }
+62 | / enum Multi {
+63 | |     X
+64 | | }
    | |_^
 
 error: value does not make sense with dimension-sets
-  --> tests/ui/fail/bad_metrics_value.rs:56:1
+  --> tests/ui/fail/bad_metrics_value.rs:66:1
    |
-56 | #[metrics(value(string), emf::dimension_sets = [["X"]])]
+66 | #[metrics(value(string), emf::dimension_sets = [["X"]])]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: Only structs are supported for entries
-  --> tests/ui/fail/bad_metrics_value.rs:57:1
+  --> tests/ui/fail/bad_metrics_value.rs:67:1
    |
-57 | / enum Multi2 {
-58 | |     X
-59 | | }
+67 | / enum Multi2 {
+68 | |     X
+69 | | }
    | |_^
 
 error[E0412]: cannot find type `Second` in this scope
@@ -95,12 +107,28 @@ help: consider importing one of these structs
 1  + use metrique_writer_core::unit::Second;
    |
 
-error[E0277]: the trait bound `FormattedValue<'_, u32, Foo, _>: Value` is not satisfied
+error[E0277]: `String` cannot be used as a sample group
+  --> tests/ui/fail/bad_metrics_value.rs:78:15
+   |
+78 |       #[metrics(sample_group)]
+   |                 ^-----------
+   |                 |
+   |  _______________required by a bound introduced by this call
+   | |
+79 | |     group: String,
+   | |_________^ the trait `SampleGroup` is not implemented for `String`
+   |
+   = note: sample groups must implement `SampleGroup`
+   = note: consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`
+   = help: the trait `SampleGroup` is implemented for `&str`
+
+error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
   --> tests/ui/fail/bad_metrics_value.rs:26:5
    |
 26 |     x: u32,
    |     ^ the trait `Value` is not implemented for `FormattedValue<'_, u32, Foo, _>`
    |
+   = note: If `FormattedValue<'_, u32, Foo, _>` is a metric *entry*, flatten it using `#[metrics(flatten)]`
    = help: the following other types implement trait `Value`:
              &T
              Arc<T>
@@ -111,3 +139,17 @@ error[E0277]: the trait bound `FormattedValue<'_, u32, Foo, _>: Value` is not sa
              Distribution<V, N>
              Duration
            and $N others
+
+error[E0277]: CloseValue is not implemented for &String
+  --> tests/ui/fail/bad_metrics_value.rs:73:5
+   |
+73 |     field: String,
+   |     ^^^^^ This type must implement `CloseValue`
+   |
+   = help: the trait `CloseValue` is not implemented for `&String`
+   = note: You may need to add `#[metrics]` to `&String` or implement `CloseValue` directly.
+   = note: if &String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+help: consider dereferencing here
+   |
+73 |     *field: String,
+   |     +

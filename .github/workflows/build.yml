@@ -8,7 +8,12 @@ jobs:
     strategy:
       matrix:
         toolchain:
-          - "1.87" # Current MSRV due to extend_from_within
+          # MSRV history:
+          # 1.86 - trait upcasts (required)
+          # 1.87 - `extend_from_string`
+          # 1.88 - darling 0.23
+          # 1.89 - required since 1.88 does not work in trybuild
+          - "1.89.0" # Current MSRV
           - stable
           - nightly
         flags:

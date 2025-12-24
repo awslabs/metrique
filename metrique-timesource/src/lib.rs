@@ -3,7 +3,7 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use std::{
     cell::RefCell,
@@ -215,9 +215,10 @@ pub mod tokio {
 ///
 /// TimeSource provides a unified interface for accessing time, whether from the system
 /// clock or from a custom time source for testing.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum TimeSource {
     /// Use the system time
+    #[default]
     System,
     #[cfg(feature = "custom-timesource")]
     /// Use a custom time source
@@ -307,12 +308,6 @@ impl TimeSource {
     #[cfg(feature = "custom-timesource")]
     pub fn custom(custom: impl Time + 'static) -> TimeSource {
         Self::Custom(std::sync::Arc::new(custom))
-    }
-}
-
-impl Default for TimeSource {
-    fn default() -> Self {
-        Self::System
     }
 }
 

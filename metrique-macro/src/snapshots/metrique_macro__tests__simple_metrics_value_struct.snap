@@ -16,7 +16,10 @@ pub struct RequestValueValue {
 }
 impl ::metrique::writer::Value for RequestValueValue {
     fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
-        #[allow(deprecated)] { ::metrique::writer::Value::write(&self.value, writer) }
+        #[allow(deprecated)]
+        {
+            ::metrique::writer::Value::write(&self.value, writer);
+        }
     }
 }
 impl metrique::CloseValue for &'_ RequestValue {

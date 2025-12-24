@@ -1,10 +1,10 @@
-error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
+error: Unknown field: `bad_root_attr`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `sample_group`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:38
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
   |                                      ^^^^^^^^^^^^^
 
-error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `prefix`, `rename_all`, `subfield`, `subfield_owned`, `value`
+error: Unknown field: `bad_root_attr_eq`. Available values: `emf::dimension_sets`, `exact_prefix`, `prefix`, `rename_all`, `sample_group`, `subfield`, `subfield_owned`, `value`
  --> tests/ui/fail/bad_field_attrs.rs:6:53
   |
 6 | #[metrics(rename_all = "snake_case", bad_root_attr, bad_root_attr_eq = "foo")]
@@ -22,7 +22,7 @@ error: Duplicate field `unit`
 14 |     #[metrics(unit = Seconds, unit = Minutes)]
    |                               ^^^^
 
-error: Cannot combine flatten with name
+error: Cannot combine `flatten` with `name`
   --> tests/ui/fail/bad_field_attrs.rs:17:24
    |
 17 |     #[metrics(flatten, name = "foo")]
@@ -52,14 +52,80 @@ error: invalid name: name must not contain spaces
 29 |     #[metrics(name = "a b")]
    |                      ^^^^^
 
-error: Cannot combine ignore with no_close
+error: Cannot combine `no_close` with `ignore`
   --> tests/ui/fail/bad_field_attrs.rs:32:15
    |
 32 |     #[metrics(ignore, no_close)]
    |               ^^^^^^
 
-error: prefix can only be used with flatten
+error: prefix can only be used with `flatten`
   --> tests/ui/fail/bad_field_attrs.rs:35:15
    |
 35 |     #[metrics(prefix = "foo")]
    |               ^^^^^^
+
+error: You cannot use the character ':' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve ':' in the final metric name use `exact_prefix = "foo:".
+  --> tests/ui/fail/bad_field_attrs.rs:38:24
+   |
+38 |     #[metrics(flatten, prefix = "foo:")]
+   |                        ^^^^^^
+
+error: Cannot combine `prefix` with `exact_prefix`
+  --> tests/ui/fail/bad_field_attrs.rs:41:24
+   |
+41 |     #[metrics(flatten, prefix = "foo", exact_prefix = "bar")]
+   |                        ^^^^^^
+
+error: Cannot combine `prefix` with `exact_prefix`
+  --> tests/ui/fail/bad_field_attrs.rs:50:11
+   |
+50 | #[metrics(prefix = "foo", exact_prefix = "foo")]
+   |           ^^^^^^
+
+error: You cannot use the character '@' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve '@' in the final metric name use `exact_prefix = "foo@".
+  --> tests/ui/fail/bad_field_attrs.rs:55:11
+   |
+55 | #[metrics(prefix = "foo@")]
+   |           ^^^^^^
+
+error: `sample_group` as a top-level attribute can only be used with #[metrics(value)]
+  --> tests/ui/fail/bad_field_attrs.rs:60:11
+   |
+60 | #[metrics(sample_group)]
+   |           ^^^^^^^^^^^^
+
+error: Cannot combine `ignore` with `sample_group`
+  --> tests/ui/fail/bad_field_attrs.rs:67:23
+   |
+67 |     #[metrics(ignore, sample_group)]
+   |                       ^^^^^^^^^^^^
+
+error: Cannot combine `ignore` with `sample_group`
+  --> tests/ui/fail/bad_field_attrs.rs:69:15
+   |
+69 |     #[metrics(sample_group, ignore)]
+   |               ^^^^^^^^^^^^
+
+error: `sample_group` in value structs is used as a struct attribute, not a field attribute: `#[metrics(value, sample_group)]`
+  --> tests/ui/fail/bad_field_attrs.rs:76:5
+   |
+76 |     field: &'static str,
+   |     ^^^^^
+
+error: `sample_group` requires a non-ignore field
+  --> tests/ui/fail/bad_field_attrs.rs:80:8
+   |
+80 | struct SampleGroupValueAllIgnore {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: The root-level prefix `"foo"` must end with a delimiter. Use `prefix = "foo_"`, which inflects correctly in all inflections
+  --> tests/ui/fail/bad_field_attrs.rs:85:11
+   |
+85 | #[metrics(prefix="foo")]
+   |           ^^^^^^
+
+error: The root-level prefix `"foo-bar"` must end with a delimiter. Use `prefix = "foo-bar-"`, which inflects correctly in all inflections
+  --> tests/ui/fail/bad_field_attrs.rs:90:11
+   |
+90 | #[metrics(prefix="foo-bar")]
+   |           ^^^^^^

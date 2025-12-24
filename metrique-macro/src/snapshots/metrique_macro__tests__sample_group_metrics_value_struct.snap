@@ -1,0 +1,45 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct RequestValue {
+    ignore: u32,
+    value: &'static str,
+}
+#[doc(hidden)]
+pub struct RequestValueValue {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    value: <&'static str as metrique::CloseValue>::Closed,
+}
+impl ::metrique::writer::Value for RequestValueValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
+        #[allow(deprecated)]
+        {
+            ::metrique::writer::Value::write(&self.value, writer);
+        }
+    }
+}
+impl ::metrique::writer::core::SampleGroup for RequestValueValue {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        #[allow(deprecated)]
+        { ::metrique::writer::core::SampleGroup::as_sample_group(&self.value) }
+    }
+}
+impl metrique::CloseValue for &'_ RequestValue {
+    type Closed = RequestValueValue;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        RequestValueValue {
+            value: metrique::CloseValue::close(&self.value),
+        }
+    }
+}
+impl metrique::CloseValue for RequestValue {
+    type Closed = RequestValueValue;
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}

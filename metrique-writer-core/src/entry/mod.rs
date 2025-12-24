@@ -116,6 +116,10 @@ use crate::Value;
 /// }
 /// ```
 ///
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a metric entry",
+    note = "Entry structs created by the `#[metrics]` macro implement `InflectableEntry` rather than `Entry`, and need to be rooted via `RootEntry`"
+)]
 pub trait Entry {
     /// Write the metric values contained in this entry to the format-provided [`EntryWriter`]. The `writer` corresponds
     /// to an atomic entry written to the metrics consumer, like CloudWatch.

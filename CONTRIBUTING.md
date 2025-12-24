@@ -114,6 +114,43 @@ trusted publishing is unable to publish new crates. If you want to add a new cra
 
 Further publishing should happen via release-plz, without needing to manually work with tokens.
 
+## External version (MSRV, dependency) policy
+
+We reserve the right to increase the MSRV whenever new features make that useful or if
+testing the current MSRV ever becomes technically difficult. However, the MSRV should
+always at least be 8 weeks old.
+
+The MSRV of a crate should always be newer than the MSRV of all of its dependencies to avoid
+confusing Cargo's resolver. Currently for simplicity all metrique crates have the same MSRV,
+and this is tested by `cargo-toml-format.rs`.
+
+The code is tested by CI on the MSRV, on the current stable, and on the current nightly. In
+fact, the testing of compiler error messages is only at the MSRV, since otherwise the
+compiler message snapshots would have to be updated every 6 weeks.
+
+For `crates.io` versions, tests are run against both the "current" crates.io commit and against
+the lockfile checked into Github. The lockfile is normally updated on every release. Use with 
+older versions of crates.io dependencies is possible but may not be supported (if
+you encounter an issue that only happens with an old version of a dependency, our
+suggested solution will probably be to upgrade it).
+
+### Updating the MSRV
+
+The `cargo-toml-format` test should assert that the MSRV is updated in all the
+correct places, which are:
+
+1. The `cargo-toml-format` test
+2. The Cargo.toml of all packages
+3. The UI tests
+4. The test version in CI
+5. The test version in the CI ruleset:
+ 5.a. go to <https://github.com/awslabs/metrique/settings/rules>
+ 5.b. go to branch `main`
+ 5.c. go to "Require status checks to pass > Show additional settings"
+ 5.d. Remove the `Build (1.{{old}}.0, --all-features)` and `Build (1.{{old}}.0, --no-default-features)` status checks via the trash can icon
+ 5.e. Add `Build (1.{{new}}.0, --all-features)` and `Build (1.{{new}}.0, --no-default-features)` status checks via the "Add checks" button
+ 5.f. Click on "Save changes"
+
 ## Code of Conduct
 
 This project has adopted the [Amazon Open Source Code of Conduct](https://aws.github.io/code-of-conduct).

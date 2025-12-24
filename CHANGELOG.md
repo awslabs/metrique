@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.11](https://github.com/awslabs/metrique/compare/metrique-v0.1.10...metrique-v0.1.11) - 2025-12-19
+
+### Breaking Changes
+
+- forbid `.` in non-exact prefixes ([#138](https://github.com/awslabs/metrique/pull/138))
+- forbid root-level prefixes that do not end with a delimiter ([#138](https://github.com/awslabs/metrique/pull/138))
+
+## [0.1.10](https://github.com/awslabs/metrique/compare/metrique-v0.1.9...metrique-v0.1.10) - 2025-12-15
+
+### Added
+
+- generate docs for guard and handle types ([#134](https://github.com/awslabs/metrique/pull/134))
+
+### Other
+
+- Update MSRV to 1.89, darling to 0.23 ([#135](https://github.com/awslabs/metrique/pull/135))
+- Add support for sampling, improve docs ([#133](https://github.com/awslabs/metrique/pull/133))
+- add examples for WithDimensions, clean up metrics docs ([#132](https://github.com/awslabs/metrique/pull/132))
+
+## [0.1.9](https://github.com/arielb1/metrique-fork/compare/metrique-v0.1.8...metrique-v0.1.9) - 2025-12-04
+
+### Added
+
+- show useful error information on validation error with no tracing ([#129](https://github.com/awslabs/metrique/pull/129))
+
+## [0.1.8](https://github.com/awslabs/metrique/compare/metrique-v0.1.7...metrique-v0.1.8) - 2025-11-23
+
+### Other
+
+- support older versions of Tokio (from Tokio 1.38) ([#126](https://github.com/awslabs/metrique/pull/126))
+- declare MSRV for all crates ([#126](https://github.com/awslabs/metrique/pull/126))
+
+## [0.1.7](https://github.com/awslabs/metrique/compare/metrique-v0.1.6...metrique-v0.1.7) - 2025-11-12
+
+### Added
+
+- implement `#[metrics(explicit_prefix)]` which is not inflected ([#122](https://github.com/awslabs/metrique/pull/122))
+
+### Fixed
+
+- Timer::stop should be idempotent ([#115](https://github.com/awslabs/metrique/pull/115))
+- add track_caller to GlobalEntrySink::sink ([#123](https://github.com/awslabs/metrique/pull/123))
+
+### Other
+
+- improve documentation (several PRs)
+- replace doc_auto_cfg with doc_cfg ([#111](https://github.com/awslabs/metrique/pull/111))
+
+### Breaking changes
+
+- reserve `ForceFlushGuard: !Unpin` ([#119](https://github.com/awslabs/metrique/pull/119))
+
 ## [0.1.6](https://github.com/awslabs/metrique/compare/metrique-v0.1.5...metrique-v0.1.6) - 2025-09-19
 
 ### Added

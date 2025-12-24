@@ -1,6 +1,21 @@
 use darling::FromMeta;
 
-use crate::{MetricsField, MetricsFieldKind, MetricsVariant, RootAttributes};
+use crate::{MetricsField, MetricsFieldKind, MetricsVariant, Prefix, RootAttributes};
+
+pub(crate) fn name_contains_uninflectables(name: &str) -> Option<char> {
+    name.chars()
+        .find(|&c| !c.is_alphanumeric() && c != '_' && c != '-')
+}
+
+pub(crate) fn name_ends_with_delimiter(name: &str) -> bool {
+    let last = name.chars().last();
+    last == Some('_') || last == Some('-')
+}
+
+// `.` is currently used in production, make it a warning instead of an error
+pub(crate) fn name_contains_dot(name: &str) -> bool {
+    name.contains('.')
+}
 
 #[allow(clippy::enum_variant_names)] // "Case" is part of the name...
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, FromMeta)]
@@ -63,15 +78,23 @@ pub fn metric_name(
     name_style: NameStyle,
     field: &impl HasInflectableName,
 ) -> String {
-    let prefix = root_attrs.prefix.as_deref().unwrap_or_default();
-
     if let Some(name_override) = field.name_override() {
         return name_override.to_owned();
     };
-    let base = field.name();
-    let prefixed_base = format!("{prefix}{base}");
 
-    name_style.apply(&prefixed_base)
+    let base = field.name();
+
+    match &root_attrs.prefix {
+        Some(Prefix::Exact(exact_prefix)) => {
+            // If the prefix is exact, do not inflect the prefix
+            format!("{exact_prefix}{}", name_style.apply(&base))
+        }
+        Some(Prefix::Inflectable { prefix, .. }) => {
+            let prefixed_base = format!("{prefix}{base}");
+            name_style.apply(&prefixed_base)
+        }
+        None => name_style.apply(&base),
+    }
 }
 
 pub trait HasInflectableName {
@@ -108,7 +131,8 @@ impl HasInflectableName for MetricsVariant {
 
 #[cfg(test)]
 mod test {
-    use crate::NameStyle;
+    use super::name_contains_uninflectables;
+    use crate::{NameStyle, inflect::name_ends_with_delimiter};
 
     #[test]
     fn test_inflect_prefix() {
@@ -120,15 +144,33 @@ mod test {
         assert_eq!(kebab.apply_prefix("foo"), "foo-");
         assert_eq!(kebab.apply_prefix("foo_"), "foo-");
         assert_eq!(kebab.apply_prefix("foo-"), "foo-");
+        assert_eq!(kebab.apply_prefix("foo."), "foo-");
 
         assert_eq!(snake.apply_prefix("Foo"), "foo_");
         assert_eq!(snake.apply_prefix("foo"), "foo_");
         assert_eq!(snake.apply_prefix("foo_"), "foo_");
         assert_eq!(snake.apply_prefix("foo-"), "foo_");
+        assert_eq!(snake.apply_prefix("foo."), "foo_");
 
         assert_eq!(pascal.apply_prefix("Foo"), "Foo");
         assert_eq!(pascal.apply_prefix("foo"), "Foo");
         assert_eq!(pascal.apply_prefix("foo_"), "Foo");
         assert_eq!(pascal.apply_prefix("foo-"), "Foo");
+        assert_eq!(pascal.apply_prefix("foo."), "Foo");
+    }
+
+    #[test]
+    fn test_uninflectables() {
+        assert_eq!(name_contains_uninflectables("foo-bar_baz"), None);
+        assert_eq!(name_contains_uninflectables("foo:bar"), Some(':'));
+        assert_eq!(name_contains_uninflectables("foo.bar"), Some('.'));
+    }
+
+    #[test]
+    fn test_delimiter() {
+        assert!(name_ends_with_delimiter("foo-"));
+        assert!(name_ends_with_delimiter("foo_"));
+        assert!(!name_ends_with_delimiter("foo."));
+        assert!(!name_ends_with_delimiter("foo"));
     }
 }

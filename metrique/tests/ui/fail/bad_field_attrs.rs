@@ -34,11 +34,62 @@ struct MetricsWithInvalidUnit {
 
     #[metrics(prefix = "foo")]
     prefix_no_flatten: usize,
+
+    #[metrics(flatten, prefix = "foo:")]
+    prefix_bad_character: usize,
+
+    #[metrics(flatten, prefix = "foo", exact_prefix = "bar")]
+    prefix_and_exact: SubMetric,
 }
 
 #[metrics(rename_all = "snake_case")]
 struct SubMetric {
     a: usize,
+}
+
+#[metrics(prefix = "foo", exact_prefix = "foo")]
+struct PrefixAndExact {
+    a: usize,
+}
+
+#[metrics(prefix = "foo@")]
+struct PrefixBadCharacter {
+    a: usize,
+}
+
+#[metrics(sample_group)]
+struct SampleGroupTopLevelEntry {
+    foo: usize,
+}
+
+#[metrics]
+struct SampleGroupIgnore {
+    #[metrics(ignore, sample_group)]
+    foo: &'static str,
+    #[metrics(sample_group, ignore)]
+    foo2: &'static str,
+}
+
+#[metrics(value)]
+struct SampleGroupFieldOnStruct {
+    #[metrics(sample_group)]
+    field: &'static str,
+}
+
+#[metrics(value, sample_group)]
+struct SampleGroupValueAllIgnore {
+    #[metrics(ignore)]
+    ignore: u32,
+}
+
+#[metrics(prefix="foo")]
+struct MetricPrefixNoDelim {
+    field: &'static str,
+}
+
+#[metrics(prefix="foo-bar")]
+struct MetricPrefixNoDelimWithSnake {
+    field: &'static str,
 }
 
 fn main() {}

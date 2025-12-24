@@ -3,7 +3,7 @@
 
 #![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 
 use std::collections::HashSet;
 
@@ -115,8 +115,8 @@ synstructure::decl_derive!([$name, attributes(entry)] =>
     /// // Operation-specific metrics
     /// #[derive(Entry)]
     /// enum OperationMetrics {
-    ///     Foo(#[flatten] FooMetrics),
-    ///     Bar(#[flatten] BarMetrics),
+    ///     Foo(#[entry(flatten)] FooMetrics),
+    ///     Bar(#[entry(flatten)] BarMetrics),
     /// }
     ///
     /// #[derive(Entry)]
@@ -180,10 +180,10 @@ impl FieldMetricAttr {
                 flatten: None,
                 timestamp: None,
             } => {
-                if let Some(name) = name.as_ref() {
-                    if name.is_empty() {
-                        return Err(syn::Error::new(name.span(), "`name` can't be empty"));
-                    }
+                if let Some(name) = name.as_ref()
+                    && name.is_empty()
+                {
+                    return Err(syn::Error::new(name.span(), "`name` can't be empty"));
                 }
                 Ok(Self::NamedValue {
                     name,
@@ -423,7 +423,7 @@ impl FieldSet {
                                 ::std::borrow::Cow::Borrowed(#name),
                                 #[allow(clippy::useless_conversion)]
                                 {
-                                    ::std::borrow::Cow::from(#field.clone())
+                                    #krate::core::SampleGroup::as_sample_group(#field)
                                 },
                             ))
                         });
@@ -636,7 +636,7 @@ mod tests {
                                             ::std::borrow::Cow::Borrowed("Operation"),
                                             #[allow(clippy::useless_conversion)]
                                             {
-                                                ::std::borrow::Cow::from(__binding_3.clone())
+                                                ::metrique_writer::core::SampleGroup::as_sample_group(__binding_3)
                                             },
                                     ))
                                     .chain(::metrique_writer::core::entry::Entry::sample_group(__binding_6)),
@@ -733,7 +733,7 @@ mod tests {
                     First(#[entry(flatten)] FirstEntry),
                     Second {
                         #[entry(sample_group)]
-                        test: String,
+                        test: &'static str,
                         #[entry(timestamp)]
                         time: SystemTime,
                         some_counter: u64,
@@ -775,7 +775,7 @@ mod tests {
                                             ::std::borrow::Cow::Borrowed("Test"),
                                             #[allow(clippy::useless_conversion)]
                                             {
-                                                ::std::borrow::Cow::from(__binding_0.clone())
+                                                ::metrique_writer::core::SampleGroup::as_sample_group(__binding_0)
                                             },
                                         ))
                                     ) as Box<dyn ::std::iter::Iterator<Item = _>>,

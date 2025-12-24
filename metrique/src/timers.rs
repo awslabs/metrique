@@ -279,6 +279,9 @@ impl Timer {
     /// After calling this method, the timer will no longer update and will report
     /// the same duration when closed.
     ///
+    /// Calling `stop` on a stopped timer is idempotent, and returns the
+    /// timer's stopped duration.
+    ///
     /// **Important Note**: Although this returns the duration for convenience, you don't need to store it yourself. The duration
     /// will be recorded in the parent metric when it is closed.
     ///
@@ -293,6 +296,10 @@ impl Timer {
     /// let elapsed = timer.stop();
     /// ```
     pub fn stop(&mut self) -> Duration {
+        if let Some(duration) = self.duration {
+            return duration;
+        }
+
         let time = self.start.elapsed();
         self.duration = Some(time);
         time
@@ -850,7 +857,20 @@ mod test {
     use metrique_core::CloseValue;
     use metrique_timesource::{TimeSource, set_time_source};
 
-    use crate::timers::Stopwatch;
+    use crate::timers::{Stopwatch, Timer};
+
+    #[tokio::test(start_paused = true)]
+    async fn timer_stop_is_idempotent() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut timer = Timer::start_now();
+
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        let first_stop = timer.stop();
+        tokio::time::sleep(Duration::from_millis(1)).await;
+        let second_stop = timer.stop();
+
+        assert_eq!(first_stop, second_stop);
+    }
 
     #[tokio::test(start_paused = true)]
     async fn stopwatch_can_start_multiple_times() {

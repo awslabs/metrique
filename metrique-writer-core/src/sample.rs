@@ -3,7 +3,7 @@
 
 //! Defines the [`SampledFormat`] trait, which allows for formats that can be sampled.
 
-use std::io;
+use std::{borrow::Cow, io};
 
 use crate::{Entry, IoStreamError, format::Format};
 
@@ -21,4 +21,30 @@ pub trait SampledFormat: Format {
         output: &mut impl io::Write,
         rate: f32,
     ) -> Result<(), IoStreamError>;
+}
+
+/// A type that can be converted to a sample group
+///
+/// Sample groups are used by [congress sampling] to ensure that logs for rare conditions are
+/// still sampled, even if the overall sample rate is low, by ensuring that operations from
+/// every value of sample groups is sampled.
+///
+/// For example, when writing metrics for an API server, it is common to mark the operation (route)
+/// and status code as sample groups, to ensure every (operation, status code) gets a metric.
+///
+/// [congress sampling]: https://docs.rs/metrique-writer/0.1/metrique_writer/sample/struct.CongressSample.html
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be used as a sample group",
+    note = "sample groups must implement `SampleGroup`",
+    note = "consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`"
+)]
+pub trait SampleGroup {
+    /// Return the value as a sample group
+    fn as_sample_group(&self) -> Cow<'static, str>;
+}
+
+impl SampleGroup for &'static str {
+    fn as_sample_group(&self) -> Cow<'static, str> {
+        Cow::Borrowed(self)
+    }
 }

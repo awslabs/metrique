@@ -1,0 +1,17 @@
+error: You cannot use the character '.' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "foo-"`. If you want to preserve '.' in the final metric name use `exact_prefix = "foo.". '.' used to be allowed in `prefix` but is now forbidden.
+  --> tests/ui/fail/prefix_dot.rs:10:24
+   |
+10 |     #[metrics(flatten, prefix = "foo.")]
+   |                        ^^^^^^
+
+error: You cannot use the character '.' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "bar-"`. If you want to preserve '.' in the final metric name use `exact_prefix = "bar.". '.' used to be allowed in `prefix` but is now forbidden.
+  --> tests/ui/fail/prefix_dot.rs:12:24
+   |
+12 |     #[metrics(flatten, prefix = "bar.")]
+   |                        ^^^^^^
+
+error: You cannot use the character '.' with `prefix`. `prefix` will "inflect" to match the name scheme specified by `rename_all`. For example, it will change all delimiters to `-` for kebab case). If you want to match namestyle, use `prefix = "baz-"`. If you want to preserve '.' in the final metric name use `exact_prefix = "baz.". '.' used to be allowed in `prefix` but is now forbidden.
+  --> tests/ui/fail/prefix_dot.rs:16:11
+   |
+16 | #[metrics(prefix = "baz.")]
+   |           ^^^^^^

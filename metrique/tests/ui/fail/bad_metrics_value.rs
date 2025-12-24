@@ -39,6 +39,16 @@ struct Baz5 {
     x: u32,
 }
 
+#[metrics(value, prefix = "foo_")]
+struct Baz6 {
+    x: u32,
+}
+
+#[metrics(value, exact_prefix = "foo")]
+struct Baz7 {
+    x: u32,
+}
+
 #[metrics(value)]
 struct Unit; /* not supported right now */
 
@@ -56,6 +66,17 @@ enum Multi {
 #[metrics(value(string), emf::dimension_sets = [["X"]])]
 enum Multi2 {
     X
+}
+
+#[metrics(subfield)]
+struct WithString {
+    field: String,
+}
+
+#[metrics]
+struct WithStringSampleGroup {
+    #[metrics(sample_group)]
+    group: String,
 }
 
 fn main() {
