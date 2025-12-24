@@ -113,15 +113,46 @@ fn test_sort_and_merge() {
     let dist = &latency_metric.distribution;
     check!(dist.len() == 3);
 
-    let values: Vec<f64> = dist
-        .iter()
-        .map(|obs| match obs {
-            metrique_writer::Observation::Floating(v) => *v,
-            _ => panic!("Expected Floating observations"),
-        })
-        .collect();
+    check!(dist[0] == metrique_writer::Observation::Repeated { total: 5.0, occurrences: 1 });
+    check!(dist[1] == metrique_writer::Observation::Repeated { total: 15.0, occurrences: 1 });
+    check!(dist[2] == metrique_writer::Observation::Repeated { total: 25.0, occurrences: 1 });
+}
 
-    check!(values == vec![5.0, 15.0, 25.0]);
+#[test]
+fn test_sort_and_merge_merges_duplicates() {
+    use metrique_aggregation::histogram::SortAndMerge;
+
+    let sink = test_entry_sink();
+
+    #[metrics(rename_all = "PascalCase")]
+    struct Metrics {
+        #[metrics(unit = Millisecond)]
+        latency: Histogram<Duration, SortAndMerge>,
+    }
+
+    let mut metrics = Metrics {
+        latency: Histogram::new(SortAndMerge::new()),
+    };
+
+    metrics.latency.add_value(Duration::from_millis(1));
+    metrics.latency.add_value(Duration::from_millis(2));
+    metrics.latency.add_value(Duration::from_millis(2));
+    metrics.latency.add_value(Duration::from_millis(3));
+    metrics.latency.add_value(Duration::from_millis(3));
+    metrics.latency.add_value(Duration::from_millis(3));
+
+    metrics.append_on_drop(sink.sink);
+
+    let entries = sink.inspector.entries();
+    check!(entries.len() == 1);
+
+    let latency_metric = &entries[0].metrics["Latency"];
+    let dist = &latency_metric.distribution;
+    check!(dist.len() == 3);
+
+    check!(dist[0] == metrique_writer::Observation::Repeated { total: 1.0, occurrences: 1 });
+    check!(dist[1] == metrique_writer::Observation::Repeated { total: 4.0, occurrences: 2 });
+    check!(dist[2] == metrique_writer::Observation::Repeated { total: 9.0, occurrences: 3 });
 }
 
 #[test]
