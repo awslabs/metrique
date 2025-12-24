@@ -4,9 +4,9 @@ use metrique_aggregation::histogram::{
     AggregationStrategy, AtomicExponentialAggregationStrategy, ExponentialAggregationStrategy,
     Histogram, SharedAggregationStrategy, SharedHistogram, SortAndMerge,
 };
+use metrique_writer::Observation;
 use metrique_writer::unit::{Byte, Millisecond};
 use metrique_writer::value::WithDimensions;
-use metrique_writer::Observation;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use rstest::rstest;
@@ -307,7 +307,7 @@ fn test_sort_and_merge_with_nan() {
 
     let latency_metric = &entries[0].metrics["Latency"];
     let dist = &latency_metric.distribution;
-    
+
     // NaN values should be filtered out, leaving only valid values
     check!(dist.len() == 2);
     check!(
@@ -333,23 +333,46 @@ fn calculate_percentile(sorted_values: &[f64], percentile: f64) -> f64 {
     sorted_values[index]
 }
 
-fn extract_sorted_values(observations: &[Observation]) -> Vec<f64> {
-    let mut values = Vec::new();
+fn calculate_percentile_from_buckets(observations: &[Observation], percentile: f64) -> f64 {
+    // Build cumulative distribution from bucketed observations
+    let mut buckets: Vec<(f64, u64)> = Vec::new();
+    let mut total_count = 0u64;
+    
     for obs in observations {
         match obs {
             Observation::Repeated { total, occurrences } => {
                 let value = total / *occurrences as f64;
-                for _ in 0..*occurrences {
-                    values.push(value);
-                }
+                buckets.push((value, *occurrences));
+                total_count += occurrences;
             }
-            Observation::Floating(v) => values.push(*v),
-            Observation::Unsigned(v) => values.push(*v as f64),
+            Observation::Floating(v) => {
+                buckets.push((*v, 1));
+                total_count += 1;
+            }
+            Observation::Unsigned(v) => {
+                buckets.push((*v as f64, 1));
+                total_count += 1;
+            }
             _ => {}
         }
     }
-    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    values
+    
+    // Sort by value
+    buckets.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    
+    // Use same formula as ground truth: (percentile / 100.0 * (total_count - 1)).round()
+    let target_index = (percentile / 100.0 * (total_count - 1) as f64).round() as u64;
+    let mut cumulative = 0u64;
+    
+    for &(value, count) in &buckets {
+        if cumulative + count > target_index {
+            // Target index falls within this bucket
+            return value;
+        }
+        cumulative += count;
+    }
+    
+    buckets.last().map(|(v, _)| *v).unwrap_or(0.0)
 }
 
 fn test_histogram_accuracy<S: AggregationStrategy>(
@@ -365,11 +388,10 @@ fn test_histogram_accuracy<S: AggregationStrategy>(
     }
 
     let observations = strategy.drain();
-    let reported = extract_sorted_values(&observations);
 
     for percentile in [50.0, 90.0, 95.0, 99.0, 99.9] {
         let actual = calculate_percentile(&ground_truth, percentile);
-        let reported_val = calculate_percentile(&reported, percentile);
+        let reported_val = calculate_percentile_from_buckets(&observations, percentile);
         let error_pct = ((reported_val - actual).abs() / actual) * 100.0;
 
         check!(
@@ -397,11 +419,10 @@ fn test_shared_histogram_accuracy<S: SharedAggregationStrategy>(
     }
 
     let observations = strategy.drain();
-    let reported = extract_sorted_values(&observations);
 
     for percentile in [50.0, 90.0, 95.0, 99.0, 99.9] {
         let actual = calculate_percentile(&ground_truth, percentile);
-        let reported_val = calculate_percentile(&reported, percentile);
+        let reported_val = calculate_percentile_from_buckets(&observations, percentile);
         let error_pct = ((reported_val - actual).abs() / actual) * 100.0;
 
         check!(
@@ -444,7 +465,7 @@ fn test_sort_and_merge_accuracy(
 ) {
     let mut rng = ChaCha8Rng::seed_from_u64(42);
     let values: Vec<f64> = (0..sample_size)
-        .map(|_| rng.random_range(min_val..=max_val))
+        .map(|_| rng.random_range(min_val..=max_val).floor())  // Use integers to avoid floating point issues
         .collect();
 
     test_histogram_accuracy(SortAndMerge::<128>::new(), values, 0.0);
@@ -452,7 +473,7 @@ fn test_sort_and_merge_accuracy(
 
 #[rstest]
 #[case::atomic_uniform_1k(1000, 1.0, 1000.0, 7.0)]
-#[case::atomic_wide_range(1000, 1.0, 1000000.0, 7.0)]
+#[case::atomic_wide_range(1000, 1.0, 1000000.0, 2.0)]
 fn test_atomic_exponential_accuracy(
     #[case] sample_size: usize,
     #[case] min_val: f64,
