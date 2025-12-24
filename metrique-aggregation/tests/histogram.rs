@@ -1,8 +1,15 @@
 use assert2::check;
 use metrique::{test_util::test_entry_sink, unit_of_work::metrics};
-use metrique_aggregation::histogram::{ExponentialAggregationStrategy, Histogram, SharedHistogram};
+use metrique_aggregation::histogram::{
+    AggregationStrategy, AtomicExponentialAggregationStrategy, ExponentialAggregationStrategy,
+    Histogram, SharedAggregationStrategy, SharedHistogram, SortAndMerge,
+};
 use metrique_writer::unit::{Byte, Millisecond};
 use metrique_writer::value::WithDimensions;
+use metrique_writer::Observation;
+use rand::{Rng, SeedableRng};
+use rand_chacha::ChaCha8Rng;
+use rstest::rstest;
 use std::time::Duration;
 
 #[metrics(rename_all = "PascalCase")]
@@ -271,4 +278,195 @@ fn test_histogram_with_dimensions() {
 
     let latency_metric = &entries[0].metrics["Latency"];
     check!(latency_metric.unit.to_string() == "Milliseconds");
+}
+
+#[test]
+fn test_sort_and_merge_with_nan() {
+    use metrique_aggregation::histogram::SortAndMerge;
+
+    let sink = test_entry_sink();
+
+    #[metrics(rename_all = "PascalCase")]
+    struct Metrics {
+        #[metrics(unit = Millisecond)]
+        latency: Histogram<f64, SortAndMerge>,
+    }
+
+    let mut metrics = Metrics {
+        latency: Histogram::new(SortAndMerge::new()),
+    };
+
+    metrics.latency.add_value(5.0);
+    metrics.latency.add_value(f64::NAN);
+    metrics.latency.add_value(15.0);
+
+    metrics.append_on_drop(sink.sink);
+
+    let entries = sink.inspector.entries();
+    check!(entries.len() == 1);
+
+    let latency_metric = &entries[0].metrics["Latency"];
+    let dist = &latency_metric.distribution;
+    
+    // NaN values should be filtered out, leaving only valid values
+    check!(dist.len() == 2);
+    check!(
+        dist[0]
+            == metrique_writer::Observation::Repeated {
+                total: 5.0,
+                occurrences: 1
+            }
+    );
+    check!(
+        dist[1]
+            == metrique_writer::Observation::Repeated {
+                total: 15.0,
+                occurrences: 1
+            }
+    );
+}
+
+// Test harness for validating histogram accuracy
+
+fn calculate_percentile(sorted_values: &[f64], percentile: f64) -> f64 {
+    let index = (percentile / 100.0 * (sorted_values.len() - 1) as f64).round() as usize;
+    sorted_values[index]
+}
+
+fn extract_sorted_values(observations: &[Observation]) -> Vec<f64> {
+    let mut values = Vec::new();
+    for obs in observations {
+        match obs {
+            Observation::Repeated { total, occurrences } => {
+                let value = total / *occurrences as f64;
+                for _ in 0..*occurrences {
+                    values.push(value);
+                }
+            }
+            Observation::Floating(v) => values.push(*v),
+            Observation::Unsigned(v) => values.push(*v as f64),
+            _ => {}
+        }
+    }
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    values
+}
+
+fn test_histogram_accuracy<S: AggregationStrategy>(
+    mut strategy: S,
+    values: Vec<f64>,
+    max_error_pct: f64,
+) {
+    let mut ground_truth = values.clone();
+    ground_truth.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    for &value in &values {
+        strategy.record(value);
+    }
+
+    let observations = strategy.drain();
+    let reported = extract_sorted_values(&observations);
+
+    for percentile in [50.0, 90.0, 95.0, 99.0, 99.9] {
+        let actual = calculate_percentile(&ground_truth, percentile);
+        let reported_val = calculate_percentile(&reported, percentile);
+        let error_pct = ((reported_val - actual).abs() / actual) * 100.0;
+
+        check!(
+            error_pct <= max_error_pct,
+            "p{}: actual={}, reported={}, error={}% (max={}%)",
+            percentile,
+            actual,
+            reported_val,
+            error_pct,
+            max_error_pct
+        );
+    }
+}
+
+fn test_shared_histogram_accuracy<S: SharedAggregationStrategy>(
+    strategy: S,
+    values: Vec<f64>,
+    max_error_pct: f64,
+) {
+    let mut ground_truth = values.clone();
+    ground_truth.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    for &value in &values {
+        strategy.record(value);
+    }
+
+    let observations = strategy.drain();
+    let reported = extract_sorted_values(&observations);
+
+    for percentile in [50.0, 90.0, 95.0, 99.0, 99.9] {
+        let actual = calculate_percentile(&ground_truth, percentile);
+        let reported_val = calculate_percentile(&reported, percentile);
+        let error_pct = ((reported_val - actual).abs() / actual) * 100.0;
+
+        check!(
+            error_pct <= max_error_pct,
+            "p{}: actual={}, reported={}, error={}% (max={}%)",
+            percentile,
+            actual,
+            reported_val,
+            error_pct,
+            max_error_pct
+        );
+    }
+}
+
+#[rstest]
+#[case::exponential_uniform_1k(1000, 1.0, 1000.0, 7.0)]
+#[case::exponential_uniform_10k(10000, 1.0, 10000.0, 7.0)]
+#[case::exponential_wide_range(1000, 1.0, 1000000.0, 7.0)]
+fn test_exponential_strategy_accuracy(
+    #[case] sample_size: usize,
+    #[case] min_val: f64,
+    #[case] max_val: f64,
+    #[case] max_error_pct: f64,
+) {
+    let mut rng = ChaCha8Rng::seed_from_u64(42);
+    let values: Vec<f64> = (0..sample_size)
+        .map(|_| rng.random_range(min_val..=max_val))
+        .collect();
+
+    test_histogram_accuracy(ExponentialAggregationStrategy::new(), values, max_error_pct);
+}
+
+#[rstest]
+#[case::sort_uniform_100(100, 1.0, 1000.0)]
+#[case::sort_uniform_1k(1000, 1.0, 10000.0)]
+fn test_sort_and_merge_accuracy(
+    #[case] sample_size: usize,
+    #[case] min_val: f64,
+    #[case] max_val: f64,
+) {
+    let mut rng = ChaCha8Rng::seed_from_u64(42);
+    let values: Vec<f64> = (0..sample_size)
+        .map(|_| rng.random_range(min_val..=max_val))
+        .collect();
+
+    test_histogram_accuracy(SortAndMerge::<128>::new(), values, 0.0);
+}
+
+#[rstest]
+#[case::atomic_uniform_1k(1000, 1.0, 1000.0, 7.0)]
+#[case::atomic_wide_range(1000, 1.0, 1000000.0, 7.0)]
+fn test_atomic_exponential_accuracy(
+    #[case] sample_size: usize,
+    #[case] min_val: f64,
+    #[case] max_val: f64,
+    #[case] max_error_pct: f64,
+) {
+    let mut rng = ChaCha8Rng::seed_from_u64(42);
+    let values: Vec<f64> = (0..sample_size)
+        .map(|_| rng.random_range(min_val..=max_val))
+        .collect();
+
+    test_shared_histogram_accuracy(
+        AtomicExponentialAggregationStrategy::new(),
+        values,
+        max_error_pct,
+    );
 }

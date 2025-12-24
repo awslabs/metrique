@@ -16,6 +16,7 @@ divan = "0.1"
 rand.workspace = true
 rand_chacha.workspace = true
 assert2 = "0.3"
+rstest = "0.23"
 
 [[bench]]
 name = "aggregation"
