@@ -96,6 +96,7 @@
 use histogram::Config;
 use metrique_core::CloseValue;
 use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
+use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
 use std::marker::PhantomData;
 
@@ -404,8 +405,7 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
     }
 
     fn drain(&mut self) -> Vec<Observation> {
-        self.values
-            .sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Greater));
+        self.values.sort_by_key(|v| OrderedFloat(*v));
         let mut observations = Vec::new();
         let mut iter = self.values.iter().copied().filter(|v| !v.is_nan());
 

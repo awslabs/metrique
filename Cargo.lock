@@ -739,6 +739,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-writer",
+ "ordered-float",
  "rand",
  "rand_chacha",
  "rstest 0.23.0",

@@ -9,6 +9,7 @@ metrique-writer = { path = "../metrique-writer", version = "0.1.9"}
 metrique-core = { path = "../metrique-core", version = "0.1.9"}
 smallvec = "1.13"
 histogram.workspace = true
+ordered-float = "5"
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }
