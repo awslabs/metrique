@@ -185,18 +185,19 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
     }
 }
 
-impl<T> Default for Histogram<T, ExponentialAggregationStrategy> {
+impl<T, S: Default + AggregationStrategy> Default for Histogram<T, S> {
     fn default() -> Self {
-        Self::new(ExponentialAggregationStrategy::default())
+        Self::new(S::default())
     }
 }
 
-impl<T, S: AggregationStrategy> CloseValue for Histogram<T, S> {
-    type Closed = HistogramClosed;
+impl<T: MetricValue, S: AggregationStrategy> CloseValue for Histogram<T, S> {
+    type Closed = HistogramClosed<T>;
 
     fn close(mut self) -> Self::Closed {
         HistogramClosed {
             observations: self.strategy.drain(),
+            _value: PhantomData,
         }
     }
 }
@@ -268,12 +269,13 @@ impl<T, S: AtomicAggregationStrategy> AtomicHistogram<T, S> {
     }
 }
 
-impl<T, S: AtomicAggregationStrategy> CloseValue for AtomicHistogram<T, S> {
-    type Closed = HistogramClosed;
+impl<T: MetricValue, S: AtomicAggregationStrategy> CloseValue for AtomicHistogram<T, S> {
+    type Closed = HistogramClosed<T>;
 
     fn close(self) -> Self::Closed {
         HistogramClosed {
             observations: self.strategy.drain(),
+            _value: PhantomData,
         }
     }
 }
@@ -281,23 +283,31 @@ impl<T, S: AtomicAggregationStrategy> CloseValue for AtomicHistogram<T, S> {
 /// Closed histogram value containing aggregated observations.
 ///
 /// This is the result of closing a histogram and is emitted as a metric distribution.
-pub struct HistogramClosed {
+pub struct HistogramClosed<T> {
     observations: Vec<Observation>,
+    _value: PhantomData<T>,
 }
 
-impl Value for HistogramClosed {
+impl<T> Value for HistogramClosed<T>
+where
+    T: MetricValue,
+{
     fn write(&self, writer: impl ValueWriter) {
+        use metrique_writer::unit::UnitTag;
         writer.metric(
             self.observations.clone(),
-            metrique_writer::Unit::None,
+            T::Unit::UNIT,
             [],
             MetricFlags::empty(),
         )
     }
 }
 
-impl MetricValue for HistogramClosed {
-    type Unit = metrique_writer::unit::None;
+impl<T> MetricValue for HistogramClosed<T>
+where
+    T: MetricValue,
+{
+    type Unit = T::Unit;
 }
 
 /// Exponential bucketing strategy using the histogram crate.
@@ -355,6 +365,7 @@ impl AggregationStrategy for ExponentialAggregationStrategy {
 /// Uses a `SmallVec` to avoid allocations for small numbers of observations.
 ///
 /// The const generic `N` controls the inline capacity before heap allocation.
+#[derive(Default)]
 pub struct SortAndMerge<const N: usize = 128> {
     values: SmallVec<[f64; N]>,
 }
@@ -365,12 +376,6 @@ impl<const N: usize> SortAndMerge<N> {
         Self {
             values: SmallVec::new(),
         }
-    }
-}
-
-impl<const N: usize> Default for SortAndMerge<N> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

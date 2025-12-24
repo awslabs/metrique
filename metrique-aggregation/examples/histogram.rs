@@ -16,7 +16,7 @@ struct TestMetrics {
 
     // other strategies are available, e.g. SortAndMerge preserves all
     // data points
-    all_values: Histogram<SortAndMerge>,
+    all_values: Histogram<usize, SortAndMerge<64>>,
 }
 
 fn main() {
