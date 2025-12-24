@@ -116,9 +116,12 @@ impl AggregatedEntry for AggregatedRequestMetrics {
 
 #[test]
 fn test_many_requests() {
+    use metrique::test_util::{test_entry_sink, TestEntrySink};
+
+    let TestEntrySink { inspector, sink } = test_entry_sink();
     let mut metrics = ManyRequests {
         requests: Aggregated::default(),
-    };
+    }.append_on_drop(sink);
 
     metrics.requests.add(ApiCall {
         latency: Duration::from_millis(100),
@@ -134,4 +137,13 @@ fn test_many_requests() {
         latency: Duration::from_millis(150),
         number_of_tokens: 60,
     });
+
+    drop(metrics);
+
+    let entries = inspector.entries();
+    check!(entries.len() == 1);
+    
+    let entry = &entries[0];
+    check!(entry.metrics["latency"].distribution.len() == 3);
+    check!(entry.metrics["number_of_tokens"].as_u64() == 185);
 }
