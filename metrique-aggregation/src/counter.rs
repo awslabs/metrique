@@ -30,11 +30,7 @@ where
 {
     type Aggregated = T;
 
-    fn init() -> T {
-        T::default()
-    }
-
-    fn aggregate(accum: &mut T, value: &T) {
+    fn add_value(accum: &mut T, value: &T) {
         *accum += *value;
     }
 }
@@ -46,25 +42,19 @@ mod tests {
 
     #[test]
     fn counter_sums_u64() {
-        let mut total = Counter::init();
-        Counter::aggregate(&mut total, &5u64);
-        Counter::aggregate(&mut total, &3u64);
-        Counter::aggregate(&mut total, &2u64);
+        let mut total = 0;
+        Counter::add_value(&mut total, &5u64);
+        Counter::add_value(&mut total, &3u64);
+        Counter::add_value(&mut total, &2u64);
         check!(total == 10);
     }
 
     #[test]
     fn counter_sums_f64() {
-        let mut total = Counter::init();
-        Counter::aggregate(&mut total, &5.5f64);
-        Counter::aggregate(&mut total, &3.2f64);
-        Counter::aggregate(&mut total, &1.3f64);
+        let mut total = 0.0;
+        Counter::add_value(&mut total, &5.5f64);
+        Counter::add_value(&mut total, &3.2f64);
+        Counter::add_value(&mut total, &1.3f64);
         check!(total == 10.0);
-    }
-
-    #[test]
-    fn counter_starts_at_zero() {
-        let total: u64 = Counter::init();
-        check!(total == 0);
     }
 }

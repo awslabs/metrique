@@ -104,10 +104,6 @@ use std::hash::Hash;
 /// impl<T: Default + AddAssign + Copy> AggregateValue<T> for Counter {
 ///     type Aggregated = T;
 ///
-///     fn init() -> T {
-///         T::default()
-///     }
-///
 ///     fn aggregate(accum: &mut T, value: &T) {
 ///         *accum += *value;
 ///     }
@@ -117,11 +113,8 @@ pub trait AggregateValue<T> {
     /// The accumulated type (often same as T, but can differ for histograms).
     type Aggregated;
 
-    /// Initialize a new accumulator.
-    fn init() -> Self::Aggregated;
-
     /// Aggregate a value into the accumulator.
-    fn aggregate(accum: &mut Self::Aggregated, value: &T);
+    fn add_value(accum: &mut Self::Aggregated, value: &T);
 }
 
 /// Marks an entry type as capable of being aggregated.
@@ -183,17 +176,31 @@ pub trait AggregateValue<T> {
 /// }
 /// ```
 pub trait AggregatableEntry: CloseEntry {
+    /// The type that accumulates aggregated entries.
+    type Aggregated: AggregatedEntry<Source = Self>;
+}
+
+/// Defines a default key for a given struct
+///
+/// This is what is automatically defined when using the `(key)` macros
+pub trait DefaultKey: Sized {
+    /// Type of the key (Keyer)
+    type KeyType: Key<Self>;
+}
+
+/// Key defines the aggregation key for a given type
+pub trait Key<T> {
     /// Key type that identifies which entries can be aggregated together.
     type Key: Eq + Hash + Clone;
 
-    /// The type that accumulates aggregated entries.
-    type Aggregated: AggregatedEntry<Source = Self, Key = Self::Key>;
+    /// Returns the key for this metric
+    fn key(entry: &T) -> Self::Key;
+}
 
-    /// Create a new aggregator for this entry type with the given key.
-    fn new_aggregated(key: Self::Key) -> Self::Aggregated;
-
-    /// Extract the key from this entry.
-    fn key(&self) -> Self::Key;
+/// Creates a new metric from a key
+pub trait FromKey<K> {
+    /// Creates a new metric from a key
+    fn new_from_key(key: K) -> Self;
 }
 
 /// Accumulates multiple entries and produces aggregated results.
@@ -255,22 +262,19 @@ pub trait AggregatableEntry: CloseEntry {
 /// }
 /// ```
 pub trait AggregatedEntry: CloseEntry {
-    /// The key type for this aggregated entry.
-    type Key: Eq + Hash + Clone;
-
     /// The source entry type being aggregated.
-    type Source: AggregatableEntry<Aggregated = Self, Key = Self::Key>;
+    type Source: AggregatableEntry<Aggregated = Self>;
 
     /// Aggregate another entry into this accumulator.
     fn aggregate_into(&mut self, entry: &Self::Source);
 }
 
 /// Aggregated allows inline-aggregation of a metric
-pub struct Aggregated<T: AggregatableEntry<Key = ()>> {
+pub struct Aggregated<T: AggregatableEntry> {
     aggregated: Option<T::Aggregated>,
 }
 
-impl<T: AggregatableEntry<Key = ()>> CloseValue for Aggregated<T> {
+impl<T: AggregatableEntry> CloseValue for Aggregated<T> {
     type Closed = Option<<<T as AggregatableEntry>::Aggregated as CloseValue>::Closed>;
 
     fn close(self) -> <Self as CloseValue>::Closed {
@@ -278,13 +282,17 @@ impl<T: AggregatableEntry<Key = ()>> CloseValue for Aggregated<T> {
     }
 }
 
-impl<T: AggregatableEntry<Key = ()>> Aggregated<T> {
+impl<T> Aggregated<T>
+where
+    T: AggregatableEntry,
+    T::Aggregated: Default,
+{
     /// Add a new entry into this aggregate
     pub fn add(&mut self, entry: T) {
         match &mut self.aggregated {
             Some(agg) => agg.aggregate_into(&entry),
             None => {
-                let mut agg = T::new_aggregated(());
+                let mut agg = T::Aggregated::default();
                 agg.aggregate_into(&entry);
                 self.aggregated = Some(agg);
             }
@@ -292,7 +300,7 @@ impl<T: AggregatableEntry<Key = ()>> Aggregated<T> {
     }
 }
 
-impl<T: AggregatableEntry<Key = ()>> Default for Aggregated<T> {
+impl<T: AggregatableEntry> Default for Aggregated<T> {
     fn default() -> Self {
         Self { aggregated: None }
     }

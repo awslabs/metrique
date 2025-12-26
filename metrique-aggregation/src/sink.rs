@@ -3,8 +3,9 @@
 //! This module provides a minimal demonstration of how aggregation sinks work.
 //! A full implementation would integrate with metrique's sink infrastructure.
 
-use crate::aggregate::{AggregatableEntry, AggregatedEntry};
+use crate::aggregate::{AggregatableEntry, AggregatedEntry, DefaultKey, FromKey, Key};
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Mutex;
 
 /// Type-specific aggregating sink that aggregates entries of type `T`.
@@ -82,34 +83,39 @@ use std::sync::Mutex;
 /// let results = sink.drain();
 /// assert_eq!(results.len(), 2);
 /// ```
-pub struct TypedAggregatingEntrySink<T>
+pub struct TypedAggregatingEntrySink<T, K>
 where
     T: AggregatableEntry,
+    K: Key<T>,
 {
-    state: Mutex<HashMap<T::Key, T::Aggregated>>,
+    state: Mutex<HashMap<K::Key, T::Aggregated>>,
+    k: PhantomData<K>,
 }
 
-impl<T> TypedAggregatingEntrySink<T>
+impl<T, K> TypedAggregatingEntrySink<T, K>
 where
     T: AggregatableEntry,
+    K: Key<T>,
+    T::Aggregated: FromKey<K::Key>,
 {
     /// Create a new typed aggregating sink.
     pub fn new() -> Self {
         Self {
             state: Mutex::new(HashMap::new()),
+            k: Default::default(),
         }
     }
 
     /// Append an entry, aggregating it with existing entries that have the same key.
     pub fn append(&self, entry: T) {
         let mut state = self.state.lock().unwrap();
-        let key = entry.key();
+        let key = K::key(&entry);
 
         state
             .entry(key.clone())
             .and_modify(|agg| agg.aggregate_into(&entry))
             .or_insert_with(|| {
-                let mut agg = T::new_aggregated(key);
+                let mut agg = T::Aggregated::new_from_key(key);
                 agg.aggregate_into(&entry);
                 agg
             });
@@ -124,9 +130,12 @@ where
     }
 }
 
-impl<T> Default for TypedAggregatingEntrySink<T>
+impl<T> Default for TypedAggregatingEntrySink<T, T::KeyType>
 where
     T: AggregatableEntry,
+    T: DefaultKey,
+    T::Aggregated: FromKey<<T::KeyType as Key<T>>::Key>,
+    T::KeyType: Key<T>,
 {
     fn default() -> Self {
         Self::new()

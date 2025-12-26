@@ -492,6 +492,19 @@ impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
     }
 }
 
+// AggregateValue implementation for Histogram
+impl<T, S> AggregateValue<T> for Histogram<T, S>
+where
+    T: MetricValue,
+    S: AggregationStrategy + Default,
+{
+    type Aggregated = Histogram<T, S>;
+
+    fn add_value(accum: &mut Self::Aggregated, value: &T) {
+        accum.add_value(value);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use assert2::check;
@@ -535,22 +548,5 @@ mod tests {
     #[test]
     fn num_buckets() {
         check!(default_histogram_config().total_buckets() == 976);
-    }
-}
-
-// AggregateValue implementation for Histogram
-impl<T, S> AggregateValue<T> for Histogram<T, S>
-where
-    T: MetricValue,
-    S: AggregationStrategy + Default,
-{
-    type Aggregated = Histogram<T, S>;
-
-    fn init() -> Self::Aggregated {
-        Histogram::new(S::default())
-    }
-
-    fn aggregate(accum: &mut Self::Aggregated, value: &T) {
-        accum.add_value(value);
     }
 }

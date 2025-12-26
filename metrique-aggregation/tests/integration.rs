@@ -6,9 +6,8 @@
 use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{
-    AggregatableEntry, AggregateValue, Aggregated, AggregatedEntry,
+    AggregatableEntry, AggregateValue, Aggregated, AggregatedEntry, FromKey,
 };
-//use metrique_aggregation::sink::TypedAggregatingEntrySink;
 use metrique_aggregation::{Counter, histogram::Histogram};
 use std::time::Duration;
 
@@ -29,67 +28,45 @@ struct ApiCall {
 }
 
 impl AggregatableEntry for ApiCall {
-    type Key = ();
-
     type Aggregated = AggregatedApiCall;
-
-    fn new_aggregated(_key: Self::Key) -> Self::Aggregated {
-        AggregatedApiCall {
-            latency: Default::default(),
-            number_of_tokens: Default::default(),
-        }
-    }
-
-    fn key(&self) -> Self::Key {
-        ()
-    }
 }
 
 #[metrics]
+#[derive(Default)]
 struct AggregatedApiCall {
     latency: <Histogram<Duration> as AggregateValue<Duration>>::Aggregated,
     number_of_tokens: <Counter as AggregateValue<usize>>::Aggregated,
 }
 
+impl FromKey<()> for AggregatedApiCall {
+    fn new_from_key(_key: ()) -> Self {
+        Self::default()
+    }
+}
+
 impl AggregatedEntry for AggregatedApiCall {
-    type Key = ();
     type Source = ApiCall;
 
     fn aggregate_into(&mut self, entry: &Self::Source) {
-        <Histogram<Duration> as AggregateValue<Duration>>::aggregate(
+        <Histogram<Duration> as AggregateValue<Duration>>::add_value(
             &mut self.latency,
             &entry.latency,
         );
-        <Counter as AggregateValue<usize>>::aggregate(
+        <Counter as AggregateValue<usize>>::add_value(
             &mut self.number_of_tokens,
             &entry.number_of_tokens,
         );
     }
 }
 
-#[metrics]
+#[metrics(rename_all = "PascalCase")]
 struct ManyRequests {
     #[metrics(flatten)]
     requests: Aggregated<ApiCall>,
 }
 
 impl AggregatableEntry for RequestMetrics {
-    type Key = (&'static str, u16);
-
     type Aggregated = AggregatedRequestMetrics;
-
-    fn new_aggregated(key: Self::Key) -> Self::Aggregated {
-        AggregatedRequestMetrics {
-            operation: key.0,
-            status_code: key.1,
-            request_count: Default::default(),
-            latency: Default::default(),
-        }
-    }
-
-    fn key(&self) -> Self::Key {
-        (self.operation, self.status_code)
-    }
 }
 
 #[metrics]
@@ -101,13 +78,11 @@ struct AggregatedRequestMetrics {
 }
 
 impl AggregatedEntry for AggregatedRequestMetrics {
-    type Key = (&'static str, u16);
-
     type Source = RequestMetrics;
 
     fn aggregate_into(&mut self, entry: &Self::Source) {
-        <Counter as AggregateValue<u64>>::aggregate(&mut self.request_count, &entry.request_count);
-        <Histogram<Duration> as AggregateValue<Duration>>::aggregate(
+        <Counter as AggregateValue<u64>>::add_value(&mut self.request_count, &entry.request_count);
+        <Histogram<Duration> as AggregateValue<Duration>>::add_value(
             &mut self.latency,
             &entry.latency,
         );
@@ -116,12 +91,11 @@ impl AggregatedEntry for AggregatedRequestMetrics {
 
 #[test]
 fn test_many_requests() {
-    use metrique::test_util::{test_entry_sink, TestEntrySink};
+    use metrique::test_util::{TestEntrySink, test_entry_sink};
 
-    let TestEntrySink { inspector, sink } = test_entry_sink();
     let mut metrics = ManyRequests {
         requests: Aggregated::default(),
-    }.append_on_drop(sink);
+    };
 
     metrics.requests.add(ApiCall {
         latency: Duration::from_millis(100),
@@ -142,8 +116,9 @@ fn test_many_requests() {
 
     let entries = inspector.entries();
     check!(entries.len() == 1);
-    
+
     let entry = &entries[0];
-    check!(entry.metrics["latency"].distribution.len() == 3);
-    check!(entry.metrics["number_of_tokens"].as_u64() == 185);
+    // verify that renames work properly with aggregation
+    check!(entry.metrics["Latency"].distribution.len() == 3);
+    check!(entry.metrics["NumberOfTokens"].as_u64() == 185);
 }
