@@ -100,7 +100,9 @@ use metrique_core::CloseValue;
 use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
-use std::marker::PhantomData;
+use std::{borrow::Borrow, marker::PhantomData};
+
+use crate::aggregate::AggregateValue;
 
 /// Strategy for aggregating observations in a histogram.
 ///
@@ -163,10 +165,11 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
     ///
     /// The value is converted to observations using the metric value's implementation,
     /// then recorded in the aggregation strategy.
-    pub fn add_value(&mut self, value: T)
+    pub fn add_value(&mut self, value: impl Borrow<T>)
     where
         T: MetricValue,
     {
+        let value = value.borrow();
         struct Capturer<'a, S>(&'a mut S);
         impl<'b, S: AggregationStrategy> ValueWriter for Capturer<'b, S> {
             fn string(self, _value: &str) {}
@@ -503,6 +506,19 @@ impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
                 }
             })
             .collect()
+    }
+}
+
+/// AggregateValue implementation for Histogram
+impl<T, S> AggregateValue<T> for Histogram<T, S>
+where
+    T: MetricValue,
+    S: AggregationStrategy + Default,
+{
+    type Aggregated = Histogram<T, S>;
+
+    fn add_value(accum: &mut Self::Aggregated, value: &T) {
+        accum.add_value(value);
     }
 }
 

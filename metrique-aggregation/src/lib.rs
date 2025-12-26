@@ -4,4 +4,6 @@
 
 //! Histogram implementations for aggregating metrique metrics.
 
+pub mod aggregate;
+pub mod counter;
 pub mod histogram;
