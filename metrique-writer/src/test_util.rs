@@ -13,8 +13,10 @@ use std::{
     time::SystemTime,
 };
 
+use metrique_core::{CloseEntry, InflectableEntry};
 use metrique_writer_core::{
     MetricFlags,
+    entry::SampleGroupElement,
     value::{FlagConstructor, ForceFlag, MetricOptions},
 };
 
@@ -252,11 +254,55 @@ impl ValueWriter for TestValueWriter<'_> {
 
 /// Converts an [`Entry`] into a `TestEntry` that can be introspected
 ///
-/// > NOTE: This method is probably not what you want. Use [`test_entry_sink`] instead.
+/// > NOTE: This method is probably not what you want. For testing an individual metric,
+/// > use [`test_metric`]. For a test-sink that can be installed, use [`test_entry_sink`].
 pub fn to_test_entry(e: impl Entry) -> TestEntry {
     let mut entry = TestEntry::empty();
     e.write(&mut entry);
     entry
+}
+
+/// Convert a `#[metric]` directly to `TestEntry`
+///
+/// # Example
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+/// use metrique_writer::test_util::test_metric;
+///
+/// #[metrics]
+/// struct MyMetrics {
+///     request_count: u64,
+/// }
+///
+/// let metrics = MyMetrics { request_count: 42 };
+/// let entry = test_metric(metrics);
+/// assert_eq!(entry.metrics["request_count"], 42);
+/// ```
+pub fn test_metric(e: impl CloseEntry) -> TestEntry {
+    let root_entry = RootEntry::new(e.close());
+    to_test_entry(root_entry)
+}
+
+struct RootEntry<M: InflectableEntry> {
+    metric: M,
+}
+
+impl<M: InflectableEntry> RootEntry<M> {
+    /// create a new [`RootEntry`]
+    pub fn new(metric: M) -> Self {
+        Self { metric }
+    }
+}
+
+impl<M: InflectableEntry> Entry for RootEntry<M> {
+    fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+        self.metric.write(w);
+    }
+
+    fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
+        self.metric.sample_group()
+    }
 }
 
 /// A test sink for capturing and inspecting metric entries.

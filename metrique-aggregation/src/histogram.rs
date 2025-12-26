@@ -1,3 +1,5 @@
+#![deny(clippy::arithmetic_side_effects)]
+
 //! Histogram types for aggregating multiple observations into distributions.
 //!
 //! When emitting high-frequency metrics, you often want to aggregate multiple observations
@@ -123,8 +125,10 @@ pub trait AggregationStrategy {
 ///
 /// Like [`AggregationStrategy`] but allows recording values through a shared reference.
 pub trait SharedAggregationStrategy {
-    /// Record a single observation through a shared reference.
-    fn record(&self, value: f64);
+    /// Record a single observation.
+    fn record(&self, value: f64) {
+        self.record_many(value, 1);
+    }
 
     /// Record multiple observations of the same value through a shared reference.
     fn record_many(&self, value: f64, count: u64);
@@ -320,9 +324,21 @@ where
     type Unit = T::Unit;
 }
 
+const SCALING_FACTOR: f64 = (1 << 10) as f64;
+
+fn scale_up(v: impl Into<f64>) -> f64 {
+    v.into() * SCALING_FACTOR
+}
+
+fn scale_down(v: impl Into<f64>) -> f64 {
+    v.into() / SCALING_FACTOR
+}
+
 /// Exponential bucketing strategy using the histogram crate.
 ///
 /// This uses 976 buckets and supports values from 0 to u64::MAX. Values greater than u64::MAX are truncated to u64::MAX.
+/// Scaling factor for converting floating point values to integers for histogram bucketing.
+/// 2^10 = 1024, providing 3 decimal places of precision.
 ///
 /// Uses exponential bucketing with configurable precision. Default configuration
 /// uses 4-bit mantissa precision (16 buckets per order of magnitude, ~6.25% error).
@@ -353,6 +369,7 @@ fn default_histogram_config() -> Config {
 impl AggregationStrategy for ExponentialAggregationStrategy {
     fn record_many(&mut self, value: f64, count: u64) {
         // the inner histogram drops data above u64::MAX in our default configuration
+        let value = scale_up(value);
         self.inner
             .add(value.min(u64::MAX as f64) as u64, count)
             .ok();
@@ -368,9 +385,10 @@ impl AggregationStrategy for ExponentialAggregationStrategy {
             .filter(|bucket| bucket.count() > 0)
             .map(|bucket| {
                 let range = bucket.range();
-                let midpoint = range.start() + (range.end() - range.start()) / 2;
+                let midpoint = range.start().midpoint(*range.end());
+                let midpoint = scale_down(midpoint as f64);
                 Observation::Repeated {
-                    total: midpoint as f64 * bucket.count() as f64,
+                    total: midpoint * bucket.count() as f64,
                     occurrences: bucket.count(),
                 }
             })
@@ -411,11 +429,11 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
 
         if let Some(first) = iter.next() {
             let mut current_value = first;
-            let mut current_count = 1;
+            let mut current_count: u64 = 1;
 
             for value in iter {
                 if value == current_value {
-                    current_count += 1;
+                    current_count = current_count.saturating_add(1);
                 } else {
                     observations.push(Observation::Repeated {
                         total: current_value * current_count as f64,
@@ -463,11 +481,8 @@ impl Default for AtomicExponentialAggregationStrategy {
 }
 
 impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
-    fn record(&self, value: f64) {
-        self.inner.add(value as u64, 1).ok();
-    }
-
     fn record_many(&self, value: f64, count: u64) {
+        let value = scale_up(value);
         self.inner
             .add(value.min(u64::MAX as f64) as u64, count)
             .ok();
@@ -480,9 +495,10 @@ impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
             .filter(|bucket| bucket.count() > 0)
             .map(|bucket| {
                 let range = bucket.range();
-                let midpoint = range.start() + (range.end() - range.start()) / 2;
+                let midpoint = range.start().midpoint(*range.end());
+                let midpoint = scale_down(midpoint as f64);
                 Observation::Repeated {
-                    total: midpoint as f64 * bucket.count() as f64,
+                    total: midpoint * bucket.count() as f64,
                     occurrences: bucket.count(),
                 }
             })
@@ -497,7 +513,7 @@ mod tests {
 
     use crate::histogram::{
         AggregationStrategy, AtomicExponentialAggregationStrategy, ExponentialAggregationStrategy,
-        SharedAggregationStrategy, default_histogram_config,
+        SharedAggregationStrategy, default_histogram_config, scale_down, scale_up,
     };
 
     #[test]
@@ -509,7 +525,7 @@ mod tests {
             strat.drain()
                 == vec![Observation::Repeated {
                     // value is truncated to u64::MAX
-                    total: 1.815851369755784e19,
+                    total: 1.7732923532771328e16,
                     occurrences: 1,
                 }]
         );
@@ -524,7 +540,7 @@ mod tests {
             strat.drain()
                 == vec![Observation::Repeated {
                     // value is truncated to u64::MAX
-                    total: 1.815851369755784e19,
+                    total: 1.7732923532771328e16,
                     occurrences: 1,
                 }]
         );
@@ -533,5 +549,11 @@ mod tests {
     #[test]
     fn num_buckets() {
         check!(default_histogram_config().total_buckets() == 976);
+    }
+
+    #[test]
+    fn test_scaling() {
+        let x = 0.001;
+        check!(scale_down(scale_up(x)) == x);
     }
 }

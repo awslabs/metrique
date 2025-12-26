@@ -7,6 +7,7 @@ use metrique_aggregation::histogram::{
     Histogram, SharedAggregationStrategy, SharedHistogram, SortAndMerge,
 };
 use metrique_writer::Observation;
+use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{Byte, Millisecond, UnitTag};
 use metrique_writer::value::{MetricFlags, MetricValue, ValueWriter, WithDimensions};
 use rand::{Rng, SeedableRng};
@@ -347,11 +348,13 @@ fn test_sort_and_merge_with_nan() {
 
 // Test harness for validating histogram accuracy
 
+/// Calculate percentile from a list of values. Percentile should be in the range 0->100
 fn calculate_percentile(sorted_values: &[f64], percentile: f64) -> f64 {
     let index = (percentile / 100.0 * (sorted_values.len() - 1) as f64).round() as usize;
     sorted_values[index]
 }
 
+/// Calculate percentile from a list of buckets. Percentile should be in the range 0->100
 fn calculate_percentile_from_buckets(observations: &[Observation], percentile: f64) -> f64 {
     // Build cumulative distribution from bucketed observations
     let mut buckets: Vec<(f64, u64)> = Vec::new();
@@ -423,6 +426,16 @@ fn test_histogram_accuracy<S: AggregationStrategy>(
             max_error_pct
         );
     }
+}
+
+#[track_caller]
+fn check_accuracy(expected: f64, buckets: &[Observation], percentile: f64, error_bound: f64) {
+    let actual = calculate_percentile_from_buckets(&buckets, percentile);
+    let error_pct = ((actual - expected).abs() / expected) * 100.0;
+    check!(
+        error_pct <= error_bound,
+        "p{percentile}: expected={expected}, actual={actual}, error={error_pct}% (max={error_bound}%)",
+    );
 }
 
 fn test_shared_histogram_accuracy<S: SharedAggregationStrategy>(
@@ -546,4 +559,28 @@ fn test_shared_histogram_ignores_zero_occurrences() {
         SharedHistogram::default();
     histogram.add_value(ZeroOccurrences);
     // Should not panic, just ignore the invalid observation
+}
+
+#[test]
+fn test_histogram_microsecond_accuracy() {
+    let mut histogram = Histogram::<Duration>::new(ExponentialAggregationStrategy::new());
+    let mut samples = vec![];
+    for _i in 0..100 {
+        samples.push(Duration::from_micros(5));
+    }
+    samples.push(Duration::from_micros(100));
+    samples.push(Duration::from_millis(1));
+    for v in samples {
+        histogram.add_value(v);
+    }
+
+    #[metrics]
+    struct TestMetrics {
+        histogram: Histogram<Duration>,
+    }
+
+    let entry = test_metric(TestMetrics { histogram });
+    let buckets = &entry.metrics["histogram"].distribution;
+    check_accuracy(0.005, buckets, 50.0, 6.25);
+    check_accuracy(1.0, buckets, 100.0, 6.25);
 }

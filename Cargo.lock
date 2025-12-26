@@ -825,6 +825,8 @@ dependencies = [
  "futures",
  "metrics",
  "metrics-util",
+ "metrique",
+ "metrique-core",
  "metrique-metricsrs",
  "metrique-writer",
  "metrique-writer-core",
