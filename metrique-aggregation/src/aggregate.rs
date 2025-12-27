@@ -37,16 +37,34 @@ use metrique_core::CloseValue;
 ///
 /// ```rust
 /// use metrique_aggregation::aggregate::AggregateValue;
+/// use metrique_core::CloseValue;
 ///
 /// // Average tracks sum and count to compute average
 /// pub struct Avg;
 ///
+/// pub struct AvgAccumulator {
+///     sum: f64,
+///     count: u64,
+/// }
+///
+/// impl CloseValue for AvgAccumulator {
+///     type Closed = f64;
+///
+///     fn close(self) -> f64 {
+///         if self.count == 0 {
+///             0.0
+///         } else {
+///             self.sum / self.count as f64
+///         }
+///     }
+/// }
+///
 /// impl AggregateValue<f64> for Avg {
-///     type Aggregated = (f64, u64); // (sum, count)
+///     type Aggregated = AvgAccumulator;
 ///
 ///     fn add_value(accum: &mut Self::Aggregated, value: &f64) {
-///         accum.0 += value;
-///         accum.1 += 1;
+///         accum.sum += value;
+///         accum.count += 1;
 ///     }
 /// }
 /// ```
