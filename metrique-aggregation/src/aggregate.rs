@@ -91,11 +91,14 @@ pub trait AccumulatorMetric: CloseEntry {
 }
 
 /// Aggregated allows inline-aggregation of a metric
-pub struct Aggregated<T: SourceMetric> {
+///
+/// Aggregated is simple — more complex designs allow `append_on_drop` via a queue
+/// or guard. Aggregate is a minimal version.
+pub struct Aggregate<T: SourceMetric> {
     aggregated: Option<T::Aggregated>,
 }
 
-impl<T: SourceMetric> CloseValue for Aggregated<T> {
+impl<T: SourceMetric> CloseValue for Aggregate<T> {
     type Closed = Option<<<T as SourceMetric>::Aggregated as CloseValue>::Closed>;
 
     fn close(self) -> <Self as CloseValue>::Closed {
@@ -103,7 +106,7 @@ impl<T: SourceMetric> CloseValue for Aggregated<T> {
     }
 }
 
-impl<T> Aggregated<T>
+impl<T> Aggregate<T>
 where
     T: SourceMetric,
     T::Aggregated: Default,
@@ -121,7 +124,7 @@ where
     }
 }
 
-impl<T: SourceMetric> Default for Aggregated<T> {
+impl<T: SourceMetric> Default for Aggregate<T> {
     fn default() -> Self {
         Self { aggregated: None }
     }
