@@ -11,11 +11,10 @@
 //! // Aggregation strategy      input type
 //! // And produce the correct aggregate type at compile time
 //! ```
-//! 2. [`SourceMetric`]: A metric that can be merged into an accumulator
+//! 2. [`SourceMetric`]: A metric that can be merged into an accumulator. You can `impl` SourceMetric + `AccumulatorMetric` for
+//!    an entire entry to define how it is merged.
 //!
-//! 3. [`AccumulatorMetric`]: A metric that contains multiple other metrics
-//!
-//!  `
+//! 3. [`AccumulatorMetric`]: A metric that accumulates metrics (usually of the same type)
 
 use metrique_core::CloseEntry;
 use metrique_core::CloseValue;
