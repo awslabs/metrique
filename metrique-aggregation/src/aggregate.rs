@@ -1,7 +1,7 @@
 //! Traits for aggregation
 //!
 //! There are three traits:
-//! 1. [`AggregateValue`]: This defines how individual values are merged, for example, [`Counter`] defines that
+//! 1. [`AggregateValue`]: This defines how individual values are merged, for example, [`crate::counter::Counter`] defines that
 //! values are summed. `Histogram` is a strategy that keeps track of values then emits buckets later. This trait exists
 //! so that during macro expansion we can do:
 //! ```rust
