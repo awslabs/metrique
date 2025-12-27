@@ -95,14 +95,15 @@ pub trait AccumulatorMetric: CloseEntry {
 /// Aggregated is simple — more complex designs allow `append_on_drop` via a queue
 /// or guard. Aggregate is a minimal version.
 pub struct Aggregate<T: SourceMetric> {
-    aggregated: Option<T::Aggregated>,
+    aggregated: T::Aggregated,
+    num_samples: usize,
 }
 
 impl<T: SourceMetric> CloseValue for Aggregate<T> {
-    type Closed = Option<<<T as SourceMetric>::Aggregated as CloseValue>::Closed>;
+    type Closed = <T::Aggregated as CloseValue>::Closed;
 
     fn close(self) -> <Self as CloseValue>::Closed {
-        self.aggregated.map(|t| CloseValue::close(t))
+        self.aggregated.close()
     }
 }
 
@@ -112,20 +113,21 @@ where
     T::Aggregated: Default,
 {
     /// Add a new entry into this aggregate
-    pub fn add(&mut self, entry: T) {
-        match &mut self.aggregated {
-            Some(agg) => agg.add_entry(&entry),
-            None => {
-                let mut agg = T::Aggregated::default();
-                agg.add_entry(&entry);
-                self.aggregated = Some(agg);
-            }
-        }
+    pub fn add(&mut self, entry: &T) {
+        self.num_samples += 1;
+        self.aggregated.add_entry(entry);
     }
 }
 
-impl<T: SourceMetric> Default for Aggregate<T> {
+impl<T> Default for Aggregate<T>
+where
+    T: SourceMetric,
+    T::Aggregated: Default,
+{
     fn default() -> Self {
-        Self { aggregated: None }
+        Self {
+            aggregated: T::Aggregated::default(),
+            num_samples: 0,
+        }
     }
 }
