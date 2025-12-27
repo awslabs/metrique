@@ -3,6 +3,8 @@ name = "metrique-aggregation"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.89" # build.yml
+license = "Apache-2.0"
+description = "Library for working with unit of work metrics - aggregation"
 
 [dependencies]
 metrique-writer = { path = "../metrique-writer", version = "0.1.9"}
