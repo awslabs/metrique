@@ -45,7 +45,6 @@ pub mod timers;
 /// handle that work in the background.
 pub mod slot;
 
-use metrique_core::CloseEntry;
 use metrique_writer_core::Entry;
 use metrique_writer_core::EntryWriter;
 use metrique_writer_core::entry::SampleGroupElement;
@@ -61,7 +60,9 @@ use keep_alive::Parent;
 use metrique_writer_core::EntrySink;
 use std::sync::Arc;
 
-pub use metrique_core::{CloseValue, CloseValueRef, Counter, InflectableEntry, NameStyle};
+pub use metrique_core::{
+    CloseEntry, CloseValue, CloseValueRef, Counter, InflectableEntry, NameStyle,
+};
 
 /// Unit types and utilities for metrics.
 ///
