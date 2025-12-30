@@ -16,7 +16,6 @@
 //!
 //! 3. [`AccumulatorMetric`]: A metric that accumulates metrics (usually of the same type)
 
-use metrique_core::CloseEntry;
 use metrique_core::CloseValue;
 
 /// Defines how individual field values are aggregated.
@@ -96,30 +95,19 @@ pub trait AggregateEntry {
     fn key<'a>(source: &'a Self::Source<'a>) -> Self::Key<'a>;
 }
 
-/// An atom that can be aggregated
-pub trait SourceMetric: Sized {
-    /// The type that accumulates aggregated entries.
-    type Aggregated: AccumulatorMetric<Source = Self>;
-}
-
-/// A metric that accumlates `Source` metrics
-pub trait AccumulatorMetric: CloseEntry {
-    /// The source type for this accumulation
-    type Source;
-    /// Aggregate another entry into this accumulator.
-    fn add_entry(&mut self, entry: &Self::Source);
-}
-
 /// Aggregated allows inline-aggregation of a metric
 ///
 /// Aggregated is simple — more complex designs allow `append_on_drop` via a queue
 /// or guard. Aggregate is a minimal version.
-pub struct Aggregate<T: SourceMetric> {
+pub struct Aggregate<T: AggregateEntry> {
     aggregated: T::Aggregated,
     num_samples: usize,
 }
 
-impl<T: SourceMetric> CloseValue for Aggregate<T> {
+impl<T: AggregateEntry> CloseValue for Aggregate<T>
+where
+    T::Aggregated: CloseValue,
+{
     type Closed = <T::Aggregated as CloseValue>::Closed;
 
     fn close(self) -> <Self as CloseValue>::Closed {
@@ -127,14 +115,11 @@ impl<T: SourceMetric> CloseValue for Aggregate<T> {
     }
 }
 
-impl<T> Aggregate<T>
-where
-    T: SourceMetric,
-{
+impl<T: AggregateEntry> Aggregate<T> {
     /// Add a new entry into this aggregate
-    pub fn add(&mut self, entry: &T) {
+    pub fn add<'a>(&mut self, entry: T::Source<'a>) {
         self.num_samples += 1;
-        self.aggregated.add_entry(entry);
+        T::merge_entry(&mut self.aggregated, entry);
     }
 
     /// Creates a `Aggreate` that is initialized to a given value
@@ -146,9 +131,8 @@ where
     }
 }
 
-impl<T> Default for Aggregate<T>
+impl<T: AggregateEntry> Default for Aggregate<T>
 where
-    T: SourceMetric,
     T::Aggregated: Default,
 {
     fn default() -> Self {

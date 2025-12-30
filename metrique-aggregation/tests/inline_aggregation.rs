@@ -3,7 +3,7 @@
 use assert2::check;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::aggregate::{AccumulatorMetric, Aggregate, AggregateValue, SourceMetric};
+use metrique_aggregation::aggregate::{Aggregate, AggregateEntry, AggregateValue};
 use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::key::FromKey;
@@ -69,10 +69,6 @@ impl FromKey<&'static str> for AggregatedApiCallWithOperation {
     }
 }
 
-impl SourceMetric for ApiCall {
-    type Aggregated = AggregatedApiCall;
-}
-
 // copy all attributes already present on the metrics attribute
 #[metrics(rename_all = "PascalCase")]
 // if no fields are marked with `#[aggregate(key)]`, derive default and impl FromKey<()>
@@ -96,24 +92,32 @@ impl FromKey<()> for AggregatedApiCall {
 impl MergeOnDropExt for ApiCall {}
 impl MergeAndCloseOnDropExt for ApiCall {}
 
-impl AccumulatorMetric for AggregatedApiCall {
-    type Source = ApiCall;
-    #[allow(deprecated)]
-    fn add_entry(&mut self, entry: &ApiCall) {
-        // Pattern:
-        // `<AGGREGATE_TY as AggregateValue<FIELD_TY>::add_value(&mut self.<field>, &entry.field)`
+impl AggregateEntry for ApiCall {
+    type Source<'a> = &'a Self;
+    type Aggregated = AggregatedApiCall;
+    type Key<'a> = ();
+
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source<'a>) {
         <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
-            &mut self.latency,
+            &mut accum.latency,
             &entry.latency,
         );
         <Counter as AggregateValue<usize>>::add_value(
-            &mut self.response_size,
+            &mut accum.response_size,
             &entry.response_size,
         );
         <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::add_value(
-            &mut self.response_value,
+            &mut accum.response_value,
             &entry.response_value,
         );
+    }
+
+    fn new_aggregated<'a>(_key: Self::Key<'a>) -> Self::Aggregated {
+        Self::Aggregated::default()
+    }
+
+    fn key<'a>(_source: &'a Self::Source<'a>) -> Self::Key<'a> {
+        ()
     }
 }
 

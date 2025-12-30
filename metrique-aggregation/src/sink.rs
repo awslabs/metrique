@@ -7,7 +7,7 @@ use std::{
 
 use metrique_core::CloseValue;
 
-use crate::aggregate::{Aggregate, SourceMetric};
+use crate::aggregate::{Aggregate, AggregateEntry};
 
 /// Handle for metric that will be automatically merged into the target when dropped
 pub struct MergeOnDrop<T, Sink: AggregateSink<T>> {
@@ -59,7 +59,7 @@ where
 }
 
 /// Extension trait to supporting merging an item into an aggregator on drop
-pub trait MergeOnDropExt: SourceMetric {
+pub trait MergeOnDropExt {
     /// Merge an item into a given sink when the guard drops
     fn merge_on_drop<S>(self, sink: &S) -> MergeOnDrop<Self, S>
     where
@@ -74,7 +74,7 @@ pub trait MergeOnDropExt: SourceMetric {
 }
 
 /// Extension trait to support merging and closing an item into an aggregator on drop
-pub trait MergeAndCloseOnDropExt: SourceMetric + CloseValue {
+pub trait MergeAndCloseOnDropExt: CloseValue {
     /// Merge an item into a given sink when the guard drops, calling close first
     fn merge_and_close_on_drop<S>(self, sink: &S) -> MergeAndCloseOnDrop<Self, S>
     where
@@ -115,12 +115,18 @@ pub trait AggregateSink<T> {
 }
 
 /// Aggregation that coordinates access with a Mutex
-pub struct MutexSink<T: SourceMetric> {
+pub struct MutexSink<T: AggregateEntry>
+where
+    for<'a> T::Key<'a>: 'static,
+{
     aggregator: Arc<Mutex<Option<Aggregate<T>>>>,
     default_value: Arc<dyn Fn() -> T::Aggregated + Send + Sync>,
 }
 
-impl<T: SourceMetric> Clone for MutexSink<T> {
+impl<T: AggregateEntry> Clone for MutexSink<T>
+where
+    for<'a> T::Key<'a>: 'static,
+{
     fn clone(&self) -> Self {
         Self {
             aggregator: self.aggregator.clone(),
@@ -129,7 +135,10 @@ impl<T: SourceMetric> Clone for MutexSink<T> {
     }
 }
 
-impl<T: SourceMetric> MutexSink<T> {
+impl<T: AggregateEntry> MutexSink<T>
+where
+    for<'a> T::Key<'a>: 'static,
+{
     /// Creates a new mutex sink
     pub fn new() -> MutexSink<T>
     where
@@ -142,24 +151,31 @@ impl<T: SourceMetric> MutexSink<T> {
     }
 }
 
-impl<T: SourceMetric> AggregateSink<T> for MutexSink<T> {
-    fn merge(&self, entry: T) {
+impl<'a, T: AggregateEntry> AggregateSink<T::Source<'a>> for MutexSink<T>
+where
+    for<'b> T::Key<'b>: 'static,
+{
+    fn merge(&self, entry: T::Source<'a>) {
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {
             Some(v) => {
-                v.add(&entry);
+                v.add(entry);
             }
             None => {
                 let value = (self.default_value)();
                 let mut agg = Aggregate::new(value);
-                agg.add(&entry);
+                agg.add(entry);
                 *aggregator = Some(agg);
             }
         }
     }
 }
 
-impl<T: SourceMetric> CloseValue for MutexSink<T> {
+impl<T: AggregateEntry> CloseValue for MutexSink<T>
+where
+    for<'a> T::Key<'a>: 'static,
+    T::Aggregated: CloseValue,
+{
     type Closed = Option<<Aggregate<T> as CloseValue>::Closed>;
 
     fn close(self) -> Self::Closed {
