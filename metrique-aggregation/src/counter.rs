@@ -34,11 +34,11 @@ impl<T: Clone> AggregateValue<T> for LastValueWins {
 }
 
 /// Wrap a given strategy to support optional values by ignoring `None`
-pub struct IgnoreNone<Inner> {
+pub struct MergeOptions<Inner> {
     _data: PhantomData<Inner>,
 }
 
-impl<T, S> AggregateValue<Option<T>> for IgnoreNone<S>
+impl<T, S> AggregateValue<Option<T>> for MergeOptions<S>
 where
     S: AggregateValue<T>,
 {

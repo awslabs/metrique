@@ -76,18 +76,15 @@ pub trait AggregateValue<T> {
 }
 
 /// An atom that can be aggregated
-pub trait SourceMetric {
+pub trait SourceMetric: Sized {
     /// The type that accumulates aggregated entries.
-    type Aggregated: AccumulatorMetric<Source = Self>;
+    type Aggregated: AccumulatorMetric<Self>;
 }
 
 /// A metric that accumlates `Source` metrics
-pub trait AccumulatorMetric: CloseEntry {
-    /// The source entry type being aggregated.
-    type Source: SourceMetric<Aggregated = Self>;
-
+pub trait AccumulatorMetric<Source>: CloseEntry {
     /// Aggregate another entry into this accumulator.
-    fn add_entry(&mut self, entry: &Self::Source);
+    fn add_entry(&mut self, entry: &Source);
 }
 
 /// Aggregated allows inline-aggregation of a metric

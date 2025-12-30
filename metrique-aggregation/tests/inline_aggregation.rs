@@ -4,9 +4,9 @@ use assert2::check;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{AccumulatorMetric, Aggregate, AggregateValue, SourceMetric};
-use metrique_aggregation::counter::{Counter, IgnoreNone, LastValueWins};
+use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
+use metrique_aggregation::sink::{MergeAndCloseOnDropExt, MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -34,8 +34,12 @@ struct ApiCall {
     #[metrics(unit = Byte)]
     response_size: usize,
 
-    // #[aggregate(IgnoreNone<LastValueWins>)]
+    // #[aggregate(MergeOptions<LastValueWins>)]
     response_value: Option<String>,
+}
+
+impl SourceMetric for ApiCallEntry {
+    type Aggregated = AggregatedApiCall;
 }
 
 impl SourceMetric for ApiCall {
@@ -46,22 +50,24 @@ impl SourceMetric for ApiCall {
 #[metrics(rename_all = "PascalCase")]
 // if no fields are marked with `#[aggregate(key)]`, derive default
 #[derive(Default)]
-struct AggregatedApiCall {
+pub struct AggregatedApiCall {
     // COPY ALL `#[metrics...]` attributes directly
     #[metrics(unit = Millisecond)]
     latency: <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::Aggregated,
     #[metrics(unit = Byte)]
     response_size: <Counter as AggregateValue<usize>>::Aggregated,
 
-    response_key: <IgnoreNone<LastValueWins> as AggregateValue<Option<String>>>::Aggregated,
+    response_value: <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::Aggregated,
 }
 
 impl MergeOnDropExt for ApiCall {}
+impl MergeAndCloseOnDropExt for ApiCall {}
 
-impl AccumulatorMetric for AggregatedApiCall {
-    type Source = ApiCall;
-
-    fn add_entry(&mut self, entry: &Self::Source) {
+impl AccumulatorMetric<ApiCall> for AggregatedApiCall {
+    #[allow(deprecated)]
+    fn add_entry(&mut self, entry: &ApiCall) {
+        // Pattern:
+        // `<AGGREGATE_TY as AggregateValue<FIELD_TY>::add_value(&mut self.<field>, &entry.field)`
         <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
             &mut self.latency,
             &entry.latency,
@@ -70,8 +76,28 @@ impl AccumulatorMetric for AggregatedApiCall {
             &mut self.response_size,
             &entry.response_size,
         );
-        <IgnoreNone<LastValueWins> as AggregateValue<Option<String>>>::add_value(
-            &mut self.response_key,
+        <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::add_value(
+            &mut self.response_value,
+            &entry.response_value,
+        );
+    }
+}
+
+impl AccumulatorMetric<ApiCallEntry> for AggregatedApiCall {
+    #[allow(deprecated)]
+    fn add_entry(&mut self, entry: &ApiCallEntry) {
+        // Pattern:
+        // `<AGGREGATE_TY as AggregateValue<FIELD_TY>::add_value(&mut self.<field>, &entry.field)`
+        <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
+            &mut self.latency,
+            &entry.latency,
+        );
+        <Counter as AggregateValue<usize>>::add_value(
+            &mut self.response_size,
+            &entry.response_size,
+        );
+        <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::add_value(
+            &mut self.response_value,
             &entry.response_value,
         );
     }
@@ -98,12 +124,13 @@ fn test_metrics_aggregation_sink() {
         request_id: "1234".to_string(),
     };
 
-    let metric_item = ApiCall {
+    let mut metric_item = ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
         response_value: None,
     }
     .merge_on_drop(&metrics.api_calls);
+    metric_item.response_value = Some("hello!".to_string());
 
     drop(metric_item);
     let entry = test_metric(metrics);
@@ -111,6 +138,7 @@ fn test_metrics_aggregation_sink() {
     check!(entry.metrics["ResponseSize"].unit == Unit::Byte(PositiveScale::One));
     check!(entry.metrics["Latency"].unit == Unit::Second(NegativeScale::Milli));
     check!(entry.values["RequestId"] == "1234");
+    check!(entry.values["ResponseValue"] == "hello!");
 }
 
 #[test]
