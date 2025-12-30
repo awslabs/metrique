@@ -7,11 +7,12 @@
 
 mod emf;
 mod entry_impl;
+mod enums;
 mod inflect;
 mod value_impl;
 
 use darling::{
-    FromField, FromMeta, FromVariant,
+    FromField, FromMeta,
     ast::NestedMeta,
     util::{Flag, SpannedValue},
 };
@@ -474,20 +475,13 @@ struct RawMetricsFieldAttrs {
     exact_prefix: Option<SpannedKv<String>>,
 }
 
-#[derive(Debug, FromVariant)]
-#[darling(attributes(metrics))]
-struct RawMetricsVariantAttrs {
-    #[darling(default)]
-    name: Option<SpannedKv<String>>,
-}
-
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
 #[derive(Debug)]
-struct SpannedKv<T> {
-    key_span: Span,
+pub(crate) struct SpannedKv<T> {
+    pub(crate) key_span: Span,
     #[allow(dead_code)]
-    value_span: Span,
-    value: T,
+    pub(crate) value_span: Span,
+    pub(crate) value: T,
 }
 
 impl<T: FromMeta> FromMeta for SpannedKv<T> {
@@ -549,14 +543,6 @@ fn get_field_flag(
         (true, Some((_, other))) => Err(cannot_combine_error(other, field_name, flag.span())),
         (true, None) => Ok(Some(flag.span())),
         _ => Ok(None),
-    }
-}
-
-impl RawMetricsVariantAttrs {
-    fn validate(self) -> darling::Result<MetricsVariantAttrs> {
-        Ok(MetricsVariantAttrs {
-            name: self.name.map(|n| n.value),
-        })
     }
 }
 
@@ -643,11 +629,6 @@ fn validate_name_inner(name: &str) -> std::result::Result<(), &'static str> {
         return Err("invalid name: name must not contain spaces");
     }
     Ok(())
-}
-
-#[derive(Debug, Default, Clone)]
-struct MetricsVariantAttrs {
-    name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -815,7 +796,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     ));
                 }
             };
-            generate_metrics_for_enum(root_attributes, &input, variants)?
+            enums::generate_metrics_for_enum(root_attributes, &input, variants)?
         }
     };
 
@@ -824,48 +805,6 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     }
 
     Ok(output)
-}
-
-fn generate_metrics_for_enum(
-    root_attrs: RootAttributes,
-    input: &DeriveInput,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
-) -> Result<Ts2> {
-    let enum_name = &input.ident;
-    let parsed_variants = parse_enum_variants(variants, true)?;
-    let value_name = format_ident!("{}Value", enum_name);
-
-    let base_enum = generate_base_enum(
-        enum_name,
-        &input.vis,
-        &input.generics,
-        &input.attrs,
-        &parsed_variants,
-    );
-    let warnings = root_attrs.warnings();
-
-    let value_enum =
-        generate_value_enum(&value_name, &input.generics, &parsed_variants, &root_attrs)?;
-
-    let value_impl =
-        value_impl::generate_value_impl_for_enum(&root_attrs, &value_name, &parsed_variants);
-
-    let variants_map = parsed_variants.iter().map(|variant| {
-        let variant_ident = &variant.ident;
-        quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident => #value_name::#variant_ident)
-    });
-    let variants_map = quote!(#[allow(deprecated)] match self { #(#variants_map),* });
-
-    let close_value_impl =
-        generate_close_value_impls(&root_attrs, enum_name, &value_name, variants_map);
-
-    Ok(quote! {
-        #base_enum
-        #value_enum
-        #value_impl
-        #close_value_impl
-        #warnings
-    })
 }
 
 fn generate_metrics_for_struct(
@@ -983,25 +922,6 @@ fn generate_base_struct(
     })
 }
 
-fn generate_base_enum(
-    name: &Ident,
-    vis: &Visibility,
-    generics: &Generics,
-    attrs: &[Attribute],
-    variants: &[MetricsVariant],
-) -> Ts2 {
-    let variants = variants.iter().map(|f| f.core_variant());
-    let data = quote! {
-        #(#variants),*
-    };
-    let expanded = quote! {
-        #(#attrs)*
-        #vis enum #name #generics { #data }
-    };
-
-    expanded
-}
-
 /// Generate the on_drop_wrapper implementation
 fn generate_on_drop_wrapper(
     vis: &Visibility,
@@ -1112,26 +1032,6 @@ fn generate_entry_struct(
     ))
 }
 
-fn generate_value_enum(
-    name: &Ident,
-    _generics: &Generics,
-    variants: &[MetricsVariant],
-    _root_attrs: &RootAttributes,
-) -> Result<Ts2> {
-    let variants = variants.iter().map(|variant| variant.entry_variant());
-    let data = quote! {
-        #(#variants,)*
-    };
-    let expanded = quote! {
-        #[doc(hidden)]
-        pub enum #name {
-            #data
-        }
-    };
-
-    Ok(expanded)
-}
-
 /// Parse the fields of a struct into a vector of MField objects
 fn parse_struct_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
@@ -1170,74 +1070,6 @@ fn parse_struct_fields(
     errors.finish()?;
 
     Ok(parsed_fields)
-}
-
-/// Parse the variants of an enum into a vector of MField objects
-fn parse_enum_variants(
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
-    parse_attrs: bool,
-) -> Result<Vec<MetricsVariant>> {
-    let mut parsed_variants = vec![];
-    let mut errors = darling::Error::accumulator();
-
-    // Process each field
-    for variant in variants {
-        if !variant.fields.is_empty() {
-            return Err(Error::new_spanned(
-                variant,
-                "variants with fields are not supported",
-            ));
-        }
-
-        let attrs = if parse_attrs {
-            // Currently there are no variant attributes
-            match errors.handle(RawMetricsVariantAttrs::from_variant(variant)) {
-                Some(attrs) => attrs.validate()?,
-                None => {
-                    continue;
-                }
-            }
-        } else {
-            MetricsVariantAttrs::default()
-        };
-
-        parsed_variants.push(MetricsVariant {
-            ident: variant.ident.clone(),
-            external_attrs: clean_attrs(&variant.attrs),
-            attrs,
-        });
-    }
-
-    errors.finish()?;
-
-    Ok(parsed_variants)
-}
-
-struct MetricsVariant {
-    ident: Ident,
-    external_attrs: Vec<Attribute>,
-    attrs: MetricsVariantAttrs,
-}
-
-impl MetricsVariant {
-    fn core_variant(&self) -> Ts2 {
-        let MetricsVariant {
-            ref external_attrs,
-            ref ident,
-            ..
-        } = *self;
-        quote! { #(#external_attrs)* #ident }
-    }
-
-    fn entry_variant(&self) -> Ts2 {
-        let ident_span = self.ident.span();
-        let ident = &self.ident;
-        quote_spanned! { ident_span=>
-            #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-            #[doc(hidden)]
-            #ident
-        }
-    }
 }
 
 struct MetricsField {
@@ -1328,7 +1160,7 @@ impl MetricsField {
     }
 }
 
-fn clean_attrs(attr: &[Attribute]) -> Vec<Attribute> {
+pub(crate) fn clean_attrs(attr: &[Attribute]) -> Vec<Attribute> {
     attr.iter()
         .filter(|attr| !attr.path().is_ident("metrics"))
         .cloned()
@@ -1427,8 +1259,8 @@ fn clean_base_adt(input: &DeriveInput) -> Ts2 {
             _ => input.to_token_stream(),
         },
         Data::Enum(data_enum) => {
-            if let Ok(variants) = parse_enum_variants(&data_enum.variants, false) {
-                generate_base_enum(adt_name, vis, generics, &filtered_attrs, &variants)
+            if let Ok(variants) = enums::parse_enum_variants(&data_enum.variants, false) {
+                enums::generate_base_enum(adt_name, vis, generics, &filtered_attrs, &variants)
             } else {
                 input.to_token_stream()
             }

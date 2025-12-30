@@ -1,5 +1,5 @@
 use crate::{
-    MetricsField, MetricsFieldKind, MetricsVariant, NameStyle, RootAttributes, metric_name,
+    MetricsField, MetricsFieldKind, NameStyle, RootAttributes, enums::MetricsVariant, metric_name
 };
 
 use proc_macro2::{Span, TokenStream as Ts2};
