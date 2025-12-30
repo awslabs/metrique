@@ -11,6 +11,7 @@ use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
+use std::borrow::Cow;
 use std::time::Duration;
 
 /// INSTRUCTIONS FOR IMPLEMENTING PROC MACRO EXPANSION:
@@ -27,6 +28,7 @@ use std::time::Duration;
 // 5. If no fields have `
 //
 #[metrics]
+#[derive(Clone)]
 // #[aggregate]
 pub struct ApiCall {
     // this argument must be a `Type` -- not string.
@@ -70,7 +72,7 @@ impl FromKey<&'static str> for AggregatedApiCallWithOperation {
 }
 
 // copy all attributes already present on the metrics attribute
-#[metrics(rename_all = "PascalCase")]
+#[metrics]
 // if no fields are marked with `#[aggregate(key)]`, derive default and impl FromKey<()>
 #[derive(Default)]
 pub struct AggregatedApiCall {
@@ -92,16 +94,11 @@ impl FromKey<()> for AggregatedApiCall {
 impl MergeOnDropExt for ApiCall {}
 
 impl AggregateEntry for ApiCall {
-    type OwnedSource = Self;
-    type Source<'a> = &'a Self;
+    type Source = Self;
     type Aggregated = AggregatedApiCall;
     type Key<'a> = ();
 
-    fn to_ref<'a>(v: &'a Self::OwnedSource) -> Self::Source<'a> {
-        v
-    }
-
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source<'a>) {
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
         <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
             &mut accum.latency,
             &entry.latency,
@@ -120,7 +117,7 @@ impl AggregateEntry for ApiCall {
         Self::Aggregated::default()
     }
 
-    fn key<'a>(_source: &'a Self::Source<'a>) -> Self::Key<'a> {
+    fn key<'a>(_source: &'a Self::Source) -> Self::Key<'a> {
         ()
     }
 }
@@ -170,24 +167,24 @@ fn test_request_metric_aggregation() {
         request_id: "1234".to_string(),
     };
 
-    metrics.api_calls.add(&ApiCall {
+    metrics.api_calls.add(ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
         response_value: None,
     });
-    metrics.api_calls.add(&ApiCall {
+    metrics.api_calls.add(ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
         response_value: None,
     });
 
-    metrics.api_calls.add(&ApiCall {
+    metrics.api_calls.add(ApiCall {
         latency: Duration::from_millis(200),
         response_size: 75,
         response_value: None,
     });
 
-    metrics.api_calls.add(&ApiCall {
+    metrics.api_calls.add(ApiCall {
         latency: Duration::from_millis(150),
         response_size: 60,
         response_value: None,

@@ -1,6 +1,7 @@
 //! Sinks for aggregation
 
 use std::{
+    borrow::Cow,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
@@ -12,30 +13,19 @@ use crate::aggregate::{Aggregate, AggregateEntry};
 /// Handle for metric that will be automatically merged into the target when dropped
 pub struct MergeOnDrop<Entry, Sink>
 where
-    Entry: AggregateEntry<OwnedSource = Entry>,
-    for<'a> Sink: AggregateSink<Entry::Source<'a>>,
+    Entry: AggregateEntry,
+    Sink: AggregateSink<Entry>,
 {
-    value: Option<Entry>,
-    target: Sink,
-}
-
-/// Handle for metric that will be closed and merged into the target when dropped
-pub struct MergeAndCloseOnDrop<Entry, Sink>
-where
-    Entry: CloseValue + AggregateEntry<OwnedSource = Entry>,
-    Entry::Closed: AggregateEntry<OwnedSource = Entry::Closed>,
-    for<'a> Sink: AggregateSink<<Entry::Closed as AggregateEntry>::Source<'a>>,
-{
-    value: Option<Entry>,
+    value: Option<Entry::Source>,
     target: Sink,
 }
 
 impl<Entry, S> Deref for MergeOnDrop<Entry, S>
 where
-    Entry: AggregateEntry<OwnedSource = Entry>,
-    for<'a> S: AggregateSink<Entry::Source<'a>>,
+    Entry: AggregateEntry,
+    S: AggregateSink<Entry>,
 {
-    type Target = Entry;
+    type Target = Entry::Source;
     fn deref(&self) -> &Self::Target {
         self.value.as_ref().expect("unreachable: valid until drop")
     }
@@ -43,31 +33,8 @@ where
 
 impl<Entry, S> DerefMut for MergeOnDrop<Entry, S>
 where
-    Entry: AggregateEntry<OwnedSource = Entry>,
-    for<'a> S: AggregateSink<Entry::Source<'a>>,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.value.as_mut().expect("unreachable: valid until drop")
-    }
-}
-
-impl<Entry, S> Deref for MergeAndCloseOnDrop<Entry, S>
-where
-    Entry: CloseValue + AggregateEntry<OwnedSource = Entry>,
-    Entry::Closed: AggregateEntry<OwnedSource = Entry::Closed>,
-    for<'a> S: AggregateSink<<Entry::Closed as AggregateEntry>::Source<'a>>,
-{
-    type Target = Entry;
-    fn deref(&self) -> &Self::Target {
-        self.value.as_ref().expect("unreachable: valid until drop")
-    }
-}
-
-impl<Entry, S> DerefMut for MergeAndCloseOnDrop<Entry, S>
-where
-    Entry: CloseValue + AggregateEntry<OwnedSource = Entry>,
-    Entry::Closed: AggregateEntry<OwnedSource = Entry::Closed>,
-    for<'a> S: AggregateSink<<Entry::Closed as AggregateEntry>::Source<'a>>,
+    Entry: AggregateEntry,
+    S: AggregateSink<Entry>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value.as_mut().expect("unreachable: valid until drop")
@@ -75,11 +42,12 @@ where
 }
 
 /// Extension trait to supporting merging an item into an aggregator on drop
-pub trait MergeOnDropExt: AggregateEntry<OwnedSource = Self> + Sized {
+pub trait MergeOnDropExt: AggregateEntry + Sized {
     /// Merge an item into a given sink when the guard drops
     fn merge_on_drop<S>(self, sink: &S) -> MergeOnDrop<Self, S>
     where
-        for<'a> S: AggregateSink<Self::Source<'a>> + Clone,
+        Self: AggregateEntry<Source = Self>,
+        S: AggregateSink<Self> + Clone,
     {
         MergeOnDrop {
             value: Some(self),
@@ -88,53 +56,22 @@ pub trait MergeOnDropExt: AggregateEntry<OwnedSource = Self> + Sized {
     }
 }
 
-/// Extension trait to support merging and closing an item into an aggregator on drop
-pub trait MergeAndCloseOnDropExt: AggregateEntry<OwnedSource = Self> + CloseValue + Sized
-where
-    Self::Closed: AggregateEntry<OwnedSource = Self::Closed>,
-{
-    /// Merge an item into a given sink when the guard drops, calling close first
-    fn merge_and_close_on_drop<S>(self, sink: &S) -> MergeAndCloseOnDrop<Self, S>
-    where
-        for<'a> S: AggregateSink<<Self::Closed as AggregateEntry>::Source<'a>> + Clone,
-    {
-        MergeAndCloseOnDrop {
-            value: Some(self),
-            target: sink.clone(),
-        }
-    }
-}
-
 impl<Entry, Sink> Drop for MergeOnDrop<Entry, Sink>
 where
-    Entry: AggregateEntry<OwnedSource = Entry>,
-    for<'a> Sink: AggregateSink<Entry::Source<'a>>,
+    Entry: AggregateEntry,
+    Sink: AggregateSink<Entry>,
 {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
-            self.target.merge(Entry::to_ref(&value));
-        }
-    }
-}
-
-impl<Entry, Sink> Drop for MergeAndCloseOnDrop<Entry, Sink>
-where
-    Entry: CloseValue + AggregateEntry<OwnedSource = Entry>,
-    Entry::Closed: AggregateEntry<OwnedSource = Entry::Closed>,
-    for<'a> Sink: AggregateSink<<Entry::Closed as AggregateEntry>::Source<'a>>,
-{
-    fn drop(&mut self) {
-        if let Some(value) = self.value.take() {
-            let closed = value.close();
-            self.target.merge(<Entry::Closed as AggregateEntry>::to_ref(&closed));
+            self.target.merge(Cow::Owned(value));
         }
     }
 }
 
 /// Trait that aggregates items
-pub trait AggregateSink<T> {
+pub trait AggregateSink<T: AggregateEntry> {
     /// Merge a given item into the sink
-    fn merge(&self, entry: T);
+    fn merge<'a>(&self, entry: Cow<'a, T::Source>);
 }
 
 /// Aggregation that coordinates access with a Mutex
@@ -174,20 +111,17 @@ where
     }
 }
 
-impl<'a, T: AggregateEntry> AggregateSink<T::Source<'a>> for MutexSink<T>
-where
-    for<'b> T::Key<'b>: 'static,
-{
-    fn merge(&self, entry: T::Source<'a>) {
+impl<T: AggregateEntry> AggregateSink<T> for MutexSink<T> {
+    fn merge<'a>(&self, entry: Cow<'a, T::Source>) {
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {
             Some(v) => {
-                v.add(entry);
+                v.add_ref(entry.as_ref());
             }
             None => {
                 let value = (self.default_value)();
                 let mut agg = Aggregate::new(value);
-                agg.add(entry);
+                agg.add_ref(entry.as_ref());
                 *aggregator = Some(agg);
             }
         }
