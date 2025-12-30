@@ -291,8 +291,129 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 pub fn aggregate(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     
-    // For now, just strip aggregate attributes and pass through
-    clean_aggregate_adt(&input).into()
+    let mut output = Ts2::new();
+    
+    // Generate the Aggregated struct
+    if let Ok(aggregated_struct) = generate_aggregated_struct(&input) {
+        aggregated_struct.to_tokens(&mut output);
+    }
+    
+    // Strip aggregate attributes and pass through
+    clean_aggregate_adt(&input).to_tokens(&mut output);
+    
+    output.into()
+}
+
+#[derive(Debug)]
+struct AggregateField {
+    name: Ident,
+    ty: Type,
+    strategy: Option<Type>,
+    is_key: bool,
+    metrics_attrs: Vec<Attribute>,
+}
+
+fn parse_aggregate_field(field: &syn::Field) -> Result<AggregateField> {
+    let name = field.ident.clone().ok_or_else(|| {
+        Error::new(field.span(), "aggregate only supports named fields")
+    })?;
+    
+    let mut strategy = None;
+    let mut is_key = false;
+    
+    for attr in &field.attrs {
+        if attr.path().is_ident("aggregate") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("strategy") {
+                    let value = meta.value()?;
+                    strategy = Some(value.parse()?);
+                    Ok(())
+                } else if meta.path.is_ident("key") {
+                    is_key = true;
+                    Ok(())
+                } else {
+                    Err(meta.error("unknown aggregate attribute"))
+                }
+            })?;
+        }
+    }
+    
+    let metrics_attrs = field.attrs.iter()
+        .filter(|attr| attr.path().is_ident("metrics"))
+        .cloned()
+        .collect();
+    
+    Ok(AggregateField {
+        name,
+        ty: field.ty.clone(),
+        strategy,
+        is_key,
+        metrics_attrs,
+    })
+}
+
+fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
+    let original_name = &input.ident;
+    let aggregated_name = format_ident!("Aggregated{}", original_name);
+    let vis = &input.vis;
+    
+    let data_struct = match &input.data {
+        Data::Struct(s) => s,
+        _ => return Err(Error::new(input.span(), "aggregate only supports structs")),
+    };
+    
+    let fields = match &data_struct.fields {
+        Fields::Named(f) => &f.named,
+        _ => return Err(Error::new(input.span(), "aggregate only supports named fields")),
+    };
+    
+    let parsed_fields: Vec<_> = fields.iter()
+        .map(parse_aggregate_field)
+        .collect::<Result<_>>()?;
+    
+    let has_key = parsed_fields.iter().any(|f| f.is_key);
+    
+    let aggregated_fields = parsed_fields.iter().map(|f| {
+        let name = &f.name;
+        let metrics_attrs = &f.metrics_attrs;
+        
+        if f.is_key {
+            let ty = &f.ty;
+            quote! {
+                #(#metrics_attrs)*
+                #name: #ty
+            }
+        } else if let Some(strategy) = &f.strategy {
+            let source_ty = &f.ty;
+            quote! {
+                #(#metrics_attrs)*
+                #name: <#strategy as AggregateValue<#source_ty>>::Aggregated
+            }
+        } else {
+            let ty = &f.ty;
+            quote! {
+                #(#metrics_attrs)*
+                #name: <Counter as AggregateValue<#ty>>::Aggregated
+            }
+        }
+    });
+    
+    let metrics_attr = input.attrs.iter()
+        .find(|attr| attr.path().is_ident("metrics"));
+    
+    let derive_default = if !has_key {
+        quote! { #[derive(Default)] }
+    } else {
+        quote! {}
+    };
+    
+    Ok(quote! {
+        #metrics_attr
+        #derive_default
+        #vis struct #aggregated_name {
+            #(#aggregated_fields),*
+        }
+    })
 }
 
 fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
@@ -1646,7 +1767,14 @@ mod tests {
 
     fn aggregate_impl(input: Ts2) -> Ts2 {
         let input = syn::parse2(input).unwrap();
-        super::clean_aggregate_adt(&input)
+        let mut output = Ts2::new();
+        
+        if let Ok(aggregated_struct) = super::generate_aggregated_struct(&input) {
+            output.extend(aggregated_struct);
+        }
+        
+        output.extend(super::clean_aggregate_adt(&input));
+        output
     }
 
     fn aggregate_impl_string(input: Ts2) -> String {
@@ -1674,5 +1802,26 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         assert_snapshot!("aggregate_strips_attributes", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_generates_struct() {
+        let input = quote! {
+            #[metrics]
+            #[derive(Clone)]
+            pub struct ApiCall {
+                #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+                #[metrics(unit = Millisecond)]
+                latency: Duration,
+                #[aggregate(strategy = Counter)]
+                #[metrics(unit = Byte)]
+                response_size: usize,
+                #[aggregate(strategy = MergeOptions<LastValueWins>)]
+                response_value: Option<String>,
+            }
+        };
+
+        let parsed_file = aggregate_impl_string(input);
+        assert_snapshot!("aggregate_generates_struct", parsed_file);
     }
 }

@@ -6,9 +6,12 @@ expression: parsed_file
 #[derive(Default)]
 pub struct AggregatedApiCall {
     #[metrics(unit = Millisecond)]
-    latency: <Histogram<Duration> as AggregateValue<Duration>>::Aggregated,
+    latency: <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::Aggregated,
     #[metrics(unit = Byte)]
     response_size: <Counter as AggregateValue<usize>>::Aggregated,
+    response_value: <MergeOptions<
+        LastValueWins,
+    > as AggregateValue<Option<String>>>::Aggregated,
 }
 #[metrics]
 #[derive(Clone)]
@@ -17,4 +20,5 @@ pub struct ApiCall {
     latency: Duration,
     #[metrics(unit = Byte)]
     response_size: usize,
+    response_value: Option<String>,
 }
