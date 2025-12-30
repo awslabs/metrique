@@ -108,7 +108,7 @@ where
     }
 }
 
-impl<T: AggregateEntry> AggregateSink<T> for MutexSink<T> {
+impl<'k, T: AggregateEntry<Key<'k> = ()>> AggregateSink<T> for MutexSink<T> {
     fn merge<'a>(&self, entry: Cow<'a, T::Source>) {
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {

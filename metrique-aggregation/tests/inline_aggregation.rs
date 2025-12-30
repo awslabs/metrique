@@ -16,15 +16,14 @@ use std::time::Duration;
 /// INSTRUCTIONS FOR IMPLEMENTING PROC MACRO EXPANSION:
 // 0. Testing with this example is your final target. We will initially work with unit tests in `metrique-macro`. Those use
 //    snapshot testing so you can easily debug the results of macro expansion.
-// 1. When the `aggregate` macro is present, generate the `SourceMetric` implementation and the `Aggregator` struct
-//    as present below
+// 1. When the `aggregate` macro is present, generate the AggregateEntry trait as is defined below and the aggregate version of the struct
 // 2. `#[aggregate]` should be defined in the src/metriquq-macro package
 // 3. `#[aggregate]` MUST be specified before `#[metrics]`. Check this when expanding `#[metrics]`. If `#[metrics]` sees
 //    the aggregate macro, it should return a compilation error: "you must place `#[aggregate]` before #[metrics]
 // 4. When expanding the `#[aggregate]` macro, you must strip all `#[aggregate]` annocations! See metrique-macro/src/lib.rs#L1457.
 //    You should update that function so we can clean `#[aggregate]` as well
 //
-// 5. If no fields have `
+// 5. If no fields have `key`, then set key to (), otherwise set key to the tuple of the borrowed fields (&a, &b, &c)
 //
 #[metrics]
 #[derive(Clone)]
