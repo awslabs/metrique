@@ -1,10 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use darling::FromVariant;
 use proc_macro2::TokenStream as Ts2;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Result, Visibility};
-use darling::FromVariant;
 
 use crate::{RootAttributes, clean_attrs, value_impl};
 
