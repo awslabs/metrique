@@ -738,6 +738,7 @@ dependencies = [
  "histogram",
  "metrique",
  "metrique-core",
+ "metrique-macro",
  "metrique-writer",
  "ordered-float",
  "rand",

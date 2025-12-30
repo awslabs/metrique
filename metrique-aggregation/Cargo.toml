@@ -7,6 +7,7 @@ rust-version = "1.89" # build.yml
 [dependencies]
 metrique-writer = { path = "../metrique-writer", version = "0.1.9"}
 metrique-core = { path = "../metrique-core", version = "0.1.9"}
+metrique-macro = { path = "../metrique-macro", version = "0.1.8"}
 smallvec = "1.13"
 histogram.workspace = true
 ordered-float = "5"
