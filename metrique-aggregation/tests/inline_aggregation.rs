@@ -6,6 +6,7 @@ use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{AccumulatorMetric, Aggregate, AggregateValue, SourceMetric};
 use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use metrique_aggregation::key::FromKey;
 use metrique_aggregation::sink::{MergeAndCloseOnDropExt, MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
@@ -23,19 +24,49 @@ use std::time::Duration;
 // 4. When expanding the `#[aggregate]` macro, you must strip all `#[aggregate]` annocations! See metrique-macro/src/lib.rs#L1457.
 //    You should update that function so we can clean `#[aggregate]` as well
 //
-#[metrics(rename_all = "PascalCase")]
+// 5. If no fields have `
+//
+#[metrics]
 // #[aggregate]
 struct ApiCall {
     // this argument must be a `Type` -- not string.
-    // #[aggregate(Histogram<Duration, SortAndMerge>)]
+    // #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
-    // #[aggregate(Count)]
+    // #[aggregate(strategy = Count)]
     #[metrics(unit = Byte)]
     response_size: usize,
 
-    // #[aggregate(MergeOptions<LastValueWins>)]
+    // #[aggregate(strategy = MergeOptions<LastValueWins>)]
     response_value: Option<String>,
+}
+
+// #[aggregate]
+#[metrics]
+struct ApiCallWithOperation {
+    // #[aggregate(key)]
+    endpoint: &'static str,
+
+    // #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+}
+
+#[metrics]
+struct AggregatedApiCallWithOperation {
+    endpoint: &'static str,
+
+    #[metrics(unit = Millisecond)]
+    latency: <Histogram<Duration> as AggregateValue<Duration>>::Aggregated,
+}
+
+impl FromKey<&'static str> for AggregatedApiCallWithOperation {
+    fn new_from_key(key: &'static str) -> Self {
+        AggregatedApiCallWithOperation {
+            endpoint: key,
+            latency: Default::default(),
+        }
+    }
 }
 
 impl SourceMetric for ApiCallEntry {
@@ -48,7 +79,7 @@ impl SourceMetric for ApiCall {
 
 // copy all attributes already present on the metrics attribute
 #[metrics(rename_all = "PascalCase")]
-// if no fields are marked with `#[aggregate(key)]`, derive default
+// if no fields are marked with `#[aggregate(key)]`, derive default and impl FromKey<()>
 #[derive(Default)]
 pub struct AggregatedApiCall {
     // COPY ALL `#[metrics...]` attributes directly
@@ -58,6 +89,12 @@ pub struct AggregatedApiCall {
     response_size: <Counter as AggregateValue<usize>>::Aggregated,
 
     response_value: <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::Aggregated,
+}
+
+impl FromKey<()> for AggregatedApiCall {
+    fn new_from_key(_key: ()) -> Self {
+        Self::default()
+    }
 }
 
 impl MergeOnDropExt for ApiCall {}
