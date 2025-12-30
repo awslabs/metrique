@@ -110,12 +110,19 @@ impl<T: SourceMetric> CloseValue for Aggregate<T> {
 impl<T> Aggregate<T>
 where
     T: SourceMetric,
-    T::Aggregated: Default,
 {
     /// Add a new entry into this aggregate
     pub fn add(&mut self, entry: &T) {
         self.num_samples += 1;
         self.aggregated.add_entry(entry);
+    }
+
+    /// Creates a `Aggreate` that is initialized to a given value
+    pub fn new(value: T::Aggregated) -> Self {
+        Self {
+            aggregated: value,
+            num_samples: 0,
+        }
     }
 }
 

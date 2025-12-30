@@ -6,6 +6,7 @@ use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{AccumulatorMetric, Aggregate, AggregateValue, SourceMetric};
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -50,6 +51,8 @@ struct AggregatedApiCall {
     response_size: <Counter as AggregateValue<usize>>::Aggregated,
 }
 
+impl MergeOnDropExt for ApiCall {}
+
 impl AccumulatorMetric for AggregatedApiCall {
     type Source = ApiCall;
 
@@ -70,6 +73,34 @@ struct RequestMetrics {
     #[metrics(flatten)]
     api_calls: Aggregate<ApiCall>,
     request_id: String,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetricsWithSink {
+    #[metrics(flatten)]
+    api_calls: MutexSink<ApiCall>,
+    request_id: String,
+}
+
+#[test]
+fn test_metrics_aggregation_sink() {
+    let metrics = RequestMetricsWithSink {
+        api_calls: MutexSink::new(),
+        request_id: "1234".to_string(),
+    };
+
+    let metric_item = ApiCall {
+        latency: Duration::from_millis(100),
+        response_size: 50,
+    }
+    .merge_on_drop(&metrics.api_calls);
+
+    drop(metric_item);
+    let entry = test_metric(metrics);
+    check!(entry.metrics["ResponseSize"].as_u64() == 50);
+    check!(entry.metrics["ResponseSize"].unit == Unit::Byte(PositiveScale::One));
+    check!(entry.metrics["Latency"].unit == Unit::Second(NegativeScale::Milli));
+    check!(entry.values["RequestId"] == "1234");
 }
 
 #[test]
