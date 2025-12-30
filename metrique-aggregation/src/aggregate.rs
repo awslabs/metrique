@@ -75,6 +75,27 @@ pub trait AggregateValue<T> {
     fn add_value(accum: &mut Self::Aggregated, value: &T);
 }
 
+/// Strategy for aggregating metrics
+pub trait AggregateEntry {
+    /// Source type. This is often `Self`
+    type Source<'a>;
+
+    /// Aggregated type
+    type Aggregated;
+
+    /// Aggregation Key. For structs with no key, you typically use `()`
+    type Key<'a>;
+
+    /// Merge a given entry into the Aggregate
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source<'a>);
+
+    /// Create a new, empty, aggregated entry for a given key
+    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated;
+
+    /// Returns the key for a given aggregate
+    fn key<'a>(source: &'a Self::Source<'a>) -> Self::Key<'a>;
+}
+
 /// An atom that can be aggregated
 pub trait SourceMetric: Sized {
     /// The type that accumulates aggregated entries.
