@@ -4,7 +4,7 @@ use assert2::check;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{AccumulatorMetric, Aggregate, AggregateValue, SourceMetric};
-use metrique_aggregation::counter::Counter;
+use metrique_aggregation::counter::{Counter, IgnoreNone, LastValueWins};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
@@ -33,6 +33,9 @@ struct ApiCall {
     // #[aggregate(Count)]
     #[metrics(unit = Byte)]
     response_size: usize,
+
+    // #[aggregate(IgnoreNone<LastValueWins>)]
+    response_value: Option<String>,
 }
 
 impl SourceMetric for ApiCall {
@@ -49,6 +52,8 @@ struct AggregatedApiCall {
     latency: <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::Aggregated,
     #[metrics(unit = Byte)]
     response_size: <Counter as AggregateValue<usize>>::Aggregated,
+
+    response_key: <IgnoreNone<LastValueWins> as AggregateValue<Option<String>>>::Aggregated,
 }
 
 impl MergeOnDropExt for ApiCall {}
@@ -64,6 +69,10 @@ impl AccumulatorMetric for AggregatedApiCall {
         <Counter as AggregateValue<usize>>::add_value(
             &mut self.response_size,
             &entry.response_size,
+        );
+        <IgnoreNone<LastValueWins> as AggregateValue<Option<String>>>::add_value(
+            &mut self.response_key,
+            &entry.response_value,
         );
     }
 }
@@ -92,6 +101,7 @@ fn test_metrics_aggregation_sink() {
     let metric_item = ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
+        response_value: None,
     }
     .merge_on_drop(&metrics.api_calls);
 
@@ -113,20 +123,24 @@ fn test_request_metric_aggregation() {
     metrics.api_calls.add(&ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
+        response_value: None,
     });
     metrics.api_calls.add(&ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
+        response_value: None,
     });
 
     metrics.api_calls.add(&ApiCall {
         latency: Duration::from_millis(200),
         response_size: 75,
+        response_value: None,
     });
 
     metrics.api_calls.add(&ApiCall {
         latency: Duration::from_millis(150),
         response_size: 60,
+        response_value: None,
     });
 
     let entry = test_metric(metrics);
