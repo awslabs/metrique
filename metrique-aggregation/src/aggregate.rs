@@ -5,8 +5,9 @@
 //! values are summed. `Histogram` is a strategy that keeps track of values then emits buckets later. This trait exists
 //! so that during macro expansion we can do:
 //! ```rust
-//!   use metrique_aggregation::{Counter, aggregate::AggregateValue};
-//!   <Counter as AggregateValue<u64>>::Aggregated
+//!   use metrique_aggregation::counter::Counter;
+//!   use metrique_aggregation::aggregate::AggregateValue;
+//!   type AggregatedType = <Counter as AggregateValue<u64>>::Aggregated;
 //! // ^^^^^^^                   ^^
 //! // Aggregation strategy      input type
 //! // And produce the correct aggregate type at compile time

@@ -3,21 +3,17 @@ source: metrique-macro/src/lib.rs
 expression: parsed_file
 ---
 #[metrics]
-#[derive(Default)]
-pub struct AggregatedApiCall {
+struct AggregatedApiCallWithOperation {
+    endpoint: String,
     #[metrics(unit = Millisecond)]
     latency: <Histogram<
         Duration,
     > as metrique_aggregation::aggregate::AggregateValue<Duration>>::Aggregated,
-    #[metrics(unit = Byte)]
-    response_size: <Counter as metrique_aggregation::aggregate::AggregateValue<
-        usize,
-    >>::Aggregated,
 }
-impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
+impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
     type Source = Self;
-    type Aggregated = AggregatedApiCall;
-    type Key<'a> = ();
+    type Aggregated = AggregatedApiCallWithOperation;
+    type Key<'a> = &'a String;
     fn merge_entry<'a>(
         accum: &mut Self::Aggregated,
         entry: std::borrow::Cow<'a, Self::Source>,
@@ -27,22 +23,21 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
         > as metrique_aggregation::aggregate::AggregateValue<
             Duration,
         >>::add_value(&mut accum.latency, &entry.latency);
-        <Counter as metrique_aggregation::aggregate::AggregateValue<
-            usize,
-        >>::add_value(&mut accum.response_size, &entry.response_size);
     }
     fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
-        Self::Aggregated::default()
+        AggregatedApiCallWithOperation {
+            endpoint: key.to_owned(),
+            latency: Default::default(),
+        }
     }
     fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
-        ()
+        &source.endpoint
     }
 }
 #[metrics]
 #[derive(Clone)]
-pub struct ApiCall {
+struct ApiCallWithOperation {
+    endpoint: String,
     #[metrics(unit = Millisecond)]
     latency: Duration,
-    #[metrics(unit = Byte)]
-    response_size: usize,
 }

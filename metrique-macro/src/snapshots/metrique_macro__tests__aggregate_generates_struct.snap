@@ -6,12 +6,47 @@ expression: parsed_file
 #[derive(Default)]
 pub struct AggregatedApiCall {
     #[metrics(unit = Millisecond)]
-    latency: <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::Aggregated,
+    latency: <Histogram<
+        Duration,
+        SortAndMerge,
+    > as metrique_aggregation::aggregate::AggregateValue<Duration>>::Aggregated,
     #[metrics(unit = Byte)]
-    response_size: <Counter as AggregateValue<usize>>::Aggregated,
+    response_size: <Counter as metrique_aggregation::aggregate::AggregateValue<
+        usize,
+    >>::Aggregated,
     response_value: <MergeOptions<
         LastValueWins,
-    > as AggregateValue<Option<String>>>::Aggregated,
+    > as metrique_aggregation::aggregate::AggregateValue<Option<String>>>::Aggregated,
+}
+impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
+    type Source = Self;
+    type Aggregated = AggregatedApiCall;
+    type Key<'a> = ();
+    fn merge_entry<'a>(
+        accum: &mut Self::Aggregated,
+        entry: std::borrow::Cow<'a, Self::Source>,
+    ) {
+        <Histogram<
+            Duration,
+            SortAndMerge,
+        > as metrique_aggregation::aggregate::AggregateValue<
+            Duration,
+        >>::add_value(&mut accum.latency, &entry.latency);
+        <Counter as metrique_aggregation::aggregate::AggregateValue<
+            usize,
+        >>::add_value(&mut accum.response_size, &entry.response_size);
+        <MergeOptions<
+            LastValueWins,
+        > as metrique_aggregation::aggregate::AggregateValue<
+            Option<String>,
+        >>::add_value(&mut accum.response_value, &entry.response_value);
+    }
+    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
+        Self::Aggregated::default()
+    }
+    fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
+        ()
+    }
 }
 #[metrics]
 #[derive(Clone)]

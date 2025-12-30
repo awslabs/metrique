@@ -298,6 +298,11 @@ pub fn aggregate(_attr: TokenStream, input: TokenStream) -> TokenStream {
         aggregated_struct.to_tokens(&mut output);
     }
     
+    // Generate the AggregateEntry impl
+    if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input) {
+        aggregate_impl.to_tokens(&mut output);
+    }
+    
     // Strip aggregate attributes and pass through
     clean_aggregate_adt(&input).to_tokens(&mut output);
     
@@ -387,13 +392,13 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
             let source_ty = &f.ty;
             quote! {
                 #(#metrics_attrs)*
-                #name: <#strategy as AggregateValue<#source_ty>>::Aggregated
+                #name: <#strategy as metrique_aggregation::aggregate::AggregateValue<#source_ty>>::Aggregated
             }
         } else {
             let ty = &f.ty;
             quote! {
                 #(#metrics_attrs)*
-                #name: <Counter as AggregateValue<#ty>>::Aggregated
+                #name: <metrique_aggregation::counter::Counter as metrique_aggregation::aggregate::AggregateValue<#ty>>::Aggregated
             }
         }
     });
@@ -412,6 +417,108 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
         #derive_default
         #vis struct #aggregated_name {
             #(#aggregated_fields),*
+        }
+    })
+}
+
+fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
+    let original_name = &input.ident;
+    let aggregated_name = format_ident!("Aggregated{}", original_name);
+    
+    let data_struct = match &input.data {
+        Data::Struct(s) => s,
+        _ => return Err(Error::new(input.span(), "aggregate only supports structs")),
+    };
+    
+    let fields = match &data_struct.fields {
+        Fields::Named(f) => &f.named,
+        _ => return Err(Error::new(input.span(), "aggregate only supports named fields")),
+    };
+    
+    let parsed_fields: Vec<_> = fields.iter()
+        .map(parse_aggregate_field)
+        .collect::<Result<_>>()?;
+    
+    let key_fields: Vec<_> = parsed_fields.iter()
+        .filter(|f| f.is_key)
+        .collect();
+    
+    let (key_type, key_expr, new_aggregated_body) = if key_fields.is_empty() {
+        (
+            quote! { () },
+            quote! { () },
+            quote! { Self::Aggregated::default() }
+        )
+    } else {
+        let key_refs = key_fields.iter().map(|f| {
+            let name = &f.name;
+            quote! { &source.#name }
+        });
+        let key_type_refs = key_fields.iter().map(|f| {
+            let ty = &f.ty;
+            quote! { &'a #ty }
+        });
+        let key_type = if key_fields.len() == 1 {
+            quote! { #(#key_type_refs)* }
+        } else {
+            quote! { (#(#key_type_refs),*) }
+        };
+        let key_expr = if key_fields.len() == 1 {
+            quote! { #(#key_refs)* }
+        } else {
+            quote! { (#(#key_refs),*) }
+        };
+        
+        let field_inits = parsed_fields.iter().map(|f| {
+            let name = &f.name;
+            if f.is_key {
+                quote! { #name: key.to_owned() }
+            } else {
+                quote! { #name: Default::default() }
+            }
+        });
+        
+        (
+            key_type,
+            key_expr,
+            quote! {
+                #aggregated_name {
+                    #(#field_inits),*
+                }
+            }
+        )
+    };
+    
+    let merge_calls = parsed_fields.iter().filter(|f| !f.is_key).map(|f| {
+        let name = &f.name;
+        let source_ty = &f.ty;
+        let strategy = f.strategy.as_ref().map(|s| quote! { #s }).unwrap_or_else(|| quote! { metrique_aggregation::counter::Counter });
+        
+        quote! {
+            <#strategy as metrique_aggregation::aggregate::AggregateValue<#source_ty>>::add_value(
+                &mut accum.#name,
+                &entry.#name,
+            );
+        }
+    });
+    
+    Ok(quote! {
+        impl metrique_aggregation::aggregate::AggregateEntry for #original_name {
+            type Source = Self;
+            type Aggregated = #aggregated_name;
+            type Key<'a> = #key_type;
+
+            fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: std::borrow::Cow<'a, Self::Source>) {
+                #(#merge_calls)*
+            }
+
+            fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
+                #new_aggregated_body
+            }
+
+            fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
+                #key_expr
+            }
         }
     })
 }
@@ -1773,6 +1880,10 @@ mod tests {
             output.extend(aggregated_struct);
         }
         
+        if let Ok(aggregate_impl) = super::generate_aggregate_entry_impl(&input) {
+            output.extend(aggregate_impl);
+        }
+        
         output.extend(super::clean_aggregate_adt(&input));
         output
     }
@@ -1823,5 +1934,23 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         assert_snapshot!("aggregate_generates_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_with_key() {
+        let input = quote! {
+            #[metrics]
+            #[derive(Clone)]
+            struct ApiCallWithOperation {
+                #[aggregate(key)]
+                endpoint: String,
+                #[aggregate(strategy = Histogram<Duration>)]
+                #[metrics(unit = Millisecond)]
+                latency: Duration,
+            }
+        };
+
+        let parsed_file = aggregate_impl_string(input);
+        assert_snapshot!("aggregate_with_key", parsed_file);
     }
 }

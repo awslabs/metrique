@@ -3,14 +3,13 @@
 use assert2::check;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::aggregate::{Aggregate, AggregateEntry, AggregateValue};
 use metrique_aggregation::aggregate;
+use metrique_aggregation::aggregate::Aggregate;
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
-use std::borrow::Cow;
 use std::time::Duration;
 
 #[aggregate]
@@ -20,34 +19,10 @@ pub struct ApiCallMacro {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
+
     #[aggregate(strategy = Counter)]
     #[metrics(unit = Byte)]
     response_size: usize,
-}
-
-impl AggregateEntry for ApiCallMacro {
-    type Source = Self;
-    type Aggregated = AggregatedApiCallMacro;
-    type Key<'a> = ();
-
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
-        <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
-            &mut accum.latency,
-            &entry.latency,
-        );
-        <Counter as AggregateValue<usize>>::add_value(
-            &mut accum.response_size,
-            &entry.response_size,
-        );
-    }
-
-    fn new_aggregated<'a>(_key: Self::Key<'a>) -> Self::Aggregated {
-        Self::Aggregated::default()
-    }
-
-    fn key<'a>(_source: &'a Self::Source) -> Self::Key<'a> {
-        ()
-    }
 }
 
 #[metrics(rename_all = "PascalCase")]
