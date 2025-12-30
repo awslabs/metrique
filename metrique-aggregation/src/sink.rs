@@ -75,10 +75,7 @@ pub trait AggregateSink<T: AggregateEntry> {
 }
 
 /// Aggregation that coordinates access with a Mutex
-pub struct MutexSink<T: AggregateEntry>
-where
-    for<'a> T::Key<'a>: 'static,
-{
+pub struct MutexSink<T: AggregateEntry> {
     aggregator: Arc<Mutex<Option<Aggregate<T>>>>,
     default_value: Arc<dyn Fn() -> T::Aggregated + Send + Sync>,
 }
@@ -130,7 +127,6 @@ impl<T: AggregateEntry> AggregateSink<T> for MutexSink<T> {
 
 impl<T: AggregateEntry> CloseValue for MutexSink<T>
 where
-    for<'a> T::Key<'a>: 'static,
     T::Aggregated: CloseValue,
 {
     type Closed = Option<<Aggregate<T> as CloseValue>::Closed>;

@@ -6,7 +6,6 @@ use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{Aggregate, AggregateEntry, AggregateValue};
 use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::key::FromKey;
 use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
@@ -45,30 +44,48 @@ pub struct ApiCall {
 
 // #[aggregate]
 #[metrics]
+#[derive(Clone)]
 struct ApiCallWithOperation {
     // #[aggregate(key)]
-    endpoint: &'static str,
+    endpoint: String,
 
     // #[aggregate(strategy = Histogram<Duration>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
 }
 
-#[metrics]
-struct AggregatedApiCallWithOperation {
-    endpoint: &'static str,
+impl AggregateEntry for ApiCallWithOperation {
+    type Source = ApiCallWithOperation;
 
-    #[metrics(unit = Millisecond)]
-    latency: <Histogram<Duration> as AggregateValue<Duration>>::Aggregated,
-}
+    type Aggregated = AggregatedApiCallWithOperation;
 
-impl FromKey<&'static str> for AggregatedApiCallWithOperation {
-    fn new_from_key(key: &'static str) -> Self {
+    type Key<'a> = &'a String;
+
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
+        <Histogram<Duration> as AggregateValue<Duration>>::add_value(
+            &mut accum.latency,
+            &entry.latency,
+        );
+    }
+
+    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
         AggregatedApiCallWithOperation {
-            endpoint: key,
+            endpoint: key.to_owned(),
             latency: Default::default(),
         }
     }
+
+    fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
+        &source.endpoint
+    }
+}
+
+#[metrics]
+struct AggregatedApiCallWithOperation {
+    endpoint: String,
+
+    #[metrics(unit = Millisecond)]
+    latency: <Histogram<Duration> as AggregateValue<Duration>>::Aggregated,
 }
 
 // copy all attributes already present on the metrics attribute
@@ -83,12 +100,6 @@ pub struct AggregatedApiCall {
     response_size: <Counter as AggregateValue<usize>>::Aggregated,
 
     response_value: <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::Aggregated,
-}
-
-impl FromKey<()> for AggregatedApiCall {
-    fn new_from_key(_key: ()) -> Self {
-        Self::default()
-    }
 }
 
 impl MergeOnDropExt for ApiCall {}
