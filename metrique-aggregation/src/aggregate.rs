@@ -76,8 +76,14 @@ pub trait AggregateValue<T> {
 
 /// Strategy for aggregating metrics
 pub trait AggregateEntry {
-    /// Source type. This is often `Self`
+    /// Owned version of `Source` -- this is usually Self
+    type OwnedSource;
+
+    /// Source type. This is often `&'a Self`
     type Source<'a>;
+
+    /// Convert an owned source to a reference
+    fn to_ref<'a>(v: &'a Self::OwnedSource) -> Self::Source<'a>;
 
     /// Aggregated type
     type Aggregated;

@@ -7,7 +7,7 @@ use metrique_aggregation::aggregate::{Aggregate, AggregateEntry, AggregateValue}
 use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::key::FromKey;
-use metrique_aggregation::sink::{MergeAndCloseOnDropExt, MergeOnDropExt, MutexSink};
+use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -90,12 +90,16 @@ impl FromKey<()> for AggregatedApiCall {
 }
 
 impl MergeOnDropExt for ApiCall {}
-impl MergeAndCloseOnDropExt for ApiCall {}
 
 impl AggregateEntry for ApiCall {
+    type OwnedSource = Self;
     type Source<'a> = &'a Self;
     type Aggregated = AggregatedApiCall;
     type Key<'a> = ();
+
+    fn to_ref<'a>(v: &'a Self::OwnedSource) -> Self::Source<'a> {
+        v
+    }
 
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source<'a>) {
         <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
