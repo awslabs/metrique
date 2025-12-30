@@ -28,7 +28,7 @@ use std::time::Duration;
 //
 #[metrics]
 // #[aggregate]
-struct ApiCall {
+pub struct ApiCall {
     // this argument must be a `Type` -- not string.
     // #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
     #[metrics(unit = Millisecond)]
@@ -69,10 +69,6 @@ impl FromKey<&'static str> for AggregatedApiCallWithOperation {
     }
 }
 
-impl SourceMetric for ApiCallEntry {
-    type Aggregated = AggregatedApiCall;
-}
-
 impl SourceMetric for ApiCall {
     type Aggregated = AggregatedApiCall;
 }
@@ -100,29 +96,10 @@ impl FromKey<()> for AggregatedApiCall {
 impl MergeOnDropExt for ApiCall {}
 impl MergeAndCloseOnDropExt for ApiCall {}
 
-impl AccumulatorMetric<ApiCall> for AggregatedApiCall {
+impl AccumulatorMetric for AggregatedApiCall {
+    type Source = ApiCall;
     #[allow(deprecated)]
     fn add_entry(&mut self, entry: &ApiCall) {
-        // Pattern:
-        // `<AGGREGATE_TY as AggregateValue<FIELD_TY>::add_value(&mut self.<field>, &entry.field)`
-        <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
-            &mut self.latency,
-            &entry.latency,
-        );
-        <Counter as AggregateValue<usize>>::add_value(
-            &mut self.response_size,
-            &entry.response_size,
-        );
-        <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::add_value(
-            &mut self.response_value,
-            &entry.response_value,
-        );
-    }
-}
-
-impl AccumulatorMetric<ApiCallEntry> for AggregatedApiCall {
-    #[allow(deprecated)]
-    fn add_entry(&mut self, entry: &ApiCallEntry) {
         // Pattern:
         // `<AGGREGATE_TY as AggregateValue<FIELD_TY>::add_value(&mut self.<field>, &entry.field)`
         <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
