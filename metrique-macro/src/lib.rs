@@ -283,6 +283,50 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
     base_token_stream.into()
 }
 
+/// Generates aggregation support for metrics structs.
+///
+/// This macro must be placed before `#[metrics]` and generates the `AggregateEntry` trait
+/// implementation and associated `Aggregated` struct.
+#[proc_macro_attribute]
+pub fn aggregate(_attr: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    
+    // For now, just strip aggregate attributes and pass through
+    clean_aggregate_adt(&input).into()
+}
+
+fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
+    let adt_name = &input.ident;
+    let vis = &input.vis;
+    let generics = &input.generics;
+
+    let filtered_attrs = clean_aggregate_attrs(&input.attrs);
+    match &input.data {
+        Data::Struct(data_struct) => match &data_struct.fields {
+            Fields::Named(fields_named) => {
+                let fields = fields_named.named.iter().map(|f| {
+                    let name = &f.ident;
+                    let ty = &f.ty;
+                    let vis = &f.vis;
+                    let attrs = clean_aggregate_attrs(&f.attrs);
+                    quote! {
+                        #(#attrs)*
+                        #vis #name: #ty
+                    }
+                });
+                quote! {
+                    #(#filtered_attrs)*
+                    #vis struct #adt_name #generics {
+                        #(#fields),*
+                    }
+                }
+            }
+            _ => input.to_token_stream(),
+        },
+        _ => input.to_token_stream(),
+    }
+}
+
 #[derive(Copy, Clone, Debug)]
 enum OwnershipKind {
     ByRef,
@@ -1335,6 +1379,13 @@ fn clean_attrs(attr: &[Attribute]) -> Vec<Attribute> {
         .collect()
 }
 
+fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
+    attr.iter()
+        .filter(|attr| !attr.path().is_ident("aggregate"))
+        .cloned()
+        .collect()
+}
+
 fn clean_base_struct(
     vis: &syn::Visibility,
     struct_name: &syn::Ident,
@@ -1591,5 +1642,37 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
+    }
+
+    fn aggregate_impl(input: Ts2) -> Ts2 {
+        let input = syn::parse2(input).unwrap();
+        super::clean_aggregate_adt(&input)
+    }
+
+    fn aggregate_impl_string(input: Ts2) -> String {
+        let output = aggregate_impl(input);
+        match parse2::<syn::File>(output.clone()) {
+            Ok(file) => prettyplease::unparse(&file),
+            Err(_) => output.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_aggregate_strips_attributes() {
+        let input = quote! {
+            #[metrics]
+            #[derive(Clone)]
+            pub struct ApiCall {
+                #[aggregate(strategy = Histogram<Duration>)]
+                #[metrics(unit = Millisecond)]
+                latency: Duration,
+                #[aggregate(strategy = Counter)]
+                #[metrics(unit = Byte)]
+                response_size: usize,
+            }
+        };
+
+        let parsed_file = aggregate_impl_string(input);
+        assert_snapshot!("aggregate_strips_attributes", parsed_file);
     }
 }

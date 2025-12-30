@@ -1,0 +1,12 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+#[metrics]
+#[derive(Clone)]
+pub struct ApiCall {
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+    #[metrics(unit = Byte)]
+    response_size: usize,
+}
