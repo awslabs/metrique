@@ -5,7 +5,7 @@ use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{MergeOnDropExt, MutexAggregator};
-use metrique_aggregation::traits::{Aggregate, AggregateEntry};
+use metrique_aggregation::traits::{Aggregate, AggregateEntry, AggregateEntryRef};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -32,13 +32,19 @@ struct ApiCallWithEndpoint {
     latency: Duration,
 }
 
+impl AggregateEntryRef for ApiCallWithEndpoint {
+    fn merge_entry_ref(accum: &mut Self::Aggregated, entry: &Self::Source) {
+        accum.latency.add_value(&entry.latency);
+    }
+}
+
 impl AggregateEntry for ApiCallWithEndpoint {
     type Source = ApiCallWithEndpoint;
     type Aggregated = AggregatedApiCallWithOperation;
     type Key = String;
 
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
-        accum.latency.add_value(&entry.latency);
+        Self::merge_entry_ref(accum, &entry);
     }
 
     fn new_aggregated(key: &Self::Key) -> Self::Aggregated {

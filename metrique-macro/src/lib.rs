@@ -502,7 +502,9 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let entry_mode = attr.is_empty() || attr.to_string().trim() != "raw";
+    let attr_str = attr.to_string();
+    let entry_mode = attr.is_empty() || attr_str.trim() != "raw";
+    let owned_mode = attr_str.trim() == "owned";
 
     let mut output = Ts2::new();
 
@@ -512,7 +514,7 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     // Generate the AggregateEntry impl
-    if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input, entry_mode) {
+    if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input, entry_mode, owned_mode) {
         aggregate_impl.to_tokens(&mut output);
     }
 
@@ -650,7 +652,7 @@ fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<T
     })
 }
 
-fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Result<Ts2> {
+fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool, owned_mode: bool) -> Result<Ts2> {
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
 
@@ -777,28 +779,62 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Resul
         quote! { Self }
     };
 
-    Ok(quote! {
-        impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for #original_name {}
+    if owned_mode {
+        // Generate only AggregateEntry with owned implementation
+        Ok(quote! {
+            impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for #original_name {}
 
-        impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
-            type Source = #source_type;
-            type Aggregated = #aggregated_name;
-            type Key = #key_type;
+            impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
+                type Source = #source_type;
+                type Aggregated = #aggregated_name;
+                type Key = #key_type;
 
-            fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
-                #(#merge_calls)*
+                fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
+                    #(#merge_calls)*
+                }
+
+                fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+                    #new_aggregated_body
+                }
+
+                fn key(source: &Self::Source) -> Self::Key {
+                    #[allow(deprecated)]
+                    #key_expr
+                }
+            }
+        })
+    } else {
+        // Generate both AggregateEntry and AggregateEntryRef
+        // AggregateEntry delegates to AggregateEntryRef
+        Ok(quote! {
+            impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for #original_name {}
+
+            impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
+                type Source = #source_type;
+                type Aggregated = #aggregated_name;
+                type Key = #key_type;
+
+                fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
+                    <Self as metrique_aggregation::__macro_plumbing::AggregateEntryRef>::merge_entry_ref(accum, &entry);
+                }
+
+                fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+                    #new_aggregated_body
+                }
+
+                fn key(source: &Self::Source) -> Self::Key {
+                    #[allow(deprecated)]
+                    #key_expr
+                }
             }
 
-            fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
-                #new_aggregated_body
+            impl metrique_aggregation::__macro_plumbing::AggregateEntryRef for #original_name {
+                fn merge_entry_ref(accum: &mut Self::Aggregated, entry: &Self::Source) {
+                    #(#merge_calls)*
+                }
             }
-
-            fn key(source: &Self::Source) -> Self::Key {
-                #[allow(deprecated)]
-                #key_expr
-            }
-        }
-    })
+        })
+    }
 }
 
 fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
