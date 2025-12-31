@@ -50,3 +50,20 @@ where
         }
     }
 }
+
+/// Helper struct used by the proc macro to attempt to copy values
+pub struct TryCopy<Inner> {
+    data: PhantomData<Inner>,
+}
+
+impl<'a, T, S> AggregateValue<&'a T> for TryCopy<S>
+where
+    T: Copy,
+    S: AggregateValue<T>,
+{
+    type Aggregated = S::Aggregated;
+
+    fn add_value(accum: &mut Self::Aggregated, value: &'a T) {
+        <S as AggregateValue<T>>::add_value(accum, *value);
+    }
+}

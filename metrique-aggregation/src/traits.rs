@@ -76,12 +76,23 @@ use std::hash::Hash;
 ///     }
 /// }
 /// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot aggregate values of type `{T}` by reference",
+    note = "this aggregation strategy requires owned values",
+    note = "consider using `#[aggregate(owned)]` on the struct to take ownership of entries"
+)]
 pub trait AggregateValue<T> {
     /// The accumulated type (often same as T, but can differ for histograms).
     type Aggregated;
 
     /// Aggregate a value into the accumulator.
     fn add_value(accum: &mut Self::Aggregated, value: T);
+}
+
+/// Trait for implementing AggregateValue when references are possible
+pub trait AggregateValueRef<T>: AggregateValue<T> {
+    /// Merge a value by ref
+    fn add_value_ref(accum: &mut Self::Aggregated, value: &T);
 }
 
 /// An addition to AggregateEntry for entries than can be aggregated using a

@@ -763,10 +763,61 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool, owned_mo
             quote! { entry.#name }
         };
 
+        let field_span = name.span();
+
         // accessing the entry fields is deprecated
-        Ok(quote! {
+        Ok(quote_spanned! { field_span=>
             #[allow(deprecated)]
             <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(
+                &mut accum.#name,
+                #entry_value,
+            );
+        })
+    }).collect::<Result<Vec<_>>>()?;
+
+    // Generate merge calls for ref version (wraps strategy in TryCopy)
+    let merge_calls_ref = parsed_fields.iter().filter(|f| !f.is_key).map(|f| {
+        let name = &f.name;
+        let source_ty = &f.ty;
+        let strategy = match &f.strategy {
+            Some(s) => quote! { metrique_aggregation::__macro_plumbing::TryCopy::<#s> },
+            None => {
+                return Err(Error::new(
+                    name.span(),
+                    format!("field '{}' requires #[aggregate(strategy = ...)] attribute", name)
+                ));
+            }
+        };
+
+        let value_ty = if entry_mode {
+            quote! { <#source_ty as metrique_core::CloseValue>::Closed }
+        } else {
+            quote! { #source_ty }
+        };
+
+        let has_unit = entry_mode && RawMetricsFieldAttrs::from_field(&syn::Field {
+            attrs: f.metrics_attrs.clone(),
+            vis: syn::Visibility::Inherited,
+            mutability: syn::FieldMutability::None,
+            ident: Some(f.name.clone()),
+            colon_token: None,
+            ty: f.ty.clone(),
+        })
+        .ok()
+        .and_then(|attrs| attrs.unit)
+        .is_some();
+
+        let entry_value = if has_unit {
+            quote! { &*entry.#name }
+        } else {
+            quote! { &entry.#name }
+        };
+
+        let field_span = name.span();
+
+        Ok(quote_spanned! { field_span=>
+            #[allow(deprecated)]
+            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::add_value(
                 &mut accum.#name,
                 #entry_value,
             );
@@ -830,7 +881,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool, owned_mo
 
             impl metrique_aggregation::__macro_plumbing::AggregateEntryRef for #original_name {
                 fn merge_entry_ref(accum: &mut Self::Aggregated, entry: &Self::Source) {
-                    #(#merge_calls)*
+                    #(#merge_calls_ref)*
                 }
             }
         })
