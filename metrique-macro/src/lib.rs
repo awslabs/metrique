@@ -290,22 +290,22 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 #[proc_macro_attribute]
 pub fn aggregate(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    
+
     let mut output = Ts2::new();
-    
+
     // Generate the Aggregated struct
     if let Ok(aggregated_struct) = generate_aggregated_struct(&input) {
         aggregated_struct.to_tokens(&mut output);
     }
-    
+
     // Generate the AggregateEntry impl
     if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input) {
         aggregate_impl.to_tokens(&mut output);
     }
-    
+
     // Strip aggregate attributes and pass through
     clean_aggregate_adt(&input).to_tokens(&mut output);
-    
+
     output.into()
 }
 
@@ -319,13 +319,14 @@ struct AggregateField {
 }
 
 fn parse_aggregate_field(field: &syn::Field) -> Result<AggregateField> {
-    let name = field.ident.clone().ok_or_else(|| {
-        Error::new(field.span(), "aggregate only supports named fields")
-    })?;
-    
+    let name = field
+        .ident
+        .clone()
+        .ok_or_else(|| Error::new(field.span(), "aggregate only supports named fields"))?;
+
     let mut strategy = None;
     let mut is_key = false;
-    
+
     for attr in &field.attrs {
         if attr.path().is_ident("aggregate") {
             attr.parse_nested_meta(|meta| {
@@ -342,12 +343,14 @@ fn parse_aggregate_field(field: &syn::Field) -> Result<AggregateField> {
             })?;
         }
     }
-    
-    let metrics_attrs = field.attrs.iter()
+
+    let metrics_attrs = field
+        .attrs
+        .iter()
         .filter(|attr| attr.path().is_ident("metrics"))
         .cloned()
         .collect();
-    
+
     Ok(AggregateField {
         name,
         ty: field.ty.clone(),
@@ -361,27 +364,33 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
     let vis = &input.vis;
-    
+
     let data_struct = match &input.data {
         Data::Struct(s) => s,
         _ => return Err(Error::new(input.span(), "aggregate only supports structs")),
     };
-    
+
     let fields = match &data_struct.fields {
         Fields::Named(f) => &f.named,
-        _ => return Err(Error::new(input.span(), "aggregate only supports named fields")),
+        _ => {
+            return Err(Error::new(
+                input.span(),
+                "aggregate only supports named fields",
+            ));
+        }
     };
-    
-    let parsed_fields: Vec<_> = fields.iter()
+
+    let parsed_fields: Vec<_> = fields
+        .iter()
         .map(parse_aggregate_field)
         .collect::<Result<_>>()?;
-    
+
     let has_key = parsed_fields.iter().any(|f| f.is_key);
-    
+
     let aggregated_fields = parsed_fields.iter().map(|f| {
         let name = &f.name;
         let metrics_attrs = &f.metrics_attrs;
-        
+
         if f.is_key {
             let ty = &f.ty;
             quote! {
@@ -402,16 +411,18 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
             }
         }
     });
-    
-    let metrics_attr = input.attrs.iter()
+
+    let metrics_attr = input
+        .attrs
+        .iter()
         .find(|attr| attr.path().is_ident("metrics"));
-    
+
     let derive_default = if !has_key {
         quote! { #[derive(Default)] }
     } else {
         quote! {}
     };
-    
+
     Ok(quote! {
         #metrics_attr
         #derive_default
@@ -424,30 +435,34 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
 fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
-    
+
     let data_struct = match &input.data {
         Data::Struct(s) => s,
         _ => return Err(Error::new(input.span(), "aggregate only supports structs")),
     };
-    
+
     let fields = match &data_struct.fields {
         Fields::Named(f) => &f.named,
-        _ => return Err(Error::new(input.span(), "aggregate only supports named fields")),
+        _ => {
+            return Err(Error::new(
+                input.span(),
+                "aggregate only supports named fields",
+            ));
+        }
     };
-    
-    let parsed_fields: Vec<_> = fields.iter()
+
+    let parsed_fields: Vec<_> = fields
+        .iter()
         .map(parse_aggregate_field)
         .collect::<Result<_>>()?;
-    
-    let key_fields: Vec<_> = parsed_fields.iter()
-        .filter(|f| f.is_key)
-        .collect();
-    
+
+    let key_fields: Vec<_> = parsed_fields.iter().filter(|f| f.is_key).collect();
+
     let (key_type, key_expr, new_aggregated_body) = if key_fields.is_empty() {
         (
             quote! { () },
             quote! { () },
-            quote! { Self::Aggregated::default() }
+            quote! { Self::Aggregated::default() },
         )
     } else {
         let key_refs = key_fields.iter().map(|f| {
@@ -468,7 +483,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
         } else {
             quote! { (#(#key_refs),*) }
         };
-        
+
         let field_inits = parsed_fields.iter().map(|f| {
             let name = &f.name;
             if f.is_key {
@@ -477,7 +492,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
                 quote! { #name: Default::default() }
             }
         });
-        
+
         (
             key_type,
             key_expr,
@@ -485,23 +500,31 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
                 #aggregated_name {
                     #(#field_inits),*
                 }
-            }
+            },
         )
     };
-    
+
     let merge_calls = parsed_fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
         let source_ty = &f.ty;
-        let strategy = f.strategy.as_ref().map(|s| quote! { #s }).unwrap_or_else(|| quote! { metrique_aggregation::counter::Counter });
-        
-        quote! {
+        let strategy = match &f.strategy {
+            Some(s) => quote! { #s },
+            None => {
+                return Err(Error::new(
+                    name.span(),
+                    format!("field '{}' requires #[aggregate(strategy = ...)] attribute", name)
+                ));
+            }
+        };
+
+        Ok(quote! {
             <#strategy as metrique_aggregation::aggregate::AggregateValue<#source_ty>>::add_value(
                 &mut accum.#name,
                 entry.#name,
             );
-        }
-    });
-    
+        })
+    }).collect::<Result<Vec<_>>>()?;
+
     Ok(quote! {
         impl metrique_aggregation::sink::MergeOnDropExt for #original_name {}
 
@@ -1051,13 +1074,17 @@ fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
 
 fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
     // Check if #[aggregate] attribute is present
-    if input.attrs.iter().any(|attr| attr.path().is_ident("aggregate")) {
+    if input
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("aggregate"))
+    {
         return Err(Error::new_spanned(
             &input,
             "#[aggregate] must be placed before #[metrics], not after",
         ));
     }
-    
+
     let output = match root_attributes.mode {
         MetricMode::RootEntry
         | MetricMode::Subfield
@@ -1885,15 +1912,15 @@ mod tests {
     fn aggregate_impl(input: Ts2) -> Ts2 {
         let input = syn::parse2(input).unwrap();
         let mut output = Ts2::new();
-        
+
         if let Ok(aggregated_struct) = super::generate_aggregated_struct(&input) {
             output.extend(aggregated_struct);
         }
-        
+
         if let Ok(aggregate_impl) = super::generate_aggregate_entry_impl(&input) {
             output.extend(aggregate_impl);
         }
-        
+
         output.extend(super::clean_aggregate_adt(&input));
         output
     }
@@ -1982,6 +2009,9 @@ mod tests {
         let result = super::generate_metrics(root_attrs, input);
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("#[aggregate] must be placed before #[metrics]"));
+        assert!(
+            err.to_string()
+                .contains("#[aggregate] must be placed before #[metrics]")
+        );
     }
 }
