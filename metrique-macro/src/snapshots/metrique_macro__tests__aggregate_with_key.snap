@@ -14,22 +14,22 @@ impl metrique_aggregation::sink::MergeOnDropExt for ApiCallWithOperation {}
 impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
     type Source = Self;
     type Aggregated = AggregatedApiCallWithOperation;
-    type Key<'a> = &'a String;
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
+    type Key = String;
+    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         <Histogram<
             Duration,
         > as metrique_aggregation::aggregate::AggregateValue<
             Duration,
         >>::add_value(&mut accum.latency, &entry.latency);
     }
-    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
+    fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         AggregatedApiCallWithOperation {
-            endpoint: key.to_owned(),
+            endpoint: key.clone(),
             latency: Default::default(),
         }
     }
-    fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
-        &source.endpoint
+    fn key(source: &Self::Source) -> Self::Key {
+        source.endpoint.clone()
     }
 }
 #[metrics]

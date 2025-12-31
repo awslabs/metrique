@@ -18,8 +18,8 @@ impl metrique_aggregation::sink::MergeOnDropExt for ApiCall {}
 impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
     type Source = Self;
     type Aggregated = AggregatedApiCall;
-    type Key<'a> = ();
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
+    type Key = ();
+    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         <Histogram<
             Duration,
         > as metrique_aggregation::aggregate::AggregateValue<
@@ -29,10 +29,10 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
             usize,
         >>::add_value(&mut accum.response_size, &entry.response_size);
     }
-    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
+    fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         Self::Aggregated::default()
     }
-    fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
+    fn key(source: &Self::Source) -> Self::Key {
         ()
     }
 }
