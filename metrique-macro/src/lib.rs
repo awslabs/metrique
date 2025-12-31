@@ -287,24 +287,27 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// This macro must be placed before `#[metrics]` and generates the `AggregateEntry` trait
 /// implementation and associated `Aggregated` struct.
+///
+/// Use `#[aggregate(entry)]` to set `Source = Self::Closed` instead of `Source = Self`.
 #[proc_macro_attribute]
-pub fn aggregate(_attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
+    let entry_mode = !attr.is_empty() && attr.to_string().trim() == "entry";
 
     let mut output = Ts2::new();
 
     // Generate the Aggregated struct
-    if let Ok(aggregated_struct) = generate_aggregated_struct(&input) {
+    if let Ok(aggregated_struct) = generate_aggregated_struct(&input, entry_mode) {
         aggregated_struct.to_tokens(&mut output);
     }
 
     // Generate the AggregateEntry impl
-    if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input) {
+    if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input, entry_mode) {
         aggregate_impl.to_tokens(&mut output);
     }
 
     // Strip aggregate attributes and pass through
-    clean_aggregate_adt(&input).to_tokens(&mut output);
+    clean_aggregate_adt(&input, entry_mode).to_tokens(&mut output);
 
     output.into()
 }
@@ -360,7 +363,7 @@ fn parse_aggregate_field(field: &syn::Field) -> Result<AggregateField> {
     })
 }
 
-fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
+fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<Ts2> {
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
     let vis = &input.vis;
@@ -399,9 +402,14 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
             }
         } else if let Some(strategy) = &f.strategy {
             let source_ty = &f.ty;
+            let value_ty = if entry_mode {
+                quote! { <#source_ty as metrique_core::CloseValue>::Closed }
+            } else {
+                quote! { #source_ty }
+            };
             quote! {
                 #(#metrics_attrs)*
-                #name: <#strategy as metrique_aggregation::aggregate::AggregateValue<#source_ty>>::Aggregated
+                #name: <#strategy as metrique_aggregation::aggregate::AggregateValue<#value_ty>>::Aggregated
             }
         } else {
             let ty = &f.ty;
@@ -432,7 +440,7 @@ fn generate_aggregated_struct(input: &DeriveInput) -> Result<Ts2> {
     })
 }
 
-fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
+fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Result<Ts2> {
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
 
@@ -517,19 +525,31 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
             }
         };
 
+        let value_ty = if entry_mode {
+            quote! { <#source_ty as metrique_core::CloseValue>::Closed }
+        } else {
+            quote! { #source_ty }
+        };
+
         Ok(quote! {
-            <#strategy as metrique_aggregation::aggregate::AggregateValue<#source_ty>>::add_value(
+            <#strategy as metrique_aggregation::aggregate::AggregateValue<#value_ty>>::add_value(
                 &mut accum.#name,
                 entry.#name,
             );
         })
     }).collect::<Result<Vec<_>>>()?;
 
+    let source_type = if entry_mode {
+        quote! { <Self as metrique_core::CloseValue>::Closed }
+    } else {
+        quote! { Self }
+    };
+
     Ok(quote! {
         impl metrique_aggregation::sink::MergeOnDropExt for #original_name {}
 
         impl metrique_aggregation::aggregate::AggregateEntry for #original_name {
-            type Source = Self;
+            type Source = #source_type;
             type Aggregated = #aggregated_name;
             type Key = #key_type;
 
@@ -548,7 +568,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
     })
 }
 
-fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
+fn clean_aggregate_adt(input: &DeriveInput, entry_mode: bool) -> Ts2 {
     let adt_name = &input.ident;
     let vis = &input.vis;
     let generics = &input.generics;
@@ -561,7 +581,11 @@ fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
                     let name = &f.ident;
                     let ty = &f.ty;
                     let vis = &f.vis;
-                    let attrs = clean_aggregate_attrs(&f.attrs);
+                    let attrs = if entry_mode {
+                        clean_aggregate_and_unit_attrs(&f.attrs)
+                    } else {
+                        clean_aggregate_attrs(&f.attrs)
+                    };
                     quote! {
                         #(#attrs)*
                         #vis #name: #ty
@@ -1651,6 +1675,27 @@ fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
         .collect()
 }
 
+fn clean_aggregate_and_unit_attrs(attr: &[Attribute]) -> Vec<Attribute> {
+    attr.iter()
+        .filter(|attr| {
+            if attr.path().is_ident("aggregate") {
+                return false;
+            }
+            if attr.path().is_ident("metrics") {
+                // Check if this is a unit-only metrics attribute
+                // We check by seeing if the tokens contain "unit"
+                let tokens = attr.meta.to_token_stream().to_string();
+                // Simple heuristic: if it contains "unit" and nothing else significant
+                if tokens.contains("unit") && !tokens.contains("rename") && !tokens.contains("flatten") {
+                    return false;
+                }
+            }
+            true
+        })
+        .cloned()
+        .collect()
+}
+
 fn clean_base_struct(
     vis: &syn::Visibility,
     struct_name: &syn::Ident,
@@ -1909,24 +1954,24 @@ mod tests {
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
     }
 
-    fn aggregate_impl(input: Ts2) -> Ts2 {
+    fn aggregate_impl(input: Ts2, entry_mode: bool) -> Ts2 {
         let input = syn::parse2(input).unwrap();
         let mut output = Ts2::new();
 
-        if let Ok(aggregated_struct) = super::generate_aggregated_struct(&input) {
+        if let Ok(aggregated_struct) = super::generate_aggregated_struct(&input, entry_mode) {
             output.extend(aggregated_struct);
         }
 
-        if let Ok(aggregate_impl) = super::generate_aggregate_entry_impl(&input) {
+        if let Ok(aggregate_impl) = super::generate_aggregate_entry_impl(&input, entry_mode) {
             output.extend(aggregate_impl);
         }
 
-        output.extend(super::clean_aggregate_adt(&input));
+        output.extend(super::clean_aggregate_adt(&input, entry_mode));
         output
     }
 
     fn aggregate_impl_string(input: Ts2) -> String {
-        let output = aggregate_impl(input);
+        let output = aggregate_impl(input, false);
         match parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
@@ -1989,6 +2034,25 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         assert_snapshot!("aggregate_with_key", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_entry_mode() {
+        let input = quote! {
+            #[metrics]
+            struct ApiCall {
+                #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+                #[metrics(unit = Millisecond)]
+                latency: Timer,
+            }
+        };
+
+        let output = aggregate_impl(input, true);
+        let parsed_file = match parse2::<syn::File>(output.clone()) {
+            Ok(file) => prettyplease::unparse(&file),
+            Err(_) => output.to_string(),
+        };
+        assert_snapshot!("aggregate_entry_mode", parsed_file);
     }
 
     #[test]

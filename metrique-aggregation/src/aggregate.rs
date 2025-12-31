@@ -25,7 +25,7 @@
 //! [`Aggregate<T>`] is the simplest way to aggregate data, typically used as a field in a larger struct.
 //! It wraps an aggregated value and tracks the number of samples merged.
 
-use metrique_core::CloseValue;
+use metrique_core::{CloseEntry, CloseValue};
 use std::hash::Hash;
 
 /// Defines how individual field values are aggregated.
@@ -93,7 +93,7 @@ pub trait AggregateEntry {
     type Source: Send;
 
     /// Aggregated type
-    type Aggregated: Send;
+    type Aggregated: Send + CloseEntry;
 
     /// Aggregation Key. For structs with no key, you typically use `()`
     type Key: Send + Hash + Eq;

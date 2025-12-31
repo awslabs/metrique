@@ -1,6 +1,7 @@
 //! Test using the #[aggregate] macro
 
 use assert2::check;
+use metrique::timers::Timer;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
@@ -121,4 +122,47 @@ fn test_macro_aggregation_with_key() {
     let entry = test_metric(metrics);
     check!(entry.values["RequestId"] == "5678");
     check!(entry.values["Endpoint"] == "GetItem");
+}
+
+#[aggregate(entry)]
+#[metrics]
+struct ApiCallWithTimer {
+    #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+    #[metrics(unit = Millisecond)]
+    latency: Timer,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetricsWithTimer {
+    #[metrics(flatten)]
+    api_calls: Aggregate<ApiCallWithTimer>,
+    request_id: String,
+}
+
+#[test]
+fn test_aggregate_entry_mode_with_timer() {
+    use metrique_core::CloseValue;
+    
+    let mut metrics = RequestMetricsWithTimer {
+        api_calls: Aggregate::default(),
+        request_id: "timer-test".to_string(),
+    };
+
+    let mut call1 = ApiCallWithTimer {
+        latency: Timer::start_now(),
+    };
+    std::thread::sleep(Duration::from_millis(10));
+    call1.latency.stop();
+    metrics.api_calls.add(call1.close());
+
+    let mut call2 = ApiCallWithTimer {
+        latency: Timer::start_now(),
+    };
+    std::thread::sleep(Duration::from_millis(20));
+    call2.latency.stop();
+    metrics.api_calls.add(call2.close());
+
+    let entry = test_metric(metrics);
+    check!(entry.metrics["Latency"].distribution.len() == 2);
+    check!(entry.values["RequestId"] == "timer-test");
 }

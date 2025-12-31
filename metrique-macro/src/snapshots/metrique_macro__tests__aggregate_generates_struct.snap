@@ -29,15 +29,15 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
             SortAndMerge,
         > as metrique_aggregation::aggregate::AggregateValue<
             Duration,
-        >>::add_value(&mut accum.latency, &entry.latency);
+        >>::add_value(&mut accum.latency, entry.latency);
         <Counter as metrique_aggregation::aggregate::AggregateValue<
             usize,
-        >>::add_value(&mut accum.response_size, &entry.response_size);
+        >>::add_value(&mut accum.response_size, entry.response_size);
         <MergeOptions<
             LastValueWins,
         > as metrique_aggregation::aggregate::AggregateValue<
             Option<String>,
-        >>::add_value(&mut accum.response_value, &entry.response_value);
+        >>::add_value(&mut accum.response_value, entry.response_value);
     }
     fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         Self::Aggregated::default()

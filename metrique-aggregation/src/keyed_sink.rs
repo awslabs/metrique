@@ -40,7 +40,7 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
 
 use metrique_writer::BoxEntrySink;
 
-use crate::aggregate::AggregateEntry;
+use crate::{aggregate::AggregateEntry, sink::AggregateSink};
 
 /// [`KeyedAggregationSink`] uses a HashMap to aggregate a set of keys
 ///
@@ -48,20 +48,27 @@ use crate::aggregate::AggregateEntry;
 ///
 /// It emits aggregated entry to a secondary sink, `Sink`. The interval and conditions for aggregation
 /// are configurable.
+#[derive(Clone)]
 pub struct KeyedAggregationSink<T: AggregateEntry, Sink = BoxEntrySink> {
     sender: Sender<T::Source>,
     _handle: Arc<thread::JoinHandle<()>>,
     _phantom: PhantomData<Sink>,
 }
 
+impl<T: AggregateEntry> AggregateSink<T> for KeyedAggregationSink<T> {
+    fn merge(&self, entry: T::Source) {
+        let _ = self.sender.send(entry);
+    }
+}
+
 impl<T, Sink> KeyedAggregationSink<T, Sink>
 where
-    T: AggregateEntry + Send + 'static,
+    T: AggregateEntry + 'static,
     T::Aggregated: metrique_core::CloseEntry,
     Sink: metrique_writer::EntrySink<RootMetric<T::Aggregated>> + Send + 'static,
 {
     /// Create a new keyed aggregation sink with a flush interval
-    pub fn new(sink: Sink, flush_interval: Duration) -> Self {
+    pub fn new(sink: Sink, flush_interval: Duration) -> KeyedAggregationSink<T, Sink> {
         let (sender, receiver) = channel();
         let mut storage = HashMap::new();
 

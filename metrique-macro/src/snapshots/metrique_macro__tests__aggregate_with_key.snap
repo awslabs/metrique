@@ -20,7 +20,7 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
             Duration,
         > as metrique_aggregation::aggregate::AggregateValue<
             Duration,
-        >>::add_value(&mut accum.latency, &entry.latency);
+        >>::add_value(&mut accum.latency, entry.latency);
     }
     fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         AggregatedApiCallWithOperation {

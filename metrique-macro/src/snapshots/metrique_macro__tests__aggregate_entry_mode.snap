@@ -4,30 +4,27 @@ expression: parsed_file
 ---
 #[metrics]
 #[derive(Default)]
-pub struct AggregatedApiCall {
+struct AggregatedApiCall {
     #[metrics(unit = Millisecond)]
     latency: <Histogram<
         Duration,
-    > as metrique_aggregation::aggregate::AggregateValue<Duration>>::Aggregated,
-    #[metrics(unit = Byte)]
-    response_size: <Counter as metrique_aggregation::aggregate::AggregateValue<
-        usize,
+        SortAndMerge,
+    > as metrique_aggregation::aggregate::AggregateValue<
+        <Timer as metrique_core::CloseValue>::Closed,
     >>::Aggregated,
 }
 impl metrique_aggregation::sink::MergeOnDropExt for ApiCall {}
 impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
-    type Source = Self;
+    type Source = <Self as metrique_core::CloseValue>::Closed;
     type Aggregated = AggregatedApiCall;
     type Key = ();
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         <Histogram<
             Duration,
+            SortAndMerge,
         > as metrique_aggregation::aggregate::AggregateValue<
-            Duration,
+            <Timer as metrique_core::CloseValue>::Closed,
         >>::add_value(&mut accum.latency, entry.latency);
-        <Counter as metrique_aggregation::aggregate::AggregateValue<
-            usize,
-        >>::add_value(&mut accum.response_size, entry.response_size);
     }
     fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         Self::Aggregated::default()
@@ -37,10 +34,6 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
     }
 }
 #[metrics]
-#[derive(Clone)]
-pub struct ApiCall {
-    #[metrics(unit = Millisecond)]
-    latency: Duration,
-    #[metrics(unit = Byte)]
-    response_size: usize,
+struct ApiCall {
+    latency: Timer,
 }
