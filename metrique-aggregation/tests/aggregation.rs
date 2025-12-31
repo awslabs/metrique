@@ -7,6 +7,7 @@ use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregate::Aggregate;
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use metrique_aggregation::sink::{AggregateSink, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -96,25 +97,22 @@ struct ApiCallWithEndpoint {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithEndpoint {
     #[metrics(flatten)]
-    api_calls: Aggregate<ApiCallWithEndpoint>,
+    api_calls: MutexSink<ApiCallWithEndpoint>,
     request_id: String,
 }
 
 #[test]
 fn test_macro_aggregation_with_key() {
-    let mut metrics = RequestMetricsWithEndpoint {
-        api_calls: Aggregate::new(AggregatedApiCallWithEndpoint {
-            endpoint: "GetItem".to_string(),
-            latency: Default::default(),
-        }),
+    let metrics = RequestMetricsWithEndpoint {
+        api_calls: MutexSink::with_key(&"GetItem".to_string()),
         request_id: "5678".to_string(),
     };
 
-    metrics.api_calls.add(ApiCallWithEndpoint {
+    metrics.api_calls.merge(ApiCallWithEndpoint {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(50),
     });
-    metrics.api_calls.add(ApiCallWithEndpoint {
+    metrics.api_calls.merge(ApiCallWithEndpoint {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(75),
     });
