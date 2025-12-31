@@ -1,52 +1,21 @@
 use assert2::check;
-use metrique::timers::Timer;
-use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
-use metrique_aggregation::aggregate::AggregateEntry;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::keyed_sink::KeyedAggregationSink;
 use metrique_writer::test_util::test_entry_sink;
-use std::ops::DerefMut;
 use std::time::Duration;
 
-#[aggregate(entry)]
+#[aggregate]
 #[metrics]
 struct ApiCall {
     #[aggregate(key)]
     endpoint: String,
 
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-    #[metrics(unit = Millisecond)]
-    latency: Timer,
+    latency: Duration,
 }
 
-/*
-impl AggregateEntry for ApiCall {
-    type Source = ApiCallEntry;
-
-    type Aggregated = AggregatedApiCall;
-
-    type Key = String;
-
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
-        todo!()
-    }
-
-    fn new_aggregated<'a>(key: &Self::Key) -> Self::Aggregated {
-        todo!()
-    }
-
-    fn key<'a>(source: &'a Self::Source) -> Self::Key {
-        todo!()
-    }
-}
-
-#[metrics]
-struct AggregatedApiCall {}
-*/
-
-/*
 #[test]
 fn test_keyed_sink() {
     let test_sink = test_entry_sink();
@@ -110,20 +79,3 @@ fn test_keyed_sink() {
             }]
     );
 }
-
-#[test]
-fn keyed_sink_on_drop() {
-    let test_sink = test_entry_sink();
-    let keyed_sink =
-        KeyedAggregationSink::<ApiCall, _>::new(test_sink.sink, Duration::from_millis(100));
-
-    let api_call_stats = ApiCall {
-        endpoint: "endpoint".to_string(),
-        latency: None,
-    }
-}
-
-fn make_api_call(entry: impl DerefMut<Target = ApiCall>) {
-
-}
-*/

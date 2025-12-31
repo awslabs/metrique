@@ -46,7 +46,7 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
         Self::Aggregated::default()
     }
     fn key(source: &Self::Source) -> Self::Key {
-        ()
+        #[allow(deprecated)] ()
     }
 }
 #[metrics]

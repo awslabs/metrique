@@ -307,7 +307,7 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     }
 
     // Strip aggregate attributes and pass through
-    clean_aggregate_adt(&input, entry_mode).to_tokens(&mut output);
+    clean_aggregate_adt(&input).to_tokens(&mut output);
 
     output.into()
 }
@@ -564,13 +564,14 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Resul
             }
 
             fn key(source: &Self::Source) -> Self::Key {
+                #[allow(deprecated)]
                 #key_expr
             }
         }
     })
 }
 
-fn clean_aggregate_adt(input: &DeriveInput, entry_mode: bool) -> Ts2 {
+fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
     let adt_name = &input.ident;
     let vis = &input.vis;
     let generics = &input.generics;
@@ -1673,30 +1674,6 @@ fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
         .collect()
 }
 
-fn clean_aggregate_and_unit_attrs(attr: &[Attribute]) -> Vec<Attribute> {
-    attr.iter()
-        .filter(|attr| {
-            if attr.path().is_ident("aggregate") {
-                return false;
-            }
-            if attr.path().is_ident("metrics") {
-                // Check if this is a unit-only metrics attribute
-                // We check by seeing if the tokens contain "unit"
-                let tokens = attr.meta.to_token_stream().to_string();
-                // Simple heuristic: if it contains "unit" and nothing else significant
-                if tokens.contains("unit")
-                    && !tokens.contains("rename")
-                    && !tokens.contains("flatten")
-                {
-                    return false;
-                }
-            }
-            true
-        })
-        .cloned()
-        .collect()
-}
-
 fn clean_base_struct(
     vis: &syn::Visibility,
     struct_name: &syn::Ident,
@@ -1967,7 +1944,7 @@ mod tests {
             output.extend(aggregate_impl);
         }
 
-        output.extend(super::clean_aggregate_adt(&input, entry_mode));
+        output.extend(super::clean_aggregate_adt(&input));
         output
     }
 

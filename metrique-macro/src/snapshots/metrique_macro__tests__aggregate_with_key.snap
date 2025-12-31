@@ -30,7 +30,7 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
         }
     }
     fn key(source: &Self::Source) -> Self::Key {
-        source.endpoint.clone()
+        #[allow(deprecated)] source.endpoint.clone()
     }
 }
 #[metrics]
