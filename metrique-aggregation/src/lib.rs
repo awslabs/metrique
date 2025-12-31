@@ -12,9 +12,9 @@ pub mod traits;
 
 #[doc(hidden)]
 pub mod __macro_plumbing {
+    pub use crate::counter::IfYouSeeThisUseAggregateOwned;
     pub use crate::sink::MergeOnDropExt;
     pub use crate::traits::{AggregateEntry, AggregateEntryRef, AggregateValue};
-    pub use crate::counter::TryCopy;
 }
 
 pub use metrique_macro::aggregate;

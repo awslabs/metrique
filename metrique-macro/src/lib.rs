@@ -322,7 +322,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///     #[aggregate(strategy = Histogram<Duration>)]
 ///     #[metrics(unit = Millisecond)]
 ///     latency: Duration,  // Aggregates Duration values
-///     
+///
 ///     #[aggregate(strategy = Counter)]
 ///     response_size: usize,
 /// }
@@ -345,8 +345,8 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// #[aggregate(raw)]
 /// #[metrics]
 /// struct ApiCall {
-///     #[aggregate(strategy = Histogram<Timer>)]
-///     latency: Timer,  // Aggregates Timer values directly
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,  // Aggregates Timer values directly
 /// }
 /// ```
 ///
@@ -369,7 +369,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// struct ApiCall {
 ///     #[aggregate(key)]
 ///     endpoint: String,  // Separate aggregation per endpoint
-///     
+///
 ///     #[aggregate(strategy = Histogram<Duration>)]
 ///     latency: Duration,
 /// }
@@ -401,10 +401,10 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// struct ApiCall {
 ///     #[aggregate(strategy = Histogram<Duration>)]
 ///     latency: Duration,
-///     
+///
 ///     #[aggregate(strategy = Counter)]
 ///     bytes_sent: usize,
-///     
+///
 ///     #[aggregate(strategy = LastValueWins)]
 ///     status_code: u16,
 /// }
@@ -451,11 +451,11 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// struct BackendCall {
 ///     #[aggregate(key)]
 ///     service: String,
-///     
+///
 ///     #[aggregate(strategy = Histogram<Duration>)]
 ///     #[metrics(unit = Millisecond)]
 ///     latency: Duration,
-///     
+///
 ///     #[aggregate(strategy = Counter)]
 ///     #[metrics(unit = Byte)]
 ///     response_size: usize,
@@ -464,7 +464,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// #[metrics(rename_all = "PascalCase")]
 /// struct DistributedQuery {
 ///     query_id: String,
-///     
+///
 ///     #[metrics(flatten)]
 ///     backend_calls: Aggregate<BackendCall>,
 /// }
@@ -474,26 +474,26 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///         query_id: "query-123".to_string(),
 ///         backend_calls: Aggregate::default(),
 ///     };
-///     
+///
 ///     // Add observations for different services
 ///     metrics.backend_calls.add(BackendCall {
 ///         service: "api-1".to_string(),
 ///         latency: Duration::from_millis(45),
 ///         response_size: 1024,
 ///     });
-///     
+///
 ///     metrics.backend_calls.add(BackendCall {
 ///         service: "api-1".to_string(),
 ///         latency: Duration::from_millis(67),
 ///         response_size: 2048,
 ///     });
-///     
+///
 ///     metrics.backend_calls.add(BackendCall {
 ///         service: "api-2".to_string(),
 ///         latency: Duration::from_millis(120),
 ///         response_size: 512,
 ///     });
-///     
+///
 ///     // When metrics drops, emits aggregated entries:
 ///     // - One entry for api-1 with histogram of [45ms, 67ms] and total 3072 bytes
 ///     // - One entry for api-2 with histogram of [120ms] and total 512 bytes
@@ -652,7 +652,11 @@ fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<T
     })
 }
 
-fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool, owned_mode: bool) -> Result<Ts2> {
+fn generate_aggregate_entry_impl(
+    input: &DeriveInput,
+    entry_mode: bool,
+    owned_mode: bool,
+) -> Result<Ts2> {
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
 
@@ -780,7 +784,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool, owned_mo
         let name = &f.name;
         let source_ty = &f.ty;
         let strategy = match &f.strategy {
-            Some(s) => quote! { metrique_aggregation::__macro_plumbing::TryCopy::<#s> },
+            Some(s) => quote! { metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned::<#s> },
             None => {
                 return Err(Error::new(
                     name.span(),
@@ -2257,7 +2261,7 @@ mod tests {
             output.extend(aggregated_struct);
         }
 
-        if let Ok(aggregate_impl) = super::generate_aggregate_entry_impl(&input, entry_mode) {
+        if let Ok(aggregate_impl) = super::generate_aggregate_entry_impl(&input, entry_mode, true) {
             output.extend(aggregate_impl);
         }
 

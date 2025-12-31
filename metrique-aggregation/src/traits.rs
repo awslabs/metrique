@@ -76,11 +76,6 @@ use std::hash::Hash;
 ///     }
 /// }
 /// ```
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` cannot aggregate values of type `{T}` by reference",
-    note = "this aggregation strategy requires owned values",
-    note = "consider using `#[aggregate(owned)]` on the struct to take ownership of entries"
-)]
 pub trait AggregateValue<T> {
     /// The accumulated type (often same as T, but can differ for histograms).
     type Aggregated;

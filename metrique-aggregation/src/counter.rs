@@ -23,6 +23,9 @@ where
 }
 
 /// Aggregation strategy that preserves the most recently set value
+///
+/// NOTE: When using this strategy with types that are not copy, you
+/// will need to use `aggregate(owned)`
 pub struct LastValueWins;
 
 impl<T: Clone> AggregateValue<T> for LastValueWins {
@@ -52,11 +55,11 @@ where
 }
 
 /// Helper struct used by the proc macro to attempt to copy values
-pub struct TryCopy<Inner> {
+pub struct IfYouSeeThisUseAggregateOwned<Inner> {
     data: PhantomData<Inner>,
 }
 
-impl<'a, T, S> AggregateValue<&'a T> for TryCopy<S>
+impl<'a, T, S> AggregateValue<&'a T> for IfYouSeeThisUseAggregateOwned<S>
 where
     T: Copy,
     S: AggregateValue<T>,

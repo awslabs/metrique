@@ -204,7 +204,7 @@ fn test_merge_and_close_on_drop() {
 
 #[test]
 fn last_value_wins() {
-    #[aggregate]
+    #[aggregate(owned)]
     #[metrics]
     struct MetricWithOwnedValue {
         #[aggregate(strategy = MergeOptions<LastValueWins>)]
