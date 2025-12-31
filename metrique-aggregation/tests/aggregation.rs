@@ -128,7 +128,6 @@ fn test_macro_aggregation_with_key() {
 #[metrics]
 struct ApiCallWithTimer {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-    // doesn't work yet: `unit = ...`
     #[metrics(name = "latency_2", unit = Microsecond)]
     latency: Timer,
 }
@@ -175,6 +174,5 @@ fn test_aggregate_entry_mode_with_timer() {
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 2);
     check!(entry.values["RequestId"] == "timer-test");
-    // TODO: support units on timers
-    // check!(entry.metrics["latency_2"].unit == Unit::Second(NegativeScale::Micro));
+    check!(entry.metrics["latency_2"].unit == Unit::Second(NegativeScale::Micro));
 }

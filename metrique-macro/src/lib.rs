@@ -531,12 +531,32 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Resul
             quote! { #source_ty }
         };
 
+        // Check if field has a unit attribute by parsing metrics attributes
+        // Only dereference in entry mode, where the field is wrapped in WithUnit
+        let has_unit = entry_mode && RawMetricsFieldAttrs::from_field(&syn::Field {
+            attrs: f.metrics_attrs.clone(),
+            vis: syn::Visibility::Inherited,
+            mutability: syn::FieldMutability::None,
+            ident: Some(f.name.clone()),
+            colon_token: None,
+            ty: f.ty.clone(),
+        })
+        .ok()
+        .and_then(|attrs| attrs.unit)
+        .is_some();
+
+        let entry_value = if has_unit {
+            quote! { *entry.#name }
+        } else {
+            quote! { entry.#name }
+        };
+
         // accessing the entry fields is deprecated
         Ok(quote! {
             #[allow(deprecated)]
             <#strategy as metrique_aggregation::aggregate::AggregateValue<#value_ty>>::add_value(
                 &mut accum.#name,
-                entry.#name,
+                #entry_value,
             );
         })
     }).collect::<Result<Vec<_>>>()?;
