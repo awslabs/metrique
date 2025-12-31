@@ -508,7 +508,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
             type Aggregated = #aggregated_name;
             type Key<'a> = #key_type;
 
-            fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: std::borrow::Cow<'a, Self::Source>) {
+            fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
                 #(#merge_calls)*
             }
 
@@ -1048,6 +1048,14 @@ fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
 }
 
 fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
+    // Check if #[aggregate] attribute is present
+    if input.attrs.iter().any(|attr| attr.path().is_ident("aggregate")) {
+        return Err(Error::new_spanned(
+            &input,
+            "#[aggregate] must be placed before #[metrics], not after",
+        ));
+    }
+    
     let output = match root_attributes.mode {
         MetricMode::RootEntry
         | MetricMode::Subfield
@@ -1952,5 +1960,26 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         assert_snapshot!("aggregate_with_key", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_after_metrics_error() {
+        let input = quote! {
+            #[metrics]
+            #[aggregate]
+            struct ApiCall {
+                latency: Duration,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let root_attrs = RawRootAttributes::from_meta(&parse_quote!(metrics()))
+            .unwrap()
+            .validate()
+            .unwrap();
+        let result = super::generate_metrics(root_attrs, input);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("#[aggregate] must be placed before #[metrics]"));
     }
 }

@@ -1,7 +1,6 @@
 //! Sinks for aggregation
 
 use std::{
-    borrow::Cow,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
@@ -63,7 +62,7 @@ where
 {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
-            self.target.merge(Cow::Owned(value));
+            self.target.merge(value);
         }
     }
 }
@@ -71,54 +70,48 @@ where
 /// Trait that aggregates items
 pub trait AggregateSink<T: AggregateEntry> {
     /// Merge a given item into the sink
-    fn merge<'a>(&self, entry: Cow<'a, T::Source>);
+    fn merge(&self, entry: T::Source);
 }
 
 /// Aggregation that coordinates access with a Mutex
 pub struct MutexSink<T: AggregateEntry> {
-    aggregator: Arc<Mutex<Option<Aggregate<T>>>>,
-    default_value: Arc<dyn Fn() -> T::Aggregated + Send + Sync>,
+    aggregator: Arc<Mutex<Option<T::Aggregated>>>,
 }
 
-impl<T: AggregateEntry> Clone for MutexSink<T>
-where
-    for<'a> T::Key<'a>: 'static,
-{
+impl<T: AggregateEntry> Clone for MutexSink<T> {
     fn clone(&self) -> Self {
         Self {
             aggregator: self.aggregator.clone(),
-            default_value: self.default_value.clone(),
         }
     }
 }
 
-impl<T: AggregateEntry> MutexSink<T>
-where
-    for<'a> T::Key<'a>: 'static,
-{
+impl<T: AggregateEntry> MutexSink<T> {
     /// Creates a new mutex sink
     pub fn new() -> MutexSink<T>
     where
-        T::Aggregated: Default,
+        for<'a> T::Key<'a>: Default,
     {
         Self {
-            aggregator: Default::default(),
-            default_value: Arc::new(|| T::Aggregated::default()),
+            aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(Default::default())))),
         }
     }
 }
 
-impl<'k, T: AggregateEntry<Key<'k> = ()>> AggregateSink<T> for MutexSink<T> {
-    fn merge<'a>(&self, entry: Cow<'a, T::Source>) {
+impl<'k, T: AggregateEntry<Key<'k> = ()>> AggregateSink<T> for MutexSink<T>
+where
+    T::Source: Clone,
+{
+    fn merge(&self, entry: T::Source) {
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {
             Some(v) => {
-                v.add_ref(entry.as_ref());
+                v.add(entry);
             }
             None => {
-                let value = (self.default_value)();
+                let value = T::new_aggregated(Default::default());
                 let mut agg = Aggregate::new(value);
-                agg.add_ref(entry.as_ref());
+                agg.add(entry);
                 *aggregator = Some(agg);
             }
         }

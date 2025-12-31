@@ -9,55 +9,35 @@ use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
-use std::borrow::Cow;
 use std::time::Duration;
 
-/// INSTRUCTIONS FOR IMPLEMENTING PROC MACRO EXPANSION:
-// 0. Testing with this example is your final target. We will initially work with unit tests in `metrique-macro`. Those use
-//    snapshot testing so you can easily debug the results of macro expansion.
-// 1. When the `aggregate` macro is present, generate the AggregateEntry trait as is defined below and the aggregate version of the struct
-// 2. `#[aggregate]` should be defined in the src/metriquq-macro package
-// 3. `#[aggregate]` MUST be specified before `#[metrics]`. Check this when expanding `#[metrics]`. If `#[metrics]` sees
-//    the aggregate macro, it should return a compilation error: "you must place `#[aggregate]` before #[metrics]
-// 4. When expanding the `#[aggregate]` macro, you must strip all `#[aggregate]` annocations! See metrique-macro/src/lib.rs#L1457.
-//    You should update that function so we can clean `#[aggregate]` as well
-//
-// 5. If no fields have `key`, then set key to (), otherwise set key to the tuple of the borrowed fields (&a, &b, &c)
-//
 #[metrics]
 #[derive(Clone)]
-// #[aggregate]
 pub struct ApiCall {
-    // this argument must be a `Type` -- not string.
-    // #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
-    // #[aggregate(strategy = Count)]
+
     #[metrics(unit = Byte)]
     response_size: usize,
 
-    // #[aggregate(strategy = MergeOptions<LastValueWins>)]
     response_value: Option<String>,
 }
 
-// #[aggregate]
 #[metrics]
 #[derive(Clone)]
-struct ApiCallWithOperation {
-    // #[aggregate(key)]
+struct ApiCallWithEndpoint {
     endpoint: String,
 
-    // #[aggregate(strategy = Histogram<Duration>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
 }
 
-impl AggregateEntry for ApiCallWithOperation {
-    type Source = ApiCallWithOperation;
+impl AggregateEntry for ApiCallWithEndpoint {
+    type Source = ApiCallWithEndpoint;
     type Aggregated = AggregatedApiCallWithOperation;
     type Key<'a> = &'a String;
 
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
         accum.latency.add_value(&entry.latency);
     }
 
@@ -97,10 +77,10 @@ impl AggregateEntry for ApiCall {
     type Aggregated = AggregatedApiCall;
     type Key<'a> = ();
 
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
         accum.latency.add_value(&entry.latency);
         accum.response_size += entry.response_size;
-        accum.response_value = entry.response_value.clone();
+        accum.response_value = entry.response_value;
     }
 
     fn new_aggregated<'a>(_key: Self::Key<'a>) -> Self::Aggregated {

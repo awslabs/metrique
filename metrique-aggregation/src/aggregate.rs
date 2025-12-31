@@ -17,8 +17,6 @@
 //!
 //! 3. [`AccumulatorMetric`]: A metric that accumulates metrics (usually of the same type)
 
-use std::borrow::Cow;
-
 use metrique_core::CloseValue;
 
 /// Defines how individual field values are aggregated.
@@ -77,6 +75,10 @@ pub trait AggregateValue<T> {
     fn add_value(accum: &mut Self::Aggregated, value: &T);
 }
 
+// tod: aggregateEntryRef: aggregate entry that adds merge_entry_ref
+// remove cow
+// macro impls it by default
+
 /// Strategy for aggregating metrics
 pub trait AggregateEntry {
     /// Source type. This is often `&'a Self`
@@ -89,7 +91,7 @@ pub trait AggregateEntry {
     type Key<'a>;
 
     /// Merge a given entry into the Aggregate
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>);
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source);
 
     /// Create a new, empty, aggregated entry for a given key
     fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated;
@@ -122,16 +124,6 @@ impl<T: AggregateEntry> Aggregate<T> {
     /// Add a new entry into this aggregate
     pub fn add(&mut self, entry: T::Source) {
         self.num_samples += 1;
-        T::merge_entry(&mut self.aggregated, Cow::Owned(entry));
-    }
-
-    /// Add a new entry into this aggregate by reference
-    pub fn add_ref(&mut self, entry: &T::Source) {
-        T::merge_entry(&mut self.aggregated, Cow::Borrowed(entry));
-    }
-
-    /// Add a Cow into this entry
-    pub fn add_cow(&mut self, entry: Cow<'_, T::Source>) {
         T::merge_entry(&mut self.aggregated, entry);
     }
 
