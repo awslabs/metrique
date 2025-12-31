@@ -55,16 +55,11 @@ struct ApiCallWithOperation {
 
 impl AggregateEntry for ApiCallWithOperation {
     type Source = ApiCallWithOperation;
-
     type Aggregated = AggregatedApiCallWithOperation;
-
     type Key<'a> = &'a String;
 
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
-        <Histogram<Duration> as AggregateValue<Duration>>::add_value(
-            &mut accum.latency,
-            &entry.latency,
-        );
+        Histogram::add_value(&mut accum.latency, &entry.latency);
     }
 
     fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
@@ -109,18 +104,9 @@ impl AggregateEntry for ApiCall {
     type Key<'a> = ();
 
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
-        <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::add_value(
-            &mut accum.latency,
-            &entry.latency,
-        );
-        <Counter as AggregateValue<usize>>::add_value(
-            &mut accum.response_size,
-            &entry.response_size,
-        );
-        <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::add_value(
-            &mut accum.response_value,
-            &entry.response_value,
-        );
+        Histogram::add_value(&mut accum.latency, &entry.latency);
+        Counter::add_value(&mut accum.response_size, &entry.response_size);
+        MergeOptions::<LastValueWins>::add_value(&mut accum.response_value, &entry.response_value);
     }
 
     fn new_aggregated<'a>(_key: Self::Key<'a>) -> Self::Aggregated {
