@@ -148,6 +148,16 @@ impl<T: AggregateEntry> Clone for MutexAggregator<T> {
     }
 }
 
+impl<T> Default for MutexAggregator<T>
+where
+    T: AggregateEntry,
+    T::Key: Default,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: AggregateEntry> MutexAggregator<T> {
     /// Creates a new mutex sink
     pub fn new() -> MutexAggregator<T>
@@ -168,7 +178,7 @@ impl<T: AggregateEntry> MutexAggregator<T> {
     }
 }
 
-impl<'k, T: AggregateEntry> AggregateSink<T> for MutexAggregator<T> {
+impl<T: AggregateEntry> AggregateSink<T> for MutexAggregator<T> {
     fn merge(&self, entry: T::Source) {
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {

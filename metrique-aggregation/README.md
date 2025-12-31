@@ -45,24 +45,22 @@ struct RequestMetrics {
     api_calls: Aggregate<ApiCall>,
 }
 
-fn main() {
-    let mut metrics = RequestMetrics {
-        request_id: "query-123".to_string(),
-        api_calls: Aggregate::default(),
-    };
-    
-    // Add multiple observations
-    metrics.api_calls.add(ApiCall {
-        latency: Duration::from_millis(45),
-        response_size: 1024,
-    });
-    metrics.api_calls.add(ApiCall {
-        latency: Duration::from_millis(67),
-        response_size: 2048,
-    });
-    
-    // When metrics drops, emits a single entry with aggregated values
-}
+let mut metrics = RequestMetrics {
+    request_id: "query-123".to_string(),
+    api_calls: Aggregate::default(),
+};
+
+// Add multiple observations
+metrics.api_calls.add(ApiCall {
+    latency: Duration::from_millis(45),
+    response_size: 1024,
+});
+metrics.api_calls.add(ApiCall {
+    latency: Duration::from_millis(67),
+    response_size: 2048,
+});
+
+// When metrics drops, emits a single entry with aggregated values
 ```
 
 ## How it works

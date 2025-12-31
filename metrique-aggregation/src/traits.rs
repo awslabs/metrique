@@ -99,13 +99,13 @@ pub trait AggregateEntry {
     type Key: Send + Hash + Eq;
 
     /// Merge a given entry into the Aggregate
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source);
+    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source);
 
     /// Create a new, empty, aggregated entry for a given key
-    fn new_aggregated<'a>(key: &Self::Key) -> Self::Aggregated;
+    fn new_aggregated(key: &Self::Key) -> Self::Aggregated;
 
     /// Returns the key for a given aggregate
-    fn key<'a>(source: &'a Self::Source) -> Self::Key;
+    fn key(source: &Self::Source) -> Self::Key;
 }
 
 /// Aggregated allows inline-aggregation of a metric
