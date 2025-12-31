@@ -583,11 +583,7 @@ fn clean_aggregate_adt(input: &DeriveInput, entry_mode: bool) -> Ts2 {
                     let name = &f.ident;
                     let ty = &f.ty;
                     let vis = &f.vis;
-                    let attrs = if entry_mode {
-                        clean_aggregate_and_unit_attrs(&f.attrs)
-                    } else {
-                        clean_aggregate_attrs(&f.attrs)
-                    };
+                    let attrs = clean_aggregate_attrs(&f.attrs);
                     quote! {
                         #(#attrs)*
                         #vis #name: #ty

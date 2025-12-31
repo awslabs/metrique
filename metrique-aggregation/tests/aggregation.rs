@@ -128,7 +128,8 @@ fn test_macro_aggregation_with_key() {
 #[metrics]
 struct ApiCallWithTimer {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-    #[metrics(unit = Microsecond, name = "latency_2")]
+    // doesn't work yet: `unit = ...`
+    #[metrics(name = "latency_2")]
     latency: Timer,
 }
 

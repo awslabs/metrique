@@ -36,5 +36,6 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
 }
 #[metrics]
 struct ApiCall {
+    #[metrics(unit = Millisecond, name = "latency_2")]
     latency: Timer,
 }
