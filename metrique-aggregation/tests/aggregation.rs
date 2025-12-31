@@ -5,7 +5,7 @@ use metrique::timers::Timer;
 use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
-use metrique_aggregation::counter::Counter;
+use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};
 use metrique_aggregation::traits::Aggregate;
@@ -200,4 +200,14 @@ fn test_merge_and_close_on_drop() {
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 1);
     check!(entry.values["RequestId"] == "merge-close-test");
+}
+
+#[test]
+fn last_value_wins() {
+    #[aggregate]
+    #[metrics]
+    struct MetricWithOwnedValue {
+        #[aggregate(strategy = MergeOptions<LastValueWins>)]
+        value: Option<String>,
+    }
 }
