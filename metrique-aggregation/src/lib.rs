@@ -7,6 +7,7 @@
 pub mod aggregate;
 pub mod counter;
 pub mod histogram;
+pub mod keyed_sink;
 pub mod sink;
 
 pub use metrique_macro::aggregate;

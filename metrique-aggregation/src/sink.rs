@@ -73,12 +73,15 @@ pub trait AggregateSink<T: AggregateEntry> {
     fn merge(&self, entry: T::Source);
 }
 
-/// Aggregation that coordinates access with a Mutex
-pub struct MutexSink<T: AggregateEntry> {
+/// Sink that aggregates a single type of entry backed by a mutex
+///
+/// Compared to [`Aggregate`], this type allows appending with `&T` so it supports
+/// using [`MergeOnDropExt::merge_on_drop`]
+pub struct MutexAggregator<T: AggregateEntry> {
     aggregator: Arc<Mutex<Option<T::Aggregated>>>,
 }
 
-impl<T: AggregateEntry> Clone for MutexSink<T> {
+impl<T: AggregateEntry> Clone for MutexAggregator<T> {
     fn clone(&self) -> Self {
         Self {
             aggregator: self.aggregator.clone(),
@@ -86,24 +89,27 @@ impl<T: AggregateEntry> Clone for MutexSink<T> {
     }
 }
 
-impl<T: AggregateEntry> MutexSink<T> {
+impl<T: AggregateEntry> MutexAggregator<T> {
     /// Creates a new mutex sink
-    pub fn new() -> MutexSink<T>
+    pub fn new() -> MutexAggregator<T>
     where
-        for<'a> T::Key<'a>: Default,
+        T::Key: Default,
     {
-        Self::with_key(Default::default())
+        Self::with_key(&Default::default())
     }
 
     /// Creates a sync from a given key. NOTE: this sink does not aggregate by key
-    pub fn with_key<'a>(key: T::Key<'a>) -> MutexSink<T> {
+    ///
+    /// If you create a sink with a non-trivial key, it is your
+    /// responsibility to not mix streams.
+    pub fn with_key(key: &T::Key) -> MutexAggregator<T> {
         Self {
             aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(key)))),
         }
     }
 }
 
-impl<'k, T: AggregateEntry> AggregateSink<T> for MutexSink<T>
+impl<'k, T: AggregateEntry> AggregateSink<T> for MutexAggregator<T>
 where
     T::Source: Clone,
 {
@@ -120,7 +126,7 @@ where
     }
 }
 
-impl<T: AggregateEntry> CloseValue for MutexSink<T>
+impl<T: AggregateEntry> CloseValue for MutexAggregator<T>
 where
     T::Aggregated: CloseValue,
 {

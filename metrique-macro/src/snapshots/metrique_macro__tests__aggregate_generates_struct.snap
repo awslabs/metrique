@@ -18,14 +18,12 @@ pub struct AggregatedApiCall {
         LastValueWins,
     > as metrique_aggregation::aggregate::AggregateValue<Option<String>>>::Aggregated,
 }
+impl metrique_aggregation::sink::MergeOnDropExt for ApiCall {}
 impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
     type Source = Self;
     type Aggregated = AggregatedApiCall;
     type Key<'a> = ();
-    fn merge_entry<'a>(
-        accum: &mut Self::Aggregated,
-        entry: std::borrow::Cow<'a, Self::Source>,
-    ) {
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
         <Histogram<
             Duration,
             SortAndMerge,

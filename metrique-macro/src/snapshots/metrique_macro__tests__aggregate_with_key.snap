@@ -10,14 +10,12 @@ struct AggregatedApiCallWithOperation {
         Duration,
     > as metrique_aggregation::aggregate::AggregateValue<Duration>>::Aggregated,
 }
+impl metrique_aggregation::sink::MergeOnDropExt for ApiCallWithOperation {}
 impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
     type Source = Self;
     type Aggregated = AggregatedApiCallWithOperation;
     type Key<'a> = &'a String;
-    fn merge_entry<'a>(
-        accum: &mut Self::Aggregated,
-        entry: std::borrow::Cow<'a, Self::Source>,
-    ) {
+    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
         <Histogram<
             Duration,
         > as metrique_aggregation::aggregate::AggregateValue<

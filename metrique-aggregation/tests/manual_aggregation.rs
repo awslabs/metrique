@@ -5,7 +5,7 @@ use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate::{Aggregate, AggregateEntry};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
+use metrique_aggregation::sink::{MergeOnDropExt, MutexAggregator};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -35,21 +35,21 @@ struct ApiCallWithEndpoint {
 impl AggregateEntry for ApiCallWithEndpoint {
     type Source = ApiCallWithEndpoint;
     type Aggregated = AggregatedApiCallWithOperation;
-    type Key<'a> = &'a String;
+    type Key = String;
 
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
+    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         accum.latency.add_value(&entry.latency);
     }
 
-    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
+    fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         AggregatedApiCallWithOperation {
-            endpoint: key.to_owned(),
+            endpoint: key.clone(),
             latency: Default::default(),
         }
     }
 
-    fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
-        &source.endpoint
+    fn key(source: &Self::Source) -> Self::Key {
+        source.endpoint.clone()
     }
 }
 
@@ -75,19 +75,19 @@ impl MergeOnDropExt for ApiCall {}
 impl AggregateEntry for ApiCall {
     type Source = Self;
     type Aggregated = AggregatedApiCall;
-    type Key<'a> = ();
+    type Key = ();
 
-    fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
+    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         accum.latency.add_value(&entry.latency);
         accum.response_size += entry.response_size;
         accum.response_value = entry.response_value;
     }
 
-    fn new_aggregated<'a>(_key: Self::Key<'a>) -> Self::Aggregated {
+    fn new_aggregated(_key: &Self::Key) -> Self::Aggregated {
         Self::Aggregated::default()
     }
 
-    fn key<'a>(_source: &'a Self::Source) -> Self::Key<'a> {
+    fn key(_source: &Self::Source) -> Self::Key {
         ()
     }
 }
@@ -102,14 +102,14 @@ struct RequestMetrics {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithSink {
     #[metrics(flatten)]
-    api_calls: MutexSink<ApiCall>,
+    api_calls: MutexAggregator<ApiCall>,
     request_id: String,
 }
 
 #[test]
 fn test_metrics_aggregation_sink() {
     let metrics = RequestMetricsWithSink {
-        api_calls: MutexSink::new(),
+        api_calls: MutexAggregator::new(),
         request_id: "1234".to_string(),
     };
 

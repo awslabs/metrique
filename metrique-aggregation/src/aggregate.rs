@@ -1,23 +1,32 @@
 //! Traits for aggregation
 //!
-//! There are three traits:
-//! 1. [`AggregateValue`]: This defines how individual values are merged, for example, [`crate::counter::Counter`] defines that
-//! values are summed. `Histogram` is a strategy that keeps track of values then emits buckets later. This trait exists
-//! so that during macro expansion we can do:
+//! This module provides a two-level aggregation system:
+//!
+//! ## Field-level aggregation: [`AggregateValue`]
+//!
+//! Defines how individual field values are merged. For example, [`crate::counter::Counter`] sums values,
+//! while `Histogram` collects values into buckets. This trait enables compile-time type resolution:
+//!
 //! ```rust
-//!   use metrique_aggregation::counter::Counter;
-//!   use metrique_aggregation::aggregate::AggregateValue;
-//!   type AggregatedType = <Counter as AggregateValue<u64>>::Aggregated;
+//! use metrique_aggregation::counter::Counter;
+//! use metrique_aggregation::aggregate::AggregateValue;
+//! type AggregatedType = <Counter as AggregateValue<u64>>::Aggregated;
 //! // ^^^^^^^                   ^^
 //! // Aggregation strategy      input type
-//! // And produce the correct aggregate type at compile time
 //! ```
-//! 2. [`SourceMetric`]: A metric that can be merged into an accumulator. You can `impl` SourceMetric + `AccumulatorMetric` for
-//!    an entire entry to define how it is merged.
 //!
-//! 3. [`AccumulatorMetric`]: A metric that accumulates metrics (usually of the same type)
+//! ## Entry-level aggregation: [`AggregateEntry`]
+//!
+//! Defines how entire metric entries are merged together. Implement this trait to aggregate
+//! complete metric structs, not just individual fields.
+//!
+//! ## The [`Aggregate`] wrapper
+//!
+//! [`Aggregate<T>`] is the simplest way to aggregate data, typically used as a field in a larger struct.
+//! It wraps an aggregated value and tracks the number of samples merged.
 
 use metrique_core::CloseValue;
+use std::hash::Hash;
 
 /// Defines how individual field values are aggregated.
 ///
@@ -82,22 +91,22 @@ pub trait AggregateValue<T> {
 /// Strategy for aggregating metrics
 pub trait AggregateEntry {
     /// Source type. This is often `&'a Self`
-    type Source: Clone;
+    type Source: Send;
 
     /// Aggregated type
-    type Aggregated;
+    type Aggregated: Send;
 
     /// Aggregation Key. For structs with no key, you typically use `()`
-    type Key<'a>: ToOwned;
+    type Key: Send + Hash + Eq;
 
     /// Merge a given entry into the Aggregate
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source);
 
     /// Create a new, empty, aggregated entry for a given key
-    fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated;
+    fn new_aggregated<'a>(key: &Self::Key) -> Self::Aggregated;
 
     /// Returns the key for a given aggregate
-    fn key<'a>(source: &'a Self::Source) -> Self::Key<'a>;
+    fn key<'a>(source: &'a Self::Source) -> Self::Key;
 }
 
 /// Aggregated allows inline-aggregation of a metric

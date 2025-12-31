@@ -452,11 +452,11 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
     } else {
         let key_refs = key_fields.iter().map(|f| {
             let name = &f.name;
-            quote! { &source.#name }
+            quote! { source.#name.clone() }
         });
         let key_type_refs = key_fields.iter().map(|f| {
             let ty = &f.ty;
-            quote! { &'a #ty }
+            quote! { #ty }
         });
         let key_type = if key_fields.len() == 1 {
             quote! { #(#key_type_refs)* }
@@ -472,7 +472,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
         let field_inits = parsed_fields.iter().map(|f| {
             let name = &f.name;
             if f.is_key {
-                quote! { #name: key.to_owned() }
+                quote! { #name: key.clone() }
             } else {
                 quote! { #name: Default::default() }
             }
@@ -503,20 +503,22 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
     });
     
     Ok(quote! {
+        impl metrique_aggregation::sink::MergeOnDropExt for #original_name {}
+
         impl metrique_aggregation::aggregate::AggregateEntry for #original_name {
             type Source = Self;
             type Aggregated = #aggregated_name;
-            type Key<'a> = #key_type;
+            type Key = #key_type;
 
-            fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source) {
+            fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
                 #(#merge_calls)*
             }
 
-            fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
+            fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
                 #new_aggregated_body
             }
 
-            fn key<'a>(source: &'a Self::Source) -> Self::Key<'a> {
+            fn key(source: &Self::Source) -> Self::Key {
                 #key_expr
             }
         }
