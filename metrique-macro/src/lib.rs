@@ -531,7 +531,9 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Resul
             quote! { #source_ty }
         };
 
+        // accessing the entry fields is deprecated
         Ok(quote! {
+            #[allow(deprecated)]
             <#strategy as metrique_aggregation::aggregate::AggregateValue<#value_ty>>::add_value(
                 &mut accum.#name,
                 entry.#name,
@@ -1686,7 +1688,10 @@ fn clean_aggregate_and_unit_attrs(attr: &[Attribute]) -> Vec<Attribute> {
                 // We check by seeing if the tokens contain "unit"
                 let tokens = attr.meta.to_token_stream().to_string();
                 // Simple heuristic: if it contains "unit" and nothing else significant
-                if tokens.contains("unit") && !tokens.contains("rename") && !tokens.contains("flatten") {
+                if tokens.contains("unit")
+                    && !tokens.contains("rename")
+                    && !tokens.contains("flatten")
+                {
                     return false;
                 }
             }
@@ -1982,7 +1987,6 @@ mod tests {
     fn test_aggregate_strips_attributes() {
         let input = quote! {
             #[metrics]
-            #[derive(Clone)]
             pub struct ApiCall {
                 #[aggregate(strategy = Histogram<Duration>)]
                 #[metrics(unit = Millisecond)]
@@ -2001,10 +2005,9 @@ mod tests {
     fn test_aggregate_generates_struct() {
         let input = quote! {
             #[metrics]
-            #[derive(Clone)]
             pub struct ApiCall {
                 #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-                #[metrics(unit = Millisecond)]
+                #[metrics(unit = Millisecond, name = "latency_2")]
                 latency: Duration,
                 #[aggregate(strategy = Counter)]
                 #[metrics(unit = Byte)]
@@ -2022,7 +2025,6 @@ mod tests {
     fn test_aggregate_with_key() {
         let input = quote! {
             #[metrics]
-            #[derive(Clone)]
             struct ApiCallWithOperation {
                 #[aggregate(key)]
                 endpoint: String,
@@ -2042,7 +2044,7 @@ mod tests {
             #[metrics]
             struct ApiCall {
                 #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-                #[metrics(unit = Millisecond)]
+                #[metrics(unit = Millisecond, name = "latency_2")]
                 latency: Timer,
             }
         };

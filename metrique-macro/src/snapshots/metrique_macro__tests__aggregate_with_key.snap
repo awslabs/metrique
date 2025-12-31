@@ -16,6 +16,7 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
     type Aggregated = AggregatedApiCallWithOperation;
     type Key = String;
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
+        #[allow(deprecated)]
         <Histogram<
             Duration,
         > as metrique_aggregation::aggregate::AggregateValue<
@@ -33,7 +34,6 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
     }
 }
 #[metrics]
-#[derive(Clone)]
 struct ApiCallWithOperation {
     endpoint: String,
     #[metrics(unit = Millisecond)]

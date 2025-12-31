@@ -2,7 +2,7 @@
 
 use assert2::check;
 use metrique::timers::Timer;
-use metrique::unit::{Byte, Millisecond};
+use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregate::Aggregate;
@@ -128,7 +128,7 @@ fn test_macro_aggregation_with_key() {
 #[metrics]
 struct ApiCallWithTimer {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-    #[metrics(unit = Millisecond)]
+    #[metrics(unit = Microsecond, name = "latency_2")]
     latency: Timer,
 }
 
@@ -142,7 +142,7 @@ struct RequestMetricsWithTimer {
 #[test]
 fn test_aggregate_entry_mode_with_timer() {
     use metrique_core::CloseValue;
-    
+
     let mut metrics = RequestMetricsWithTimer {
         api_calls: Aggregate::default(),
         request_id: "timer-test".to_string(),
@@ -163,6 +163,7 @@ fn test_aggregate_entry_mode_with_timer() {
     metrics.api_calls.add(call2.close());
 
     let entry = test_metric(metrics);
-    check!(entry.metrics["Latency"].distribution.len() == 2);
+    check!(entry.metrics["latency_2"].distribution.len() == 2);
     check!(entry.values["RequestId"] == "timer-test");
+    check!(entry.metrics["latency_2"].unit == Unit::Second(NegativeScale::Micro));
 }

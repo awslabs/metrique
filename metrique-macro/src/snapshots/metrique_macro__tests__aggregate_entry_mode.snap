@@ -5,7 +5,7 @@ expression: parsed_file
 #[metrics]
 #[derive(Default)]
 struct AggregatedApiCall {
-    #[metrics(unit = Millisecond)]
+    #[metrics(unit = Millisecond, name = "latency_2")]
     latency: <Histogram<
         Duration,
         SortAndMerge,
@@ -19,6 +19,7 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
     type Aggregated = AggregatedApiCall;
     type Key = ();
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
+        #[allow(deprecated)]
         <Histogram<
             Duration,
             SortAndMerge,
