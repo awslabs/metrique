@@ -8,7 +8,6 @@ use metrique_aggregation::aggregate;
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};
-use metrique_aggregation::traits;
 use metrique_aggregation::traits::Aggregate;
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
@@ -176,4 +175,33 @@ fn test_aggregate_entry_mode_with_timer() {
     check!(entry.metrics["latency_2"].distribution.len() == 2);
     check!(entry.values["RequestId"] == "timer-test");
     check!(entry.metrics["latency_2"].unit == Unit::Second(NegativeScale::Micro));
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetricsWithTimerMutex {
+    #[metrics(flatten)]
+    api_calls: MutexAggregator<ApiCallWithTimer>,
+    request_id: String,
+}
+
+#[test]
+fn test_merge_and_close_on_drop() {
+    use metrique_aggregation::sink::MergeOnDropExt;
+
+    let metrics = RequestMetricsWithTimerMutex {
+        api_calls: MutexAggregator::new(),
+        request_id: "merge-close-test".to_string(),
+    };
+
+    let mut call = ApiCallWithTimer {
+        latency: Timer::start_now(),
+    }
+    .merge_and_close_on_drop(&metrics.api_calls);
+    std::thread::sleep(Duration::from_millis(10));
+    call.latency.stop();
+    drop(call);
+
+    let entry = test_metric(metrics);
+    check!(entry.metrics["latency_2"].distribution.len() == 1);
+    check!(entry.values["RequestId"] == "merge-close-test");
 }

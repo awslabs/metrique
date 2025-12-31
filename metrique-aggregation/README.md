@@ -97,23 +97,26 @@ struct RequestMetrics {
 
 ### Thread-safe aggregation with `MutexAggregator<T>`
 
-Use `MutexAggregator<T>` when you need to aggregate from multiple threads or use `merge_on_drop`:
+Use `MutexAggregator<T>` when you need to aggregate from multiple threads or use `merge_and_close_on_drop`:
 
 ```rust,ignore
+use metrique::timers::Timer;
+
 let metrics = RequestMetrics {
     api_calls: MutexAggregator::new(),
     request_id: "1234".to_string(),
 };
 
-// Create a guard that merges on drop
+// Create a guard that closes and merges on drop
 let mut call = ApiCall {
-    latency: Duration::from_millis(100),
+    latency: Timer::start_now(),
     response_size: 50,
-}.merge_on_drop(&metrics.api_calls);
+}.merge_and_close_on_drop(&metrics.api_calls);
 
-// Modify the call before it's merged
+// Modify the call before it's closed and merged
+call.latency.stop();
 call.response_size = 75;
-// Automatically merged when guard drops
+// Automatically closed and merged when guard drops
 ```
 
 ### Keyed aggregation with `KeyedAggregationSink`

@@ -53,6 +53,18 @@ pub trait MergeOnDropExt: AggregateEntry + Sized {
             target: sink.clone(),
         }
     }
+
+    /// Close and merge an item into a given sink when the guard drops
+    fn merge_and_close_on_drop<S>(self, sink: &S) -> MergeAndCloseOnDrop<Self, S>
+    where
+        Self: CloseValue<Closed = <Self as AggregateEntry>::Source>,
+        S: AggregateSink<Self> + Clone,
+    {
+        MergeAndCloseOnDrop {
+            value: Some(self),
+            target: sink.clone(),
+        }
+    }
 }
 
 impl<Entry, Sink> Drop for MergeOnDrop<Entry, Sink>
@@ -63,6 +75,53 @@ where
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
             self.target.merge(value);
+        }
+    }
+}
+
+/// Handle for metric that will be closed and merged into the target when dropped
+pub struct MergeAndCloseOnDrop<Entry, Sink>
+where
+    Entry: AggregateEntry,
+    Entry: CloseValue<Closed = Entry::Source>,
+    Sink: AggregateSink<Entry>,
+{
+    value: Option<Entry>,
+    target: Sink,
+}
+
+impl<Entry, S> Deref for MergeAndCloseOnDrop<Entry, S>
+where
+    Entry: AggregateEntry,
+    Entry: CloseValue<Closed = Entry::Source>,
+    S: AggregateSink<Entry>,
+{
+    type Target = Entry;
+    fn deref(&self) -> &Self::Target {
+        self.value.as_ref().expect("unreachable: valid until drop")
+    }
+}
+
+impl<Entry, S> DerefMut for MergeAndCloseOnDrop<Entry, S>
+where
+    Entry: AggregateEntry,
+    Entry: CloseValue<Closed = Entry::Source>,
+    S: AggregateSink<Entry>,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.value.as_mut().expect("unreachable: valid until drop")
+    }
+}
+
+impl<Entry, Sink> Drop for MergeAndCloseOnDrop<Entry, Sink>
+where
+    Entry: AggregateEntry,
+    Entry: CloseValue<Closed = Entry::Source>,
+    Sink: AggregateSink<Entry>,
+{
+    fn drop(&mut self) {
+        if let Some(value) = self.value.take() {
+            self.target.merge(value.close());
         }
     }
 }
@@ -109,10 +168,7 @@ impl<T: AggregateEntry> MutexAggregator<T> {
     }
 }
 
-impl<'k, T: AggregateEntry> AggregateSink<T> for MutexAggregator<T>
-where
-    T::Source: Clone,
-{
+impl<'k, T: AggregateEntry> AggregateSink<T> for MutexAggregator<T> {
     fn merge(&self, entry: T::Source) {
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {
