@@ -740,6 +740,7 @@ dependencies = [
  "metrique-core",
  "metrique-macro",
  "metrique-writer",
+ "metrique-writer-core",
  "ordered-float",
  "rand",
  "rand_chacha",

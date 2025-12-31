@@ -1,5 +1,8 @@
 //! Keyed aggregation sink with background thread
 
+use metrique_core::{CloseValue, InflectableEntry};
+use metrique_writer::{Entry, EntryWriter};
+use metrique_writer_core::entry::SampleGroupElement;
 use std::{
     collections::HashMap,
     marker::PhantomData,
@@ -10,6 +13,30 @@ use std::{
     thread,
     time::Duration,
 };
+
+/// Helper that "Roots" an inflectable entry (temporary copy from metrique, needs to move to core)
+pub struct RootEntry<M: InflectableEntry> {
+    metric: M,
+}
+
+type RootMetric<E> = RootEntry<<E as CloseValue>::Closed>;
+
+impl<M: InflectableEntry> RootEntry<M> {
+    /// create a new [`RootEntry`]
+    pub fn new(metric: M) -> Self {
+        Self { metric }
+    }
+}
+
+impl<M: InflectableEntry> Entry for RootEntry<M> {
+    fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+        self.metric.write(w);
+    }
+
+    fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
+        self.metric.sample_group()
+    }
+}
 
 use metrique_writer::BoxEntrySink;
 
@@ -30,9 +57,8 @@ pub struct KeyedAggregationSink<T: AggregateEntry, Sink = BoxEntrySink> {
 impl<T, Sink> KeyedAggregationSink<T, Sink>
 where
     T: AggregateEntry + Send + 'static,
-    T::Source: Send,
-    T::Aggregated: metrique_writer::Entry + Send,
-    Sink: metrique_writer::EntrySink<T::Aggregated> + Send + 'static,
+    T::Aggregated: metrique_core::CloseEntry,
+    Sink: metrique_writer::EntrySink<RootMetric<T::Aggregated>> + Send + 'static,
 {
     /// Create a new keyed aggregation sink with a flush interval
     pub fn new(sink: Sink, flush_interval: Duration) -> Self {
@@ -51,7 +77,9 @@ where
                     }
                     Err(_) => {
                         for (_, aggregated) in storage.drain() {
-                            sink.append(aggregated);
+                            sink.append(RootEntry::new(metrique_core::CloseValue::close(
+                                aggregated,
+                            )));
                         }
                     }
                 }

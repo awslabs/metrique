@@ -11,6 +11,7 @@ metrique-macro = { path = "../metrique-macro", version = "0.1.8"}
 smallvec = "1.13"
 histogram.workspace = true
 ordered-float = "5"
+metrique-writer-core = { version = "0.1.8", path = "../metrique-writer-core" }
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }
