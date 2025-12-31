@@ -14,7 +14,7 @@ use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
 use std::time::Duration;
 
-#[aggregate(raw)]
+#[aggregate]
 #[metrics]
 #[derive(Clone)]
 pub struct ApiCall {
@@ -150,8 +150,6 @@ fn test_original_entry_works_as_expected() {
 
 #[test]
 fn test_aggregate_entry_mode_with_timer() {
-    use metrique_core::CloseValue;
-
     let mut metrics = RequestMetricsWithTimer {
         api_calls: Aggregate::default(),
         request_id: "timer-test".to_string(),
@@ -160,16 +158,14 @@ fn test_aggregate_entry_mode_with_timer() {
     let mut call1 = ApiCallWithTimer {
         latency: Timer::start_now(),
     };
-    std::thread::sleep(Duration::from_millis(10));
     call1.latency.stop();
-    metrics.api_calls.add(call1.close());
+    metrics.api_calls.add(call1);
 
     let mut call2 = ApiCallWithTimer {
         latency: Timer::start_now(),
     };
-    std::thread::sleep(Duration::from_millis(20));
     call2.latency.stop();
-    metrics.api_calls.add(call2.close());
+    metrics.api_calls.add(call2);
 
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 2);

@@ -25,9 +25,10 @@ use metrique_aggregation::traits::Aggregate;
 use metrique_writer::unit::{Millisecond, Byte};
 use std::time::Duration;
 
-#[aggregate(raw)]
+#[aggregate]
 #[metrics]
 struct ApiCall {
+    // Aggregate latency with a histogram
     #[aggregate(strategy = Histogram<Duration>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
@@ -129,7 +130,7 @@ Use `KeyedAggregationSink` to aggregate by key with time-based flushing:
 # use metrique_aggregation::aggregate;
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::histogram::Histogram;
-# #[aggregate(raw)]
+# #[aggregate]
 # #[metrics]
 # struct ApiCall {
 #     #[aggregate(key)]

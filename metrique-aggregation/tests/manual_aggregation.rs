@@ -137,24 +137,24 @@ fn test_request_metric_aggregation() {
         request_id: "1234".to_string(),
     };
 
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.add_raw(ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
         response_value: None,
     });
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.add_raw(ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
         response_value: None,
     });
 
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.add_raw(ApiCall {
         latency: Duration::from_millis(200),
         response_size: 75,
         response_value: None,
     });
 
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.add_raw(ApiCall {
         latency: Duration::from_millis(150),
         response_size: 60,
         response_value: None,

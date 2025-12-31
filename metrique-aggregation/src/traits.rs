@@ -130,9 +130,20 @@ where
 
 impl<T: AggregateEntry> Aggregate<T> {
     /// Add a new entry into this aggregate
-    pub fn add(&mut self, entry: T::Source) {
+    pub fn add_raw(&mut self, entry: T::Source) {
         self.num_samples += 1;
         T::merge_entry(&mut self.aggregated, entry);
+    }
+
+    /// Add a new entry into this aggregate
+    ///
+    /// This method is used when `Source` is the "closed" version. If you are using
+    /// `#[aggregate(raw)]`, use `add_raw` to add the type directly
+    pub fn add(&mut self, entry: T)
+    where
+        T: CloseValue<Closed = T::Source>,
+    {
+        self.add_raw(entry.close());
     }
 
     /// Creates a `Aggreate` that is initialized to a given value

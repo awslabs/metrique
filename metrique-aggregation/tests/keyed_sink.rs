@@ -6,7 +6,7 @@ use metrique_aggregation::keyed_sink::KeyedAggregationSink;
 use metrique_writer::test_util::test_entry_sink;
 use std::time::Duration;
 
-#[aggregate(raw)]
+#[aggregate]
 #[metrics]
 struct ApiCall {
     #[aggregate(key)]

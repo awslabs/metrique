@@ -100,8 +100,16 @@ where
         }
     }
 
-    /// Send an entry to be aggregated
-    pub fn send(&self, entry: T::Source) {
+    /// Send a raw entry to be aggregated
+    pub fn send_raw(&self, entry: T::Source) {
         let _ = self.sender.send(entry);
+    }
+
+    /// Send an entry to be aggregated
+    pub fn send(&self, entry: T)
+    where
+        T: CloseValue<Closed = T::Source>,
+    {
+        self.send_raw(entry.close());
     }
 }
