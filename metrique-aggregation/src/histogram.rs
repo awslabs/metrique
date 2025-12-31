@@ -102,7 +102,7 @@ use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
 use std::{borrow::Borrow, marker::PhantomData};
 
-use crate::aggregate::AggregateValue;
+use crate::traits::AggregateValue;
 
 /// Strategy for aggregating observations in a histogram.
 ///

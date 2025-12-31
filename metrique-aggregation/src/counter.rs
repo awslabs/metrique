@@ -2,7 +2,7 @@
 //!
 //! Counter sums values together, making it ideal for counts, totals, and accumulated metrics.
 
-use crate::aggregate::AggregateValue;
+use crate::traits::AggregateValue;
 use std::{marker::PhantomData, ops::AddAssign};
 
 /// Counter aggregation strategy that sums values.

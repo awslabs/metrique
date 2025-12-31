@@ -3,9 +3,9 @@
 use assert2::check;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::aggregate::{Aggregate, AggregateEntry};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{MergeOnDropExt, MutexAggregator};
+use metrique_aggregation::traits::{Aggregate, AggregateEntry};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};

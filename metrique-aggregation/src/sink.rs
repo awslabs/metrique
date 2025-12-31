@@ -7,7 +7,7 @@ use std::{
 
 use metrique_core::CloseValue;
 
-use crate::aggregate::{Aggregate, AggregateEntry};
+use crate::traits::{Aggregate, AggregateEntry};
 
 /// Handle for metric that will be automatically merged into the target when dropped
 pub struct MergeOnDrop<Entry, Sink>

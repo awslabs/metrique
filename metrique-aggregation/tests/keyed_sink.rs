@@ -1,8 +1,8 @@
 use assert2::check;
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::keyed_sink::KeyedAggregationSink;
+use metrique_aggregation::traits;
 use metrique_writer::test_util::test_entry_sink;
 use std::time::Duration;
 

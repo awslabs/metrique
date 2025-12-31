@@ -2,11 +2,11 @@ use assert2::check;
 use metrique::timers::Timer;
 use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::aggregate;
-use metrique_aggregation::aggregate::Aggregate;
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};
+use metrique_aggregation::traits;
+use metrique_aggregation::traits::Aggregate;
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -23,10 +23,9 @@ struct ApiCallWithTimer2 {
 
 #[derive(Default)]
 struct AggregatedApiCallWithTimer {
-    latency:
-        <Histogram<Duration, SortAndMerge> as metrique_aggregation::aggregate::AggregateValue<
-            <Timer as metrique_core::CloseValue>::Closed,
-        >>::Aggregated,
+    latency: <Histogram<Duration, SortAndMerge> as metrique_aggregation::traits::AggregateValue<
+        <Timer as metrique_core::CloseValue>::Closed,
+    >>::Aggregated,
 }
 #[doc(hidden)]
 pub struct AggregatedApiCallWithTimerEntry {
@@ -34,12 +33,11 @@ pub struct AggregatedApiCallWithTimerEntry {
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    latency:
-        <<<Histogram<Duration, SortAndMerge> as metrique_aggregation::aggregate::AggregateValue<
-            <Timer as metrique_core::CloseValue>::Closed,
-        >>::Aggregated as metrique::CloseValue>::Closed as ::metrique::unit::AttachUnit>::Output<
-            Microsecond,
-        >,
+    latency: <<<Histogram<Duration, SortAndMerge> as metrique_aggregation::traits::AggregateValue<
+        <Timer as metrique_core::CloseValue>::Closed,
+    >>::Aggregated as metrique::CloseValue>::Closed as ::metrique::unit::AttachUnit>::Output<
+        Microsecond,
+    >,
 }
 const _: () = {
     #[expect(deprecated)]
@@ -129,13 +127,13 @@ impl AggregatedApiCallWithTimer {
 }
 impl metrique_aggregation::sink::MergeOnDropExt for ApiCallWithTimer {}
 
-impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithTimer {
+impl metrique_aggregation::traits::AggregateEntry for ApiCallWithTimer {
     type Source = <Self as metrique_core::CloseValue>::Closed;
     type Aggregated = AggregatedApiCallWithTimer;
     type Key = ();
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         #[allow(deprecated)]
-        <Histogram<Duration, SortAndMerge> as metrique_aggregation::aggregate::AggregateValue<
+        <Histogram<Duration, SortAndMerge> as metrique_aggregation::traits::AggregateValue<
             <Timer as metrique_core::CloseValue>::Closed,
         >>::add_value(&mut accum.latency, *entry.latency);
     }

@@ -40,7 +40,7 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
 
 use metrique_writer::BoxEntrySink;
 
-use crate::{aggregate::AggregateEntry, sink::AggregateSink};
+use crate::{sink::AggregateSink, traits::AggregateEntry};
 
 /// [`KeyedAggregationSink`] uses a HashMap to aggregate a set of keys
 ///
