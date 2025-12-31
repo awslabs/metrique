@@ -3,8 +3,7 @@
 use assert2::check;
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::aggregate::{Aggregate, AggregateEntry, AggregateValue};
-use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
+use metrique_aggregation::aggregate::{Aggregate, AggregateEntry};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{MergeOnDropExt, MutexSink};
 use metrique_writer::test_util::test_metric;
@@ -59,7 +58,7 @@ impl AggregateEntry for ApiCallWithOperation {
     type Key<'a> = &'a String;
 
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
-        Histogram::add_value(&mut accum.latency, &entry.latency);
+        accum.latency.add_value(&entry.latency);
     }
 
     fn new_aggregated<'a>(key: Self::Key<'a>) -> Self::Aggregated {
@@ -77,23 +76,18 @@ impl AggregateEntry for ApiCallWithOperation {
 #[metrics]
 struct AggregatedApiCallWithOperation {
     endpoint: String,
-
     #[metrics(unit = Millisecond)]
-    latency: <Histogram<Duration> as AggregateValue<Duration>>::Aggregated,
+    latency: Histogram<Duration>,
 }
 
-// copy all attributes already present on the metrics attribute
 #[metrics]
-// if no fields are marked with `#[aggregate(key)]`, derive default and impl FromKey<()>
 #[derive(Default)]
 pub struct AggregatedApiCall {
-    // COPY ALL `#[metrics...]` attributes directly
     #[metrics(unit = Millisecond)]
-    latency: <Histogram<Duration, SortAndMerge> as AggregateValue<Duration>>::Aggregated,
+    latency: Histogram<Duration, SortAndMerge>,
     #[metrics(unit = Byte)]
-    response_size: <Counter as AggregateValue<usize>>::Aggregated,
-
-    response_value: <MergeOptions<LastValueWins> as AggregateValue<Option<String>>>::Aggregated,
+    response_size: usize,
+    response_value: Option<String>,
 }
 
 impl MergeOnDropExt for ApiCall {}
@@ -104,9 +98,9 @@ impl AggregateEntry for ApiCall {
     type Key<'a> = ();
 
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Cow<'a, Self::Source>) {
-        Histogram::add_value(&mut accum.latency, &entry.latency);
-        Counter::add_value(&mut accum.response_size, &entry.response_size);
-        MergeOptions::<LastValueWins>::add_value(&mut accum.response_value, &entry.response_value);
+        accum.latency.add_value(&entry.latency);
+        accum.response_size += entry.response_size;
+        accum.response_value = entry.response_value.clone();
     }
 
     fn new_aggregated<'a>(_key: Self::Key<'a>) -> Self::Aggregated {
