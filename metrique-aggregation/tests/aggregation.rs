@@ -140,6 +140,15 @@ struct RequestMetricsWithTimer {
 }
 
 #[test]
+fn test_original_entry_works_as_expected() {
+    let entry = ApiCallWithTimer {
+        latency: Timer::start_now(),
+    };
+    let entry = test_metric(entry);
+    check!(entry.metrics.keys().collect::<Vec<_>>() == ["latency_2"]);
+}
+
+#[test]
 fn test_aggregate_entry_mode_with_timer() {
     use metrique_core::CloseValue;
 
