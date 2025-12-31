@@ -2,6 +2,7 @@ use assert2::check;
 use metrique::timers::Timer;
 use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::aggregate;
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};

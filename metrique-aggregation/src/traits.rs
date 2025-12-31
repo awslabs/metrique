@@ -9,7 +9,7 @@
 //!
 //! ```rust
 //! use metrique_aggregation::counter::Counter;
-//! use metrique_aggregation::aggregate::AggregateValue;
+//! use metrique_aggregation::traits::AggregateValue;
 //! type AggregatedType = <Counter as AggregateValue<u64>>::Aggregated;
 //! // ^^^^^^^                   ^^
 //! // Aggregation strategy      input type
@@ -44,7 +44,7 @@ use std::hash::Hash;
 /// # Example
 ///
 /// ```rust
-/// use metrique_aggregation::aggregate::AggregateValue;
+/// use metrique_aggregation::traits::AggregateValue;
 /// use metrique_core::CloseValue;
 ///
 /// // Average tracks sum and count to compute average

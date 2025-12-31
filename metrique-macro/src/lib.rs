@@ -409,13 +409,13 @@ fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<T
             };
             quote! {
                 #(#metrics_attrs)*
-                #name: <#strategy as metrique_aggregation::aggregate::AggregateValue<#value_ty>>::Aggregated
+                #name: <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
             }
         } else {
             let ty = &f.ty;
             quote! {
                 #(#metrics_attrs)*
-                #name: <metrique_aggregation::counter::Counter as metrique_aggregation::aggregate::AggregateValue<#ty>>::Aggregated
+                #name: <metrique_aggregation::counter::Counter as metrique_aggregation::__macro_plumbing::AggregateValue<#ty>>::Aggregated
             }
         }
     });
@@ -554,7 +554,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Resul
         // accessing the entry fields is deprecated
         Ok(quote! {
             #[allow(deprecated)]
-            <#strategy as metrique_aggregation::aggregate::AggregateValue<#value_ty>>::add_value(
+            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(
                 &mut accum.#name,
                 #entry_value,
             );
@@ -568,9 +568,9 @@ fn generate_aggregate_entry_impl(input: &DeriveInput, entry_mode: bool) -> Resul
     };
 
     Ok(quote! {
-        impl metrique_aggregation::sink::MergeOnDropExt for #original_name {}
+        impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for #original_name {}
 
-        impl metrique_aggregation::aggregate::AggregateEntry for #original_name {
+        impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
             type Source = #source_type;
             type Aggregated = #aggregated_name;
             type Key = #key_type;
