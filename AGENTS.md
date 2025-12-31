@@ -1,3 +1,8 @@
+# Metrique Workspace Guidelines
+
+## Testing
+- Use `cargo nextest run` to run all tests in this workspace
+
 # Metrique Trait System
 
 ## Overview
