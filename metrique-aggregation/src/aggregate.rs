@@ -89,7 +89,7 @@ pub trait AggregateValue<T> {
 
 /// Strategy for aggregating metrics
 pub trait AggregateEntry {
-    /// Source type. This is often `&'a Self`
+    /// Source type. This is typically `Self` (owned).
     type Source: Send;
 
     /// Aggregated type
