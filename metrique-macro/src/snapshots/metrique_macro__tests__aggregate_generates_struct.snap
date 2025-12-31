@@ -9,17 +9,19 @@ pub struct AggregatedApiCall {
     latency: <Histogram<
         Duration,
         SortAndMerge,
-    > as metrique_aggregation::aggregate::AggregateValue<Duration>>::Aggregated,
+    > as metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
     #[metrics(unit = Byte)]
-    response_size: <Counter as metrique_aggregation::aggregate::AggregateValue<
+    response_size: <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
         usize,
     >>::Aggregated,
     response_value: <MergeOptions<
         LastValueWins,
-    > as metrique_aggregation::aggregate::AggregateValue<Option<String>>>::Aggregated,
+    > as metrique_aggregation::__macro_plumbing::AggregateValue<
+        Option<String>,
+    >>::Aggregated,
 }
-impl metrique_aggregation::sink::MergeOnDropExt for ApiCall {}
-impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
+impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCall {}
+impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCall {
     type Source = Self;
     type Aggregated = AggregatedApiCall;
     type Key = ();
@@ -28,17 +30,17 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
         <Histogram<
             Duration,
             SortAndMerge,
-        > as metrique_aggregation::aggregate::AggregateValue<
+        > as metrique_aggregation::__macro_plumbing::AggregateValue<
             Duration,
         >>::add_value(&mut accum.latency, entry.latency);
         #[allow(deprecated)]
-        <Counter as metrique_aggregation::aggregate::AggregateValue<
+        <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
             usize,
         >>::add_value(&mut accum.response_size, entry.response_size);
         #[allow(deprecated)]
         <MergeOptions<
             LastValueWins,
-        > as metrique_aggregation::aggregate::AggregateValue<
+        > as metrique_aggregation::__macro_plumbing::AggregateValue<
             Option<String>,
         >>::add_value(&mut accum.response_value, entry.response_value);
     }

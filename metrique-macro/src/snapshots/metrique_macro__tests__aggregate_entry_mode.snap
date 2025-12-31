@@ -9,12 +9,12 @@ struct AggregatedApiCall {
     latency: <Histogram<
         Duration,
         SortAndMerge,
-    > as metrique_aggregation::aggregate::AggregateValue<
+    > as metrique_aggregation::__macro_plumbing::AggregateValue<
         <Timer as metrique_core::CloseValue>::Closed,
     >>::Aggregated,
 }
-impl metrique_aggregation::sink::MergeOnDropExt for ApiCall {}
-impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
+impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCall {}
+impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCall {
     type Source = <Self as metrique_core::CloseValue>::Closed;
     type Aggregated = AggregatedApiCall;
     type Key = ();
@@ -23,9 +23,9 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCall {
         <Histogram<
             Duration,
             SortAndMerge,
-        > as metrique_aggregation::aggregate::AggregateValue<
+        > as metrique_aggregation::__macro_plumbing::AggregateValue<
             <Timer as metrique_core::CloseValue>::Closed,
-        >>::add_value(&mut accum.latency, entry.latency);
+        >>::add_value(&mut accum.latency, *entry.latency);
     }
     fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
         Self::Aggregated::default()

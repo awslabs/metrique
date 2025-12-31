@@ -8,10 +8,10 @@ struct AggregatedApiCallWithOperation {
     #[metrics(unit = Millisecond)]
     latency: <Histogram<
         Duration,
-    > as metrique_aggregation::aggregate::AggregateValue<Duration>>::Aggregated,
+    > as metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
 }
-impl metrique_aggregation::sink::MergeOnDropExt for ApiCallWithOperation {}
-impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
+impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCallWithOperation {}
+impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCallWithOperation {
     type Source = Self;
     type Aggregated = AggregatedApiCallWithOperation;
     type Key = String;
@@ -19,7 +19,7 @@ impl metrique_aggregation::aggregate::AggregateEntry for ApiCallWithOperation {
         #[allow(deprecated)]
         <Histogram<
             Duration,
-        > as metrique_aggregation::aggregate::AggregateValue<
+        > as metrique_aggregation::__macro_plumbing::AggregateValue<
             Duration,
         >>::add_value(&mut accum.latency, entry.latency);
     }
