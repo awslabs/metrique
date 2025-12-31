@@ -84,9 +84,8 @@ pub trait AggregateValue<T> {
     fn add_value(accum: &mut Self::Aggregated, value: &T);
 }
 
-// tod: aggregateEntryRef: aggregate entry that adds merge_entry_ref
-// remove cow
-// macro impls it by default
+// TODO: Add AggregateEntryRef: aggregate entry that adds merge_entry_ref and implement
+// it by default in the macro
 
 /// Strategy for aggregating metrics
 pub trait AggregateEntry {
