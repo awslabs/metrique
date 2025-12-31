@@ -15,7 +15,7 @@ use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
 use std::time::Duration;
 
-#[aggregate]
+#[aggregate(raw)]
 #[metrics]
 #[derive(Clone)]
 pub struct ApiCall {
@@ -85,7 +85,7 @@ fn test_macro_aggregation() {
     check!(entry.values["RequestId"] == "1234");
 }
 
-#[aggregate]
+#[aggregate(raw)]
 #[metrics]
 #[derive(Clone)]
 struct ApiCallWithEndpoint {
@@ -125,7 +125,7 @@ fn test_macro_aggregation_with_key() {
     check!(entry.values["Endpoint"] == "GetItem");
 }
 
-#[aggregate(entry)]
+#[aggregate]
 #[metrics]
 struct ApiCallWithTimer {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]

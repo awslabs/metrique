@@ -288,11 +288,12 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// This macro must be placed before `#[metrics]` and generates the `AggregateEntry` trait
 /// implementation and associated `Aggregated` struct.
 ///
-/// Use `#[aggregate(entry)]` to set `Source = Self::Closed` instead of `Source = Self`.
+/// By default, implements aggregation on the metric entry (`Source = Self::Closed`).
+/// Use `#[aggregate(raw)]` to implement on the raw struct instead (`Source = Self`).
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let entry_mode = !attr.is_empty() && attr.to_string().trim() == "entry";
+    let entry_mode = attr.is_empty() || attr.to_string().trim() != "raw";
 
     let mut output = Ts2::new();
 

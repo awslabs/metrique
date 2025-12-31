@@ -13,7 +13,7 @@ use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
 use std::time::Duration;
 
-#[aggregate(entry)]
+#[aggregate]
 #[metrics]
 struct ApiCallWithTimer2 {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]

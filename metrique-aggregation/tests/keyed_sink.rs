@@ -7,7 +7,7 @@ use metrique_aggregation::traits;
 use metrique_writer::test_util::test_entry_sink;
 use std::time::Duration;
 
-#[aggregate]
+#[aggregate(raw)]
 #[metrics]
 struct ApiCall {
     #[aggregate(key)]
