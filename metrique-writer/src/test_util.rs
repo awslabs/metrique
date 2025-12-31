@@ -54,9 +54,41 @@ pub struct TestEntry {
     /// The timestamp of the entry, if one was provided.
     pub timestamp: Option<SystemTime>,
     /// String values in the entry, mapped by field name.
-    pub values: HashMap<String, String>,
+    pub values: TestMap<String>,
     /// Metric values in the entry, mapped by field name.
-    pub metrics: HashMap<String, Metric>,
+    pub metrics: TestMap<Metric>,
+}
+
+/// A wrapper around HashMap that provides better error messages when indexing with missing keys.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TestMap<T>(HashMap<String, T>);
+
+impl<T> Default for TestMap<T> {
+    fn default() -> Self {
+        Self(Default::default())
+    }
+}
+
+impl<T> std::ops::Deref for TestMap<T> {
+    type Target = HashMap<String, T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> std::ops::Index<&str> for TestMap<T> {
+    type Output = T;
+
+    fn index(&self, key: &str) -> &Self::Output {
+        self.0.get(key).unwrap_or_else(|| {
+            let available_keys: Vec<_> = self.0.keys().map(|k| k.as_str()).collect();
+            panic!(
+                "key '{}' not found. Available keys: {:?}",
+                key, available_keys
+            )
+        })
+    }
 }
 
 impl<T: Entry> From<T> for TestEntry {
@@ -196,10 +228,10 @@ impl<'a> EntryWriter<'a> for TestEntry {
         value.write(writer);
         match raw_value {
             TestValue::Property(s) => {
-                self.values.insert(name.to_string(), s);
+                self.values.0.insert(name.to_string(), s);
             }
             TestValue::Metric(metric) => {
-                self.metrics.insert(name.to_string(), metric);
+                self.metrics.0.insert(name.to_string(), metric);
             }
             TestValue::Unset => {
                 // This case happens if, e.g. the value is `Option<T>` and it is None
@@ -386,5 +418,43 @@ impl AnyEntrySink for Inspector {
 
     fn flush_async(&self) -> FlushWait {
         FlushWait::ready()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Entry, EntrySink};
+
+    #[derive(Entry)]
+    struct TestMetrics {
+        operation: &'static str,
+        request_count: u64,
+    }
+
+    #[test]
+    #[should_panic(expected = "key 'wrong_name' not found. Available keys: [\"request_count\"]")]
+    fn test_metric_map_missing_key_error() {
+        let sink = test_entry_sink();
+        sink.sink.append(TestMetrics {
+            operation: "test",
+            request_count: 42,
+        });
+
+        let entries = sink.inspector.entries();
+        let _ = &entries[0].metrics["wrong_name"];
+    }
+
+    #[test]
+    #[should_panic(expected = "key 'wrong_name' not found. Available keys: [\"operation\"]")]
+    fn test_value_map_missing_key_error() {
+        let sink = test_entry_sink();
+        sink.sink.append(TestMetrics {
+            operation: "test",
+            request_count: 42,
+        });
+
+        let entries = sink.inspector.entries();
+        let _ = &entries[0].values["wrong_name"];
     }
 }
