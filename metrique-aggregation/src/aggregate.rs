@@ -88,7 +88,7 @@ pub trait AggregateEntry {
     type Aggregated;
 
     /// Aggregation Key. For structs with no key, you typically use `()`
-    type Key<'a>;
+    type Key<'a>: ToOwned;
 
     /// Merge a given entry into the Aggregate
     fn merge_entry<'a>(accum: &mut Self::Aggregated, entry: Self::Source);

@@ -92,13 +92,18 @@ impl<T: AggregateEntry> MutexSink<T> {
     where
         for<'a> T::Key<'a>: Default,
     {
+        Self::with_key(Default::default())
+    }
+
+    /// Creates a sync from a given key. NOTE: this sink does not aggregate by key
+    pub fn with_key<'a>(key: T::Key<'a>) -> MutexSink<T> {
         Self {
-            aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(Default::default())))),
+            aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(key)))),
         }
     }
 }
 
-impl<'k, T: AggregateEntry<Key<'k> = ()>> AggregateSink<T> for MutexSink<T>
+impl<'k, T: AggregateEntry> AggregateSink<T> for MutexSink<T>
 where
     T::Source: Clone,
 {
@@ -106,13 +111,10 @@ where
         let mut aggregator = self.aggregator.lock().unwrap();
         match &mut *aggregator {
             Some(v) => {
-                v.add(entry);
+                T::merge_entry(v, entry);
             }
             None => {
-                let value = T::new_aggregated(Default::default());
-                let mut agg = Aggregate::new(value);
-                agg.add(entry);
-                *aggregator = Some(agg);
+                unreachable!("it is always initialized with a value")
             }
         }
     }

@@ -7,7 +7,6 @@ use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregate::Aggregate;
 use metrique_aggregation::counter::Counter;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::MutexSink;
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -81,5 +80,47 @@ fn test_macro_aggregation() {
     check!(entry.metrics["ResponseSize"].unit == Unit::Byte(PositiveScale::One));
     check!(entry.metrics["Latency"].unit == Unit::Second(NegativeScale::Milli));
     check!(entry.values["RequestId"] == "1234");
+}
+
+#[aggregate]
+#[metrics]
+#[derive(Clone)]
+struct ApiCallWithEndpoint {
+    #[aggregate(key)]
+    endpoint: String,
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetricsWithEndpoint {
+    #[metrics(flatten)]
+    api_calls: Aggregate<ApiCallWithEndpoint>,
+    request_id: String,
+}
+
+#[test]
+fn test_macro_aggregation_with_key() {
+    let mut metrics = RequestMetricsWithEndpoint {
+        api_calls: Aggregate::new(AggregatedApiCallWithEndpoint {
+            endpoint: "GetItem".to_string(),
+            latency: Default::default(),
+        }),
+        request_id: "5678".to_string(),
+    };
+
+    metrics.api_calls.add(ApiCallWithEndpoint {
+        endpoint: "GetItem".to_string(),
+        latency: Duration::from_millis(50),
+    });
+    metrics.api_calls.add(ApiCallWithEndpoint {
+        endpoint: "GetItem".to_string(),
+        latency: Duration::from_millis(75),
+    });
+
+    let entry = test_metric(metrics);
+    check!(entry.values["RequestId"] == "5678");
+    check!(entry.values["Endpoint"] == "GetItem");
 }
 
