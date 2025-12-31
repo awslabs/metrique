@@ -285,11 +285,220 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 
 /// Generates aggregation support for metrics structs.
 ///
-/// This macro must be placed before `#[metrics]` and generates the `AggregateEntry` trait
-/// implementation and associated `Aggregated` struct.
+/// This macro enables combining multiple observations of the same metric into a single aggregated
+/// entry. It must be placed before `#[metrics]` and generates:
+/// - An `Aggregated{StructName}` struct with aggregated field types
+/// - An `AggregateEntry` trait implementation for merging observations
 ///
-/// By default, implements aggregation on the metric entry (`Source = Self::Closed`).
-/// Use `#[aggregate(raw)]` to implement on the raw struct instead (`Source = Self`).
+/// # Container Attributes
+///
+/// | Attribute | Type | Description | Example |
+/// |-----------|------|-------------|---------|
+/// | `raw` | Flag | Aggregates on the raw struct instead of the closed entry (default: aggregates on closed entry) | `#[aggregate(raw)]` |
+///
+/// # Field Attributes
+///
+/// | Attribute | Type | Description | Example |
+/// |-----------|------|-------------|---------|
+/// | `strategy` | Path | Specifies the aggregation strategy (required for non-key fields) | `#[aggregate(strategy = Histogram<Duration>)]` |
+/// | `key` | Flag | Marks a field as part of the aggregation key - observations with different keys are aggregated separately | `#[aggregate(key)]` |
+///
+/// # Aggregation Modes
+///
+/// ## Entry Mode (Default)
+///
+/// By default, `#[aggregate]` implements aggregation on the closed metric entry. This means
+/// aggregation happens after `CloseValue` has been applied to all fields:
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
+/// use metrique_writer::unit::Millisecond;
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     #[metrics(unit = Millisecond)]
+///     latency: Duration,  // Aggregates Duration values
+///     
+///     #[aggregate(strategy = Counter)]
+///     response_size: usize,
+/// }
+/// ```
+///
+/// In entry mode:
+/// - Fields with `#[metrics(unit = U)]` are automatically unwrapped from `WithUnit<T, U>` before aggregation
+/// - Aggregation strategies receive the closed value type: `<T as CloseValue>::Closed`
+/// - This is the recommended mode for most use cases
+///
+/// ## Raw Mode
+///
+/// Use `#[aggregate(raw)]` to aggregate on the raw struct before closing:
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram};
+/// use metrique::timers::Timer;
+///
+/// #[aggregate(raw)]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Timer>)]
+///     latency: Timer,  // Aggregates Timer values directly
+/// }
+/// ```
+///
+/// In raw mode:
+/// - Aggregation strategies receive the raw field type before `CloseValue` is applied
+/// - Use this when you need to aggregate mutable accumulation types like `Timer` or `Histogram`
+///
+/// # Aggregation Keys
+///
+/// Fields marked with `#[aggregate(key)]` define the aggregation key. Observations with different
+/// keys are aggregated into separate entries:
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(key)]
+///     endpoint: String,  // Separate aggregation per endpoint
+///     
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+/// }
+/// ```
+///
+/// Key behavior:
+/// - Key fields are cloned into the aggregated struct unchanged
+/// - Multiple key fields create a tuple key: `(Field1, Field2, ...)`
+/// - Without key fields, all observations aggregate into a single entry
+/// - Key fields must implement `Clone`
+///
+/// # Aggregation Strategies
+///
+/// Each non-key field must specify an aggregation strategy that implements `AggregateValue<T>`:
+///
+/// ## Built-in Strategies
+///
+/// - **`Counter`** - Sums numeric values together
+/// - **`Histogram<T>`** - Collects values into a distribution
+/// - **`LastValueWins`** - Keeps the most recent value
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter, last_value_wins::LastValueWins};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+///     
+///     #[aggregate(strategy = Counter)]
+///     bytes_sent: usize,
+///     
+///     #[aggregate(strategy = LastValueWins)]
+///     status_code: u16,
+/// }
+/// ```
+///
+/// # Generated Types
+///
+/// For a struct named `MyMetrics`, the macro generates:
+/// - `AggregatedMyMetrics`: The aggregated struct where each field is replaced with its aggregated type
+/// - `impl AggregateEntry for MyMetrics`: Trait implementation for merging observations
+///
+/// The aggregated struct can be used with `Aggregate<T>` or `MutexAggregator<T>`:
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, traits::Aggregate};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+/// }
+///
+/// #[metrics]
+/// struct RequestMetrics {
+///     request_id: String,
+///     #[metrics(flatten)]
+///     api_calls: Aggregate<ApiCall>,
+/// }
+/// ```
+///
+/// # Example
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter, traits::Aggregate};
+/// use metrique_writer::unit::{Millisecond, Byte};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct BackendCall {
+///     #[aggregate(key)]
+///     service: String,
+///     
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     #[metrics(unit = Millisecond)]
+///     latency: Duration,
+///     
+///     #[aggregate(strategy = Counter)]
+///     #[metrics(unit = Byte)]
+///     response_size: usize,
+/// }
+///
+/// #[metrics(rename_all = "PascalCase")]
+/// struct DistributedQuery {
+///     query_id: String,
+///     
+///     #[metrics(flatten)]
+///     backend_calls: Aggregate<BackendCall>,
+/// }
+///
+/// fn execute_query() {
+///     let mut metrics = DistributedQuery {
+///         query_id: "query-123".to_string(),
+///         backend_calls: Aggregate::default(),
+///     };
+///     
+///     // Add observations for different services
+///     metrics.backend_calls.add(BackendCall {
+///         service: "api-1".to_string(),
+///         latency: Duration::from_millis(45),
+///         response_size: 1024,
+///     });
+///     
+///     metrics.backend_calls.add(BackendCall {
+///         service: "api-1".to_string(),
+///         latency: Duration::from_millis(67),
+///         response_size: 2048,
+///     });
+///     
+///     metrics.backend_calls.add(BackendCall {
+///         service: "api-2".to_string(),
+///         latency: Duration::from_millis(120),
+///         response_size: 512,
+///     });
+///     
+///     // When metrics drops, emits aggregated entries:
+///     // - One entry for api-1 with histogram of [45ms, 67ms] and total 3072 bytes
+///     // - One entry for api-2 with histogram of [120ms] and total 512 bytes
+/// }
+/// ```
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
