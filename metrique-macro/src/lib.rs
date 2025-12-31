@@ -497,7 +497,7 @@ fn generate_aggregate_entry_impl(input: &DeriveInput) -> Result<Ts2> {
         quote! {
             <#strategy as metrique_aggregation::aggregate::AggregateValue<#source_ty>>::add_value(
                 &mut accum.#name,
-                &entry.#name,
+                entry.#name,
             );
         }
     });

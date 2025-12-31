@@ -17,8 +17,8 @@ where
 {
     type Aggregated = T;
 
-    fn add_value(accum: &mut T, value: &T) {
-        *accum += *value;
+    fn add_value(accum: &mut T, value: T) {
+        *accum += value;
     }
 }
 
@@ -28,8 +28,8 @@ pub struct LastValueWins;
 impl<T: Clone> AggregateValue<T> for LastValueWins {
     type Aggregated = Option<T>;
 
-    fn add_value(accum: &mut Self::Aggregated, value: &T) {
-        *accum = Some(value.clone())
+    fn add_value(accum: &mut Self::Aggregated, value: T) {
+        *accum = Some(value)
     }
 }
 
@@ -44,7 +44,7 @@ where
 {
     type Aggregated = S::Aggregated;
 
-    fn add_value(accum: &mut Self::Aggregated, value: &Option<T>) {
+    fn add_value(accum: &mut Self::Aggregated, value: Option<T>) {
         if let Some(v) = value {
             <S as AggregateValue<T>>::add_value(accum, v);
         }

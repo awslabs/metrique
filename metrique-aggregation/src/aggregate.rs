@@ -70,7 +70,7 @@ use std::hash::Hash;
 /// impl AggregateValue<f64> for Avg {
 ///     type Aggregated = AvgAccumulator;
 ///
-///     fn add_value(accum: &mut Self::Aggregated, value: &f64) {
+///     fn add_value(accum: &mut Self::Aggregated, value: f64) {
 ///         accum.sum += value;
 ///         accum.count += 1;
 ///     }
@@ -81,7 +81,7 @@ pub trait AggregateValue<T> {
     type Aggregated;
 
     /// Aggregate a value into the accumulator.
-    fn add_value(accum: &mut Self::Aggregated, value: &T);
+    fn add_value(accum: &mut Self::Aggregated, value: T);
 }
 
 // TODO: Add AggregateEntryRef: aggregate entry that adds merge_entry_ref and implement
