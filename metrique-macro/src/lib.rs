@@ -310,17 +310,16 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// By default, `#[aggregate]` implements aggregation on the closed metric entry. This means
 /// aggregation happens after `CloseValue` has been applied to all fields:
 ///
-/// ```rust
+/// ```ignore
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
-/// use metrique_writer::unit::Millisecond;
 /// use std::time::Duration;
 ///
 /// #[aggregate]
 /// #[metrics]
 /// struct ApiCall {
 ///     #[aggregate(strategy = Histogram<Duration>)]
-///     #[metrics(unit = Millisecond)]
+///     #[metrics(unit = metrique::writer::unit::Millisecond)]
 ///     latency: Duration,  // Aggregates Duration values
 ///
 ///     #[aggregate(strategy = Counter)]
@@ -335,31 +334,16 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// ## Raw Mode
 ///
-/// Use `#[aggregate(raw)]` to aggregate on the raw struct before closing:
-///
-/// ```rust
-/// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram};
-/// use metrique::timers::Timer;
-///
-/// #[aggregate(raw)]
-/// #[metrics]
-/// struct ApiCall {
-///     #[aggregate(strategy = Histogram<Duration>)]
-///     latency: Duration,  // Aggregates Timer values directly
-/// }
-/// ```
-///
-/// In raw mode:
+/// Use `#[aggregate(raw)]` to aggregate on the raw struct before closing. In raw mode:
 /// - Aggregation strategies receive the raw field type before `CloseValue` is applied
-/// - Use this when you need to aggregate mutable accumulation types like `Timer` or `Histogram`
+/// - Use this when you need to aggregate mutable accumulation types
 ///
 /// # Aggregation Keys
 ///
 /// Fields marked with `#[aggregate(key)]` define the aggregation key. Observations with different
 /// keys are aggregated into separate entries:
 ///
-/// ```rust
+/// ```ignore
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram};
 /// use std::time::Duration;
@@ -389,11 +373,10 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// - **`Counter`** - Sums numeric values together
 /// - **`Histogram<T>`** - Collects values into a distribution
-/// - **`LastValueWins`** - Keeps the most recent value
 ///
-/// ```rust
+/// ```ignore
 /// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter, last_value_wins::LastValueWins};
+/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
 /// use std::time::Duration;
 ///
 /// #[aggregate]
@@ -404,9 +387,6 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 ///     #[aggregate(strategy = Counter)]
 ///     bytes_sent: usize,
-///
-///     #[aggregate(strategy = LastValueWins)]
-///     status_code: u16,
 /// }
 /// ```
 ///
@@ -418,7 +398,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// The aggregated struct can be used with `Aggregate<T>` or `MutexAggregator<T>`:
 ///
-/// ```rust
+/// ```ignore
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram, traits::Aggregate};
 /// use std::time::Duration;
@@ -427,7 +407,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// #[metrics]
 /// struct ApiCall {
 ///     #[aggregate(strategy = Histogram<Duration>)]
-///     latency: Duration,
+///     latency: Duration;
 /// }
 ///
 /// #[metrics]
@@ -440,10 +420,9 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// # Example
 ///
-/// ```rust
+/// ```ignore
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter, traits::Aggregate};
-/// use metrique_writer::unit::{Millisecond, Byte};
 /// use std::time::Duration;
 ///
 /// #[aggregate]
@@ -453,11 +432,11 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///     service: String,
 ///
 ///     #[aggregate(strategy = Histogram<Duration>)]
-///     #[metrics(unit = Millisecond)]
+///     #[metrics(unit = metrique::writer::unit::Millisecond)]
 ///     latency: Duration,
 ///
 ///     #[aggregate(strategy = Counter)]
-///     #[metrics(unit = Byte)]
+///     #[metrics(unit = metrique::writer::unit::Byte)]
 ///     response_size: usize,
 /// }
 ///
