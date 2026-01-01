@@ -1,22 +1,39 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use darling::FromField;
 use darling::FromVariant;
 use proc_macro2::TokenStream as Ts2;
 use quote::quote;
-use syn::{Attribute, Generics, Ident, Result, Visibility};
+use syn::{Attribute, Generics, Ident, Result, Visibility, spanned::Spanned};
 
-use crate::{RootAttributes, clean_attrs, value_impl};
+use crate::TupleData;
+use crate::{
+    MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, SpannedKv, clean_attrs,
+    generate_close_value_impls, parse_metric_fields, value_impl,
+};
+
+/// Indicates how we should parse and validate the variant:
+///
+/// - ValueString - generate a simple value impl for a unit variant
+/// - Entry - full data parsing, tuple/struct variant
+/// - SkipAttributeParsing - we are in a cleanup section, no validations
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum VariantMode {
+    ValueString,
+    Entry,
+    SkipAttributeParsing,
+}
 
 #[derive(Debug, FromVariant)]
 #[darling(attributes(metrics))]
 struct RawMetricsVariantAttrs {
     #[darling(default)]
-    name: Option<crate::SpannedKv<String>>,
+    name: Option<SpannedKv<String>>,
 }
 
 impl RawMetricsVariantAttrs {
-    fn validate(self) -> darling::Result<MetricsVariantAttrs> {
+    fn validate(self, _mode: VariantMode) -> darling::Result<MetricsVariantAttrs> {
         Ok(MetricsVariantAttrs {
             name: self.name.map(|n| n.value),
         })
@@ -32,6 +49,11 @@ pub(crate) struct MetricsVariant {
     pub(crate) ident: Ident,
     pub(crate) external_attrs: Vec<Attribute>,
     pub(crate) attrs: MetricsVariantAttrs,
+    pub(crate) data: Option<VariantData>,
+}
+pub(crate) enum VariantData {
+    Tuple(Vec<TupleData>),
+    Struct(Vec<MetricsField>),
 }
 
 impl MetricsVariant {
@@ -39,40 +61,138 @@ impl MetricsVariant {
         let MetricsVariant {
             ref external_attrs,
             ref ident,
+            ref data,
             ..
         } = *self;
-        quote! { #(#external_attrs)* #ident }
+
+        match data {
+            None => quote! { #(#external_attrs)* #ident },
+            Some(VariantData::Tuple(tuple_data)) => {
+                let types = tuple_data.iter().map(|td| &td.ty);
+                quote! { #(#external_attrs)* #ident(#(#types),*) }
+            }
+            Some(VariantData::Struct(fields)) => {
+                let field_defs = fields.iter().map(|f| f.core_field(true));
+                quote! { #(#external_attrs)* #ident { #(#field_defs),* } }
+            }
+        }
     }
 
     pub(crate) fn entry_variant(&self) -> Ts2 {
         let ident_span = self.ident.span();
         let ident = &self.ident;
-        quote::quote_spanned! { ident_span=>
-            #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-            #[doc(hidden)]
-            #ident
+
+        match &self.data {
+            None => {
+                quote::quote_spanned! { ident_span=>
+                    #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
+                    #[doc(hidden)]
+                    #ident
+                }
+            }
+            Some(VariantData::Tuple(tuple_data)) => {
+                let entry_types = tuple_data
+                    .iter()
+                    .map(|td| crate::entry_type(&td.ty, td.close, td.ty.span()));
+                quote::quote_spanned! { ident_span=>
+                    #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
+                    #[doc(hidden)]
+                    #ident(#(#entry_types),*)
+                }
+            }
+            Some(VariantData::Struct(fields)) => {
+                let field_defs = fields.iter().filter_map(|f| f.entry_field(true));
+                quote::quote_spanned! { ident_span=>
+                    #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
+                    #[doc(hidden)]
+                    #ident { #(#field_defs),* }
+                }
+            }
+        }
+    }
+}
+
+fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
+    match fields {
+        syn::Fields::Unit => Ok(None),
+        syn::Fields::Unnamed(fields) => {
+            let tuple_data: Result<Vec<_>> = fields
+                .unnamed
+                .iter()
+                .map(|field| {
+                    let raw_attrs = RawMetricsFieldAttrs::from_field(field)?;
+                    let attrs = raw_attrs.validate()?;
+
+                    match &attrs.kind {
+                        MetricsFieldKind::Flatten { .. }
+                        | MetricsFieldKind::FlattenEntry(_)
+                        | MetricsFieldKind::Ignore(_) => {}
+                        MetricsFieldKind::Timestamp(_) | MetricsFieldKind::Field { .. } => {
+                            return Err(syn::Error::new_spanned(
+                                field,
+                                "tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]",
+                            ));
+                        }
+                    };
+
+                    Ok(TupleData {
+                        ty: field.ty.clone(),
+                        _kind: attrs.kind,
+                        close: attrs.close,
+                    })
+                })
+                .collect();
+
+            Ok(Some(VariantData::Tuple(tuple_data?)))
+        }
+        syn::Fields::Named(fields) => {
+            let parsed_fields = parse_metric_fields(&fields.named)?;
+            Ok(Some(VariantData::Struct(parsed_fields)))
         }
     }
 }
 
 pub(crate) fn parse_enum_variants(
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
-    parse_attrs: bool,
+    mode: VariantMode,
 ) -> Result<Vec<MetricsVariant>> {
+    // Value enums must have at least one variant, since otherwise what would its value type
+    // return
+    if mode == VariantMode::ValueString && variants.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "value enums must have at least one variant",
+        ));
+    }
+
     let mut parsed_variants = vec![];
     let mut errors = darling::Error::accumulator();
 
     for variant in variants {
-        if !variant.fields.is_empty() {
-            return Err(syn::Error::new_spanned(
-                variant,
-                "variants with fields are not supported",
-            ));
+        // Check for value enum with data first, before parsing
+        if mode == VariantMode::ValueString && !variant.fields.is_empty() {
+            errors.push(
+                darling::Error::custom("value(string) enum variants may not contain data")
+                    .with_span(variant),
+            );
+            continue;
         }
 
-        let attrs = if parse_attrs {
+        let data = if mode == VariantMode::SkipAttributeParsing {
+            None
+        } else {
+            match parse_variant_data(&variant.fields) {
+                Ok(d) => d,
+                Err(e) => {
+                    errors.push(darling::Error::from(e));
+                    None
+                }
+            }
+        };
+
+        let attrs = if mode != VariantMode::SkipAttributeParsing {
             match errors.handle(RawMetricsVariantAttrs::from_variant(variant)) {
-                Some(attrs) => attrs.validate()?,
+                Some(attrs) => attrs.validate(mode)?,
                 None => {
                     continue;
                 }
@@ -85,10 +205,31 @@ pub(crate) fn parse_enum_variants(
             ident: variant.ident.clone(),
             external_attrs: clean_attrs(&variant.attrs),
             attrs,
+            data,
         });
     }
 
     errors.finish()?;
+
+    // Empty enums are not allowed
+    if parsed_variants.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "enums must have at least one variant",
+        ));
+    }
+
+    // Entry enums must have ALL data variants (no unit variants allowed)
+    if mode == VariantMode::Entry {
+        for variant in &parsed_variants {
+            if variant.data.is_none() {
+                return Err(syn::Error::new_spanned(
+                    &variant.ident,
+                    "entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums",
+                ));
+            }
+        }
+    }
 
     Ok(parsed_variants)
 }
@@ -99,7 +240,7 @@ pub(crate) fn generate_metrics_for_enum(
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
 ) -> Result<Ts2> {
     let enum_name = &input.ident;
-    let parsed_variants = parse_enum_variants(variants, true)?;
+    let parsed_variants = parse_enum_variants(variants, VariantMode::ValueString)?;
     let value_name = quote::format_ident!("{}Value", enum_name);
 
     let base_enum = generate_base_enum(
@@ -124,7 +265,7 @@ pub(crate) fn generate_metrics_for_enum(
     let variants_map = quote!(#[allow(deprecated)] match self { #(#variants_map),* });
 
     let close_value_impl =
-        crate::generate_close_value_impls(&root_attrs, enum_name, &value_name, variants_map);
+        generate_close_value_impls(&root_attrs, enum_name, &value_name, variants_map);
 
     Ok(quote! {
         #base_enum

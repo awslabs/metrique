@@ -501,6 +501,44 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
     }
 }
 
+pub(crate) fn parse_metric_fields(
+    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
+) -> Result<Vec<MetricsField>> {
+    let mut parsed_fields = vec![];
+    let mut errors = darling::Error::accumulator();
+
+    for (i, field) in fields.iter().enumerate() {
+        let i = syn::Index::from(i);
+        let (ident, name, span) = match &field.ident {
+            Some(ident) => (quote! { #ident }, Some(ident.to_string()), ident.span()),
+            None => (quote! { #i }, None, field.ty.span()),
+        };
+
+        let attrs = match errors
+            .handle(RawMetricsFieldAttrs::from_field(field).and_then(|attr| attr.validate()))
+        {
+            Some(attrs) => attrs,
+            None => {
+                continue;
+            }
+        };
+
+        parsed_fields.push(MetricsField {
+            ident,
+            name,
+            span,
+            ty: field.ty.clone(),
+            vis: field.vis.clone(),
+            external_attrs: clean_attrs(&field.attrs),
+            attrs,
+        });
+    }
+
+    errors.finish()?;
+
+    Ok(parsed_fields)
+}
+
 fn cannot_combine_error(existing: &str, new: &str, new_span: Span) -> darling::Error {
     darling::Error::custom(format!("Cannot combine `{existing}` with `{new}`")).with_span(&new_span)
 }
@@ -726,6 +764,21 @@ impl MetricsField {
     }
 }
 
+pub(crate) struct TupleData {
+    pub(crate) ty: syn::Type,
+    pub(crate) _kind: MetricsFieldKind,
+    pub(crate) close: bool,
+}
+
+/// Generate the entry type for a field/variant, optionally closing it
+pub(crate) fn entry_type(ty: &syn::Type, close: bool, span: proc_macro2::Span) -> Ts2 {
+    if close {
+        quote::quote_spanned! { span=> <#ty as metrique::CloseValue>::Closed }
+    } else {
+        quote::quote_spanned! { span=> #ty }
+    }
+}
+
 pub(crate) enum PrefixLevel {
     Root,
     Field,
@@ -866,7 +919,14 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                         ));
                     }
                 },
-                _ => {
+                Data::Enum(data_enum) => {
+                    enums::parse_enum_variants(&data_enum.variants, enums::VariantMode::Entry)?;
+                    return Err(Error::new_spanned(
+                        &input,
+                        "Only structs are supported for entries",
+                    ));
+                }
+                Data::Union(_) => {
                     return Err(Error::new_spanned(
                         &input,
                         "Only structs are supported for entries",
@@ -881,7 +941,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                 _ => {
                     return Err(Error::new_spanned(
                         &input,
-                        "Only enums are supported for values",
+                        "Only enums are supported with value(string)",
                     ));
                 }
             };
@@ -992,7 +1052,10 @@ fn clean_base_adt(input: &DeriveInput) -> Ts2 {
             _ => input.to_token_stream(),
         },
         Data::Enum(data_enum) => {
-            if let Ok(variants) = enums::parse_enum_variants(&data_enum.variants, false) {
+            if let Ok(variants) = enums::parse_enum_variants(
+                &data_enum.variants,
+                enums::VariantMode::SkipAttributeParsing,
+            ) {
                 enums::generate_base_enum(adt_name, vis, generics, &filtered_attrs, &variants)
             } else {
                 input.to_token_stream()

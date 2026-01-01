@@ -1,0 +1,65 @@
+error: value(string) enum variants may not contain data
+ --> tests/ui/fail/enum_kitchen_sink.rs:9:5
+  |
+9 |     Variant(usize),
+  |     ^^^^^^^
+
+error: value(string) enum variants may not contain data
+  --> tests/ui/fail/enum_kitchen_sink.rs:15:5
+   |
+15 |     Variant { field: usize },
+   |     ^^^^^^^
+
+error: Unknown field: `unit`. Available values: `name`
+  --> tests/ui/fail/enum_kitchen_sink.rs:21:15
+   |
+21 |     #[metrics(unit = metrique::writer::unit::Millisecond)]
+   |               ^^^^
+
+error: Unknown field: `timestamp`. Available values: `name`
+  --> tests/ui/fail/enum_kitchen_sink.rs:28:15
+   |
+28 |     #[metrics(timestamp)]
+   |               ^^^^^^^^^
+
+error: Unknown field: `flatten`. Available values: `name`
+  --> tests/ui/fail/enum_kitchen_sink.rs:35:15
+   |
+35 |     #[metrics(flatten)]
+   |               ^^^^^^^
+
+error: Unknown field: `sample_group`. Available values: `name`
+  --> tests/ui/fail/enum_kitchen_sink.rs:42:15
+   |
+42 |     #[metrics(sample_group)]
+   |               ^^^^^^^^^^^^
+
+error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]
+  --> tests/ui/fail/enum_kitchen_sink.rs:49:13
+   |
+49 |     Variant(u32),
+   |             ^^^
+
+error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]
+  --> tests/ui/fail/enum_kitchen_sink.rs:56:13
+   |
+56 |     Variant(u32),
+   |             ^^^
+
+error: Unknown field: `unit`. Available values: `name`
+  --> tests/ui/fail/enum_kitchen_sink.rs:55:15
+   |
+55 |     #[metrics(unit = metrique::writer::unit::Millisecond)]
+   |               ^^^^
+
+error: Unknown field: `timestamp`. Available values: `name`
+  --> tests/ui/fail/enum_kitchen_sink.rs:62:15
+   |
+62 |     #[metrics(timestamp)]
+   |               ^^^^^^^^^
+
+error: entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums
+  --> tests/ui/fail/enum_kitchen_sink.rs:69:5
+   |
+69 |     Success,
+   |     ^^^^^^^

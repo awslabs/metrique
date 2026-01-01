@@ -19,8 +19,6 @@ pub fn generate_entry_impl(
 ) -> Ts2 {
     let writes = generate_write_statements(fields, root_attrs);
     let sample_groups = generate_sample_group_statements(fields, root_attrs);
-    // we generate one entry impl for each namestyle. This will then allow the parent to
-    // transitively set the namestyle
     quote! {
         const _: () = {
             #[expect(deprecated)]
@@ -197,10 +195,6 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
     let mut sample_group_fields = Vec::new();
 
     for field in fields {
-        if let MetricsFieldKind::Ignore(_) = field.attrs.kind {
-            continue;
-        }
-
         let field_ident = &field.ident;
 
         match &field.attrs.kind {

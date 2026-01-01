@@ -1,11 +1,12 @@
-error: Only structs are supported for entries
- --> tests/ui/fail/bad_metrics_value.rs:4:1
+error: enums must have at least one variant
+ --> tests/ui/fail/bad_metrics_value.rs:3:1
   |
-4 | / enum Foo {
-5 | | }
-  | |_^
+3 | #[metrics(value)]
+  | ^^^^^^^^^^^^^^^^^
+  |
+  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error: Only enums are supported for values
+error: Only enums are supported with value(string)
  --> tests/ui/fail/bad_metrics_value.rs:8:1
   |
 8 | / struct Bar {
@@ -60,13 +61,11 @@ error: Cannot combine `value` with `subfield`
 61 | #[metrics(value(string), subfield)]
    |                          ^^^^^^^^
 
-error: Only structs are supported for entries
-  --> tests/ui/fail/bad_metrics_value.rs:62:1
+error: entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums
+  --> tests/ui/fail/bad_metrics_value.rs:63:5
    |
-62 | / enum Multi {
-63 | |     X
-64 | | }
-   | |_^
+63 |     X
+   |     ^
 
 error: value does not make sense with dimension-sets
   --> tests/ui/fail/bad_metrics_value.rs:66:1
@@ -76,13 +75,11 @@ error: value does not make sense with dimension-sets
    |
    = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error: Only structs are supported for entries
-  --> tests/ui/fail/bad_metrics_value.rs:67:1
+error: entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums
+  --> tests/ui/fail/bad_metrics_value.rs:68:5
    |
-67 | / enum Multi2 {
-68 | |     X
-69 | | }
-   | |_^
+68 |     X
+   |     ^
 
 error[E0412]: cannot find type `Second` in this scope
   --> tests/ui/fail/bad_metrics_value.rs:19:22

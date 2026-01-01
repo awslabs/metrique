@@ -1,55 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use darling::FromField;
 use proc_macro2::TokenStream as Ts2;
 use quote::{format_ident, quote};
 use syn::{
     Attribute, DeriveInput, FieldsNamed, FieldsUnnamed, Generics, Ident, Result, Visibility,
-    spanned::Spanned,
 };
 
 use crate::{
-    MetricMode, MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, clean_attrs,
-    entry_impl, generate_close_value_impls, generate_on_drop_wrapper, value_impl,
+    MetricMode, MetricsField, MetricsFieldKind, RootAttributes, clean_attrs, entry_impl,
+    generate_close_value_impls, generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
 
 fn parse_struct_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
 ) -> Result<Vec<MetricsField>> {
-    let mut parsed_fields = vec![];
-    let mut errors = darling::Error::accumulator();
-
-    for (i, field) in fields.iter().enumerate() {
-        let i = syn::Index::from(i);
-        let (ident, name, span) = match &field.ident {
-            Some(ident) => (quote! { #ident }, Some(ident.to_string()), ident.span()),
-            None => (quote! { #i }, None, field.ty.span()),
-        };
-
-        let attrs = match errors
-            .handle(RawMetricsFieldAttrs::from_field(field).and_then(|attr| attr.validate()))
-        {
-            Some(attrs) => attrs,
-            None => {
-                continue;
-            }
-        };
-
-        parsed_fields.push(MetricsField {
-            ident,
-            name,
-            span,
-            ty: field.ty.clone(),
-            vis: field.vis.clone(),
-            external_attrs: clean_attrs(&field.attrs),
-            attrs,
-        });
-    }
-
-    errors.finish()?;
-
-    Ok(parsed_fields)
+    parse_metric_fields(fields)
 }
 
 pub(crate) fn generate_metrics_for_struct(
