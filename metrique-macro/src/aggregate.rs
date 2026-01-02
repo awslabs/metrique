@@ -6,7 +6,7 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Error, Fields, Result, Type};
 
 #[derive(Debug)]
-pub(crate) struct AggregateField {
+struct AggregateField {
     name: Ident,
     ty: Type,
     strategy: Option<Type>,
@@ -14,53 +14,13 @@ pub(crate) struct AggregateField {
     metrics_attrs: Vec<Attribute>,
 }
 
-fn parse_aggregate_field(field: &syn::Field) -> Result<AggregateField> {
-    let name = field
-        .ident
-        .clone()
-        .ok_or_else(|| Error::new(field.span(), "aggregate only supports named fields"))?;
-
-    let mut strategy = None;
-    let mut is_key = false;
-
-    for attr in &field.attrs {
-        if attr.path().is_ident("aggregate") {
-            attr.parse_nested_meta(|meta| {
-                if meta.path.is_ident("strategy") {
-                    let value = meta.value()?;
-                    strategy = Some(value.parse()?);
-                    Ok(())
-                } else if meta.path.is_ident("key") {
-                    is_key = true;
-                    Ok(())
-                } else {
-                    Err(meta.error("unknown aggregate attribute"))
-                }
-            })?;
-        }
-    }
-
-    let metrics_attrs = field
-        .attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("metrics"))
-        .cloned()
-        .collect();
-
-    Ok(AggregateField {
-        name,
-        ty: field.ty.clone(),
-        strategy,
-        is_key,
-        metrics_attrs,
-    })
+#[derive(Debug)]
+struct ParsedAggregate {
+    fields: Vec<AggregateField>,
+    has_key: bool,
 }
 
-pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<Ts2> {
-    let original_name = &input.ident;
-    let aggregated_name = format_ident!("Aggregated{}", original_name);
-    let vis = &input.vis;
-
+fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
     let data_struct = match &input.data {
         Data::Struct(s) => s,
         _ => return Err(Error::new(input.span(), "aggregate only supports structs")),
@@ -76,48 +36,108 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
         }
     };
 
-    let parsed_fields: Vec<_> = fields
-        .iter()
-        .map(parse_aggregate_field)
-        .collect::<Result<_>>()?;
+    let mut parsed_fields = Vec::new();
+    let mut has_key = false;
 
-    let has_key = parsed_fields.iter().any(|f| f.is_key);
+    for field in fields {
+        let name = field
+            .ident
+            .clone()
+            .ok_or_else(|| Error::new(field.span(), "aggregate only supports named fields"))?;
 
-    let aggregated_fields = parsed_fields.iter().map(|f| {
+        let mut strategy = None;
+        let mut is_key = false;
+
+        for attr in &field.attrs {
+            if attr.path().is_ident("aggregate") {
+                attr.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("strategy") {
+                        let value = meta.value()?;
+                        strategy = Some(value.parse()?);
+                        Ok(())
+                    } else if meta.path.is_ident("key") {
+                        is_key = true;
+                        Ok(())
+                    } else {
+                        Err(meta.error("unknown aggregate attribute"))
+                    }
+                })?;
+            }
+        }
+
+        if !is_key && strategy.is_none() {
+            return Err(Error::new(
+                name.span(),
+                format!(
+                    "field '{}' requires #[aggregate(strategy = ...)] attribute",
+                    name
+                ),
+            ));
+        }
+
+        if is_key {
+            has_key = true;
+        }
+
+        let metrics_attrs = field
+            .attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("metrics"))
+            .cloned()
+            .collect();
+
+        parsed_fields.push(AggregateField {
+            name,
+            ty: field.ty.clone(),
+            strategy,
+            is_key,
+            metrics_attrs,
+        });
+    }
+
+    Ok(ParsedAggregate {
+        fields: parsed_fields,
+        has_key,
+    })
+}
+
+pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<Ts2> {
+    let parsed = parse_aggregate_fields(input)?;
+    let original_name = &input.ident;
+    let aggregated_name = format_ident!("Aggregated{}", original_name);
+    let vis = &input.vis;
+
+    let aggregated_fields = parsed.fields.iter().map(|f| {
         let name = &f.name;
         let metrics_attrs = &f.metrics_attrs;
 
         if f.is_key {
             let ty = &f.ty;
-            Ok(quote! {
+            quote! {
                 #(#metrics_attrs)*
                 #name: #ty
-            })
-        } else if let Some(strategy) = &f.strategy {
+            }
+        } else {
+            let strategy = f.strategy.as_ref().unwrap();
             let source_ty = &f.ty;
             let value_ty = if entry_mode {
                 quote! { <#source_ty as metrique::CloseValue>::Closed }
             } else {
                 quote! { #source_ty }
             };
-            Ok(quote! {
+            quote! {
                 #(#metrics_attrs)*
                 #name: <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
-            })
-        } else {
-            Err(Error::new(
-                name.span(),
-                format!("field '{}' requires #[aggregate(strategy = ...)] attribute", name)
-            ))
+            }
         }
-    }).collect::<Result<Vec<_>>>()?;
+    }).collect::<Vec<_>>();
 
     let metrics_attr = input
         .attrs
         .iter()
         .find(|attr| attr.path().is_ident("metrics"));
 
-    let derive_default = if !has_key {
+    let derive_default = if !parsed.has_key {
         quote! { #[derive(Default)] }
     } else {
         quote! {}
@@ -137,30 +157,11 @@ pub(crate) fn generate_aggregate_entry_impl(
     entry_mode: bool,
     owned_mode: bool,
 ) -> Result<Ts2> {
+    let parsed = parse_aggregate_fields(input)?;
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
 
-    let data_struct = match &input.data {
-        Data::Struct(s) => s,
-        _ => return Err(Error::new(input.span(), "aggregate only supports structs")),
-    };
-
-    let fields = match &data_struct.fields {
-        Fields::Named(f) => &f.named,
-        _ => {
-            return Err(Error::new(
-                input.span(),
-                "aggregate only supports named fields",
-            ));
-        }
-    };
-
-    let parsed_fields: Vec<_> = fields
-        .iter()
-        .map(parse_aggregate_field)
-        .collect::<Result<_>>()?;
-
-    let key_fields: Vec<_> = parsed_fields.iter().filter(|f| f.is_key).collect();
+    let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
     let (key_type, key_expr, new_aggregated_body) = if key_fields.is_empty() {
         (
@@ -188,7 +189,7 @@ pub(crate) fn generate_aggregate_entry_impl(
             quote! { (#(#key_refs),*) }
         };
 
-        let field_inits = parsed_fields.iter().map(|f| {
+        let field_inits = parsed.fields.iter().map(|f| {
             let name = &f.name;
             if f.is_key {
                 quote! { #name: key.clone() }
@@ -208,18 +209,10 @@ pub(crate) fn generate_aggregate_entry_impl(
         )
     };
 
-    let merge_calls = parsed_fields.iter().filter(|f| !f.is_key).map(|f| {
+    let merge_calls = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
         let source_ty = &f.ty;
-        let strategy = match &f.strategy {
-            Some(s) => quote! { #s },
-            None => {
-                return Err(Error::new(
-                    name.span(),
-                    format!("field '{}' requires #[aggregate(strategy = ...)] attribute", name)
-                ));
-            }
-        };
+        let strategy = f.strategy.as_ref().unwrap();
 
         let value_ty = if entry_mode {
             quote! { <#source_ty as metrique::CloseValue>::Closed }
@@ -247,27 +240,19 @@ pub(crate) fn generate_aggregate_entry_impl(
 
         let field_span = name.span();
 
-        Ok(quote_spanned! { field_span=>
+        quote_spanned! { field_span=>
             #[allow(deprecated)]
             <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(
                 &mut accum.#name,
                 #entry_value,
             );
-        })
-    }).collect::<Result<Vec<_>>>()?;
+        }
+    }).collect::<Vec<_>>();
 
-    let merge_calls_ref = parsed_fields.iter().filter(|f| !f.is_key).map(|f| {
+    let merge_calls_ref = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
         let source_ty = &f.ty;
-        let strategy = match &f.strategy {
-            Some(s) => quote! { metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned::<#s> },
-            None => {
-                return Err(Error::new(
-                    name.span(),
-                    format!("field '{}' requires #[aggregate(strategy = ...)] attribute", name)
-                ));
-            }
-        };
+        let strategy = f.strategy.as_ref().unwrap();
 
         let value_ty = if entry_mode {
             quote! { <#source_ty as metrique::CloseValue>::Closed }
@@ -295,14 +280,14 @@ pub(crate) fn generate_aggregate_entry_impl(
 
         let field_span = name.span();
 
-        Ok(quote_spanned! { field_span=>
+        quote_spanned! { field_span=>
             #[allow(deprecated)]
-            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::add_value(
+            <metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned::<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::add_value(
                 &mut accum.#name,
                 #entry_value,
             );
-        })
-    }).collect::<Result<Vec<_>>>()?;
+        }
+    }).collect::<Vec<_>>();
 
     let source_type = if entry_mode {
         quote! { <Self as metrique::CloseValue>::Closed }
