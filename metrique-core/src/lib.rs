@@ -125,7 +125,8 @@ pub use namestyle::NameStyle;
     label = "This type must implement `CloseValue`",
     message = "CloseValue is not implemented for {Self}",
     note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly.",
-    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`"
+    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`",
+    note = "If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`."
 )]
 pub trait CloseValue {
     /// The type produced by closing this value
