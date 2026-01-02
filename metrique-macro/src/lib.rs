@@ -310,7 +310,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// By default, `#[aggregate]` implements aggregation on the closed metric entry. This means
 /// aggregation happens after `CloseValue` has been applied to all fields:
 ///
-/// ```ignore
+/// ```
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
 /// use std::time::Duration;
@@ -343,7 +343,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// Fields marked with `#[aggregate(key)]` define the aggregation key. Observations with different
 /// keys are aggregated into separate entries:
 ///
-/// ```ignore
+/// ```
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram};
 /// use std::time::Duration;
@@ -374,7 +374,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// - **`Counter`** - Sums numeric values together
 /// - **`Histogram<T>`** - Collects values into a distribution
 ///
-/// ```ignore
+/// ```
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
 /// use std::time::Duration;
@@ -398,7 +398,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// The aggregated struct can be used with `Aggregate<T>` or `MutexAggregator<T>`:
 ///
-/// ```ignore
+/// ```
 /// use metrique::unit_of_work::metrics;
 /// use metrique_aggregation::{aggregate, histogram::Histogram, traits::Aggregate};
 /// use std::time::Duration;
@@ -407,7 +407,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// #[metrics]
 /// struct ApiCall {
 ///     #[aggregate(strategy = Histogram<Duration>)]
-///     latency: Duration;
+///     latency: Duration,
 /// }
 ///
 /// #[metrics]
@@ -449,31 +449,28 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// }
 ///
 /// fn execute_query() {
-///     let mut metrics = DistributedQuery {
-///         query_id: "query-123".to_string(),
-///         backend_calls: Aggregate::default(),
-///     };
+///     let mut aggregator = Aggregate::<BackendCall>::new();
 ///
 ///     // Add observations for different services
-///     metrics.backend_calls.add(BackendCall {
+///     aggregator.add(BackendCall {
 ///         service: "api-1".to_string(),
 ///         latency: Duration::from_millis(45),
 ///         response_size: 1024,
 ///     });
 ///
-///     metrics.backend_calls.add(BackendCall {
+///     aggregator.add(BackendCall {
 ///         service: "api-1".to_string(),
 ///         latency: Duration::from_millis(67),
 ///         response_size: 2048,
 ///     });
 ///
-///     metrics.backend_calls.add(BackendCall {
+///     aggregator.add(BackendCall {
 ///         service: "api-2".to_string(),
 ///         latency: Duration::from_millis(120),
 ///         response_size: 512,
 ///     });
 ///
-///     // When metrics drops, emits aggregated entries:
+///     // When aggregator drops, emits aggregated entries:
 ///     // - One entry for api-1 with histogram of [45ms, 67ms] and total 3072 bytes
 ///     // - One entry for api-2 with histogram of [120ms] and total 512 bytes
 /// }
@@ -594,7 +591,7 @@ fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) -> Result<T
         } else if let Some(strategy) = &f.strategy {
             let source_ty = &f.ty;
             let value_ty = if entry_mode {
-                quote! { <#source_ty as metrique_core::CloseValue>::Closed }
+                quote! { <#source_ty as metrique::CloseValue>::Closed }
             } else {
                 quote! { #source_ty }
             };
@@ -721,7 +718,7 @@ fn generate_aggregate_entry_impl(
         };
 
         let value_ty = if entry_mode {
-            quote! { <#source_ty as metrique_core::CloseValue>::Closed }
+            quote! { <#source_ty as metrique::CloseValue>::Closed }
         } else {
             quote! { #source_ty }
         };
@@ -773,7 +770,7 @@ fn generate_aggregate_entry_impl(
         };
 
         let value_ty = if entry_mode {
-            quote! { <#source_ty as metrique_core::CloseValue>::Closed }
+            quote! { <#source_ty as metrique::CloseValue>::Closed }
         } else {
             quote! { #source_ty }
         };
@@ -808,7 +805,7 @@ fn generate_aggregate_entry_impl(
     }).collect::<Result<Vec<_>>>()?;
 
     let source_type = if entry_mode {
-        quote! { <Self as metrique_core::CloseValue>::Closed }
+        quote! { <Self as metrique::CloseValue>::Closed }
     } else {
         quote! { Self }
     };
