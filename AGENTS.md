@@ -3,13 +3,9 @@
 ## Testing
 - Use `cargo +1.89 nextest run` to run all tests in this workspace
 - If there are mismatches in trybuild or insta snapshots, share the diff for user approval before accepting them
+- Before commiting run `cargo fmt` and `cargo clippy`. YOU MUST FIX CLIPPY ERRORS.
 
 # Metrique Trait System
-
-# Ways of working (IMPORTANT)
-
-- When running all tests, use `cargo nextest run`
-- Before commiting run `cargo fmt` and `cargo clippy`. YOU MUST FIX CLIPPY ERRORS.
 
 ## Overview
 
