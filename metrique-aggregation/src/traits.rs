@@ -84,12 +84,6 @@ pub trait AggregateValue<T> {
     fn add_value(accum: &mut Self::Aggregated, value: T);
 }
 
-/// Trait for implementing AggregateValue when references are possible
-pub trait AggregateValueRef<T>: AggregateValue<T> {
-    /// Merge a value by ref
-    fn add_value_ref(accum: &mut Self::Aggregated, value: &T);
-}
-
 /// An addition to AggregateEntry for entries than can be aggregated using a
 /// reference to Source, instead of owning
 pub trait AggregateEntryRef: AggregateEntry {
