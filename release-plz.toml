@@ -12,7 +12,8 @@ changelog_include = [
     "metrique-writer",
     "metrique-writer-core",
     "metrique-writer-format-emf",
-    "metrique-writer-macro"
+    "metrique-writer-macro",
+    "metrique-aggregation"
 ]
 changelog_path = "./CHANGELOG.md"
 git_release_enable = true

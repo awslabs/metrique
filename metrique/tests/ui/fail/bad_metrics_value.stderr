@@ -149,6 +149,7 @@ error[E0277]: CloseValue is not implemented for &String
    = help: the trait `CloseValue` is not implemented for `&String`
    = note: You may need to add `#[metrics]` to `&String` or implement `CloseValue` directly.
    = note: if &String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
 help: consider dereferencing here
    |
 73 |     *field: String,

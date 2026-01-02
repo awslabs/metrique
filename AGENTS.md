@@ -1,3 +1,9 @@
+# Metrique Workspace Guidelines
+
+## Testing
+- Use `cargo +1.89 nextest run` to run all tests in this workspace
+- If there are mismatches in trybuild or insta snapshots, share the diff for user approval before accepting them
+
 # Metrique Trait System
 
 # Ways of working (IMPORTANT)
