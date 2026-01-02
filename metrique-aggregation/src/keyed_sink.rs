@@ -70,17 +70,20 @@ where
     /// Create a new keyed aggregation sink with a flush interval
     pub fn new(sink: Sink, flush_interval: Duration) -> KeyedAggregationSink<T, Sink> {
         let (sender, receiver) = channel();
-        let mut storage = HashMap::new();
+        let mut storage: HashMap<
+            <T as AggregateEntry>::Key<'static>,
+            <T as AggregateEntry>::Aggregated,
+        > = HashMap::new();
 
         let handle = thread::spawn(move || {
             loop {
                 match receiver.recv_timeout(flush_interval) {
                     Ok(entry) => {
-                        let key = T::key(&entry);
-                        let aggregated = storage
+                        let key = T::static_key(T::key(&entry));
+                        let accum = storage
                             .entry(key)
-                            .or_insert_with_key(|k| T::new_aggregated(k));
-                        T::merge_entry(aggregated, entry);
+                            .or_insert_with_key(|k| T::new_aggregated(&k));
+                        T::merge_entry(accum, entry);
                     }
                     Err(_) => {
                         for (_, aggregated) in storage.drain() {

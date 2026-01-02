@@ -151,7 +151,7 @@ impl<T: AggregateEntry> Clone for MutexAggregator<T> {
 impl<T> Default for MutexAggregator<T>
 where
     T: AggregateEntry,
-    T::Key: Default,
+    for<'a> T::Key<'a>: Default,
 {
     fn default() -> Self {
         Self::new()
@@ -162,18 +162,18 @@ impl<T: AggregateEntry> MutexAggregator<T> {
     /// Creates a new mutex sink
     pub fn new() -> MutexAggregator<T>
     where
-        T::Key: Default,
+        for<'a> T::Key<'a>: Default,
     {
-        Self::with_key(&Default::default())
+        Self::with_key(Default::default())
     }
 
     /// Creates a sync from a given key. NOTE: this sink does not aggregate by key
     ///
     /// If you create a sink with a non-trivial key, it is your
     /// responsibility to not mix streams.
-    pub fn with_key(key: &T::Key) -> MutexAggregator<T> {
+    pub fn with_key<'a>(key: T::Key<'a>) -> MutexAggregator<T> {
         Self {
-            aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(key)))),
+            aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(&key)))),
         }
     }
 }
