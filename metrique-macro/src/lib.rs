@@ -7,11 +7,13 @@
 
 mod emf;
 mod entry_impl;
+mod enums;
 mod inflect;
+mod structs;
 mod value_impl;
 
 use darling::{
-    FromField, FromMeta, FromVariant,
+    FromField, FromMeta,
     ast::NestedMeta,
     util::{Flag, SpannedValue},
 };
@@ -19,10 +21,10 @@ use emf::DimensionSets;
 use inflect::NameStyle;
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Ts2};
-use quote::{ToTokens, format_ident, quote, quote_spanned};
+use quote::{ToTokens, quote, quote_spanned};
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, FieldsNamed, FieldsUnnamed, Generics, Ident,
-    Result, Type, Visibility, parse_macro_input, spanned::Spanned,
+    Attribute, Data, DeriveInput, Error, Fields, Ident, Result, Type, Visibility,
+    parse_macro_input, spanned::Spanned,
 };
 
 use crate::inflect::{
@@ -474,20 +476,13 @@ struct RawMetricsFieldAttrs {
     exact_prefix: Option<SpannedKv<String>>,
 }
 
-#[derive(Debug, FromVariant)]
-#[darling(attributes(metrics))]
-struct RawMetricsVariantAttrs {
-    #[darling(default)]
-    name: Option<SpannedKv<String>>,
-}
-
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
 #[derive(Debug)]
-struct SpannedKv<T> {
-    key_span: Span,
+pub(crate) struct SpannedKv<T> {
+    pub(crate) key_span: Span,
     #[allow(dead_code)]
-    value_span: Span,
-    value: T,
+    pub(crate) value_span: Span,
+    pub(crate) value: T,
 }
 
 impl<T: FromMeta> FromMeta for SpannedKv<T> {
@@ -549,14 +544,6 @@ fn get_field_flag(
         (true, Some((_, other))) => Err(cannot_combine_error(other, field_name, flag.span())),
         (true, None) => Ok(Some(flag.span())),
         _ => Ok(None),
-    }
-}
-
-impl RawMetricsVariantAttrs {
-    fn validate(self) -> darling::Result<MetricsVariantAttrs> {
-        Ok(MetricsVariantAttrs {
-            name: self.name.map(|n| n.value),
-        })
     }
 }
 
@@ -645,24 +632,107 @@ fn validate_name_inner(name: &str) -> std::result::Result<(), &'static str> {
     Ok(())
 }
 
-#[derive(Debug, Default, Clone)]
-struct MetricsVariantAttrs {
-    name: Option<String>,
-}
-
 #[derive(Debug, Clone)]
 struct MetricsFieldAttrs {
     close: bool,
     kind: MetricsFieldKind,
 }
 
-enum PrefixLevel {
+pub(crate) struct MetricsField {
+    pub(crate) vis: Visibility,
+    pub(crate) ident: Ts2,
+    pub(crate) name: Option<String>,
+    pub(crate) span: Span,
+    pub(crate) ty: Type,
+    pub(crate) external_attrs: Vec<Attribute>,
+    pub(crate) attrs: MetricsFieldAttrs,
+}
+
+impl MetricsField {
+    fn core_field(&self, is_named: bool) -> Ts2 {
+        let MetricsField {
+            ref external_attrs,
+            ref ident,
+            ref ty,
+            ref vis,
+            ..
+        } = *self;
+        let field = if is_named {
+            quote! { #ident: #ty }
+        } else {
+            quote! { #ty }
+        };
+        quote! { #(#external_attrs)* #vis #field }
+    }
+
+    fn entry_field(&self, named: bool) -> Option<Ts2> {
+        if let MetricsFieldKind::Ignore(_span) = self.attrs.kind {
+            return None;
+        }
+        let MetricsField {
+            ident, ty, span, ..
+        } = self;
+        let mut base_type = if self.attrs.close {
+            quote_spanned! { *span=> <#ty as metrique::CloseValue>::Closed }
+        } else {
+            quote_spanned! { *span=>#ty }
+        };
+        if let Some(expr) = self.unit() {
+            base_type = quote_spanned! { expr.span()=>
+                <#base_type as ::metrique::unit::AttachUnit>::Output<#expr>
+            }
+        }
+        let inner = if named {
+            quote! { #ident: #base_type }
+        } else {
+            quote! { #base_type }
+        };
+        Some(quote_spanned! { *span=>
+                #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
+                #[doc(hidden)]
+                #inner
+        })
+    }
+
+    fn unit(&self) -> Option<&syn::Path> {
+        match &self.attrs.kind {
+            MetricsFieldKind::Field { unit, .. } => unit.as_ref(),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
+        let ident = &self.ident;
+        let span = self.span;
+        let field_expr = match ownership_kind {
+            OwnershipKind::ByValue => quote_spanned! {span=> self.#ident },
+            OwnershipKind::ByRef => quote_spanned! {span=> &self.#ident },
+        };
+        let base = if self.attrs.close {
+            quote_spanned! {span=> metrique::CloseValue::close(#field_expr) }
+        } else {
+            field_expr
+        };
+
+        let base = if let Some(unit) = self.unit() {
+            quote_spanned! { unit.span() =>
+                #base.into()
+            }
+        } else {
+            base
+        };
+
+        quote! { #ident: #base }
+    }
+}
+
+pub(crate) enum PrefixLevel {
     Root,
     Field,
 }
 
 #[derive(Debug, Clone)]
-enum Prefix {
+pub(crate) enum Prefix {
     Inflectable { prefix: String },
     Exact(String),
 }
@@ -803,7 +873,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     ));
                 }
             };
-            generate_metrics_for_struct(root_attributes, &input, fields)?
+            structs::generate_metrics_for_struct(root_attributes, &input, fields)?
         }
         MetricMode::ValueString => {
             let variants = match &input.data {
@@ -815,7 +885,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     ));
                 }
             };
-            generate_metrics_for_enum(root_attributes, &input, variants)?
+            enums::generate_metrics_for_enum(root_attributes, &input, variants)?
         }
     };
 
@@ -826,184 +896,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     Ok(output)
 }
 
-fn generate_metrics_for_enum(
-    root_attrs: RootAttributes,
-    input: &DeriveInput,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
-) -> Result<Ts2> {
-    let enum_name = &input.ident;
-    let parsed_variants = parse_enum_variants(variants, true)?;
-    let value_name = format_ident!("{}Value", enum_name);
-
-    let base_enum = generate_base_enum(
-        enum_name,
-        &input.vis,
-        &input.generics,
-        &input.attrs,
-        &parsed_variants,
-    );
-    let warnings = root_attrs.warnings();
-
-    let value_enum =
-        generate_value_enum(&value_name, &input.generics, &parsed_variants, &root_attrs)?;
-
-    let value_impl =
-        value_impl::generate_value_impl_for_enum(&root_attrs, &value_name, &parsed_variants);
-
-    let variants_map = parsed_variants.iter().map(|variant| {
-        let variant_ident = &variant.ident;
-        quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident => #value_name::#variant_ident)
-    });
-    let variants_map = quote!(#[allow(deprecated)] match self { #(#variants_map),* });
-
-    let close_value_impl =
-        generate_close_value_impls(&root_attrs, enum_name, &value_name, variants_map);
-
-    Ok(quote! {
-        #base_enum
-        #value_enum
-        #value_impl
-        #close_value_impl
-        #warnings
-    })
-}
-
-fn generate_metrics_for_struct(
-    root_attributes: RootAttributes,
-    input: &DeriveInput,
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Ts2> {
-    // Extract the struct name and create derived names
-    let struct_name = &input.ident;
-    let entry_name = if root_attributes.mode == MetricMode::Value {
-        format_ident!("{}Value", struct_name)
-    } else {
-        format_ident!("{}Entry", struct_name)
-    };
-    let guard_name = format_ident!("{}Guard", struct_name);
-    let handle_name = format_ident!("{}Handle", struct_name);
-
-    let parsed_fields = parse_struct_fields(fields)?;
-
-    let base_struct = generate_base_struct(
-        struct_name,
-        &input.vis,
-        &input.generics,
-        &input.attrs,
-        &parsed_fields,
-    )?;
-    let warnings = root_attributes.warnings();
-
-    // No longer need to derive Entry since we're implementing it directly in entry_impl.rs
-    let entry_struct = generate_entry_struct(
-        &entry_name,
-        &input.generics,
-        &parsed_fields,
-        &root_attributes,
-    )?;
-
-    // Generate the Entry trait implementation
-    let inner_impl = match root_attributes.mode {
-        MetricMode::Value => {
-            value_impl::validate_value_impl_for_struct(
-                &root_attributes,
-                &entry_name,
-                &parsed_fields,
-            )?;
-            value_impl::generate_value_impl_for_struct(
-                &root_attributes,
-                &entry_name,
-                &parsed_fields,
-            )?
-        }
-        _ => entry_impl::generate_entry_impl(&entry_name, &parsed_fields, &root_attributes),
-    };
-
-    let close_value_impl = generate_close_value_impls_for_struct(
-        struct_name,
-        &entry_name,
-        &parsed_fields,
-        &root_attributes,
-    );
-    let vis = &input.vis;
-
-    let root_entry_specifics = match root_attributes.mode {
-        MetricMode::RootEntry => {
-            // Generate the on_drop_wrapper implementation
-            let on_drop_wrapper =
-                generate_on_drop_wrapper(vis, &guard_name, struct_name, &entry_name, &handle_name);
-            quote! {
-                // the <STRUCT>Guard that implements AppendOnDrop
-                #on_drop_wrapper
-            }
-        }
-        MetricMode::Subfield
-        | MetricMode::SubfieldOwned
-        | MetricMode::ValueString
-        | MetricMode::Value => {
-            quote! {}
-        }
-    };
-
-    // Generate the final output
-    Ok(quote! {
-        // The struct provided to the proc macro, minus the #[metrics] attrs
-        #base_struct
-
-        // Any warnings we emit
-        #warnings
-
-        // The struct that implements the entry trait
-        #entry_struct
-
-        // The Entry trait implementation
-        #inner_impl
-
-        // the implementation of CloseValue for base_struct
-        #close_value_impl
-
-        #root_entry_specifics
-    })
-}
-
-fn generate_base_struct(
-    name: &Ident,
-    vis: &Visibility,
-    generics: &Generics,
-    attrs: &[Attribute],
-    fields: &[MetricsField],
-) -> Result<Ts2> {
-    let has_named_fields = fields.iter().any(|f| f.name.is_some());
-    let fields = fields.iter().map(|f| f.core_field(has_named_fields));
-    let body = wrap_fields_into_struct_decl(has_named_fields, fields);
-
-    Ok(quote! {
-        #(#attrs)*
-        #vis struct #name #generics #body
-    })
-}
-
-fn generate_base_enum(
-    name: &Ident,
-    vis: &Visibility,
-    generics: &Generics,
-    attrs: &[Attribute],
-    variants: &[MetricsVariant],
-) -> Ts2 {
-    let variants = variants.iter().map(|f| f.core_variant());
-    let data = quote! {
-        #(#variants),*
-    };
-    let expanded = quote! {
-        #(#attrs)*
-        #vis enum #name #generics { #data }
-    };
-
-    expanded
-}
-
 /// Generate the on_drop_wrapper implementation
-fn generate_on_drop_wrapper(
+pub(crate) fn generate_on_drop_wrapper(
     vis: &Visibility,
     guard: &Ident,
     inner: &Ident,
@@ -1058,344 +952,11 @@ fn generate_close_value_impls(
     }
 }
 
-fn generate_close_value_impls_for_struct(
-    metrics_struct: &Ident,
-    entry: &Ident,
-    fields: &[MetricsField],
-    root_attrs: &RootAttributes,
-) -> Ts2 {
-    let fields = fields
-        .iter()
-        .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)))
-        .map(|f| f.close_value(root_attrs.ownership_kind()));
-    let config: Vec<Ts2> = root_attrs.create_configuration();
-    generate_close_value_impls(
-        root_attrs,
-        metrics_struct,
-        entry,
-        quote! {
-            #[allow(deprecated)]
-            #entry {
-                #(#config,)*
-                #(#fields,)*
-            }
-        },
-    )
-}
-
-fn wrap_fields_into_struct_decl(
-    has_named_fields: bool,
-    data: impl IntoIterator<Item = Ts2>,
-) -> Ts2 {
-    let data = data.into_iter();
-    if has_named_fields {
-        quote! { { #(#data),* } }
-    } else {
-        quote! { ( #(#data),* ); }
-    }
-}
-
-fn generate_entry_struct(
-    name: &Ident,
-    _generics: &Generics,
-    fields: &[MetricsField],
-    root_attrs: &RootAttributes,
-) -> Result<Ts2> {
-    let has_named_fields = fields.iter().any(|f| f.name.is_some());
-    let config = root_attrs.configuration_fields();
-
-    let fields = fields.iter().flat_map(|f| f.entry_field(has_named_fields));
-    let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
-    Ok(quote!(
-        #[doc(hidden)]
-        pub struct #name #body
-    ))
-}
-
-fn generate_value_enum(
-    name: &Ident,
-    _generics: &Generics,
-    variants: &[MetricsVariant],
-    _root_attrs: &RootAttributes,
-) -> Result<Ts2> {
-    let variants = variants.iter().map(|variant| variant.entry_variant());
-    let data = quote! {
-        #(#variants,)*
-    };
-    let expanded = quote! {
-        #[doc(hidden)]
-        pub enum #name {
-            #data
-        }
-    };
-
-    Ok(expanded)
-}
-
-/// Parse the fields of a struct into a vector of MField objects
-fn parse_struct_fields(
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Vec<MetricsField>> {
-    let mut parsed_fields = vec![];
-    let mut errors = darling::Error::accumulator();
-
-    // Process each field
-    for (i, field) in fields.iter().enumerate() {
-        let i = syn::Index::from(i);
-        let (ident, name, span) = match &field.ident {
-            Some(ident) => (quote! { #ident }, Some(ident.to_string()), ident.span()),
-            None => (quote! { #i }, None, field.ty.span()),
-        };
-        // Parse field attributes using darling
-        let attrs = match errors
-            .handle(RawMetricsFieldAttrs::from_field(field).and_then(|attr| attr.validate()))
-        {
-            Some(attrs) => attrs,
-            None => {
-                continue;
-            }
-        };
-
-        parsed_fields.push(MetricsField {
-            ident,
-            name,
-            span,
-            ty: field.ty.clone(),
-            vis: field.vis.clone(),
-            external_attrs: clean_attrs(&field.attrs),
-            attrs,
-        });
-    }
-
-    errors.finish()?;
-
-    Ok(parsed_fields)
-}
-
-/// Parse the variants of an enum into a vector of MField objects
-fn parse_enum_variants(
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
-    parse_attrs: bool,
-) -> Result<Vec<MetricsVariant>> {
-    let mut parsed_variants = vec![];
-    let mut errors = darling::Error::accumulator();
-
-    // Process each field
-    for variant in variants {
-        if !variant.fields.is_empty() {
-            return Err(Error::new_spanned(
-                variant,
-                "variants with fields are not supported",
-            ));
-        }
-
-        let attrs = if parse_attrs {
-            // Currently there are no variant attributes
-            match errors.handle(RawMetricsVariantAttrs::from_variant(variant)) {
-                Some(attrs) => attrs.validate()?,
-                None => {
-                    continue;
-                }
-            }
-        } else {
-            MetricsVariantAttrs::default()
-        };
-
-        parsed_variants.push(MetricsVariant {
-            ident: variant.ident.clone(),
-            external_attrs: clean_attrs(&variant.attrs),
-            attrs,
-        });
-    }
-
-    errors.finish()?;
-
-    Ok(parsed_variants)
-}
-
-struct MetricsVariant {
-    ident: Ident,
-    external_attrs: Vec<Attribute>,
-    attrs: MetricsVariantAttrs,
-}
-
-impl MetricsVariant {
-    fn core_variant(&self) -> Ts2 {
-        let MetricsVariant {
-            ref external_attrs,
-            ref ident,
-            ..
-        } = *self;
-        quote! { #(#external_attrs)* #ident }
-    }
-
-    fn entry_variant(&self) -> Ts2 {
-        let ident_span = self.ident.span();
-        let ident = &self.ident;
-        quote_spanned! { ident_span=>
-            #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-            #[doc(hidden)]
-            #ident
-        }
-    }
-}
-
-struct MetricsField {
-    vis: Visibility,
-    ident: Ts2,
-    name: Option<String>,
-    span: Span,
-    ty: Type,
-    external_attrs: Vec<Attribute>,
-    attrs: MetricsFieldAttrs,
-}
-
-impl MetricsField {
-    fn core_field(&self, is_named: bool) -> Ts2 {
-        let MetricsField {
-            ref external_attrs,
-            ref ident,
-            ref ty,
-            ref vis,
-            ..
-        } = *self;
-        let field = if is_named {
-            quote! { #ident: #ty }
-        } else {
-            quote! { #ty }
-        };
-        quote! { #(#external_attrs)* #vis #field }
-    }
-
-    fn entry_field(&self, named: bool) -> Option<Ts2> {
-        if let MetricsFieldKind::Ignore(_span) = self.attrs.kind {
-            return None;
-        }
-        let MetricsField {
-            ident, ty, span, ..
-        } = self;
-        let mut base_type = if self.attrs.close {
-            quote_spanned! { *span=> <#ty as metrique::CloseValue>::Closed }
-        } else {
-            quote_spanned! { *span=>#ty }
-        };
-        if let Some(expr) = self.unit() {
-            base_type = quote_spanned! { expr.span()=>
-                <#base_type as ::metrique::unit::AttachUnit>::Output<#expr>
-            }
-        }
-        let inner = if named {
-            quote! { #ident: #base_type }
-        } else {
-            quote! { #base_type }
-        };
-        Some(quote_spanned! { *span=>
-                #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                #[doc(hidden)]
-                #inner
-        })
-    }
-
-    fn unit(&self) -> Option<&syn::Path> {
-        match &self.attrs.kind {
-            MetricsFieldKind::Field { unit, .. } => unit.as_ref(),
-            _ => None,
-        }
-    }
-
-    fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
-        let ident = &self.ident;
-        let span = self.span;
-        let field_expr = match ownership_kind {
-            OwnershipKind::ByValue => quote_spanned! {span=> self.#ident },
-            OwnershipKind::ByRef => quote_spanned! {span=> &self.#ident },
-        };
-        let base = if self.attrs.close {
-            quote_spanned! {span=> metrique::CloseValue::close(#field_expr) }
-        } else {
-            field_expr
-        };
-
-        let base = if let Some(unit) = self.unit() {
-            quote_spanned! { unit.span() =>
-                #base.into()
-            }
-        } else {
-            base
-        };
-
-        quote! { #ident: #base }
-    }
-}
-
-fn clean_attrs(attr: &[Attribute]) -> Vec<Attribute> {
+pub(crate) fn clean_attrs(attr: &[Attribute]) -> Vec<Attribute> {
     attr.iter()
         .filter(|attr| !attr.path().is_ident("metrics"))
         .cloned()
         .collect()
-}
-
-fn clean_base_struct(
-    vis: &syn::Visibility,
-    struct_name: &syn::Ident,
-    generics: &syn::Generics,
-    filtered_attrs: Vec<Attribute>,
-    fields: &FieldsNamed,
-) -> Ts2 {
-    // Strip out `metrics` attribute
-    let clean_fields = fields.named.iter().map(|field| {
-        let field_name = field.ident.as_ref().unwrap();
-        let field_type = &field.ty;
-        let field_vis = &field.vis;
-
-        // Filter out metrics attributes
-        let field_attrs = clean_attrs(&field.attrs);
-
-        quote! {
-            #(#field_attrs)*
-            #field_vis #field_name: #field_type
-        }
-    });
-
-    let expanded = quote! {
-        #(#filtered_attrs)*
-        #vis struct #struct_name #generics {
-            #(#clean_fields),*
-        }
-    };
-
-    expanded
-}
-
-fn clean_base_unnamed_struct(
-    vis: &syn::Visibility,
-    struct_name: &syn::Ident,
-    generics: &syn::Generics,
-    filtered_attrs: Vec<Attribute>,
-    fields: &FieldsUnnamed,
-) -> Ts2 {
-    // Strip out `metrics` attribute
-    let clean_fields = fields.unnamed.iter().map(|field| {
-        let field_type = &field.ty;
-        let field_vis = &field.vis;
-
-        // Filter out metrics attributes
-        let field_attrs = clean_attrs(&field.attrs);
-
-        quote! {
-            #(#field_attrs)*
-            #field_vis #field_type
-        }
-    });
-
-    let expanded = quote! {
-        #(#filtered_attrs)*
-        #vis struct #struct_name #generics (
-            #(#clean_fields),*
-        );
-    };
-
-    expanded
 }
 
 /// Minimal passthrough that strips #[metrics] attributes from struct fields.
@@ -1417,18 +978,22 @@ fn clean_base_adt(input: &DeriveInput) -> Ts2 {
     match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => {
-                clean_base_struct(vis, adt_name, generics, filtered_attrs, fields_named)
+                structs::clean_base_struct(vis, adt_name, generics, filtered_attrs, fields_named)
             }
-            Fields::Unnamed(fields_unnamed) => {
-                clean_base_unnamed_struct(vis, adt_name, generics, filtered_attrs, fields_unnamed)
-            }
+            Fields::Unnamed(fields_unnamed) => structs::clean_base_unnamed_struct(
+                vis,
+                adt_name,
+                generics,
+                filtered_attrs,
+                fields_unnamed,
+            ),
             // In these cases, we can't strip attributes since we don't support this format.
             // Echo back exactly what was given.
             _ => input.to_token_stream(),
         },
         Data::Enum(data_enum) => {
-            if let Ok(variants) = parse_enum_variants(&data_enum.variants, false) {
-                generate_base_enum(adt_name, vis, generics, &filtered_attrs, &variants)
+            if let Ok(variants) = enums::parse_enum_variants(&data_enum.variants, false) {
+                enums::generate_base_enum(adt_name, vis, generics, &filtered_attrs, &variants)
             } else {
                 input.to_token_stream()
             }
