@@ -125,6 +125,56 @@ fn test_macro_aggregation_with_key() {
     check!(entry.values["Endpoint"] == "GetItem");
 }
 
+#[aggregate(raw)]
+#[metrics]
+#[derive(Clone)]
+struct ApiCallWithMultipleKeys {
+    #[aggregate(key)]
+    endpoint: String,
+    #[aggregate(key)]
+    region: String,
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetricsWithMultipleKeys {
+    #[metrics(flatten)]
+    api_calls: MutexAggregator<ApiCallWithMultipleKeys>,
+    request_id: String,
+}
+
+#[test]
+fn test_macro_aggregation_with_multiple_keys() {
+    let metrics = RequestMetricsWithMultipleKeys {
+        api_calls: MutexAggregator::with_key((
+            Cow::Borrowed(&"GetItem".to_string()),
+            Cow::Borrowed(&"us-east-1".to_string()),
+        )),
+        request_id: "9999".to_string(),
+    };
+
+    ApiCallWithMultipleKeys {
+        endpoint: "GetItem".to_string(),
+        region: "us-east-1".to_string(),
+        latency: Duration::from_millis(30),
+    }
+    .merge_on_drop(&metrics.api_calls);
+
+    ApiCallWithMultipleKeys {
+        endpoint: "GetItem".to_string(),
+        region: "us-east-1".to_string(),
+        latency: Duration::from_millis(45),
+    }
+    .merge_on_drop(&metrics.api_calls);
+
+    let entry = test_metric(metrics);
+    check!(entry.values["RequestId"] == "9999");
+    check!(entry.values["Endpoint"] == "GetItem");
+    check!(entry.values["Region"] == "us-east-1");
+}
+
 #[aggregate]
 #[metrics]
 struct ApiCallWithTimer {
