@@ -4,15 +4,15 @@
 //!
 //! ## Field-level aggregation: [`AggregateValue`]
 //!
-//! Defines how individual field values are merged. For example, [`crate::counter::Counter`] sums values,
+//! Defines how individual field values are merged. For example, [`crate::value::Sum`] sums values,
 //! while `Histogram` collects values into buckets. This trait enables compile-time type resolution:
 //!
 //! ```rust
-//! use metrique_aggregation::counter::Counter;
+//! use metrique_aggregation::value::Sum;
 //! use metrique_aggregation::traits::AggregateValue;
-//! type AggregatedType = <Counter as AggregateValue<u64>>::Aggregated;
-//! // ^^^^^^^                   ^^
-//! // Aggregation strategy      input type
+//! type AggregatedType = <Sum as AggregateValue<u64>>::Aggregated;
+//! //                     ^^^                   ^^
+//! //                     Aggregation strategy  input type
 //! ```
 //!
 //! ## Entry-level aggregation: [`AggregateEntry`]

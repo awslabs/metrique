@@ -20,7 +20,7 @@ Use the `#[aggregate]` macro to define aggregatable metrics:
 
 ```rust
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
+use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
 use metrique_aggregation::traits::Aggregate;
 use metrique_writer::unit::{Millisecond, Byte};
 use std::time::Duration;
@@ -33,7 +33,7 @@ struct ApiCall {
     #[metrics(unit = Millisecond)]
     latency: Duration,
     
-    #[aggregate(strategy = Counter)]
+    #[aggregate(strategy = Sum)]
     #[metrics(unit = Byte)]
     response_size: usize,
 }
@@ -71,7 +71,7 @@ The aggregation system has two levels:
 
 Individual fields use aggregation strategies that implement `AggregateValue<T>`:
 
-- **`Counter`** - Sums values together
+- **`Sum`** - Sums values together
 - **`Histogram<T>`** - Collects values into a distribution
 - **`LastValueWins`** - Keeps the most recent value
 

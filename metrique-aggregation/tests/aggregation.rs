@@ -5,10 +5,10 @@ use metrique::timers::Timer;
 use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
-use metrique_aggregation::counter::{Counter, LastValueWins, MergeOptions};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};
 use metrique_aggregation::traits::Aggregate;
+use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
@@ -22,7 +22,7 @@ pub struct ApiCall {
     #[metrics(unit = Millisecond)]
     latency: Duration,
 
-    #[aggregate(strategy = Counter)]
+    #[aggregate(strategy = Sum)]
     #[metrics(unit = Byte)]
     response_size: usize,
 }

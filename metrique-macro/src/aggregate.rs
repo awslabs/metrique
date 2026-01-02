@@ -108,7 +108,7 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
             let ty = &f.ty;
             quote! {
                 #(#metrics_attrs)*
-                #name: <metrique_aggregation::counter::Counter as metrique_aggregation::__macro_plumbing::AggregateValue<#ty>>::Aggregated
+                #name: <metrique_aggregation::value::Sum as metrique_aggregation::__macro_plumbing::AggregateValue<#ty>>::Aggregated
             }
         }
     });

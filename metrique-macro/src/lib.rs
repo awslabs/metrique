@@ -313,7 +313,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
+/// use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
 /// use std::time::Duration;
 ///
 /// #[aggregate]
@@ -323,7 +323,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///     #[metrics(unit = metrique::writer::unit::Millisecond)]
 ///     latency: Duration,  // Aggregates Duration values
 ///
-///     #[aggregate(strategy = Counter)]
+///     #[aggregate(strategy = Sum)]
 ///     response_size: usize,
 /// }
 /// ```
@@ -367,12 +367,12 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// ## Built-in Strategies
 ///
-/// - **`Counter`** - Sums numeric values together
+/// - **`Sum`** - Sums numeric values together
 /// - **`Histogram<T>`** - Collects values into a distribution
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter};
+/// use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
 /// use std::time::Duration;
 ///
 /// #[aggregate]
@@ -381,7 +381,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///     #[aggregate(strategy = Histogram<Duration>)]
 ///     latency: Duration,
 ///
-///     #[aggregate(strategy = Counter)]
+///     #[aggregate(strategy = Sum)]
 ///     bytes_sent: usize,
 /// }
 /// ```
