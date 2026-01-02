@@ -163,20 +163,21 @@ pub(crate) fn generate_aggregate_entry_impl(
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
-    let (key_type, key_expr, new_aggregated_body) = if key_fields.is_empty() {
+    let (key_type, key_expr, static_key_impl, new_aggregated_body) = if key_fields.is_empty() {
         (
+            quote! { () },
             quote! { () },
             quote! { () },
             quote! { Self::Aggregated::default() },
         )
     } else {
-        let key_refs = key_fields.iter().map(|f| {
+        let key_borrowed_refs = key_fields.iter().map(|f| {
             let name = &f.name;
-            quote! { source.#name.clone() }
+            quote! { ::std::borrow::Cow::Borrowed(&source.#name) }
         });
         let key_type_refs = key_fields.iter().map(|f| {
             let ty = &f.ty;
-            quote! { #ty }
+            quote! { ::std::borrow::Cow<'a, #ty> }
         });
         let key_type = if key_fields.len() == 1 {
             quote! { #(#key_type_refs)* }
@@ -184,15 +185,32 @@ pub(crate) fn generate_aggregate_entry_impl(
             quote! { (#(#key_type_refs),*) }
         };
         let key_expr = if key_fields.len() == 1 {
-            quote! { #(#key_refs)* }
+            quote! { #(#key_borrowed_refs)* }
         } else {
-            quote! { (#(#key_refs),*) }
+            quote! { (#(#key_borrowed_refs),*) }
+        };
+
+        let static_key_conversion = if key_fields.len() == 1 {
+            quote! { ::std::borrow::Cow::Owned(key.into_owned()) }
+        } else {
+            let conversions = (0..key_fields.len()).map(|i| {
+                let idx = syn::Index::from(i);
+                quote! { ::std::borrow::Cow::Owned(key.#idx.into_owned()) }
+            });
+            quote! { (#(#conversions),*) }
         };
 
         let field_inits = parsed.fields.iter().map(|f| {
             let name = &f.name;
             if f.is_key {
-                quote! { #name: key.clone() }
+                if key_fields.len() == 1 {
+                    quote! { #name: key.clone().into_owned() }
+                } else {
+                    let idx = syn::Index::from(
+                        key_fields.iter().position(|kf| kf.name == f.name).unwrap(),
+                    );
+                    quote! { #name: key.#idx.clone().into_owned() }
+                }
             } else {
                 quote! { #name: Default::default() }
             }
@@ -201,6 +219,7 @@ pub(crate) fn generate_aggregate_entry_impl(
         (
             key_type,
             key_expr,
+            static_key_conversion,
             quote! {
                 #aggregated_name {
                     #(#field_inits),*
@@ -302,17 +321,21 @@ pub(crate) fn generate_aggregate_entry_impl(
             impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
                 type Source = #source_type;
                 type Aggregated = #aggregated_name;
-                type Key = #key_type;
+                type Key<'a> = #key_type;
+
+                fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
+                    #static_key_impl
+                }
 
                 fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
                     #(#merge_calls)*
                 }
 
-                fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+                fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
                     #new_aggregated_body
                 }
 
-                fn key(source: &Self::Source) -> Self::Key {
+                fn key(source: &Self::Source) -> Self::Key<'_> {
                     #[allow(deprecated)]
                     #key_expr
                 }
@@ -325,17 +348,21 @@ pub(crate) fn generate_aggregate_entry_impl(
             impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
                 type Source = #source_type;
                 type Aggregated = #aggregated_name;
-                type Key = #key_type;
+                type Key<'a> = #key_type;
+
+                fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
+                    #static_key_impl
+                }
 
                 fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
                     <Self as metrique_aggregation::__macro_plumbing::AggregateEntryRef>::merge_entry_ref(accum, &entry);
                 }
 
-                fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+                fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
                     #new_aggregated_body
                 }
 
-                fn key(source: &Self::Source) -> Self::Key {
+                fn key(source: &Self::Source) -> Self::Key<'_> {
                     #[allow(deprecated)]
                     #key_expr
                 }

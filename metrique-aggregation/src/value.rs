@@ -11,7 +11,7 @@ pub struct Sum;
 
 impl<T> AggregateValue<T> for Sum
 where
-    T: Default + AddAssign + Copy,
+    T: Default + AddAssign,
 {
     type Aggregated = T;
 

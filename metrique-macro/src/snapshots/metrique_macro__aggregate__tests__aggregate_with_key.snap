@@ -1,5 +1,5 @@
 ---
-source: metrique-macro/src/lib.rs
+source: metrique-macro/src/aggregate.rs
 expression: parsed_file
 ---
 #[metrics]
@@ -14,7 +14,10 @@ impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCallWithOpera
 impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCallWithOperation {
     type Source = Self;
     type Aggregated = AggregatedApiCallWithOperation;
-    type Key = String;
+    type Key<'a> = ::std::borrow::Cow<'a, String>;
+    fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
+        ::std::borrow::Cow::Owned(key.into_owned())
+    }
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         #[allow(deprecated)]
         <Histogram<
@@ -23,14 +26,14 @@ impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCallWithOpera
             Duration,
         >>::add_value(&mut accum.latency, entry.latency);
     }
-    fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+    fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
         AggregatedApiCallWithOperation {
-            endpoint: key.clone(),
+            endpoint: key.clone().into_owned(),
             latency: Default::default(),
         }
     }
-    fn key(source: &Self::Source) -> Self::Key {
-        #[allow(deprecated)] source.endpoint.clone()
+    fn key(source: &Self::Source) -> Self::Key<'_> {
+        #[allow(deprecated)] ::std::borrow::Cow::Borrowed(&source.endpoint)
     }
 }
 #[metrics]

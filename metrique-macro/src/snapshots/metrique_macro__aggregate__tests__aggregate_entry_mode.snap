@@ -17,7 +17,10 @@ impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCall {}
 impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCall {
     type Source = <Self as metrique::CloseValue>::Closed;
     type Aggregated = AggregatedApiCall;
-    type Key = ();
+    type Key<'a> = ();
+    fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
+        ()
+    }
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         #[allow(deprecated)]
         <Histogram<
@@ -27,10 +30,10 @@ impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCall {
             <Timer as metrique::CloseValue>::Closed,
         >>::add_value(&mut accum.latency, *entry.latency);
     }
-    fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+    fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
         Self::Aggregated::default()
     }
-    fn key(source: &Self::Source) -> Self::Key {
+    fn key(source: &Self::Source) -> Self::Key<'_> {
         #[allow(deprecated)] ()
     }
 }

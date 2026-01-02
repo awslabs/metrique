@@ -12,6 +12,7 @@ use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
 use metrique_writer::test_util::{DistributionsExt, test_metric};
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
+use std::borrow::Cow;
 use std::time::Duration;
 
 #[aggregate]
@@ -105,7 +106,7 @@ struct RequestMetricsWithEndpoint {
 #[test]
 fn test_macro_aggregation_with_key() {
     let metrics = RequestMetricsWithEndpoint {
-        api_calls: MutexAggregator::with_key(&"GetItem".to_string()),
+        api_calls: MutexAggregator::with_key(Cow::Borrowed(&"GetItem".to_string())),
         request_id: "5678".to_string(),
     };
 

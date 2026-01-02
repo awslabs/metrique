@@ -9,6 +9,7 @@ use metrique_aggregation::traits::{Aggregate, AggregateEntry, AggregateEntryRef}
 use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
+use std::borrow::Cow;
 use std::time::Duration;
 
 #[metrics]
@@ -41,21 +42,25 @@ impl AggregateEntryRef for ApiCallWithEndpoint {
 impl AggregateEntry for ApiCallWithEndpoint {
     type Source = ApiCallWithEndpoint;
     type Aggregated = AggregatedApiCallWithOperation;
-    type Key = String;
+    type Key<'a> = Cow<'a, String>;
+
+    fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
+        Cow::Owned(key.into_owned())
+    }
 
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         Self::merge_entry_ref(accum, &entry);
     }
 
-    fn new_aggregated(key: &Self::Key) -> Self::Aggregated {
+    fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
         AggregatedApiCallWithOperation {
-            endpoint: key.clone(),
+            endpoint: key.clone().into_owned(),
             latency: Default::default(),
         }
     }
 
-    fn key(source: &Self::Source) -> Self::Key {
-        source.endpoint.clone()
+    fn key(source: &Self::Source) -> Self::Key<'_> {
+        Cow::Borrowed(&source.endpoint)
     }
 }
 
@@ -81,7 +86,11 @@ impl MergeOnDropExt for ApiCall {}
 impl AggregateEntry for ApiCall {
     type Source = Self;
     type Aggregated = AggregatedApiCall;
-    type Key = ();
+    type Key<'a> = ();
+
+    fn static_key<'a>(_key: Self::Key<'a>) -> Self::Key<'static> {
+        ()
+    }
 
     fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
         accum.latency.add_value(&entry.latency);
@@ -89,11 +98,11 @@ impl AggregateEntry for ApiCall {
         accum.response_value = entry.response_value;
     }
 
-    fn new_aggregated(_key: &Self::Key) -> Self::Aggregated {
+    fn new_aggregated<'a>(_key: &Self::Key<'a>) -> Self::Aggregated {
         Self::Aggregated::default()
     }
 
-    fn key(_source: &Self::Source) -> Self::Key {
+    fn key(_source: &Self::Source) -> Self::Key<'_> {
         ()
     }
 }

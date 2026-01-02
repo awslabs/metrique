@@ -82,7 +82,7 @@ where
                         let key = T::static_key(T::key(&entry));
                         let accum = storage
                             .entry(key)
-                            .or_insert_with_key(|k| T::new_aggregated(&k));
+                            .or_insert_with_key(|k| T::new_aggregated(k));
                         T::merge_entry(accum, entry);
                     }
                     Err(_) => {
