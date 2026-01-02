@@ -327,16 +327,11 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// }
 /// ```
 ///
-/// In entry mode:
-/// - Fields with `#[metrics(unit = U)]` are automatically unwrapped from `WithUnit<T, U>` before aggregation
-/// - Aggregation strategies receive the closed value type: `<T as CloseValue>::Closed`
-/// - This is the recommended mode for most use cases
-///
 /// ## Raw Mode
 ///
 /// Use `#[aggregate(raw)]` to aggregate on the raw struct before closing. In raw mode:
 /// - Aggregation strategies receive the raw field type before `CloseValue` is applied
-/// - Use this when you need to aggregate mutable accumulation types
+/// - Use this if the base struct is not also a metric
 ///
 /// # Aggregation Keys
 ///
@@ -418,63 +413,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// }
 /// ```
 ///
-/// # Example
-///
-/// ```ignore
-/// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram, counter::Counter, traits::Aggregate};
-/// use std::time::Duration;
-///
-/// #[aggregate]
-/// #[metrics]
-/// struct BackendCall {
-///     #[aggregate(key)]
-///     service: String,
-///
-///     #[aggregate(strategy = Histogram<Duration>)]
-///     #[metrics(unit = metrique::writer::unit::Millisecond)]
-///     latency: Duration,
-///
-///     #[aggregate(strategy = Counter)]
-///     #[metrics(unit = metrique::writer::unit::Byte)]
-///     response_size: usize,
-/// }
-///
-/// #[metrics(rename_all = "PascalCase")]
-/// struct DistributedQuery {
-///     query_id: String,
-///
-///     #[metrics(flatten)]
-///     backend_calls: Aggregate<BackendCall>,
-/// }
-///
-/// fn execute_query() {
-///     let mut aggregator = Aggregate::<BackendCall>::new();
-///
-///     // Add observations for different services
-///     aggregator.add(BackendCall {
-///         service: "api-1".to_string(),
-///         latency: Duration::from_millis(45),
-///         response_size: 1024,
-///     });
-///
-///     aggregator.add(BackendCall {
-///         service: "api-1".to_string(),
-///         latency: Duration::from_millis(67),
-///         response_size: 2048,
-///     });
-///
-///     aggregator.add(BackendCall {
-///         service: "api-2".to_string(),
-///         latency: Duration::from_millis(120),
-///         response_size: 512,
-///     });
-///
-///     // When aggregator drops, emits aggregated entries:
-///     // - One entry for api-1 with histogram of [45ms, 67ms] and total 3072 bytes
-///     // - One entry for api-2 with histogram of [120ms] and total 512 bytes
-/// }
-/// ```
+/// For more examples, see the `examples` directory in `metrique-aggregation`
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
