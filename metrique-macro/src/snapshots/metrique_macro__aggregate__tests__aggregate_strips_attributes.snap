@@ -1,0 +1,50 @@
+---
+source: metrique-macro/src/aggregate.rs
+expression: parsed_file
+---
+#[metrics]
+#[derive(Default)]
+pub struct AggregatedApiCall {
+    #[metrics(unit = Millisecond)]
+    latency: <Histogram<
+        Duration,
+    > as metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+    #[metrics(unit = Byte)]
+    response_size: <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
+        usize,
+    >>::Aggregated,
+}
+impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCall {}
+impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCall {
+    type Source = Self;
+    type Aggregated = AggregatedApiCall;
+    type Key<'a> = ();
+    fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
+        ()
+    }
+    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
+        #[allow(deprecated)]
+        <Histogram<
+            Duration,
+        > as metrique_aggregation::__macro_plumbing::AggregateValue<
+            Duration,
+        >>::add_value(&mut accum.latency, entry.latency);
+        #[allow(deprecated)]
+        <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
+            usize,
+        >>::add_value(&mut accum.response_size, entry.response_size);
+    }
+    fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
+        Self::Aggregated::default()
+    }
+    fn key(source: &Self::Source) -> Self::Key<'_> {
+        #[allow(deprecated)] ()
+    }
+}
+#[metrics]
+pub struct ApiCall {
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+    #[metrics(unit = Byte)]
+    response_size: usize,
+}

@@ -9,9 +9,11 @@ description = "Library for working with unit of work metrics - aggregation"
 [dependencies]
 metrique-writer = { path = "../metrique-writer", version = "0.1.9"}
 metrique-core = { path = "../metrique-core", version = "0.1.9"}
+metrique-macro = { path = "../metrique-macro", version = "0.1.8"}
 smallvec = "1.13"
 histogram.workspace = true
 ordered-float = "5"
+metrique-writer-core = { version = "0.1.8", path = "../metrique-writer-core" }
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }
@@ -20,6 +22,8 @@ rand.workspace = true
 rand_chacha.workspace = true
 assert2 = "0.3"
 rstest = "0.23"
+trybuild.workspace = true
+rustversion.workspace = true
 
 [[bench]]
 name = "aggregation"

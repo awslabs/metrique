@@ -1,74 +1,168 @@
 # metrique-aggregation
 
-Histogram implementations for aggregating metrique metrics.
+Aggregation system for combining multiple metric observations into single entries.
 
-When emitting high-frequency metrics, you often want to aggregate multiple observations into a single metric entry rather than emitting each one individually. This crate provides histogram types that collect observations and emit them as distributions.
+When emitting high-frequency metrics, you often want to aggregate multiple observations into a single metric entry rather than emitting each one individually. This crate provides an aggregation system that collects observations and emits them as distributions, sums, or other aggregate forms.
 
 ## When to use this
 
-Use histograms when you have many observations of the same metric within a single unit of work. For example:
+Use aggregation when you have many observations of the same metric within a single unit of work:
 
 - A distributed query that fans out to multiple backend services
 - Processing a batch of items where you want to track per-item latency
 - Any operation that generates multiple measurements you want to aggregate
 
-For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md) is a better approach than aggregation. Consider histograms when you need precise distributions for high-frequency events.
+For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md) is a better approach than aggregation. Consider aggregation when you need precise distributions or totals for high-frequency events.
 
-## Example
+## Quick start
+
+Use the `#[aggregate]` macro to define aggregatable metrics:
 
 ```rust
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::histogram::Histogram;
-use metrique_writer::unit::Millisecond;
+use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
+use metrique_aggregation::traits::Aggregate;
+use metrique_writer::unit::{Millisecond, Byte};
 use std::time::Duration;
+
+#[aggregate]
+#[metrics]
+struct ApiCall {
+    // Aggregate latency with a histogram
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+    
+    #[aggregate(strategy = Sum)]
+    #[metrics(unit = Byte)]
+    response_size: usize,
+}
 
 #[metrics(rename_all = "PascalCase")]
-struct QueryMetrics {
-    query_id: String,
-    
-    #[metrics(unit = Millisecond)]
-    backend_latency: Histogram<Duration>,
+struct RequestMetrics {
+    request_id: String,
+    #[metrics(flatten)]
+    api_calls: Aggregate<ApiCall>,
 }
 
-fn execute_query(query_id: String) {
-    let mut metrics = QueryMetrics {
-        query_id,
-        backend_latency: Histogram::default(),
-    };
-    
-    // Record multiple observations
-    metrics.backend_latency.add_value(Duration::from_millis(45));
-    metrics.backend_latency.add_value(Duration::from_millis(67));
-    metrics.backend_latency.add_value(Duration::from_millis(52));
-    
-    // When metrics drops, emits a single entry with the distribution
+let mut metrics = RequestMetrics {
+    request_id: "query-123".to_string(),
+    api_calls: Aggregate::default(),
+};
+
+// Add multiple observations
+metrics.api_calls.add(ApiCall {
+    latency: Duration::from_millis(45),
+    response_size: 1024,
+});
+metrics.api_calls.add(ApiCall {
+    latency: Duration::from_millis(67),
+    response_size: 2048,
+});
+
+// When metrics drops, emits a single entry with aggregated values
+```
+
+## How it works
+
+The aggregation system has two levels:
+
+### Field-level aggregation
+
+Individual fields use aggregation strategies that implement `AggregateValue<T>`:
+
+- **`Sum`** - Sums values together
+- **`Histogram<T>`** - Collects values into a distribution
+- **`LastValueWins`** - Keeps the most recent value
+
+### Entry-level aggregation
+
+The `#[aggregate]` macro generates an implementation of `AggregateEntry` that combines all fields according to their strategies. The macro creates an aggregated version of your struct where each field is replaced with its aggregated type.
+
+## Aggregation patterns
+
+### Simple aggregation with `Aggregate<T>`
+
+Use `Aggregate<T>` as a field in your metrics struct for straightforward aggregation:
+
+```rust,ignore
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetrics {
+    #[metrics(flatten)]
+    api_calls: Aggregate<ApiCall>,
+    request_id: String,
 }
 ```
 
-## Histogram types
+### Thread-safe aggregation with `MutexAggregator<T>`
 
-- **`Histogram<T, S = ExponentialAggregationStrategy>`** - Standard histogram that requires `&mut self` to add values. Uses exponential bucketing by default.
-- **`SharedHistogram<T, S>`** - Thread-safe histogram that can add values with `&self`
+Use `MutexAggregator<T>` when you need to aggregate from multiple threads or use `merge_and_close_on_drop`:
 
-## Aggregation strategies
+```rust,ignore
+use metrique::timers::Timer;
 
-By default, histograms use `ExponentialAggregationStrategy`. To use a different strategy, specify it as the second type parameter:
+let metrics = RequestMetrics {
+    api_calls: MutexAggregator::new(),
+    request_id: "1234".to_string(),
+};
 
-```rust
+// Create a guard that closes and merges on drop
+let mut call = ApiCall {
+    latency: Timer::start_now(),
+    response_size: 50,
+}.merge_and_close_on_drop(&metrics.api_calls);
+
+// Modify the call before it's closed and merged
+call.latency.stop();
+call.response_size = 75;
+// Automatically closed and merged when guard drops
+```
+
+### Keyed aggregation with `KeyedAggregationSink`
+
+Use `KeyedAggregationSink` to aggregate by key with time-based flushing:
+
+```rust,no_run
+# use metrique_aggregation::keyed_sink::KeyedAggregationSink;
+# use std::time::Duration;
+# use metrique_aggregation::aggregate;
+# use metrique::unit_of_work::metrics;
+# use metrique_aggregation::histogram::Histogram;
+# #[aggregate]
+# #[metrics]
+# struct ApiCall {
+#     #[aggregate(key)]
+#     endpoint: String,
+#     #[aggregate(strategy = Histogram<Duration>)]
+#     latency: Duration,
+# }
+# let my_sink = metrique_writer::test_util::test_entry_sink().sink;
+let sink = KeyedAggregationSink::<ApiCall, _>::new(
+    my_sink,
+    Duration::from_secs(60), // Flush every 60 seconds
+);
+
+sink.send(ApiCall {
+    endpoint: "GetItem".to_string(),
+    latency: Duration::from_millis(10),
+});
+```
+
+## Histogram strategies
+
+Histograms support different bucketing strategies:
+
+- **`ExponentialAggregationStrategy`** (default) - Exponential bucketing with ~6.25% error
+- **`SortAndMerge`** - Stores all observations exactly for perfect precision
+- **`AtomicExponentialAggregationStrategy`** - Thread-safe exponential bucketing for `SharedHistogram`
+
+```rust,ignore
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use std::time::Duration;
 
-let histogram: Histogram<Duration, SortAndMerge> = Histogram::new(SortAndMerge::new());
+#[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+latency: Duration,
 ```
 
-Available strategies:
+## Manual implementation
 
-- **`ExponentialAggregationStrategy`** (default) - Exponential bucketing with ~6.25% error. Best for most use cases.
-- **`AtomicExponentialAggregationStrategy`** - Thread-safe version of exponential bucketing for use with `SharedHistogram`
-- **`SortAndMerge`** - Stores all observations exactly and sorts them on emission. Perfect precision but higher memory usage.
-
-Exponential strategies provide better precision across a wide range of values. SortAndMerge preserves all observations exactly but uses more memory.
-
-## Future work
-
-This crate currently provides histogram implementations. Future versions of metrique will include a full aggregation system with `Aggregated<T>` fields and sink-level aggregation. See the [aggregation RFC](https://github.com/awslabs/metrique/blob/aggregation-rfc/docs/aggregated.md) for the planned design.
+While `#[aggregate]` is the recommended approach, you can implement `AggregateEntry` manually for full control. See the `manual_aggregation` example for details.

@@ -22,6 +22,7 @@ darling = { workspace = true }
 insta = { workspace = true }
 prettyplease = { workspace = true }
 metrique = { path = "../metrique", features = ["test-util"] }
+metrique-aggregation = { path = "../metrique-aggregation" }
 
 [package.metadata.docs.rs]
 all-features = true
