@@ -95,6 +95,28 @@ pub struct Metric {
     pub test_flag: bool,
 }
 
+/// Test helper for inspecting metrics
+pub trait DistributionsExt {
+    /// Number of total observations in this distribution
+    ///
+    /// When this distribution contains an Repeated observation, this counts
+    /// the number of occurences.
+    fn num_observations(&self) -> u64;
+}
+
+impl DistributionsExt for Vec<Observation> {
+    fn num_observations(&self) -> u64 {
+        self.iter()
+            .map(|obs| match obs {
+                Observation::Unsigned(_) => 1,
+                Observation::Floating(_) => 1,
+                Observation::Repeated { occurrences, .. } => *occurrences,
+                _ => unreachable!(),
+            })
+            .sum()
+    }
+}
+
 impl Metric {
     /// Returns the value in this observation as a u64
     ///

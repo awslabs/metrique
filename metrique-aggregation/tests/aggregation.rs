@@ -9,7 +9,7 @@ use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};
 use metrique_aggregation::traits::Aggregate;
 use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
-use metrique_writer::test_util::test_metric;
+use metrique_writer::test_util::{DistributionsExt, test_metric};
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
 use std::time::Duration;
@@ -168,7 +168,7 @@ fn test_aggregate_entry_mode_with_timer() {
     metrics.api_calls.add(call2);
 
     let entry = test_metric(metrics);
-    check!(entry.metrics["latency_2"].distribution.len() == 2);
+    check!(entry.metrics["latency_2"].distribution.num_observations() == 2);
     check!(entry.values["RequestId"] == "timer-test");
     check!(entry.metrics["latency_2"].unit == Unit::Second(NegativeScale::Micro));
 }

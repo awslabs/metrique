@@ -424,20 +424,22 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut output = Ts2::new();
 
-    // Generate the Aggregated struct
-    if let Ok(aggregated_struct) = aggregate::generate_aggregated_struct(&input, entry_mode) {
-        aggregated_struct.to_tokens(&mut output);
-    }
+    // Try to generate both the struct and impl
+    let struct_result = aggregate::generate_aggregated_struct(&input, entry_mode);
+    let impl_result = aggregate::generate_aggregate_entry_impl(&input, entry_mode, owned_mode);
 
-    // Generate the AggregateEntry impl
-    if let Ok(aggregate_impl) =
-        aggregate::generate_aggregate_entry_impl(&input, entry_mode, owned_mode)
-    {
-        aggregate_impl.to_tokens(&mut output);
+    match (struct_result, impl_result) {
+        (Ok(aggregated_struct), Ok(aggregate_impl)) => {
+            aggregated_struct.to_tokens(&mut output);
+            aggregate_impl.to_tokens(&mut output);
+            aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            // On error, generate the base struct without aggregate attributes and include the error
+            aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
+            e.to_compile_error().to_tokens(&mut output);
+        }
     }
-
-    // Strip aggregate attributes and pass through
-    aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
 
     output.into()
 }

@@ -89,10 +89,10 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
 
         if f.is_key {
             let ty = &f.ty;
-            quote! {
+            Ok(quote! {
                 #(#metrics_attrs)*
                 #name: #ty
-            }
+            })
         } else if let Some(strategy) = &f.strategy {
             let source_ty = &f.ty;
             let value_ty = if entry_mode {
@@ -100,18 +100,17 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
             } else {
                 quote! { #source_ty }
             };
-            quote! {
+            Ok(quote! {
                 #(#metrics_attrs)*
                 #name: <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
-            }
+            })
         } else {
-            let ty = &f.ty;
-            quote! {
-                #(#metrics_attrs)*
-                #name: <metrique_aggregation::value::Sum as metrique_aggregation::__macro_plumbing::AggregateValue<#ty>>::Aggregated
-            }
+            Err(Error::new(
+                name.span(),
+                format!("field '{}' requires #[aggregate(strategy = ...)] attribute", name)
+            ))
         }
-    });
+    }).collect::<Result<Vec<_>>>()?;
 
     let metrics_attr = input
         .attrs

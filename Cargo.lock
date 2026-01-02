@@ -745,7 +745,9 @@ dependencies = [
  "rand",
  "rand_chacha",
  "rstest 0.23.0",
+ "rustversion",
  "smallvec",
+ "trybuild",
 ]
 
 [[package]]
