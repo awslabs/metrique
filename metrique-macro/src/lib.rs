@@ -300,12 +300,12 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///     },
 /// }
 ///
-/// let entry = metrique::writer::test_util::test_metric(
+/// let entry = metrique::test_util::test_metric(
 ///     Operation::Read(ReadMetrics { bytes_read: 1024 })
 /// );
 /// assert_eq!(entry.metrics["BytesRead"].as_u64(), 1024);
 ///
-/// let entry = metrique::writer::test_util::test_metric(
+/// let entry = metrique::test_util::test_metric(
 ///     Operation::Write { latency: Duration::from_millis(5), bytes_written: 2048 }
 /// );
 /// assert_eq!(entry.metrics["Latency"].as_u64(), 5);
