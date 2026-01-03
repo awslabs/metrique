@@ -59,7 +59,7 @@ However, if your goal is to emit structured events that produce metrics with as 
 
 Most applications and libraries will use [`metrique`](metrique) directly and configure a writer with [`metrique-writer`](metrique-writer). See the [examples](metrique/examples) for several examples of different common patterns.
 
-Applications will define a metrics struct that they annotate with `#[metrics]`:
+Applications will define a metrics entry struct that they annotate with `#[metrics]`:
 ```rust
 use metrique::unit_of_work::metrics;
 
@@ -70,13 +70,41 @@ enum Operation {
 
 #[metrics]
 struct RequestMetrics {
-    operation: Operation, // you can use `operation: &'static str` if you prefer
+    operation: Operation,
+    request_id: String,
+    success: bool, // flushes as 0 or 1
+    response_code: &'static str,
     #[metrics(timestamp)]
     timestamp: Timestamp,
     number_of_ducks: usize,
     #[metrics(unit = Millisecond)]
     operation_time: Timer,
 }
+```
+
+Enums can also be used as metrics entries, with different fields per variant. When an enum is flushed,
+only fields from the active variant are emitted.
+
+```rust
+#[metrics(subfield_owned)]
+enum RequestResult {
+    Success { 
+      response_size: usize,
+      record_count: usize,
+    },
+    Error { 
+      error_reason: String
+    },
+}
+
+#[metrics]
+struct RequestMetrics {
+  request_id: String,
+  #[metrics(flatten)]
+  result: RequestResult
+  // ...
+}
+
 ```
 
 On its own, this is just a normal struct, there is no magic. To use it as a metric, you can call `.append_on_drop`:

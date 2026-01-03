@@ -1,12 +1,13 @@
 ---
 source: metrique-macro/src/lib.rs
+assertion_line: 1201
 expression: parsed_file
 ---
 enum Foo {
     Bar,
 }
 #[doc(hidden)]
-pub enum FooValue {
+enum FooValue {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
@@ -26,14 +27,14 @@ impl ::std::convert::From<FooValue> for &'static str {
         <&str as ::std::convert::From<&_>>::from(&value)
     }
 }
-impl ::metrique::writer::Value for FooValue {
-    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
-        writer.string(::std::convert::Into::<&str>::into(self));
-    }
-}
 impl ::metrique::writer::core::SampleGroup for FooValue {
     fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
         ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}
+impl ::metrique::writer::Value for FooValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
+        writer.string(::std::convert::Into::<&str>::into(self));
     }
 }
 impl metrique::CloseValue for &'_ Foo {
@@ -49,5 +50,23 @@ impl metrique::CloseValue for Foo {
     type Closed = FooValue;
     fn close(self) -> Self::Closed {
         <&Self>::close(&self)
+    }
+}
+impl ::std::convert::From<&'_ Foo> for &'static str {
+    fn from(value: &Foo) -> Self {
+        #[allow(deprecated)]
+        match value {
+            Foo::Bar => "Bar",
+        }
+    }
+}
+impl ::std::convert::From<Foo> for &'static str {
+    fn from(value: Foo) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for Foo {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
     }
 }

@@ -38,13 +38,14 @@ pub(crate) fn generate_metrics_for_struct(
         struct_name,
         &input.vis,
         &input.generics,
-        &input.attrs,
+        &clean_attrs(&input.attrs),
         &parsed_fields,
     )?;
     let warnings = root_attributes.warnings();
 
     let entry_struct = generate_entry_struct(
         &entry_name,
+        &input.vis,
         &input.generics,
         &parsed_fields,
         &root_attributes,
@@ -63,7 +64,7 @@ pub(crate) fn generate_metrics_for_struct(
                 &parsed_fields,
             )?
         }
-        _ => entry_impl::generate_entry_impl(&entry_name, &parsed_fields, &root_attributes),
+        _ => entry_impl::generate_struct_entry_impl(&entry_name, &parsed_fields, &root_attributes),
     };
 
     let close_value_impl = generate_close_value_impls_for_struct(
@@ -127,6 +128,7 @@ fn wrap_fields_into_struct_decl(has_named_fields: bool, fields: impl Iterator<It
 
 fn generate_entry_struct(
     name: &Ident,
+    vis: &Visibility,
     _generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
@@ -138,7 +140,7 @@ fn generate_entry_struct(
     let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
     Ok(quote!(
         #[doc(hidden)]
-        pub struct #name #body
+        #vis struct #name #body
     ))
 }
 

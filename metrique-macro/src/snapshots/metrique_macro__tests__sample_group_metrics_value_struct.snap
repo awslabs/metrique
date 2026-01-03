@@ -7,7 +7,7 @@ struct RequestValue {
     value: &'static str,
 }
 #[doc(hidden)]
-pub struct RequestValueValue {
+struct RequestValueValue {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
