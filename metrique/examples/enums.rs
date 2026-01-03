@@ -8,8 +8,8 @@
 //! - Entry enums with tuple and struct variants
 //! - Using the test_metric API to inspect emitted metrics
 
+use metrique::test_util::test_metric;
 use metrique::unit_of_work::metrics;
-use metrique::writer::test_util::test_metric;
 
 // Value enum - represents operation type as a string
 #[metrics(value(string))]

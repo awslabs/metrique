@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use metrique::{
+    test_util::test_metric,
     unit_of_work::metrics,
-    writer::{test_util::test_metric, unit, value::ToString},
+    writer::{unit, value::ToString},
 };
 use metrique_writer_core::SampleGroup;
 

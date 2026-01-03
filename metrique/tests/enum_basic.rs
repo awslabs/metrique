@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use metrique::{unit_of_work::metrics, writer::test_util::test_metric};
+use metrique::{test_util::test_metric, unit_of_work::metrics};
 
 // Basic tuple variant with flatten
 #[metrics]
