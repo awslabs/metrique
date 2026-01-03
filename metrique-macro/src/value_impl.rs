@@ -1,6 +1,4 @@
-use crate::{
-    MetricsField, MetricsFieldKind, NameStyle, RootAttributes, enums::MetricsVariant, metric_name,
-};
+use crate::{MetricsField, MetricsFieldKind, NameStyle, RootAttributes, enums::MetricsVariant};
 
 use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{quote, quote_spanned};
@@ -11,35 +9,17 @@ pub(crate) fn generate_value_impl_for_enum(
     value_name: &Ident,
     parsed_variants: &[MetricsVariant],
 ) -> Ts2 {
-    let variants_and_strings = parsed_variants.iter().map(|variant| {
-        let variant_ident = &variant.ident;
-        let metric_name = metric_name(root_attrs, root_attrs.rename_all, variant);
-        quote_spanned!(variant.ident.span()=> #value_name::#variant_ident => #metric_name)
-    });
+    let from_and_sample_group = crate::enums::generate_from_and_sample_group_for_enum(
+        value_name,
+        parsed_variants,
+        root_attrs,
+    );
+
     quote!(
-        // generate `From` impls for the value type like strum's `derive(AsStaticStr)`
-        // This is the value type, so it should not have user-defined
-        // implementations
-        impl ::std::convert::From<&'_ #value_name> for &'static str {
-            fn from(value: &#value_name) -> Self {
-                #[allow(deprecated)] match value {
-                    #(#variants_and_strings),*
-                }
-            }
-        }
-        impl ::std::convert::From<#value_name> for &'static str {
-            fn from(value: #value_name) -> Self {
-                <&str as ::std::convert::From<&_>>::from(&value)
-            }
-        }
+        #from_and_sample_group
         impl ::metrique::writer::Value for #value_name {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 writer.string(::std::convert::Into::<&str>::into(self));
-            }
-        }
-        impl ::metrique::writer::core::SampleGroup for #value_name {
-            fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
-                ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
             }
         }
     )

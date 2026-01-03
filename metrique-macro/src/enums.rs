@@ -1,16 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use darling::FromField;
-use darling::FromVariant;
+use darling::{FromField, FromVariant};
 use proc_macro2::TokenStream as Ts2;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Result, Visibility, spanned::Spanned};
 
-use crate::TupleData;
+use crate::{MetricMode, TupleData, generate_on_drop_wrapper};
 use crate::{
     MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, SpannedKv, clean_attrs,
-    generate_close_value_impls, parse_metric_fields, value_impl,
+    parse_metric_fields, value_impl,
 };
 
 /// Indicates how we should parse and validate the variant:
@@ -137,7 +136,7 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
 
                     Ok(TupleData {
                         ty: field.ty.clone(),
-                        _kind: attrs.kind,
+                        kind: attrs.kind,
                         close: attrs.close,
                     })
                 })
@@ -237,41 +236,81 @@ pub(crate) fn parse_enum_variants(
 pub(crate) fn generate_metrics_for_enum(
     root_attrs: RootAttributes,
     input: &syn::DeriveInput,
-    variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
+    variants: &[MetricsVariant],
 ) -> Result<Ts2> {
     let enum_name = &input.ident;
-    let parsed_variants = parse_enum_variants(variants, VariantMode::ValueString)?;
-    let value_name = quote::format_ident!("{}Value", enum_name);
+    let entry_name = if root_attrs.mode == MetricMode::ValueString {
+        quote::format_ident!("{}Value", enum_name)
+    } else {
+        quote::format_ident!("{}Entry", enum_name)
+    };
+    let guard_name = quote::format_ident!("{}Guard", enum_name);
+    let handle_name = quote::format_ident!("{}Handle", enum_name);
 
     let base_enum = generate_base_enum(
         enum_name,
         &input.vis,
         &input.generics,
-        &input.attrs,
-        &parsed_variants,
+        &clean_attrs(&input.attrs),
+        variants,
     );
     let warnings = root_attrs.warnings();
 
-    let value_enum =
-        generate_value_enum(&value_name, &input.generics, &parsed_variants, &root_attrs)?;
+    let entry_enum = generate_entry_enum(
+        &entry_name,
+        &input.vis,
+        &input.generics,
+        variants,
+        &root_attrs,
+    )?;
 
-    let value_impl =
-        value_impl::generate_value_impl_for_enum(&root_attrs, &value_name, &parsed_variants);
+    let inner_impl = match root_attrs.mode {
+        MetricMode::ValueString => {
+            value_impl::generate_value_impl_for_enum(&root_attrs, &entry_name, variants)
+        }
+        _ => crate::entry_impl::generate_enum_entry_impl(&entry_name, variants, &root_attrs),
+    };
 
-    let variants_map = parsed_variants.iter().map(|variant| {
-        let variant_ident = &variant.ident;
-        quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident => #value_name::#variant_ident)
-    });
-    let variants_map = quote!(#[allow(deprecated)] match self { #(#variants_map),* });
+    let close_value_impl = match root_attrs.mode {
+        MetricMode::ValueString => {
+            let variants_map = variants.iter().map(|variant| {
+                let variant_ident = &variant.ident;
+                quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident => #entry_name::#variant_ident)
+            });
+            let variants_map = quote!(#[allow(deprecated)] match self { #(#variants_map),* });
+            crate::generate_close_value_impls(&root_attrs, enum_name, &entry_name, variants_map)
+        }
+        _ => generate_close_value_impl_for_enum(enum_name, &entry_name, variants, &root_attrs),
+    };
 
-    let close_value_impl =
-        generate_close_value_impls(&root_attrs, enum_name, &value_name, variants_map);
+    let from_and_sample_group =
+        generate_from_and_sample_group_for_enum(enum_name, variants, &root_attrs);
+
+    let vis = &input.vis;
+
+    let root_entry_specifics = match root_attrs.mode {
+        MetricMode::RootEntry => {
+            let on_drop_wrapper =
+                generate_on_drop_wrapper(vis, &guard_name, enum_name, &entry_name, &handle_name);
+            quote! {
+                #on_drop_wrapper
+            }
+        }
+        MetricMode::Subfield
+        | MetricMode::SubfieldOwned
+        | MetricMode::ValueString
+        | MetricMode::Value => {
+            quote! {}
+        }
+    };
 
     Ok(quote! {
         #base_enum
-        #value_enum
-        #value_impl
+        #entry_enum
+        #inner_impl
         #close_value_impl
+        #from_and_sample_group
+        #root_entry_specifics
         #warnings
     })
 }
@@ -293,8 +332,9 @@ pub(crate) fn generate_base_enum(
     }
 }
 
-fn generate_value_enum(
+fn generate_entry_enum(
     name: &Ident,
+    vis: &Visibility,
     _generics: &Generics,
     variants: &[MetricsVariant],
     _root_attrs: &RootAttributes,
@@ -305,8 +345,107 @@ fn generate_value_enum(
     };
     Ok(quote! {
         #[doc(hidden)]
-        pub enum #name {
+        #vis enum #name {
             #data
         }
     })
+}
+
+fn generate_close_value_impl_for_enum(
+    enum_name: &Ident,
+    entry_name: &Ident,
+    variants: &[MetricsVariant],
+    root_attrs: &RootAttributes,
+) -> Ts2 {
+    let match_arms = variants.iter().map(|variant| {
+        let variant_ident = &variant.ident;
+        match &variant.data {
+            None => {
+                // Unit variant: Enum::Variant => Entry::Variant
+                quote::quote_spanned!(variant.ident.span()=>
+                    #enum_name::#variant_ident => #entry_name::#variant_ident
+                )
+            }
+            Some(VariantData::Tuple(tuple_data)) => {
+                // Tuple variant: Enum::Variant(v1, v2, ...) => Entry::Variant(close_expr1, close_expr2, ...)
+                let (bindings, close_exprs): (Vec<_>, Vec<_>) = tuple_data
+                    .iter()
+                    .enumerate()
+                    .map(|(i, td)| {
+                        let binding = quote::format_ident!("v{}", i);
+                        let close_expr = if td.close {
+                            quote::quote_spanned!(variant.ident.span()=>
+                                ::metrique::CloseValue::close(#binding)
+                            )
+                        } else {
+                            quote::quote_spanned!(variant.ident.span()=> #binding)
+                        };
+                        (binding, close_expr)
+                    })
+                    .unzip();
+                quote::quote_spanned!(variant.ident.span()=>
+                    #enum_name::#variant_ident(#(#bindings),*) => #entry_name::#variant_ident(#(#close_exprs),*)
+                )
+            }
+            Some(VariantData::Struct(fields)) => {
+                // Struct variant: Enum::Variant { fields } => Entry::Variant { closed_fields }
+                let field_names: Vec<_> = fields.iter().map(|f| &f.ident).collect();
+                let closed_fields: Vec<_> = fields
+                    .iter()
+                    .map(|f| {
+                        let ident: &Ts2 = &f.ident;
+                        f.close_field_expr(quote::quote_spanned! {f.span=> #ident })
+                    })
+                    .collect();
+                quote::quote_spanned!(variant.ident.span()=>
+                    #enum_name::#variant_ident { #(#field_names),* } => #entry_name::#variant_ident { #(#closed_fields),* }
+                )
+            }
+        }
+    });
+
+    let match_expr = quote!(#[allow(deprecated)] match self { #(#match_arms),* });
+    crate::generate_close_value_impls(root_attrs, enum_name, entry_name, match_expr)
+}
+
+pub(crate) fn generate_from_and_sample_group_for_enum(
+    enum_name: &Ident,
+    variants: &[MetricsVariant],
+    root_attrs: &RootAttributes,
+) -> Ts2 {
+    let variants_and_strings = variants.iter().map(|variant| {
+        let variant_ident = &variant.ident;
+        let metric_name = crate::inflect::metric_name(root_attrs, root_attrs.rename_all, variant);
+        let pattern = match &variant.data {
+            None => quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident),
+            Some(VariantData::Tuple(tuple_data)) => {
+                let wildcards = (0..tuple_data.len()).map(|_| quote!(_));
+                quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident(#(#wildcards),*))
+            }
+            Some(VariantData::Struct(_)) => {
+                quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident { .. })
+            }
+        };
+        quote::quote_spanned!(variant.ident.span()=> #pattern => #metric_name)
+    });
+
+    quote! {
+        impl ::std::convert::From<&'_ #enum_name> for &'static str {
+            fn from(value: &#enum_name) -> Self {
+                #[allow(deprecated)] match value {
+                    #(#variants_and_strings),*
+                }
+            }
+        }
+        impl ::std::convert::From<#enum_name> for &'static str {
+            fn from(value: #enum_name) -> Self {
+                <&str as ::std::convert::From<&_>>::from(&value)
+            }
+        }
+        impl ::metrique::writer::core::SampleGroup for #enum_name {
+            fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+                ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+            }
+        }
+    }
 }

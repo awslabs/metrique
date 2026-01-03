@@ -105,15 +105,13 @@ help: consider importing one of these structs
    |
 
 error[E0277]: `String` cannot be used as a sample group
-  --> tests/ui/fail/bad_metrics_value.rs:78:15
+  --> tests/ui/fail/bad_metrics_value.rs:76:1
    |
-78 |       #[metrics(sample_group)]
-   |                 ^-----------
-   |                 |
-   |  _______________required by a bound introduced by this call
-   | |
-79 | |     group: String,
-   | |_________^ the trait `SampleGroup` is not implemented for `String`
+76 | #[metrics]
+   | ^^^^^^^^^^ the trait `SampleGroup` is not implemented for `String`
+77 | struct WithStringSampleGroup {
+78 |     #[metrics(sample_group)]
+   |               ------------ required by a bound introduced by this call
    |
    = note: sample groups must implement `SampleGroup`
    = note: consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`
