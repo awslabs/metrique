@@ -1,0 +1,222 @@
+---
+source: metrique-macro/src/lib.rs
+expression: root
+---
+enum Operation {
+    Read { bytes: usize },
+}
+#[doc(hidden)]
+enum OperationEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Read {
+        #[deprecated(
+            note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+        )]
+        #[doc(hidden)]
+        operation: ::std::borrow::Cow<'static, str>,
+        #[deprecated(
+            note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+        )]
+        #[doc(hidden)]
+        bytes: <usize as metrique::CloseValue>::Closed,
+    },
+}
+const _: () = {
+    enum OperationEntrySampleGroupIter<V0> {
+        V0(V0),
+    }
+    impl<
+        V0: ::std::iter::Iterator<
+                Item = (
+                    ::std::borrow::Cow<'static, str>,
+                    ::std::borrow::Cow<'static, str>,
+                ),
+            >,
+    > ::std::iter::Iterator for OperationEntrySampleGroupIter<V0> {
+        type Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>);
+        fn next(&mut self) -> ::std::option::Option<Self::Item> {
+            match self {
+                OperationEntrySampleGroupIter::V0(iter) => iter.next(),
+            }
+        }
+    }
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for OperationEntry {
+        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            #[allow(deprecated)]
+            match self {
+                OperationEntry::Read { operation, bytes } => {
+                    #[allow(non_camel_case_types)]
+                    struct operationPreserve;
+                    impl ::metrique::concat::ConstStr for operationPreserve {
+                        const VAL: &'static str = "operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationKebab;
+                    impl ::metrique::concat::ConstStr for operationKebab {
+                        const VAL: &'static str = "operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationPascal;
+                    impl ::metrique::concat::ConstStr for operationPascal {
+                        const VAL: &'static str = "Operation";
+                    }
+                    #[allow(non_camel_case_types)]
+                    struct operationSnake;
+                    impl ::metrique::concat::ConstStr for operationSnake {
+                        const VAL: &'static str = "operation";
+                    }
+                    ::metrique::writer::EntryWriter::value(
+                        writer,
+                        ::metrique::concat::const_str_value::<
+                            <NS as ::metrique::NameStyle>::Inflect<
+                                operationPreserve,
+                                operationPascal,
+                                operationSnake,
+                                operationKebab,
+                            >,
+                        >(),
+                        operation,
+                    );
+                    ::metrique::writer::EntryWriter::value(
+                        writer,
+                        {
+                            #[allow(non_camel_case_types)]
+                            struct bytesPreserve;
+                            impl ::metrique::concat::ConstStr for bytesPreserve {
+                                const VAL: &'static str = "bytes";
+                            }
+                            #[allow(non_camel_case_types)]
+                            struct bytesKebab;
+                            impl ::metrique::concat::ConstStr for bytesKebab {
+                                const VAL: &'static str = "bytes";
+                            }
+                            #[allow(non_camel_case_types)]
+                            struct bytesPascal;
+                            impl ::metrique::concat::ConstStr for bytesPascal {
+                                const VAL: &'static str = "Bytes";
+                            }
+                            #[allow(non_camel_case_types)]
+                            struct bytesSnake;
+                            impl ::metrique::concat::ConstStr for bytesSnake {
+                                const VAL: &'static str = "bytes";
+                            }
+                            ::metrique::concat::const_str_value::<
+                                <NS as ::metrique::NameStyle>::Inflect<
+                                    bytesPreserve,
+                                    bytesPascal,
+                                    bytesSnake,
+                                    bytesKebab,
+                                >,
+                            >()
+                        },
+                        bytes,
+                    );
+                }
+            }
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            match self {
+                OperationEntry::Read { operation, .. } => {
+                    OperationEntrySampleGroupIter::V0({
+                        #[allow(non_camel_case_types)]
+                        struct operationPreserve;
+                        impl ::metrique::concat::ConstStr for operationPreserve {
+                            const VAL: &'static str = "operation";
+                        }
+                        #[allow(non_camel_case_types)]
+                        struct operationKebab;
+                        impl ::metrique::concat::ConstStr for operationKebab {
+                            const VAL: &'static str = "operation";
+                        }
+                        #[allow(non_camel_case_types)]
+                        struct operationPascal;
+                        impl ::metrique::concat::ConstStr for operationPascal {
+                            const VAL: &'static str = "Operation";
+                        }
+                        #[allow(non_camel_case_types)]
+                        struct operationSnake;
+                        impl ::metrique::concat::ConstStr for operationSnake {
+                            const VAL: &'static str = "operation";
+                        }
+                        ::std::iter::once((
+                            ::metrique::concat::const_str_value::<
+                                <NS as ::metrique::NameStyle>::Inflect<
+                                    operationPreserve,
+                                    operationPascal,
+                                    operationSnake,
+                                    operationKebab,
+                                >,
+                            >(),
+                            operation.clone(),
+                        ))
+                    })
+                }
+            }
+        }
+    }
+};
+impl metrique::CloseValue for Operation {
+    type Closed = OperationEntry;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        match self {
+            Operation::Read { bytes } => {
+                OperationEntry::Read {
+                    operation: ::std::borrow::Cow::Borrowed("Read"),
+                    bytes: metrique::CloseValue::close(bytes),
+                }
+            }
+        }
+    }
+}
+impl ::std::convert::From<&'_ Operation> for &'static str {
+    fn from(value: &Operation) -> Self {
+        #[allow(deprecated)]
+        match value {
+            Operation::Read { .. } => "Read",
+        }
+    }
+}
+impl ::std::convert::From<Operation> for &'static str {
+    fn from(value: Operation) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for Operation {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}
+#[doc = concat!(
+    "Metrics guard returned from [`", "Operation",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type OperationGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    Operation,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "OperationGuard",
+    "::handle`], similar to an `Arc<", "OperationGuard", ">`."
+)]
+type OperationHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    Operation,
+    Q,
+>;
+impl Operation {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<OperationEntry>> + Send
+            + Sync + 'static,
+    >(self, sink: Q) -> OperationGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

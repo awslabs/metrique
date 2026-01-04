@@ -1,0 +1,22 @@
+error: `tag` attribute is only supported on entry enums
+ --> tests/ui/fail/tag.rs:5:1
+  |
+5 | / struct Operation {
+6 | |     bytes: usize,
+7 | | }
+  | |_^
+
+error: `tag` attribute is only supported on entry enums, not value enums
+  --> tests/ui/fail/tag.rs:11:1
+   |
+11 | / enum Status {
+12 | |     Active,
+13 | |     Inactive,
+14 | | }
+   | |_^
+
+error: tag requires a name parameter: #[metrics(tag(name = "..."))]
+  --> tests/ui/fail/tag.rs:17:11
+   |
+17 | #[metrics(tag)]
+   |           ^^^

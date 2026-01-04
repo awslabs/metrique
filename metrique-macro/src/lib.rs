@@ -39,11 +39,14 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `prefix` | String | Adds a prefix to all field names (prefix gets inflected) | `#[metrics(prefix = "api_")]` |
 /// | `exact_prefix` | String | Adds a prefix to all field names without inflection | `#[metrics(exact_prefix = "API_")]` |
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
-/// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
+/// | `tag` | Nested | On entry enums, adds a tag field with the variant name. Tag value respects `rename_all` and variant `name`, but not `prefix`. | |
+/// | - `name` | String | Name of the tag field (not affected by `prefix` or `rename_all`) | `#[metrics(tag(name = "operation"))]` |
+/// | - `sample_group` | Flag | Include tag in sample group | `#[metrics(tag(name = "op", sample_group))]` |
 /// | `subfield` | Flag | When set, this metric can only be used when nested within other metrics, and can be consumed by reference (has both `impl CloseValue for &MyStruct` and `impl CloseValue for MyStruct`). It cannot be added to a sink directly. | `#[metrics(subfield)]` |
 /// | `subfield_owned` | Flag | When set, this metric can only be used when nested within other metrics. It cannot be added to a sink directly. | `#[metrics(subfield_owned)]` |
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. | `#[metrics(value(string))]` |
+/// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
 ///
 /// # Field Attributes
 ///
@@ -312,6 +315,49 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// assert_eq!(entry.metrics["BytesWritten"].as_u64(), 2048);
 /// ```
 ///
+/// ### Tag Field
+///
+/// Entry enums can include a `tag` attribute to add a field containing the variant name:
+///
+/// ```rust
+/// # use metrique::unit_of_work::metrics;
+/// # use metrique::test_util::test_metric;
+/// # use metrique::unit::Millisecond;
+/// # use std::time::Duration;
+///
+/// #[metrics(tag(name = "Operation"), rename_all = "PascalCase")]
+/// enum Request {
+///     Read { bytes: usize },
+///     Write {
+///         #[metrics(unit = Millisecond)]
+///         latency: Duration,
+///     },
+/// }
+///
+/// let entry = test_metric(Request::Read { bytes: 1024 });
+/// assert_eq!(entry.values["Operation"], "Read");  // Tag field with variant name
+/// assert_eq!(entry.metrics["Bytes"].as_u64(), 1024);
+/// ```
+///
+/// The tag field name is specified explicitly and not affected by `prefix` or `rename_all`.
+/// The tag value (variant name) respects `rename_all` and variant `name` attributes, but not `prefix`.
+///
+/// The optional `sample_group` flag includes the tag field in the sample group:
+///
+/// ```rust
+/// # use metrique::unit_of_work::metrics;
+/// # use metrique::test_util::test_metric;
+///
+/// #[metrics(tag(name = "Operation", sample_group))]
+/// enum Request {
+///     Read { bytes: usize },
+///     Write { bytes: usize },
+/// }
+///
+/// let entry = test_metric(Request::Read { bytes: 1024 });
+/// // The tag field "Operation" with value "Read" is included in sample_group
+/// ```
+///
 /// # Generated Types
 ///
 /// For a struct or entry enum named `MyMetrics`, the macro generates:
@@ -373,6 +419,33 @@ impl ValueAttributes {
     }
 }
 
+/// Synthetic field using variant name.
+/// We do not inflect this because it has a literal name = ""
+#[derive(Debug, Clone, FromMeta)]
+#[darling(and_then = Self::validate, from_word = Self::from_word)]
+pub(crate) struct Tag {
+    pub(crate) name: String,
+    #[darling(default)]
+    pub(crate) sample_group: Flag,
+}
+
+impl Tag {
+    fn from_word() -> darling::Result<Self> {
+        Err(darling::Error::custom(
+            "tag requires a name parameter: #[metrics(tag(name = \"...\"))]",
+        ))
+    }
+
+    fn validate(self) -> darling::Result<Self> {
+        if self.name.is_empty() {
+            return Err(darling::Error::custom(
+                "tag requires a name parameter: #[metrics(tag(name = \"...\"))]",
+            ));
+        }
+        Ok(self)
+    }
+}
+
 #[derive(Debug, Default, FromMeta)]
 struct RawRootAttributes {
     prefix: Option<SpannedKv<String>>,
@@ -383,6 +456,8 @@ struct RawRootAttributes {
 
     #[darling(rename = "emf::dimension_sets")]
     emf_dimensions: Option<DimensionSets>,
+
+    tag: Option<Tag>,
 
     subfield: Flag,
     #[darling(rename = "subfield_owned")]
@@ -409,6 +484,8 @@ struct RootAttributes {
     rename_all: NameStyle,
 
     emf_dimensions: Option<DimensionSets>,
+
+    tag: Option<Tag>,
 
     sample_group: bool,
 
@@ -465,6 +542,7 @@ impl RawRootAttributes {
             .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
+            tag: self.tag,
             sample_group,
             mode,
         })
@@ -979,6 +1057,12 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
         | MetricMode::SubfieldOwned
         | MetricMode::Value => match &input.data {
             Data::Struct(data_struct) => {
+                if root_attributes.tag.is_some() {
+                    return Err(Error::new_spanned(
+                        &input,
+                        "`tag` attribute is only supported on entry enums",
+                    ));
+                }
                 let fields = match &data_struct.fields {
                     Fields::Named(fields_named) => &fields_named.named,
                     Fields::Unnamed(fields_unnamed)
@@ -1008,6 +1092,12 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
             }
         },
         MetricMode::ValueString => {
+            if root_attributes.tag.is_some() {
+                return Err(Error::new_spanned(
+                    &input,
+                    "`tag` attribute is only supported on entry enums, not value enums",
+                ));
+            }
             let variants = match &input.data {
                 Data::Enum(data_enum) => &data_enum.variants,
                 _ => {
@@ -1167,7 +1257,7 @@ mod tests {
         match parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => {
-                // If parsing fails, use the raw string output
+                // If parsing fails, print the error and use the raw string output
                 output.to_string()
             }
         }
@@ -1398,5 +1488,46 @@ mod tests {
 
         let parsed_file = format!("{}\n{}\n{}", operation, metadata, result);
         assert_snapshot!("sample_group_entry_enum", parsed_file);
+    }
+
+    #[test]
+    fn test_entry_enum_tag() {
+        let nested = metrics_impl_string(
+            quote! {
+                #[metrics(subfield)]
+                struct Nested {
+                    value: u32,
+                }
+            },
+            quote!(metrics(subfield)),
+        );
+        let root = metrics_impl_string(
+            quote! {
+                #[metrics(tag(name = "operation"))]
+                enum Operation {
+                    Read { bytes: usize },
+                    Write(#[metrics(flatten)] Nested),
+                }
+            },
+            quote!(metrics(tag(name = "operation"))),
+        );
+
+        let parsed_file = format!("{}\n{}", nested, root);
+        assert_snapshot!("entry_enum_tag", parsed_file);
+    }
+
+    #[test]
+    fn test_entry_enum_tag_with_sample_group() {
+        let root = metrics_impl_string(
+            quote! {
+                #[metrics(tag(name = "operation", sample_group))]
+                enum Operation {
+                    Read { bytes: usize },
+                }
+            },
+            quote!(metrics(tag(name = "operation", sample_group))),
+        );
+
+        assert_snapshot!("entry_enum_tag_sample_group", root);
     }
 }

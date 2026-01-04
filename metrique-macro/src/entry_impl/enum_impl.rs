@@ -38,10 +38,28 @@ fn generate_write_arms(
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Vec<Ts2> {
+    let tag_field = root_attrs
+        .tag
+        .as_ref()
+        .map(|tag| format_ident!("{}", tag.name));
+
     variants
         .iter()
         .map(|variant| {
             let variant_ident = &variant.ident;
+            let tag_write = tag_field.as_ref().map(|tag| {
+                let (extra, name) = make_inflect(
+                    &make_ns(root_attrs.rename_all, variant.ident.span()),
+                    format_ident!("Inflect", span = variant.ident.span()),
+                    &tag.to_string(),
+                    variant.ident.span(),
+                    |style| style.apply(&tag.to_string()),
+                );
+                quote! {
+                    #extra
+                    ::metrique::writer::EntryWriter::value(writer, ::metrique::concat::const_str_value::<#name>(), #tag);
+                }
+            });
 
             match &variant.data {
                 Some(VariantData::Tuple(tuple_data)) => {
@@ -51,8 +69,14 @@ fn generate_write_arms(
                         root_attrs,
                         variant.ident.span(),
                     );
+                    let all_bindings = if let Some(tag) = tag_field.as_ref() {
+                        quote!(#tag, #(#bindings),*)
+                    } else {
+                        quote!(#(#bindings),*)
+                    };
                     quote::quote_spanned!(variant.ident.span()=>
-                        #entry_name::#variant_ident(#(#bindings),*) => {
+                        #entry_name::#variant_ident(#all_bindings) => {
+                            #tag_write
                             #(#writes)*
                         }
                     )
@@ -64,8 +88,14 @@ fn generate_write_arms(
                         |field_ident| quote! { #field_ident },
                     );
                     let field_names: Vec<_> = fields.iter().map(|f| &f.ident).collect();
+                    let pattern = if let Some(tag) = tag_field.as_ref() {
+                        quote!(#entry_name::#variant_ident { #tag, #(#field_names),* })
+                    } else {
+                        quote!(#entry_name::#variant_ident { #(#field_names),* })
+                    };
                     quote::quote_spanned!(variant.ident.span()=>
-                        #entry_name::#variant_ident { #(#field_names),* } => {
+                        #pattern => {
+                            #tag_write
                             #(#field_writes)*
                         }
                     )
@@ -140,16 +170,53 @@ fn generate_sample_group_arms(
     root_attrs: &RootAttributes,
     iter_enum_name: &Ident,
 ) -> Vec<Ts2> {
+    let tag_field = root_attrs
+        .tag
+        .as_ref()
+        .map(|tag| format_ident!("{}", tag.name));
+    let include_tag_in_sample_group = root_attrs
+        .tag
+        .as_ref()
+        .is_some_and(|t| t.sample_group.is_present());
+
     variants.iter().enumerate().map(|(idx, variant)| {
         let variant_ident = &variant.ident;
         let iter_variant_name = quote::format_ident!("V{}", idx);
 
+        let tag_sample_group = if let Some(tag) = tag_field.as_ref().filter(|_| include_tag_in_sample_group) {
+            let (extra, name) = make_inflect(
+                &make_ns(root_attrs.rename_all, variant.ident.span()),
+                format_ident!("Inflect", span = variant.ident.span()),
+                &tag.to_string(),
+                variant.ident.span(),
+                |style| style.apply(&tag.to_string()),
+            );
+            Some(quote! {
+                {
+                    #extra
+                    ::std::iter::once((::metrique::concat::const_str_value::<#name>(), #tag.clone()))
+                }
+            })
+        } else {
+            None
+        };
+
         match &variant.data {
             Some(VariantData::Tuple(tuple_data)) => {
                 let bindings: Vec<_> = (0..tuple_data.len()).map(|idx| quote::format_ident!("v{}", idx)).collect();
-                let sample_groups: Vec<_> = tuple_data.iter().enumerate().filter_map(|(idx, td)| {
+                let mut sample_groups: Vec<_> = tuple_data.iter().enumerate().filter_map(|(idx, td)| {
                     collect_tuple_sample_group(&td.kind, root_attrs, &bindings[idx])
                 }).collect();
+
+                if let Some(tag_sg) = tag_sample_group {
+                    sample_groups.insert(0, tag_sg);
+                }
+
+                let all_bindings = if let Some(tag) = tag_field.as_ref() {
+                    quote!(#tag, #(#bindings),*)
+                } else {
+                    quote!(#(#bindings),*)
+                };
 
                 let iter_expr = if sample_groups.is_empty() {
                     quote!(::std::iter::empty())
@@ -158,19 +225,26 @@ fn generate_sample_group_arms(
                 };
 
                 quote::quote_spanned!(variant.ident.span()=>
-                    #entry_name::#variant_ident(#(#bindings),*) => #iter_enum_name::#iter_variant_name(#iter_expr)
+                    #entry_name::#variant_ident(#all_bindings) => #iter_enum_name::#iter_variant_name(#iter_expr)
                 )
             }
             Some(VariantData::Struct(fields)) => {
-                let (used_fields, sample_groups): (Vec<_>, Vec<_>) = fields
+                let (used_fields, mut sample_groups): (Vec<_>, Vec<_>) = fields
                     .iter()
                     .filter_map(|field| collect_field_sample_group(field, root_attrs, |f| quote!(#f)))
                     .unzip();
 
-                let pattern = if used_fields.is_empty() {
-                    quote!(#entry_name::#variant_ident { .. })
-                } else {
-                    quote!(#entry_name::#variant_ident { #(#used_fields),*, .. })
+                if let Some(tag_sg) = tag_sample_group {
+                    sample_groups.insert(0, tag_sg);
+                }
+
+                let pattern = match (tag_field.as_ref(), used_fields.is_empty()) {
+                    (Some(tag), true) => quote!(#entry_name::#variant_ident { #tag, .. }),
+                    (Some(tag), false) => {
+                        quote!(#entry_name::#variant_ident { #tag, #(#used_fields),*, .. })
+                    }
+                    (None, true) => quote!(#entry_name::#variant_ident { .. }),
+                    (None, false) => quote!(#entry_name::#variant_ident { #(#used_fields),*, .. }),
                 };
 
                 let iter_expr = if sample_groups.is_empty() {
