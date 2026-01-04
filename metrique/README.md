@@ -176,6 +176,38 @@ For more complex examples, see the [examples folder].
 
 [examples folder]: https://github.com/awslabs/metrique/tree/main/metrique/examples
 
+### Entry Enums
+
+Enums can be used as entries with different fields per variant:
+
+```rust
+use metrique::unit_of_work::metrics;
+
+// generally entry enums will be used as subfields,
+// though they can also be root containers
+#[metrics(subfield_owned)]
+enum RequestResult {
+    Success {
+        response_size: usize,
+        cache_hit: bool,
+    },
+    Error {
+        error_code: String,
+    },
+}
+
+#[metrics]
+struct RequestMetrics {
+    operation: &'static str,
+    request_id: String,
+    success: bool,
+    #[metrics(flatten)]
+    result: RequestResult,
+}
+```
+
+Entry enums handle container and field-level attributes like structs. See the [macro documentation](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html#enums) for details.
+
 ### Timing Events
 
 `metrique` provides several timing primitives to simplify measuring time. They are all mockable via
@@ -564,7 +596,7 @@ struct RequestMetrics {
 
 #### Combining renaming strategies
 
-You can combine these approaches, with field-level renames taking precedence over struct-level rules:
+You can combine these approaches, with field-level renames taking precedence over container-level rules:
 
 ```rust
 use metrique::unit_of_work::metrics;

@@ -3,6 +3,9 @@
 ## Testing
 - Use `cargo +1.89 nextest run` to run all tests in this workspace
 - If there are mismatches in trybuild or insta snapshots, share the diff for user approval before accepting them
+- For test utilities:
+  - Use `test_metric()` for short, focused examples (e.g., doc examples, simple assertions)
+  - Use `test_entry_sink()` for longer-form tests and examples that need multiple entries or demonstrate queue behavior
 
 # Metrique Trait System
 
