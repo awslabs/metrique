@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.12](https://github.com/awslabs/metrique/compare/metrique-v0.1.11...metrique-v0.1.12) - 2026-01-06
+
+### Added
+
+- [**breaking**] Add MetricMap wrapper for better error messages in test_util ([#157](https://github.com/awslabs/metrique/pull/157)). The change is technically a breaking change since it alters the type of a public API, however, it is 
+  very unlikely to break actual code.
+
+### Fixed
+
+- Add scaling factor to ExponentialAggregationStrategy. This improves storage resolution for durations <1ms and numeric values <1. ([#148](https://github.com/awslabs/metrique/pull/148))
+
+### Other
+
+- [macros] Reorganization, CloseValue diagnostic improvement ([#162](https://github.com/awslabs/metrique/pull/162))
+- *(docs)* clarify that you can also bring your own format with the Format trait ([#98](https://github.com/awslabs/metrique/pull/98))
+
 ## [0.1.11](https://github.com/awslabs/metrique/compare/metrique-v0.1.10...metrique-v0.1.11) - 2025-12-19
 
 ### Breaking Changes
