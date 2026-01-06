@@ -193,10 +193,7 @@ fn generate_sample_group_arms(
         .tag
         .as_ref()
         .map(|tag| tag.field_name(root_attrs));
-    let include_tag_in_sample_group = root_attrs
-        .tag
-        .as_ref()
-        .is_some_and(|t| t.sample_group.is_present());
+    let include_tag_in_sample_group = root_attrs.tag.as_ref().is_some_and(|t| t.sample_group());
 
     variants.iter().enumerate().map(|(idx, variant)| {
         let variant_ident = &variant.ident;

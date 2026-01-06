@@ -421,18 +421,45 @@ impl ValueAttributes {
 }
 
 /// Synthetic field using variant name.
-#[derive(Debug, Clone, FromMeta)]
-#[darling(and_then = Self::validate, from_word = Self::from_word)]
-pub(crate) struct Tag {
-    #[darling(default)]
-    pub(crate) name: Option<String>,
-    #[darling(default)]
-    pub(crate) name_exact: Option<String>,
-    #[darling(default)]
-    pub(crate) sample_group: Flag,
+#[derive(Debug, Clone)]
+pub(crate) enum Tag {
+    Inflectable { name: String, sample_group: bool },
+    Exact { name: String, sample_group: bool },
 }
 
 impl Tag {
+    /// Get the tag field name, applying inflection if using inflectable variant
+    pub(crate) fn field_name(&self, root_attrs: &RootAttributes) -> String {
+        match self {
+            Tag::Inflectable { name, .. } => root_attrs
+                .prefix
+                .as_ref()
+                .map(|p| p.apply(name, root_attrs.rename_all))
+                .unwrap_or_else(|| root_attrs.rename_all.apply(name)),
+            Tag::Exact { name, .. } => name.clone(),
+        }
+    }
+
+    pub(crate) fn sample_group(&self) -> bool {
+        match self {
+            Tag::Inflectable { sample_group, .. } => *sample_group,
+            Tag::Exact { sample_group, .. } => *sample_group,
+        }
+    }
+}
+
+#[derive(Debug, FromMeta)]
+#[darling(and_then = Self::validate, from_word = Self::from_word)]
+struct RawTag {
+    #[darling(default)]
+    name: Option<String>,
+    #[darling(default)]
+    name_exact: Option<String>,
+    #[darling(default)]
+    sample_group: Flag,
+}
+
+impl RawTag {
     fn from_word() -> darling::Result<Self> {
         Err(darling::Error::custom(
             "tag requires either name or name_exact parameter: #[metrics(tag(name = \"...\"))] or #[metrics(tag(name_exact = \"...\"))]",
@@ -456,25 +483,15 @@ impl Tag {
             _ => Ok(self),
         }
     }
+}
 
-    /// Get the tag field name, applying inflection if using `name`
-    pub(crate) fn field_name(&self, root_attrs: &RootAttributes) -> String {
-        match (&self.name, &self.name_exact) {
-            (Some(name), None) => {
-                // Apply prefix if present
-                match &root_attrs.prefix {
-                    Some(Prefix::Exact(exact_prefix)) => {
-                        format!("{}{}", exact_prefix, root_attrs.rename_all.apply(name))
-                    }
-                    Some(Prefix::Inflectable { prefix }) => {
-                        let prefixed = format!("{}{}", prefix, name);
-                        root_attrs.rename_all.apply(&prefixed)
-                    }
-                    None => root_attrs.rename_all.apply(name),
-                }
-            }
-            (None, Some(name_exact)) => name_exact.clone(),
-            _ => unreachable!("validated in Tag::validate"),
+impl From<RawTag> for Tag {
+    fn from(raw: RawTag) -> Self {
+        let sample_group = raw.sample_group.is_present();
+        match (raw.name, raw.name_exact) {
+            (Some(name), None) => Tag::Inflectable { name, sample_group },
+            (None, Some(name)) => Tag::Exact { name, sample_group },
+            _ => unreachable!("validated in RawTag::validate"),
         }
     }
 }
@@ -490,7 +507,7 @@ struct RawRootAttributes {
     #[darling(rename = "emf::dimension_sets")]
     emf_dimensions: Option<DimensionSets>,
 
-    tag: Option<Tag>,
+    tag: Option<RawTag>,
 
     subfield: Flag,
     #[darling(rename = "subfield_owned")]
@@ -575,7 +592,7 @@ impl RawRootAttributes {
             .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
-            tag: self.tag,
+            tag: self.tag.map(Into::into),
             sample_group,
             mode,
         })
@@ -976,6 +993,19 @@ pub(crate) enum Prefix {
 }
 
 impl Prefix {
+    /// Apply prefix to base name and inflect according to name_style
+    pub(crate) fn apply(&self, base: &str, name_style: NameStyle) -> String {
+        match self {
+            Prefix::Exact(exact_prefix) => {
+                format!("{}{}", exact_prefix, name_style.apply(base))
+            }
+            Prefix::Inflectable { prefix } => {
+                let prefixed = format!("{}{}", prefix, base);
+                name_style.apply(&prefixed)
+            }
+        }
+    }
+
     fn inflected_prefix_message(prefix: &str, c: char) -> String {
         let warning_text = if name_contains_dot(prefix) {
             " '.' used to be allowed in `prefix` but is now forbidden."

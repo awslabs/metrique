@@ -1,6 +1,6 @@
 use darling::FromMeta;
 
-use crate::{MetricsField, MetricsFieldKind, Prefix, RootAttributes, enums::MetricsVariant};
+use crate::{MetricsField, MetricsFieldKind, RootAttributes, enums::MetricsVariant};
 
 pub(crate) fn name_contains_uninflectables(name: &str) -> Option<char> {
     name.chars()
@@ -84,17 +84,11 @@ pub fn metric_name(
 
     let base = field.name();
 
-    match &root_attrs.prefix {
-        Some(Prefix::Exact(exact_prefix)) => {
-            // If the prefix is exact, do not inflect the prefix
-            format!("{exact_prefix}{}", name_style.apply(&base))
-        }
-        Some(Prefix::Inflectable { prefix, .. }) => {
-            let prefixed_base = format!("{prefix}{base}");
-            name_style.apply(&prefixed_base)
-        }
-        None => name_style.apply(&base),
-    }
+    root_attrs
+        .prefix
+        .as_ref()
+        .map(|p| p.apply(&base, name_style))
+        .unwrap_or_else(|| name_style.apply(&base))
 }
 
 pub trait HasInflectableName {
