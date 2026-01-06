@@ -74,6 +74,12 @@ There is a `.github/workflows/release.yml` workflow that will attempt to use a c
 [trusted publishing]: https://rust-lang.github.io/rfcs/3691-trusted-publishing-cratesio.html
 
 To update the `Cargo.toml` and changelog, use [conventional commits], and in a clean git repo, run the following commands:
+
+**IMPORTANT**: If any commits are marked as `breaking!`, `release-plz` will cut a new major version. This is not usually what we
+want since if we are intentionally introducing breakage, it is usually weighed against the trade offs of a new version.
+
+In this case, use `release-plz set-version crate@version` to downgrade (or otherwise change) the versions that are being produced.
+
 ```
 cargo install release-plz --locked
 git checkout main && release-plz update
