@@ -12,12 +12,6 @@ use crate::{
     generate_close_value_impls, generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
 
-fn parse_struct_fields(
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Vec<MetricsField>> {
-    parse_metric_fields(fields)
-}
-
 pub(crate) fn generate_metrics_for_struct(
     root_attributes: RootAttributes,
     input: &DeriveInput,
@@ -32,7 +26,7 @@ pub(crate) fn generate_metrics_for_struct(
     let guard_name = format_ident!("{}Guard", struct_name);
     let handle_name = format_ident!("{}Handle", struct_name);
 
-    let parsed_fields = parse_struct_fields(fields)?;
+    let parsed_fields = parse_metric_fields(fields)?;
 
     let base_struct = generate_base_struct(
         struct_name,
