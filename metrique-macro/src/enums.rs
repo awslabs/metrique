@@ -3,7 +3,7 @@
 
 use darling::{FromField, FromVariant};
 use proc_macro2::TokenStream as Ts2;
-use quote::{format_ident, quote};
+use quote::quote;
 use syn::{Attribute, Generics, Ident, Result, Visibility, spanned::Spanned};
 
 use crate::{MetricMode, TupleData, generate_on_drop_wrapper};
@@ -77,7 +77,7 @@ impl MetricsVariant {
         }
     }
 
-    pub(crate) fn entry_variant(&self, tag_field: Option<&Ident>) -> Ts2 {
+    pub(crate) fn entry_variant(&self) -> Ts2 {
         let ident_span = self.ident.span();
         let ident = &self.ident;
 
@@ -94,40 +94,19 @@ impl MetricsVariant {
                     .iter()
                     .map(|td| crate::entry_type(&td.ty, td.close, td.ty.span()))
                     .collect();
-                if let Some(_tag) = tag_field {
-                    quote::quote_spanned! { ident_span=>
-                        #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                        #[doc(hidden)]
-                        #ident(::std::borrow::Cow<'static, str>, #(#entry_types),*)
-                    }
-                } else {
-                    quote::quote_spanned! { ident_span=>
-                        #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                        #[doc(hidden)]
-                        #ident(#(#entry_types),*)
-                    }
+                quote::quote_spanned! { ident_span=>
+                    #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
+                    #[doc(hidden)]
+                    #ident(#(#entry_types),*)
                 }
             }
             Some(VariantData::Struct(fields)) => {
                 let field_defs: Vec<_> =
                     fields.iter().filter_map(|f| f.entry_field(true)).collect();
-                if let Some(tag) = tag_field {
-                    let tag_field_def = quote::quote_spanned! { ident_span=>
-                        #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                        #[doc(hidden)]
-                        #tag: ::std::borrow::Cow<'static, str>
-                    };
-                    quote::quote_spanned! { ident_span=>
-                        #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                        #[doc(hidden)]
-                        #ident { #tag_field_def, #(#field_defs),* }
-                    }
-                } else {
-                    quote::quote_spanned! { ident_span=>
-                        #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                        #[doc(hidden)]
-                        #ident { #(#field_defs),* }
-                    }
+                quote::quote_spanned! { ident_span=>
+                    #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
+                    #[doc(hidden)]
+                    #ident { #(#field_defs),* }
                 }
             }
         }
@@ -279,13 +258,7 @@ pub(crate) fn generate_metrics_for_enum(
     );
     let warnings = root_attrs.warnings();
 
-    let entry_enum = generate_entry_enum(
-        &entry_name,
-        &input.vis,
-        &input.generics,
-        variants,
-        &root_attrs,
-    )?;
+    let entry_enum = generate_entry_enum(&entry_name, &input.vis, variants)?;
 
     let inner_impl = match root_attrs.mode {
         MetricMode::ValueString => {
@@ -355,21 +328,8 @@ pub(crate) fn generate_base_enum(
     }
 }
 
-fn generate_entry_enum(
-    name: &Ident,
-    vis: &Visibility,
-    _generics: &Generics,
-    variants: &[MetricsVariant],
-    root_attrs: &RootAttributes,
-) -> Result<Ts2> {
-    // We do not inflect the tag field because it has a literal name = ""
-    let tag_field = root_attrs
-        .tag
-        .as_ref()
-        .map(|tag| format_ident!("{}", tag.name));
-    let variants = variants
-        .iter()
-        .map(|variant| variant.entry_variant(tag_field.as_ref()));
+fn generate_entry_enum(name: &Ident, vis: &Visibility, variants: &[MetricsVariant]) -> Result<Ts2> {
+    let variants = variants.iter().map(|variant| variant.entry_variant());
     let data = quote! {
         #(#variants,)*
     };
@@ -387,21 +347,8 @@ fn generate_close_value_impl_for_enum(
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
-    let tag_field = root_attrs
-        .tag
-        .as_ref()
-        .map(|tag| format_ident!("{}", tag.name));
     let match_arms = variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
-        let tag_value = tag_field.as_ref().map(|_| {
-            // Tag value should only respect rename_all and variant name, not prefix
-            let variant_name = if let Some(name_override) = variant.attrs.name.as_deref() {
-                name_override.to_owned()
-            } else {
-                root_attrs.rename_all.apply(&variant.ident.to_string())
-            };
-            quote!(::std::borrow::Cow::Borrowed(#variant_name))
-        });
 
         match &variant.data {
             None => {
@@ -411,7 +358,7 @@ fn generate_close_value_impl_for_enum(
                 )
             }
             Some(VariantData::Tuple(tuple_data)) => {
-                // Tuple variant: Enum::Variant(v1, v2, ...) => Entry::Variant(tag, close_expr1, close_expr2, ...)
+                // Tuple variant: Enum::Variant(v1, v2, ...) => Entry::Variant(close_expr1, close_expr2, ...)
                 let (bindings, close_exprs): (Vec<_>, Vec<_>) = tuple_data
                     .iter()
                     .enumerate()
@@ -427,18 +374,12 @@ fn generate_close_value_impl_for_enum(
                         (binding, close_expr)
                     })
                     .unzip();
-                if tag_value.is_some() {
-                    quote::quote_spanned!(variant.ident.span()=>
-                        #enum_name::#variant_ident(#(#bindings),*) => #entry_name::#variant_ident(#tag_value, #(#close_exprs),*)
-                    )
-                } else {
-                    quote::quote_spanned!(variant.ident.span()=>
-                        #enum_name::#variant_ident(#(#bindings),*) => #entry_name::#variant_ident(#(#close_exprs),*)
-                    )
-                }
+                quote::quote_spanned!(variant.ident.span()=>
+                    #enum_name::#variant_ident(#(#bindings),*) => #entry_name::#variant_ident(#(#close_exprs),*)
+                )
             }
             Some(VariantData::Struct(fields)) => {
-                // Struct variant: Enum::Variant { fields } => Entry::Variant { tag, closed_fields }
+                // Struct variant: Enum::Variant { fields } => Entry::Variant { closed_fields }
                 let field_names: Vec<_> = fields.iter().map(|f| &f.ident).collect();
                 let closed_fields: Vec<_> = fields
                     .iter()
@@ -447,15 +388,9 @@ fn generate_close_value_impl_for_enum(
                         f.close_field_expr(quote::quote_spanned! {f.span=> #ident })
                     })
                     .collect();
-                if let Some(tag) = tag_field.as_ref() {
-                    quote::quote_spanned!(variant.ident.span()=>
-                        #enum_name::#variant_ident { #(#field_names),* } => #entry_name::#variant_ident { #tag: #tag_value, #(#closed_fields),* }
-                    )
-                } else {
-                    quote::quote_spanned!(variant.ident.span()=>
-                        #enum_name::#variant_ident { #(#field_names),* } => #entry_name::#variant_ident { #(#closed_fields),* }
-                    )
-                }
+                quote::quote_spanned!(variant.ident.span()=>
+                    #enum_name::#variant_ident { #(#field_names),* } => #entry_name::#variant_ident { #(#closed_fields),* }
+                )
             }
         }
     });

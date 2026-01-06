@@ -13,9 +13,15 @@ enum Status {
     Inactive,
 }
 
-// Tag requires name parameter
+// Tag requires name or name_exact parameter
 #[metrics(tag)]
 enum MissingName {
+    Read { bytes: usize },
+}
+
+// Tag cannot have both name and name_exact
+#[metrics(tag(name = "op", name_exact = "op"))]
+enum BothNames {
     Read { bytes: usize },
 }
 

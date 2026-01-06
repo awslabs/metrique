@@ -2,19 +2,36 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::{Entry, test_util::test_metric};
 use metrique::{CloseValue, RootEntry};
 
-// Tag with prefix and rename_all
-#[metrics(tag(name = "op"), prefix = "api_", rename_all = "snake_case")]
-enum WithPrefix {
+// Tag with prefix and rename_all - using name_exact to avoid inflection
+#[metrics(tag(name_exact = "op"), prefix = "api_", rename_all = "snake_case")]
+enum WithPrefixExact {
     ReadData { count: u32 },
 }
 
 #[test]
-fn tag_field_ignores_inflection_value_respects_rename() {
-    let entry = test_metric(WithPrefix::ReadData { count: 42 });
+fn tag_field_exact_ignores_inflection() {
+    let entry = test_metric(WithPrefixExact::ReadData { count: 42 });
 
-    // Tag field name ignores prefix and rename_all (explicit name)
+    // Tag field name_exact ignores prefix and rename_all
     // Tag value respects rename_all but not prefix
     assert_eq!(entry.values["op"], "read_data");
+    // count field gets both prefix and rename_all
+    assert_eq!(entry.metrics["api_count"].as_u64(), 42);
+}
+
+// Tag with prefix and rename_all - using name to apply inflection
+#[metrics(tag(name = "op"), prefix = "api_", rename_all = "snake_case")]
+enum WithPrefixInflectable {
+    ReadData { count: u32 },
+}
+
+#[test]
+fn tag_field_name_respects_inflection() {
+    let entry = test_metric(WithPrefixInflectable::ReadData { count: 42 });
+
+    // Tag field name respects prefix and rename_all
+    // Tag value respects rename_all but not prefix
+    assert_eq!(entry.values["api_op"], "read_data");
     // count field gets both prefix and rename_all
     assert_eq!(entry.metrics["api_count"].as_u64(), 42);
 }
@@ -66,6 +83,23 @@ fn tag_with_flatten() {
     let entry = test_metric(WithFlatten::ReadTuple(BackendMetrics { latency_ms: 50 }));
     assert_eq!(entry.values["operation"], "ReadTuple");
     assert_eq!(entry.metrics["latency_ms"].as_u64(), 50);
+}
+
+#[metrics(tag(name = "op"))]
+enum TagWithFlattenPrefix {
+    Read {
+        #[metrics(flatten, prefix = "backend_")]
+        backend: BackendMetrics,
+    },
+}
+
+#[test]
+fn tag_with_flatten_prefix() {
+    let entry = test_metric(TagWithFlattenPrefix::Read {
+        backend: BackendMetrics { latency_ms: 100 },
+    });
+    assert_eq!(entry.values["op"], "Read");
+    assert_eq!(entry.metrics["backend_latency_ms"].as_u64(), 100);
 }
 
 #[derive(Entry)]

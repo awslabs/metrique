@@ -1,6 +1,37 @@
 use super::*;
 use crate::enums::{MetricsVariant, VariantData};
 
+/// Build a struct variant pattern from field identifiers.
+fn struct_pattern(
+    entry_name: &Ident,
+    variant_ident: &Ident,
+    fields: &[&Ts2],
+    exhaustive: bool,
+) -> Ts2 {
+    if exhaustive {
+        quote!(#entry_name::#variant_ident { #(#fields),* })
+    } else if !fields.is_empty() {
+        quote!(#entry_name::#variant_ident { #(#fields),*, .. })
+    } else {
+        quote!(#entry_name::#variant_ident { .. })
+    }
+}
+
+/// Build a tuple variant pattern from bindings.
+fn tuple_pattern(entry_name: &Ident, variant_ident: &Ident, bindings: &[Ident]) -> Ts2 {
+    quote!(#entry_name::#variant_ident(#(#bindings),*))
+}
+
+/// Get the tag value for a variant, respecting rename_all and variant name override, but not prefix.
+fn tag_value(variant: &MetricsVariant, root_attrs: &RootAttributes) -> String {
+    variant
+        .attrs
+        .name
+        .as_deref()
+        .map(str::to_owned)
+        .unwrap_or_else(|| root_attrs.rename_all.apply(&variant.ident.to_string()))
+}
+
 pub(crate) fn generate_enum_entry_impl(
     entry_name: &Ident,
     variants: &[MetricsVariant],
@@ -38,26 +69,27 @@ fn generate_write_arms(
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Vec<Ts2> {
-    let tag_field = root_attrs
+    let tag_name = root_attrs
         .tag
         .as_ref()
-        .map(|tag| format_ident!("{}", tag.name));
+        .map(|tag| tag.field_name(root_attrs));
 
     variants
         .iter()
         .map(|variant| {
             let variant_ident = &variant.ident;
-            let tag_write = tag_field.as_ref().map(|tag| {
+
+            let tag_write = tag_name.as_ref().map(|tag_name| {
                 let (extra, name) = make_inflect(
                     &make_ns(root_attrs.rename_all, variant.ident.span()),
-                    format_ident!("Inflect", span = variant.ident.span()),
-                    &tag.to_string(),
+                    tag_name,
                     variant.ident.span(),
-                    |style| style.apply(&tag.to_string()),
+                    |style| style.apply(tag_name),
                 );
+                let value = tag_value(variant, root_attrs);
                 quote! {
                     #extra
-                    ::metrique::writer::EntryWriter::value(writer, ::metrique::concat::const_str_value::<#name>(), #tag);
+                    ::metrique::writer::EntryWriter::value(writer, ::metrique::concat::const_str_value::<#name>(), #value);
                 }
             });
 
@@ -69,13 +101,9 @@ fn generate_write_arms(
                         root_attrs,
                         variant.ident.span(),
                     );
-                    let all_bindings = if let Some(tag) = tag_field.as_ref() {
-                        quote!(#tag, #(#bindings),*)
-                    } else {
-                        quote!(#(#bindings),*)
-                    };
+                    let pattern = tuple_pattern(entry_name, variant_ident, &bindings);
                     quote::quote_spanned!(variant.ident.span()=>
-                        #entry_name::#variant_ident(#all_bindings) => {
+                        #pattern => {
                             #tag_write
                             #(#writes)*
                         }
@@ -88,11 +116,7 @@ fn generate_write_arms(
                         |field_ident| quote! { #field_ident },
                     );
                     let field_names: Vec<_> = fields.iter().map(|f| &f.ident).collect();
-                    let pattern = if let Some(tag) = tag_field.as_ref() {
-                        quote!(#entry_name::#variant_ident { #tag, #(#field_names),* })
-                    } else {
-                        quote!(#entry_name::#variant_ident { #(#field_names),* })
-                    };
+                    let pattern = struct_pattern(entry_name, variant_ident, &field_names, true);
                     quote::quote_spanned!(variant.ident.span()=>
                         #pattern => {
                             #tag_write
@@ -123,12 +147,7 @@ fn generate_tuple_writes(
                     let base_name = format!("{}_{}", variant_ident, idx);
                     let (extra, ns) = match prefix {
                         None => (quote!(), base_ns),
-                        Some(crate::Prefix::Inflectable { prefix }) => {
-                            make_inflect_prefix(&base_ns, prefix, &base_name, variant_span)
-                        }
-                        Some(crate::Prefix::Exact(exact_prefix)) => {
-                            make_exact_prefix(&base_ns, exact_prefix, &base_name, variant_span)
-                        }
+                        Some(prefix) => prefix.append_to(&base_ns, &base_name, variant_span),
                     };
                     quote::quote_spanned!(*span=>
                         #extra
@@ -170,10 +189,10 @@ fn generate_sample_group_arms(
     root_attrs: &RootAttributes,
     iter_enum_name: &Ident,
 ) -> Vec<Ts2> {
-    let tag_field = root_attrs
+    let tag_name = root_attrs
         .tag
         .as_ref()
-        .map(|tag| format_ident!("{}", tag.name));
+        .map(|tag| tag.field_name(root_attrs));
     let include_tag_in_sample_group = root_attrs
         .tag
         .as_ref()
@@ -183,18 +202,18 @@ fn generate_sample_group_arms(
         let variant_ident = &variant.ident;
         let iter_variant_name = quote::format_ident!("V{}", idx);
 
-        let tag_sample_group = if let Some(tag) = tag_field.as_ref().filter(|_| include_tag_in_sample_group) {
+        let tag_sample_group = if let Some(tag_name) = tag_name.as_ref().filter(|_| include_tag_in_sample_group) {
             let (extra, name) = make_inflect(
                 &make_ns(root_attrs.rename_all, variant.ident.span()),
-                format_ident!("Inflect", span = variant.ident.span()),
-                &tag.to_string(),
+                tag_name,
                 variant.ident.span(),
-                |style| style.apply(&tag.to_string()),
+                |style| style.apply(tag_name),
             );
+            let value = tag_value(variant, root_attrs);
             Some(quote! {
                 {
                     #extra
-                    ::std::iter::once((::metrique::concat::const_str_value::<#name>(), #tag.clone()))
+                    ::std::iter::once((::metrique::concat::const_str_value::<#name>(), ::std::borrow::Cow::Borrowed(#value)))
                 }
             })
         } else {
@@ -212,16 +231,11 @@ fn generate_sample_group_arms(
                     sample_groups.insert(0, tag_sg);
                 }
 
-                let all_bindings = if let Some(tag) = tag_field.as_ref() {
-                    quote!(#tag, #(#bindings),*)
-                } else {
-                    quote!(#(#bindings),*)
-                };
-
+                let pattern = tuple_pattern(entry_name, variant_ident, &bindings);
                 let iter_expr = make_binary_tree_chain(sample_groups);
 
                 quote::quote_spanned!(variant.ident.span()=>
-                    #entry_name::#variant_ident(#all_bindings) => #iter_enum_name::#iter_variant_name(#iter_expr)
+                    #pattern => #iter_enum_name::#iter_variant_name(#iter_expr)
                 )
             }
             Some(VariantData::Struct(fields)) => {
@@ -234,15 +248,7 @@ fn generate_sample_group_arms(
                     sample_groups.insert(0, tag_sg);
                 }
 
-                let pattern = match (tag_field.as_ref(), used_fields.is_empty()) {
-                    (Some(tag), true) => quote!(#entry_name::#variant_ident { #tag, .. }),
-                    (Some(tag), false) => {
-                        quote!(#entry_name::#variant_ident { #tag, #(#used_fields),*, .. })
-                    }
-                    (None, true) => quote!(#entry_name::#variant_ident { .. }),
-                    (None, false) => quote!(#entry_name::#variant_ident { #(#used_fields),*, .. }),
-                };
-
+                let pattern = struct_pattern(entry_name, variant_ident, &used_fields, false);
                 let iter_expr = make_binary_tree_chain(sample_groups);
 
                 quote::quote_spanned!(variant.ident.span()=>

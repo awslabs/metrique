@@ -40,7 +40,8 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `exact_prefix` | String | Adds a prefix to all field names without inflection | `#[metrics(exact_prefix = "API_")]` |
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
 /// | `tag` | Nested | On entry enums, adds a tag field with the variant name. Tag value respects `rename_all` and variant `name`, but not `prefix`. | |
-/// | - `name` | String | Name of the tag field (not affected by `prefix` or `rename_all`) | `#[metrics(tag(name = "operation"))]` |
+/// | - `name` | String | Name of the tag field (inflectable, respects `prefix` and `rename_all`) | `#[metrics(tag(name = "operation"))]` |
+/// | - `name_exact` | String | Name of the tag field (exact, not affected by `prefix` or `rename_all`) | `#[metrics(tag(name_exact = "operation"))]` |
 /// | - `sample_group` | Flag | Include tag in sample group | `#[metrics(tag(name = "op", sample_group))]` |
 /// | `subfield` | Flag | When set, this metric can only be used when nested within other metrics, and can be consumed by reference (has both `impl CloseValue for &MyStruct` and `impl CloseValue for MyStruct`). It cannot be added to a sink directly. | `#[metrics(subfield)]` |
 /// | `subfield_owned` | Flag | When set, this metric can only be used when nested within other metrics. It cannot be added to a sink directly. | `#[metrics(subfield_owned)]` |
@@ -420,11 +421,13 @@ impl ValueAttributes {
 }
 
 /// Synthetic field using variant name.
-/// We do not inflect this because it has a literal name = ""
 #[derive(Debug, Clone, FromMeta)]
 #[darling(and_then = Self::validate, from_word = Self::from_word)]
 pub(crate) struct Tag {
-    pub(crate) name: String,
+    #[darling(default)]
+    pub(crate) name: Option<String>,
+    #[darling(default)]
+    pub(crate) name_exact: Option<String>,
     #[darling(default)]
     pub(crate) sample_group: Flag,
 }
@@ -432,17 +435,47 @@ pub(crate) struct Tag {
 impl Tag {
     fn from_word() -> darling::Result<Self> {
         Err(darling::Error::custom(
-            "tag requires a name parameter: #[metrics(tag(name = \"...\"))]",
+            "tag requires either name or name_exact parameter: #[metrics(tag(name = \"...\"))] or #[metrics(tag(name_exact = \"...\"))]",
         ))
     }
 
     fn validate(self) -> darling::Result<Self> {
-        if self.name.is_empty() {
-            return Err(darling::Error::custom(
-                "tag requires a name parameter: #[metrics(tag(name = \"...\"))]",
-            ));
+        match (&self.name, &self.name_exact) {
+            (None, None) => Err(darling::Error::custom(
+                "tag requires either name or name_exact parameter: #[metrics(tag(name = \"...\"))] or #[metrics(tag(name_exact = \"...\"))]",
+            )),
+            (Some(_), Some(_)) => Err(darling::Error::custom(
+                "tag cannot have both name and name_exact parameters",
+            )),
+            (Some(name), None) if name.is_empty() => Err(darling::Error::custom(
+                "tag name parameter must not be empty",
+            )),
+            (None, Some(name_exact)) if name_exact.is_empty() => Err(darling::Error::custom(
+                "tag name_exact parameter must not be empty",
+            )),
+            _ => Ok(self),
         }
-        Ok(self)
+    }
+
+    /// Get the tag field name, applying inflection if using `name`
+    pub(crate) fn field_name(&self, root_attrs: &RootAttributes) -> String {
+        match (&self.name, &self.name_exact) {
+            (Some(name), None) => {
+                // Apply prefix if present
+                match &root_attrs.prefix {
+                    Some(Prefix::Exact(exact_prefix)) => {
+                        format!("{}{}", exact_prefix, root_attrs.rename_all.apply(name))
+                    }
+                    Some(Prefix::Inflectable { prefix }) => {
+                        let prefixed = format!("{}{}", prefix, name);
+                        root_attrs.rename_all.apply(&prefixed)
+                    }
+                    None => root_attrs.rename_all.apply(name),
+                }
+            }
+            (None, Some(name_exact)) => name_exact.clone(),
+            _ => unreachable!("validated in Tag::validate"),
+        }
     }
 }
 
@@ -1009,6 +1042,25 @@ impl Prefix {
                 "exact_prefix",
                 inflectable.key_span,
             )),
+        }
+    }
+
+    /// Append this prefix to the namespace's prefix chain.
+    /// The prefix will be prepended to metric names when they are written.
+    /// Returns (extra, namespace_with_prefix).
+    pub(crate) fn append_to(
+        &self,
+        ns: &proc_macro2::TokenStream,
+        base_name: &str,
+        span: proc_macro2::Span,
+    ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
+        match self {
+            Prefix::Inflectable { prefix } => {
+                crate::entry_impl::make_inflect_prefix(ns, prefix, base_name, span)
+            }
+            Prefix::Exact(exact_prefix) => {
+                crate::entry_impl::make_exact_prefix(ns, exact_prefix, base_name, span)
+            }
         }
     }
 }

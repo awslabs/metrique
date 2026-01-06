@@ -15,8 +15,14 @@ error: `tag` attribute is only supported on entry enums, not value enums
 14 | | }
    | |_^
 
-error: tag requires a name parameter: #[metrics(tag(name = "..."))]
+error: tag requires either name or name_exact parameter: #[metrics(tag(name = "..."))] or #[metrics(tag(name_exact = "..."))]
   --> tests/ui/fail/tag.rs:17:11
    |
 17 | #[metrics(tag)]
+   |           ^^^
+
+error: tag cannot have both name and name_exact parameters
+  --> tests/ui/fail/tag.rs:23:11
+   |
+23 | #[metrics(tag(name = "op", name_exact = "op"))]
    |           ^^^

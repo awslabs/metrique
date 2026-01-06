@@ -8,9 +8,7 @@ use proc_macro2::TokenStream as Ts2;
 use quote::{format_ident, quote, quote_spanned};
 use syn::Ident;
 
-use crate::{
-    MetricsField, MetricsFieldKind, NameStyle, Prefix, RootAttributes, inflect::metric_name,
-};
+use crate::{MetricsField, MetricsFieldKind, NameStyle, RootAttributes, inflect::metric_name};
 
 mod enum_impl;
 mod struct_impl;
@@ -27,8 +25,6 @@ fn make_ns(ns: NameStyle, span: proc_macro2::Span) -> Ts2 {
     }
 }
 
-// Shared helpers for both struct and enum implementations
-
 /// Generate a ConstStr struct with the given identifier and value.
 /// Used to create compile-time constant strings for metric names and prefixes.
 fn const_str(ident: &syn::Ident, value: &str) -> Ts2 {
@@ -44,7 +40,7 @@ fn const_str(ident: &syn::Ident, value: &str) -> Ts2 {
 /// Generate 4 ConstStr structs (one per naming style) and build an Inflect namespace type.
 /// The `name_fn` callback computes the string value for each style.
 /// Returns (extra_code, inflected_type).
-fn make_inflect(
+fn make_inflect_base(
     ns: &Ts2,
     inflect_method: syn::Ident,
     base_name: &str,
@@ -95,23 +91,54 @@ fn make_inflect(
     (extra, inflected_type)
 }
 
+/// Generate inflectable name using the `Inflect` method.
+/// Creates 4 ConstStr structs and returns a namespace type that selects the appropriate variant.
+fn make_inflect(
+    ns: &Ts2,
+    base_name: &str,
+    span: proc_macro2::Span,
+    name_fn: impl FnMut(NameStyle) -> String,
+) -> (Ts2, Ts2) {
+    make_inflect_base(
+        ns,
+        format_ident!("Inflect", span = span),
+        base_name,
+        span,
+        name_fn,
+    )
+}
+
+/// Generate inflectable affix using the `InflectAffix` method.
+/// Creates 4 ConstStr structs and returns a namespace type that selects the appropriate variant.
+fn make_inflect_affix(
+    ns: &Ts2,
+    base_name: &str,
+    span: proc_macro2::Span,
+    name_fn: impl FnMut(NameStyle) -> String,
+) -> (Ts2, Ts2) {
+    make_inflect_base(
+        ns,
+        format_ident!("InflectAffix", span = span),
+        base_name,
+        span,
+        name_fn,
+    )
+}
+
 /// Generate an inflectable prefix that adapts to the namespace style.
 /// Creates 4 ConstStr structs (preserve, pascal, snake, kebab) and returns
 /// a namespace type that selects the appropriate variant via InflectAffix.
 /// Returns (extra_code, namespace_with_prefix).
-fn make_inflect_prefix(
+pub(crate) fn make_inflect_prefix(
     ns: &Ts2,
     prefix: &str,
     base_name: &str,
     span: proc_macro2::Span,
 ) -> (Ts2, Ts2) {
-    let (extra, inflected) = make_inflect(
-        ns,
-        format_ident!("InflectAffix", span = span),
-        &format!("{}Prefix", base_name),
-        span,
-        |style| style.apply_prefix(prefix),
-    );
+    let (extra, inflected) =
+        make_inflect_affix(ns, &format!("{}Prefix", base_name), span, |style| {
+            style.apply_prefix(prefix)
+        });
 
     let ns_with_prefix = quote!(
         <#ns as ::metrique::NameStyle>::AppendPrefix<#inflected>
@@ -123,7 +150,7 @@ fn make_inflect_prefix(
 /// Generate an exact (non-inflectable) prefix that never changes.
 /// Creates 1 ConstStr struct and returns a namespace type with the prefix applied.
 /// Returns (extra_code, namespace_with_prefix).
-fn make_exact_prefix(
+pub(crate) fn make_exact_prefix(
     ns: &Ts2,
     exact_prefix: &str,
     base_name: &str,
@@ -167,12 +194,7 @@ fn generate_field_writes(
             MetricsFieldKind::Flatten { span, prefix } => {
                 let (extra, ns) = match prefix {
                     None => (quote!(), ns),
-                    Some(Prefix::Inflectable { prefix }) => {
-                        make_inflect_prefix(&ns, prefix, &field.ident.to_string(), field_span)
-                    }
-                    Some(Prefix::Exact(exact_prefix)) => {
-                        make_exact_prefix(&ns, exact_prefix, &field.ident.to_string(), field_span)
-                    }
+                    Some(prefix) => prefix.append_to(&ns, &field.ident.to_string(), field_span),
                 };
                 let field_access = field_access(&field.ident);
                 writes.push(quote_spanned! {*span=>
@@ -184,13 +206,10 @@ fn generate_field_writes(
                 continue;
             }
             MetricsFieldKind::Field { format, .. } => {
-                let (extra, name) = make_inflect(
-                    &ns,
-                    format_ident!("Inflect", span = field_span),
-                    &field.ident.to_string(),
-                    field_span,
-                    |style| crate::inflect::metric_name(root_attrs, style, field),
-                );
+                let (extra, name) =
+                    make_inflect(&ns, &field.ident.to_string(), field_span, |style| {
+                        crate::inflect::metric_name(root_attrs, style, field)
+                    });
                 let field_access = field_access(&field.ident);
                 let value = crate::value_impl::format_value(format, field_span, field_access);
                 writes.push(quote_spanned! {field_span=>
@@ -234,7 +253,6 @@ fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
 fn make_inflect_metric_name(root_attrs: &RootAttributes, field: &MetricsField) -> (Ts2, Ts2) {
     make_inflect(
         &make_ns(root_attrs.rename_all, field.span),
-        format_ident!("Inflect", span = field.span),
         &field.ident.to_string(),
         field.span,
         |style| metric_name(root_attrs, style, field),

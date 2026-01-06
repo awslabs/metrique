@@ -16,11 +16,6 @@ enum OperationEntry {
             note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
         )]
         #[doc(hidden)]
-        operation: ::std::borrow::Cow<'static, str>,
-        #[deprecated(
-            note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
-        )]
-        #[doc(hidden)]
         bytes: <usize as metrique::CloseValue>::Closed,
     },
 }
@@ -48,7 +43,7 @@ const _: () = {
         fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
             #[allow(deprecated)]
             match self {
-                OperationEntry::Read { operation, bytes } => {
+                OperationEntry::Read { bytes } => {
                     #[allow(non_camel_case_types)]
                     struct operationPreserve;
                     impl ::metrique::concat::ConstStr for operationPreserve {
@@ -79,7 +74,7 @@ const _: () = {
                                 operationKebab,
                             >,
                         >(),
-                        operation,
+                        "Read",
                     );
                     ::metrique::writer::EntryWriter::value(
                         writer,
@@ -124,7 +119,7 @@ const _: () = {
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
             match self {
-                OperationEntry::Read { operation, .. } => {
+                OperationEntry::Read { .. } => {
                     OperationEntrySampleGroupIter::V0({
                         #[allow(non_camel_case_types)]
                         struct operationPreserve;
@@ -155,7 +150,7 @@ const _: () = {
                                     operationKebab,
                                 >,
                             >(),
-                            operation.clone(),
+                            ::std::borrow::Cow::Borrowed("Read"),
                         ))
                     })
                 }
@@ -170,7 +165,6 @@ impl metrique::CloseValue for Operation {
         match self {
             Operation::Read { bytes } => {
                 OperationEntry::Read {
-                    operation: ::std::borrow::Cow::Borrowed("Read"),
                     bytes: metrique::CloseValue::close(bytes),
                 }
             }
