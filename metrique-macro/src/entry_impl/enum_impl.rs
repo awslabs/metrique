@@ -218,11 +218,7 @@ fn generate_sample_group_arms(
                     quote!(#(#bindings),*)
                 };
 
-                let iter_expr = if sample_groups.is_empty() {
-                    quote!(::std::iter::empty())
-                } else {
-                    make_binary_tree_chain(sample_groups)
-                };
+                let iter_expr = make_binary_tree_chain(sample_groups);
 
                 quote::quote_spanned!(variant.ident.span()=>
                     #entry_name::#variant_ident(#all_bindings) => #iter_enum_name::#iter_variant_name(#iter_expr)
@@ -247,11 +243,7 @@ fn generate_sample_group_arms(
                     (None, false) => quote!(#entry_name::#variant_ident { #(#used_fields),*, .. }),
                 };
 
-                let iter_expr = if sample_groups.is_empty() {
-                    quote!(::std::iter::empty())
-                } else {
-                    make_binary_tree_chain(sample_groups)
-                };
+                let iter_expr = make_binary_tree_chain(sample_groups);
 
                 quote::quote_spanned!(variant.ident.span()=>
                     #pattern => #iter_enum_name::#iter_variant_name(#iter_expr)

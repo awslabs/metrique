@@ -51,12 +51,5 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
         })
         .collect();
 
-    // If we have sample group fields, chain them together
-    if !sample_group_fields.is_empty() {
-        // Create a binary tree of chain calls to avoid deep nesting
-        make_binary_tree_chain(sample_group_fields)
-    } else {
-        // Return empty iterator if no sample groups
-        quote! { ::std::iter::empty() }
-    }
+    make_binary_tree_chain(sample_group_fields)
 }
