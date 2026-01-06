@@ -26,3 +26,15 @@ error: tag cannot have both name and name_exact parameters
    |
 23 | #[metrics(tag(name = "op", name_exact = "op"))]
    |           ^^^
+
+error: invalid name: name field must not be empty
+  --> tests/ui/fail/tag.rs:29:22
+   |
+29 | #[metrics(tag(name = ""))]
+   |                      ^^
+
+error: invalid name: name must not contain spaces
+  --> tests/ui/fail/tag.rs:35:22
+   |
+35 | #[metrics(tag(name = "my operation"))]
+   |                      ^^^^^^^^^^^^^^

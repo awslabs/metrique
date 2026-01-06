@@ -25,4 +25,16 @@ enum BothNames {
     Read { bytes: usize },
 }
 
+// Tag name cannot be empty
+#[metrics(tag(name = ""))]
+enum EmptyName {
+    Read { bytes: usize },
+}
+
+// Tag name cannot contain spaces
+#[metrics(tag(name = "my operation"))]
+enum NameWithSpaces {
+    Read { bytes: usize },
+}
+
 fn main() {}

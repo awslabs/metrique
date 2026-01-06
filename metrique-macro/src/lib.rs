@@ -452,9 +452,9 @@ impl Tag {
 #[darling(and_then = Self::validate, from_word = Self::from_word)]
 struct RawTag {
     #[darling(default)]
-    name: Option<String>,
+    name: Option<SpannedKv<String>>,
     #[darling(default)]
-    name_exact: Option<String>,
+    name_exact: Option<SpannedKv<String>>,
     #[darling(default)]
     sample_group: Flag,
 }
@@ -467,20 +467,23 @@ impl RawTag {
     }
 
     fn validate(self) -> darling::Result<Self> {
-        match (&self.name, &self.name_exact) {
+        match (self.name, self.name_exact) {
             (None, None) => Err(darling::Error::custom(
                 "tag requires either name or name_exact parameter: #[metrics(tag(name = \"...\"))] or #[metrics(tag(name_exact = \"...\"))]",
             )),
             (Some(_), Some(_)) => Err(darling::Error::custom(
                 "tag cannot have both name and name_exact parameters",
             )),
-            (Some(name), None) if name.is_empty() => Err(darling::Error::custom(
-                "tag name parameter must not be empty",
-            )),
-            (None, Some(name_exact)) if name_exact.is_empty() => Err(darling::Error::custom(
-                "tag name_exact parameter must not be empty",
-            )),
-            _ => Ok(self),
+            (Some(name), None) => Ok(Self {
+                name: Some(validate_name(name)?),
+                name_exact: None,
+                sample_group: self.sample_group,
+            }),
+            (None, Some(name_exact)) => Ok(Self {
+                name: None,
+                name_exact: Some(validate_name(name_exact)?),
+                sample_group: self.sample_group,
+            }),
         }
     }
 }
@@ -489,8 +492,14 @@ impl From<RawTag> for Tag {
     fn from(raw: RawTag) -> Self {
         let sample_group = raw.sample_group.is_present();
         match (raw.name, raw.name_exact) {
-            (Some(name), None) => Tag::Inflectable { name, sample_group },
-            (None, Some(name)) => Tag::Exact { name, sample_group },
+            (Some(name), None) => Tag::Inflectable {
+                name: name.value,
+                sample_group,
+            },
+            (None, Some(name)) => Tag::Exact {
+                name: name.value,
+                sample_group,
+            },
             _ => unreachable!("validated in RawTag::validate"),
         }
     }
