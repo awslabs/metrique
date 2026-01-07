@@ -2,11 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Enum examples showing both value(string) and entry enums.
-//!
-//! This example demonstrates:
-//! - Value enums with `#[metrics(value(string))]`
-//! - Entry enums with tuple and struct variants
-//! - Using the test_metric API to inspect emitted metrics
 
 use metrique::test_util::test_metric;
 use metrique::unit_of_work::metrics;
@@ -60,60 +55,107 @@ struct RequestMetrics {
     request_id: String,
 }
 
+// Simulate a storage layer that returns operation-specific metrics
+struct StorageLayer;
+
+impl StorageLayer {
+    fn read(&self, key: &str) -> (Vec<u8>, ReadMetrics) {
+        let cache_hit = key.len() % 2 == 0;
+        let data = vec![0u8; 1024];
+        
+        let metrics = ReadMetrics {
+            bytes_read: data.len(),
+            cache_hit,
+        };
+        
+        (data, metrics)
+    }
+
+    fn write(&self, data: &[u8]) -> WriteMetrics {
+        WriteMetrics {
+            bytes_written: data.len(),
+            fsync_required: data.len() > 4096,
+        }
+    }
+
+    fn delete(&self, keys: &[String]) -> usize {
+        keys.len()
+    }
+}
+
+// Application layer that wraps storage operations with metrics
+fn handle_read_request(storage: &StorageLayer, key: &str, priority: Priority) -> RequestMetrics {
+    let (data, read_metrics) = storage.read(key);
+    
+    RequestMetrics {
+        priority,
+        details: OperationMetrics::Read(read_metrics),
+        success: !data.is_empty(),
+        request_id: format!("read-{}", key),
+    }
+}
+
+fn handle_write_request(storage: &StorageLayer, data: Vec<u8>, priority: Priority) -> RequestMetrics {
+    let write_metrics = storage.write(&data);
+    
+    RequestMetrics {
+        priority,
+        details: OperationMetrics::Write(write_metrics),
+        success: true,
+        request_id: format!("write-{}", data.len()),
+    }
+}
+
+fn handle_delete_request(storage: &StorageLayer, keys: Vec<String>, priority: Priority) -> RequestMetrics {
+    let key_count = storage.delete(&keys);
+    
+    RequestMetrics {
+        priority,
+        details: OperationMetrics::Delete { key_count },
+        success: key_count > 0,
+        request_id: format!("delete-{}", key_count),
+    }
+}
+
 fn main() {
-    // Get operation
-    let get_entry = test_metric(RequestMetrics {
-        priority: Priority::High,
-        details: OperationMetrics::Read(ReadMetrics {
-            bytes_read: 1024,
-            cache_hit: true,
-        }),
-        success: true,
-        request_id: "req-1".to_string(),
-    });
+    let storage = StorageLayer;
 
-    // Put operation
-    let put_entry = test_metric(RequestMetrics {
-        priority: Priority::Medium,
-        details: OperationMetrics::Write(WriteMetrics {
-            bytes_written: 2048,
-            fsync_required: false,
-        }),
-        success: true,
-        request_id: "req-2".to_string(),
-    });
+    // Read operation - metrics constructed by storage layer
+    let read_metrics = handle_read_request(&storage, "user:123", Priority::High);
+    let read_entry = test_metric(read_metrics);
 
-    // Delete operation (struct variant)
-    let delete_entry = test_metric(RequestMetrics {
-        priority: Priority::Low,
-        details: OperationMetrics::Delete { key_count: 5 },
-        success: true,
-        request_id: "req-3".to_string(),
-    });
+    // Write operation - metrics constructed by storage layer
+    let write_metrics = handle_write_request(&storage, vec![0u8; 2048], Priority::Medium);
+    let write_entry = test_metric(write_metrics);
 
-    // Example output for Get operation:
-    // Values: { "Priority": "High" }
+    // Delete operation - metrics constructed inline
+    let delete_metrics = handle_delete_request(&storage, vec!["key1".to_string(), "key2".to_string()], Priority::Low);
+    let delete_entry = test_metric(delete_metrics);
+
+    // Example output for Read operation:
+    // Values: { "Priority": "High", "Operation": "Read" }
     // Metrics: { "Success": 1, "BytesRead": 1024, "CacheHit": 1 }
 
-    assert_eq!(get_entry.values["Priority"], "High");
-    assert_eq!(get_entry.metrics["Success"].as_u64(), 1);
-    assert_eq!(get_entry.metrics["BytesRead"].as_u64(), 1024);
-    assert_eq!(get_entry.metrics["CacheHit"].as_u64(), 1);
+    assert_eq!(read_entry.values["Priority"], "High");
+    assert_eq!(read_entry.values["Operation"], "Read");
+    assert_eq!(read_entry.metrics["Success"].as_u64(), 1);
+    assert_eq!(read_entry.metrics["BytesRead"].as_u64(), 1024);
 
-    // Example output for Put operation:
-    // Values: { "Priority": "Medium" }
+    // Example output for Write operation:
+    // Values: { "Priority": "Medium", "Operation": "Put" }
     // Metrics: { "Success": 1, "BytesWritten": 2048, "FsyncRequired": 0 }
 
-    assert_eq!(put_entry.values["Priority"], "Medium");
-    assert_eq!(put_entry.metrics["Success"].as_u64(), 1);
-    assert_eq!(put_entry.metrics["BytesWritten"].as_u64(), 2048);
-    assert_eq!(put_entry.metrics["FsyncRequired"].as_u64(), 0);
+    assert_eq!(write_entry.values["Priority"], "Medium");
+    assert_eq!(write_entry.values["Operation"], "Put"); // Note: renamed via #[metrics(name = "Put")]
+    assert_eq!(write_entry.metrics["Success"].as_u64(), 1);
+    assert_eq!(write_entry.metrics["BytesWritten"].as_u64(), 2048);
 
     // Example output for Delete operation:
-    // Values: { "Priority": "Low" }
-    // Metrics: { "Success": 1, "KeyCount": 5 }
+    // Values: { "Priority": "Low", "Operation": "Delete" }
+    // Metrics: { "Success": 1, "KeyCount": 2 }
 
     assert_eq!(delete_entry.values["Priority"], "Low");
+    assert_eq!(delete_entry.values["Operation"], "Delete");
     assert_eq!(delete_entry.metrics["Success"].as_u64(), 1);
-    assert_eq!(delete_entry.metrics["KeyCount"].as_u64(), 5);
+    assert_eq!(delete_entry.metrics["KeyCount"].as_u64(), 2);
 }

@@ -62,17 +62,23 @@ Most applications and libraries will use [`metrique`](metrique) directly and con
 Applications will define a metrics entry struct that they annotate with `#[metrics]`:
 ```rust
 use metrique::unit_of_work::metrics;
+use metrique::timers::{Timestamp, Timer};
 
-#[metrics]
+// Enums containing fields are also supported
+#[metrics(value(string))]
+enum Operation {
+    CountDucks,
+}
+
+#[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
-    request_id: String,
-    response_code: &'static str,
-    success: bool, // flushes as 0 or 1
-    number_of_ducks: usize,
+    operation: Operation, // you can use `operation: &'static str` if you prefer
     #[metrics(timestamp)]
     timestamp: Timestamp,
+    number_of_ducks: usize,
     #[metrics(unit = Millisecond)]
     operation_time: Timer,
+    success: bool // flushes as 0 or 1
 }
 ```
 
@@ -87,6 +93,7 @@ impl RequestMetrics {
             operation,
             number_of_ducks: 0,
             operation_time: Timer::start_now(),
+            success: false,
         }.append_on_drop(ServiceMetrics::sink())
     }
 }
@@ -97,6 +104,7 @@ The `guard` object can still be mutated via `DerefMut` impl:
 async fn count_ducks() {
     let mut metrics = RequestMetrics::init(Operation::CountDucks);
     metrics.number_of_ducks = 5;
+    metrics.success = true;
     // metrics flushes as scope drops
     // timer records the total time until scope exits
 }

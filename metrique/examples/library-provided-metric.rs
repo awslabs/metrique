@@ -13,12 +13,46 @@ mod library {
         unit_of_work::metrics,
     };
 
-    #[metrics(subfield)]
+    #[metrics(subfield_owned)]
     #[derive(Default)]
     pub struct LookupBookMetrics {
         lookup_book_time: Timer,
         books_considered: usize,
+        #[metrics(flatten)]
+        author: Option<AuthorKind>,
         error: bool,
+    }
+
+    #[metrics(subfield_owned, tag(name = "author_kind"))]
+    enum AuthorKind {
+        Human { name: String },
+        Robot { model: RobotKind },
+        Unknown {},
+    }
+
+    #[derive(Copy, Clone)]
+    #[metrics(value(string))]
+    #[non_exhaustive]
+    pub enum RobotKind {
+        ChatGPT,
+        Claude,
+    }
+
+    impl From<&str> for AuthorKind {
+        fn from(author: &str) -> Self {
+            match author {
+                "" => AuthorKind::Unknown {},
+                a if a == Into::<&str>::into(RobotKind::ChatGPT) => AuthorKind::Robot {
+                    model: RobotKind::ChatGPT,
+                },
+                a if a == Into::<&str>::into(RobotKind::Claude) => AuthorKind::Robot {
+                    model: RobotKind::Claude,
+                },
+                a => AuthorKind::Human {
+                    name: a.to_string(),
+                },
+            }
+        }
     }
 
     #[metrics(subfield)]
@@ -51,7 +85,7 @@ mod library {
     impl MyLib {
         pub fn new() -> Self {
             Self {
-                state: "Book 1: Hello ....\nBook 2: Goodbye ....".to_string(),
+                state: "Book 1: Hello ....-Edgar Allan Poe\nBook 2: Goodbye ....-ChatGPT\nBook 3: Good Morning!".to_string(),
             }
         }
 
@@ -76,9 +110,19 @@ mod library {
                     })
                     .next()
                     .ok_or_else(|| LookupBookError::NoBookForName(title.to_string()))?;
-                let book = book
+                let book_raw = book
                     .strip_prefix(":")
                     .ok_or(LookupBookError::InvalidFormat)?;
+                let book = match book_raw.split_once("-") {
+                    None => {
+                        metrics.author = Some(AuthorKind::Unknown {});
+                        book
+                    }
+                    Some((book, author)) => {
+                        metrics.author = Some(author.into());
+                        book
+                    }
+                };
                 Ok(book)
             })
             .await

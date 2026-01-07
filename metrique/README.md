@@ -134,7 +134,7 @@ mod test {
 That code will create a single metric line (your timestamp and `OperationTime` may vary).
 
 ```json
-{"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"DogsMet"},{"Name":"OperationTime","Unit":"Milliseconds"}]}],"Timestamp":1752774958378},"DogsMet":5,"OperationTime":0.003024,"RequestId":"req-123","operation":"MeetDogs"}
+{"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"NumberOfDucks"},{"Name":"OperationTime","Unit":"Milliseconds"}]}],"Timestamp":1752774958378},"NumberOfDucks":5,"OperationTime":0.003024,"Operation":"CountDucks"}
 ```
 
 ## Getting Started (Libraries)
