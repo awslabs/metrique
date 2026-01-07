@@ -150,8 +150,8 @@ fn main() {
 
     assert_eq!(read_entry.values["Priority"], "High");
     assert_eq!(read_entry.values["Operation"], "Read");
-    assert_eq!(read_entry.metrics["Success"].as_u64(), 1);
-    assert_eq!(read_entry.metrics["BytesRead"].as_u64(), 1024);
+    assert_eq!(read_entry.metrics["Success"], 1);
+    assert_eq!(read_entry.metrics["BytesRead"], 1024);
 
     // Example output for Write operation:
     // Values: { "Priority": "Medium", "Operation": "Put" }
@@ -159,8 +159,8 @@ fn main() {
 
     assert_eq!(write_entry.values["Priority"], "Medium");
     assert_eq!(write_entry.values["Operation"], "Put"); // Note: renamed via #[metrics(name = "Put")]
-    assert_eq!(write_entry.metrics["Success"].as_u64(), 1);
-    assert_eq!(write_entry.metrics["BytesWritten"].as_u64(), 2048);
+    assert_eq!(write_entry.metrics["Success"], 1);
+    assert_eq!(write_entry.metrics["BytesWritten"], 2048);
 
     // Example output for Delete operation:
     // Values: { "Priority": "Low", "Operation": "Delete" }
@@ -168,6 +168,6 @@ fn main() {
 
     assert_eq!(delete_entry.values["Priority"], "Low");
     assert_eq!(delete_entry.values["Operation"], "Delete");
-    assert_eq!(delete_entry.metrics["Success"].as_u64(), 1);
-    assert_eq!(delete_entry.metrics["KeyCount"].as_u64(), 2);
+    assert_eq!(delete_entry.metrics["Success"], 1);
+    assert_eq!(delete_entry.metrics["KeyCount"], 2);
 }

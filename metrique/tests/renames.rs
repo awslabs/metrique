@@ -57,7 +57,7 @@ fn metrics_renames_work() {
     assert_eq!(entry.values["correct_correct"], "abcd");
 
     // the submetric has explicit snake casing, it doesn't get transitively renamed
-    assert_eq!(entry.metrics["prefix_a"].as_u64(), 100);
+    assert_eq!(entry.metrics["prefix_a"], 100);
 
     // a prefix doesn't apply when name is set
     assert_eq!(entry.values["name"], "abcd");
@@ -75,7 +75,7 @@ fn exact_prefix_metrics() {
     let entry = test_util::to_test_entry(RootEntry::new(metrics.close()));
 
     // the submetric has explicit snake casing, it doesn't get transitively renamed
-    assert_eq!(entry.metrics["prefix@A"].as_u64(), 100);
+    assert_eq!(entry.metrics["prefix@A"], 100);
 
     // a prefix doesn't apply when name is set
     assert_eq!(entry.values["name"], "abcd");

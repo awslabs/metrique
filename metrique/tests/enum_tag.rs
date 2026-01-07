@@ -16,7 +16,7 @@ fn tag_field_exact_ignores_inflection() {
     // Tag value respects rename_all but not prefix
     assert_eq!(entry.values["op"], "read_data");
     // count field gets both prefix and rename_all
-    assert_eq!(entry.metrics["api_count"].as_u64(), 42);
+    assert_eq!(entry.metrics["api_count"], 42);
 }
 
 // Tag with prefix and rename_all - using name to apply inflection
@@ -33,7 +33,7 @@ fn tag_field_name_respects_inflection() {
     // Tag value respects rename_all but not prefix
     assert_eq!(entry.values["api_op"], "read_data");
     // count field gets both prefix and rename_all
-    assert_eq!(entry.metrics["api_count"].as_u64(), 42);
+    assert_eq!(entry.metrics["api_count"], 42);
 }
 
 // Tag with variant name override
@@ -49,7 +49,7 @@ enum CustomName {
 fn tag_respects_variant_name() {
     let entry = test_metric(CustomName::Read { bytes: 512 });
     assert_eq!(entry.values["op"], "custom_read");
-    assert_eq!(entry.metrics["bytes"].as_u64(), 512);
+    assert_eq!(entry.metrics["bytes"], 512);
 
     let entry = test_metric(CustomName::Write(1024));
     assert_eq!(entry.values["op"], "custom_write");
@@ -77,12 +77,12 @@ fn tag_with_flatten() {
         bytes: 2048,
     });
     assert_eq!(entry.values["operation"], "ReadStruct");
-    assert_eq!(entry.metrics["latency_ms"].as_u64(), 100);
-    assert_eq!(entry.metrics["bytes"].as_u64(), 2048);
+    assert_eq!(entry.metrics["latency_ms"], 100);
+    assert_eq!(entry.metrics["bytes"], 2048);
 
     let entry = test_metric(WithFlatten::ReadTuple(BackendMetrics { latency_ms: 50 }));
     assert_eq!(entry.values["operation"], "ReadTuple");
-    assert_eq!(entry.metrics["latency_ms"].as_u64(), 50);
+    assert_eq!(entry.metrics["latency_ms"], 50);
 }
 
 #[metrics(tag(name = "op"))]
@@ -99,7 +99,7 @@ fn tag_with_flatten_prefix() {
         backend: BackendMetrics { latency_ms: 100 },
     });
     assert_eq!(entry.values["op"], "Read");
-    assert_eq!(entry.metrics["backend_latency_ms"].as_u64(), 100);
+    assert_eq!(entry.metrics["backend_latency_ms"], 100);
 }
 
 #[derive(Entry)]
@@ -121,14 +121,14 @@ enum TagWithFlattenEntry {
 fn tag_with_flatten_entry() {
     let entry = test_metric(TagWithFlattenEntry::SuccessTuple(StatusEntry { code: 200 }));
     assert_eq!(entry.values["result"], "SuccessTuple");
-    assert_eq!(entry.metrics["code"].as_u64(), 200);
+    assert_eq!(entry.metrics["code"], 200);
 
     let entry = test_metric(TagWithFlattenEntry::SuccessStruct {
         status: StatusEntry { code: 201 },
         message: "ok".to_string(),
     });
     assert_eq!(entry.values["result"], "SuccessStruct");
-    assert_eq!(entry.metrics["code"].as_u64(), 201);
+    assert_eq!(entry.metrics["code"], 201);
     assert_eq!(entry.values["message"], "ok");
 }
 

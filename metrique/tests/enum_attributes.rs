@@ -34,7 +34,7 @@ fn test_variant_name_override() {
 
     // Verify metrics still emitted correctly
     let entry = test_metric(variant);
-    assert_eq!(entry.metrics["value"].as_u64(), 99);
+    assert_eq!(entry.metrics["value"], 99);
 }
 
 // Variant name + container rename_all (name overrides rename_all)
@@ -55,7 +55,7 @@ fn test_variant_name_with_rename_all() {
 
     // Container rename_all still applies to flattened fields
     let entry = test_metric(variant);
-    assert_eq!(entry.metrics["value"].as_u64(), 88);
+    assert_eq!(entry.metrics["value"], 88);
 }
 
 // Variant name + container prefix
@@ -82,7 +82,7 @@ fn test_variant_name_with_prefix() {
     assert_eq!(variant.as_sample_group(), "operation");
 
     let entry = test_metric(variant);
-    assert_eq!(entry.metrics["value"].as_u64(), 77);
+    assert_eq!(entry.metrics["value"], 77);
 
     // Tuple variant without name override - prefix does NOT apply to variant name
     let variant2 = VariantNameWithPrefix::TupleOp(NestedMetrics { value: 88 });
@@ -91,7 +91,7 @@ fn test_variant_name_with_prefix() {
     assert_eq!(variant2.as_sample_group(), "TupleOp");
 
     let entry2 = test_metric(variant2);
-    assert_eq!(entry2.metrics["value"].as_u64(), 88);
+    assert_eq!(entry2.metrics["value"], 88);
 
     // Struct variant without name override - prefix does NOT apply to variant name
     let variant3 = VariantNameWithPrefix::StructOp { count: 99 };
@@ -100,7 +100,7 @@ fn test_variant_name_with_prefix() {
     assert_eq!(variant3.as_sample_group(), "StructOp");
 
     let entry3 = test_metric(variant3);
-    assert_eq!(entry3.metrics["api_count"].as_u64(), 99); // Fields DO get prefix
+    assert_eq!(entry3.metrics["api_count"], 99); // Fields DO get prefix
 }
 
 // Struct variant field with custom name
@@ -117,7 +117,7 @@ fn test_struct_field_name() {
     let entry = test_metric(StructFieldName::Variant { default_field: 123 });
 
     // Custom field name used
-    assert_eq!(entry.metrics["custom_field"].as_u64(), 123);
+    assert_eq!(entry.metrics["custom_field"], 123);
 }
 
 // Struct variant field with unit attribute
@@ -134,7 +134,7 @@ fn test_struct_field_unit() {
     let entry = test_metric(StructFieldUnit::Variant { latency: 150 });
 
     // Unit attribute applied
-    assert_eq!(entry.metrics["latency"].as_u64(), 150);
+    assert_eq!(entry.metrics["latency"], 150);
     assert_eq!(
         entry.metrics["latency"].unit,
         unit::Unit::Second(unit::NegativeScale::Milli)
@@ -234,8 +234,8 @@ fn test_multi_field_tuple_variant() {
     ));
 
     // Two flatten fields with different prefixes
-    assert_eq!(entry.metrics["a_value"].as_u64(), 10);
-    assert_eq!(entry.metrics["b_value"].as_u64(), 20);
+    assert_eq!(entry.metrics["a_value"], 10);
+    assert_eq!(entry.metrics["b_value"], 20);
 
     // Ignored fields not present
     assert!(!entry.metrics.contains_key("999"));

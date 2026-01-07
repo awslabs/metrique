@@ -115,8 +115,8 @@ async fn metric_timers_work() {
     tokio::time::advance(Duration::from_secs(1)).await;
 
     let entries = inspector.entries();
-    assert_eq!(entries[0].metrics["Time"].as_u64(), 4);
-    assert_eq!(entries[0].metrics["ExplicitTime"].as_u64(), 3000);
+    assert_eq!(entries[0].metrics["Time"], 4);
+    assert_eq!(entries[0].metrics["ExplicitTime"], 3000);
 }
 
 #[tokio::test]

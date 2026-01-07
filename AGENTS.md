@@ -8,7 +8,7 @@
     ```rust
     // metrique-writer/src/test_util.rs
     let entry = test_metric(MyMetrics { field: value });
-    assert_eq!(entry.metrics["Field"].as_u64(), value);
+    assert_eq!(entry.metrics["Field"], value);
     ```
   - `test_entry_sink()` - longer-form tests with multiple entries or queue behavior
     ```rust
@@ -18,7 +18,7 @@
     // ... mutate metrics ...
     drop(metrics);
     let entries = inspector.take();
-    assert!(entries.iter().any(|e| e.metrics["Field"].as_u64() == expected));
+    assert!(entries.iter().any(|e| e.metrics["Field"] == expected));
     ```
 
 # Metrique Trait System

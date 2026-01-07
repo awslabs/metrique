@@ -71,9 +71,9 @@ async fn string_value() {
     assert_eq!(entry.values["f2"], "bar");
     assert_eq!(entry.values["f3"], "ZAB");
     assert_eq!(entry.values["f4"], "bar_baz");
-    assert_eq!(entry.metrics["nested_count"].as_u64(), 2);
+    assert_eq!(entry.metrics["nested_count"], 2);
     assert_eq!(entry.metrics["nested_count"].unit, Unit::Count);
-    assert_eq!(entry.metrics["nested"].as_u64(), 4);
+    assert_eq!(entry.metrics["nested"], 4);
     assert_eq!(entry.values["time_as_epoch_millis"], "1000.0");
     assert_eq!(entry.values["nested_foo"], "ZAB");
 }

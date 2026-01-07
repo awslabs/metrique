@@ -19,7 +19,7 @@ enum TupleVariantEnum {
 fn test_tuple_variant_flatten() {
     let entry = test_metric(TupleVariantEnum::Variant(NestedMetrics { value: 42 }));
 
-    assert_eq!(entry.metrics["value"].as_u64(), 42);
+    assert_eq!(entry.metrics["value"], 42);
 }
 
 // Basic tuple variant with flatten_entry (flattens a type that implements Entry)
@@ -44,7 +44,7 @@ fn test_tuple_variant_flatten_entry() {
     }));
 
     // flatten_entry writes the entry directly (calls Entry::write, not InflectableEntry::write)
-    assert_eq!(entry.metrics["count"].as_u64(), 100);
+    assert_eq!(entry.metrics["count"], 100);
     assert_eq!(entry.values["name"], "test");
 }
 
@@ -61,8 +61,8 @@ fn test_struct_variant_basic() {
         field2: true,
     });
 
-    assert_eq!(entry.metrics["field1"].as_u64(), 10);
-    assert_eq!(entry.metrics["field2"].as_u64(), 1);
+    assert_eq!(entry.metrics["field1"], 10);
+    assert_eq!(entry.metrics["field2"], 1);
 }
 
 // Mixed tuple and struct variants
@@ -77,9 +77,9 @@ fn test_mixed_variants() {
     let entry1 = test_metric(MixedEnum::Tuple(NestedMetrics { value: 5 }));
     let entry2 = test_metric(MixedEnum::Struct { x: 1, y: 2 });
 
-    assert_eq!(entry1.metrics["value"].as_u64(), 5);
-    assert_eq!(entry2.metrics["x"].as_u64(), 1);
-    assert_eq!(entry2.metrics["y"].as_u64(), 2);
+    assert_eq!(entry1.metrics["value"], 5);
+    assert_eq!(entry2.metrics["x"], 1);
+    assert_eq!(entry2.metrics["y"], 2);
 }
 
 // Enum with rename_all - both tuple and struct variants
@@ -94,8 +94,8 @@ fn test_enum_rename_all() {
     let entry1 = test_metric(RenamedEnum::TupleVariant(NestedMetrics { value: 100 }));
     let entry2 = test_metric(RenamedEnum::StructVariant { field_name: 200 });
 
-    assert_eq!(entry1.metrics["Value"].as_u64(), 100);
-    assert_eq!(entry2.metrics["FieldName"].as_u64(), 200);
+    assert_eq!(entry1.metrics["Value"], 100);
+    assert_eq!(entry2.metrics["FieldName"], 200);
 }
 
 // Enum with prefix - both tuple and struct variants
@@ -110,10 +110,10 @@ fn test_enum_prefix() {
     let entry1 = test_metric(PrefixedEnum::TupleVariant(NestedMetrics { value: 50 }));
     let entry2 = test_metric(PrefixedEnum::StructVariant { counter: 75 });
 
-    assert_eq!(entry1.metrics["value"].as_u64(), 50);
+    assert_eq!(entry1.metrics["value"], 50);
 
     // Container prefix DOES apply to struct variant fields
-    assert_eq!(entry2.metrics["api_counter"].as_u64(), 75);
+    assert_eq!(entry2.metrics["api_counter"], 75);
 }
 
 // Tuple variant with field-level prefix
@@ -134,8 +134,8 @@ fn test_tuple_variant_field_prefix() {
     let entry1 = test_metric(TuplePrefixEnum::WithPrefix(PrefixedNested { metric: 25 }));
     let entry2 = test_metric(TuplePrefixEnum::StructVariant { other: 30 });
 
-    assert_eq!(entry1.metrics["nested_metric"].as_u64(), 25);
-    assert_eq!(entry2.metrics["other"].as_u64(), 30);
+    assert_eq!(entry1.metrics["nested_metric"], 25);
+    assert_eq!(entry2.metrics["other"], 30);
 }
 
 // Container prefix + struct variant fields (verify prefix applies)
@@ -155,6 +155,6 @@ fn test_container_prefix_struct_variant() {
     });
 
     // Container prefix applies to struct variant fields
-    assert_eq!(entry.metrics["api_request_count"].as_u64(), 100);
-    assert_eq!(entry.metrics["api_error_count"].as_u64(), 5);
+    assert_eq!(entry.metrics["api_request_count"], 100);
+    assert_eq!(entry.metrics["api_error_count"], 5);
 }

@@ -28,7 +28,7 @@ fn test_child_rename_parent_prefix() {
     }));
 
     // Child rename applies first (read_data -> ReadData), then parent prefix added (op_ReadData)
-    assert_eq!(entry.metrics["op_ReadData"].as_u64(), 42);
+    assert_eq!(entry.metrics["op_ReadData"], 42);
 }
 
 // Parent rename_all + parent prefix (no child rename)
@@ -45,7 +45,7 @@ fn test_parent_rename_and_prefix() {
     }));
 
     // Parent rename_all applies to flattened fields
-    assert_eq!(entry.metrics["Value"].as_u64(), 100);
+    assert_eq!(entry.metrics["Value"], 100);
 }
 
 // Competing rename_all (child wins)
@@ -65,7 +65,7 @@ fn test_competing_rename_all() {
     let entry = test_metric(ParentPascalCase::Variant(ChildKebabCase { read_data: 50 }));
 
     // Child rename wins (read_data -> read-data), parent rename ignored
-    assert_eq!(entry.metrics["read-data"].as_u64(), 50);
+    assert_eq!(entry.metrics["read-data"], 50);
 }
 
 // Exact prefix tests
@@ -86,7 +86,7 @@ fn test_exact_prefix() {
     let entry = test_metric(ExactPrefixEnum::Variant(ExactPrefixChild { value: 75 }));
 
     // Child exact_prefix preserved, parent rename_all applies
-    assert_eq!(entry.metrics["op-Value"].as_u64(), 75);
+    assert_eq!(entry.metrics["op-Value"], 75);
 }
 
 // Triple prefix combination: field prefix + nested prefix + deeper nested prefix
@@ -115,7 +115,7 @@ fn test_triple_prefix_combination() {
     }));
 
     // All three prefixes combine: field_ + inner_ + data
-    assert_eq!(entry.metrics["field_inner_data"].as_u64(), 42);
+    assert_eq!(entry.metrics["field_inner_data"], 42);
 }
 
 // Subfield enum flattened into parent struct with field-level prefix
@@ -160,10 +160,10 @@ fn test_subfield_enum_parent_field_prefix() {
     // TimestampOnClose only implements CloseValue for owned, testing subfield_owned works
     // TimestampOnClose closes to TimestampValue which is a string property
     assert!(entry1.values.contains_key("status_timestamp"));
-    assert_eq!(entry1.metrics["direct_field"].as_u64(), 200);
+    assert_eq!(entry1.metrics["direct_field"], 200);
 
     assert!(entry2.values.contains_key("status_timestamp"));
-    assert_eq!(entry2.metrics["direct_field"].as_u64(), 400);
+    assert_eq!(entry2.metrics["direct_field"], 400);
 }
 
 // Subfield enum flattened into parent enum with container-level prefix
@@ -195,10 +195,10 @@ fn test_subfield_enum_parent_container_prefix() {
     // Container-level prefix does NOT apply to flattened subfield enum (child controls naming)
     // TimestampOnClose closes to TimestampValue which is a string property
     assert!(entry1.values.contains_key("timestamp"));
-    assert_eq!(entry1.metrics["api_direct_field"].as_u64(), 200);
+    assert_eq!(entry1.metrics["api_direct_field"], 200);
 
     assert!(entry2.values.contains_key("timestamp"));
-    assert_eq!(entry2.metrics["api_direct_field"].as_u64(), 400);
+    assert_eq!(entry2.metrics["api_direct_field"], 400);
 }
 
 // Tests both struct and tuple variants with types that only implement CloseValue for owned
@@ -290,7 +290,7 @@ fn test_struct_variant_nested_flatten() {
     });
 
     // Prefixes combine: outer_ + mid_ + inner_value
-    assert_eq!(entry.metrics["outer_mid_inner_value"].as_u64(), 10);
-    assert_eq!(entry.metrics["outer_middle_value"].as_u64(), 20);
-    assert_eq!(entry.metrics["outer_value"].as_u64(), 30);
+    assert_eq!(entry.metrics["outer_mid_inner_value"], 10);
+    assert_eq!(entry.metrics["outer_middle_value"], 20);
+    assert_eq!(entry.metrics["outer_value"], 30);
 }

@@ -1149,7 +1149,7 @@ fn test_metrics () {
 
     let entries = inspector.entries();
     assert_eq!(entries[0].values["Operation"], "SayHello");
-    assert_eq!(entries[0].metrics["NumberOfDucks"].as_u64(), 10);
+    assert_eq!(entries[0].metrics["NumberOfDucks"], 10);
 }
 ```
 
