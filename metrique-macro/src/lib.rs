@@ -602,10 +602,10 @@ impl RawRootAttributes {
                     Ok(tag.into_inner().into())
                 }
                 MetricMode::Value | MetricMode::ValueString => {
-                    return Err(darling::Error::custom(
+                    Err(darling::Error::custom(
                         "value and value(string) do not support tag",
                     )
-                    .with_span(&tag.span()));
+                    .with_span(&tag.span()))
                 }
             })
             .transpose()?;
