@@ -294,6 +294,8 @@ fn tokens_or_compiler_err(result: syn::Result<TokenStream>) -> TokenStream {
 ///
 /// This calls `chain` in a binary tree fashion to avoid problems with the recursion limit,
 /// e.g. `I1.chain(I2).chain(I3.chain(I4))`
+/// Chains iterators into a balanced binary tree of `.chain()` calls.
+/// Returns `::std::iter::empty()` for empty input.
 fn make_binary_tree_chain(iterators: Vec<TokenStream>) -> TokenStream {
     fn chain_once(stack: &mut Vec<(TokenStream, usize)>, allow_different_degree: bool) -> bool {
         if stack.len() < 2 {

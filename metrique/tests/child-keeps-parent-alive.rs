@@ -65,8 +65,8 @@ async fn flush_guards() {
     assert_eq!(result.len(), 1);
     let entry = test_util::to_test_entry(&result[0]);
     // Verify that it has the latest value
-    assert_eq!(entry.metrics["A"].as_u64(), 5000);
-    assert_eq!(entry.metrics["Counter"].as_u64(), 10);
+    assert_eq!(entry.metrics["A"], 5000);
+    assert_eq!(entry.metrics["Counter"], 10);
 }
 
 #[tokio::test]
@@ -102,5 +102,5 @@ async fn force_flush() {
     // in this case, writes are not written back to the parent
     //assert!(matches!(result[0].child, None));
     assert!(entry.metrics.get("Child").is_none());
-    assert_eq!(entry.metrics["Duration"].as_u64(), 5000);
+    assert_eq!(entry.metrics["Duration"], 5000);
 }

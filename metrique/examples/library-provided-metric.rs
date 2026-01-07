@@ -13,11 +13,13 @@ mod library {
         unit_of_work::metrics,
     };
 
-    #[metrics(subfield)]
+    #[metrics(subfield_owned)]
     #[derive(Default)]
     pub struct LookupBookMetrics {
         lookup_book_time: Timer,
         books_considered: usize,
+        #[metrics(flatten)]
+        genre: Option<GenreMetrics>,
         error: bool,
     }
 
@@ -26,6 +28,37 @@ mod library {
     pub struct NumberOfBooksMetrics {
         state_length: Option<usize>,
         count_books_time: Timer,
+    }
+
+    #[metrics(subfield_owned, tag(name = "genre"))]
+    enum GenreMetrics {
+        SciFi { subgenre: Option<String> },
+        Vampire { vampire_count: Option<usize> },
+        Other { unknown_genre_name: String },
+        // doesn't contain data, but still emits the `genre: "Unknown"` value
+        Unknown,
+    }
+
+    impl From<&str> for GenreMetrics {
+        fn from(value: &str) -> Self {
+            let (genre, suffix) = match value.split_once(":") {
+                Some((genre, suffix)) => (genre, Some(suffix)),
+                None => (value, None),
+            };
+
+            match genre {
+                "Sci-Fi" => GenreMetrics::SciFi {
+                    subgenre: suffix.map(|s| s.to_string()),
+                },
+                "Vampire" => {
+                    let vampire_count = suffix.and_then(|s| s.parse().ok());
+                    GenreMetrics::Vampire { vampire_count }
+                }
+                _ => GenreMetrics::Other {
+                    unknown_genre_name: value.to_string(),
+                },
+            }
+        }
     }
 
     impl Display for LookupBookError {
@@ -51,7 +84,8 @@ mod library {
     impl MyLib {
         pub fn new() -> Self {
             Self {
-                state: "Book 1: Hello ....\nBook 2: Goodbye ....".to_string(),
+                state: "Book 1: Hello ....:Sci-Fi:Space Opera\nBook 2: Goodbye ....:Vampire:5\n"
+                    .to_string(),
             }
         }
 
@@ -76,9 +110,19 @@ mod library {
                     })
                     .next()
                     .ok_or_else(|| LookupBookError::NoBookForName(title.to_string()))?;
-                let book = book
+                let book_raw = book
                     .strip_prefix(":")
                     .ok_or(LookupBookError::InvalidFormat)?;
+                let book = match book_raw.split_once(":") {
+                    None => {
+                        metrics.genre = Some(GenreMetrics::Unknown);
+                        book
+                    }
+                    Some((book, genre)) => {
+                        metrics.genre = Some(GenreMetrics::from(genre));
+                        book
+                    }
+                };
                 Ok(book)
             })
             .await

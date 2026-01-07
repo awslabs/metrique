@@ -1,0 +1,75 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct NestedMetrics {
+    counter: u32,
+}
+#[doc(hidden)]
+pub struct NestedMetricsEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    counter: <u32 as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for NestedMetricsEntry {
+        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct CounterPreserve;
+                    impl ::metrique::concat::ConstStr for CounterPreserve {
+                        const VAL: &'static str = "counter";
+                    }
+                    struct CounterKebab;
+                    impl ::metrique::concat::ConstStr for CounterKebab {
+                        const VAL: &'static str = "counter";
+                    }
+                    struct CounterPascal;
+                    impl ::metrique::concat::ConstStr for CounterPascal {
+                        const VAL: &'static str = "Counter";
+                    }
+                    struct CounterSnake;
+                    impl ::metrique::concat::ConstStr for CounterSnake {
+                        const VAL: &'static str = "counter";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            CounterPreserve,
+                            CounterPascal,
+                            CounterSnake,
+                            CounterKebab,
+                        >,
+                    >()
+                },
+                &self.counter,
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            ::std::iter::empty()
+        }
+    }
+};
+impl metrique::CloseValue for &'_ NestedMetrics {
+    type Closed = NestedMetricsEntry;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        NestedMetricsEntry {
+            counter: metrique::CloseValue::close(&self.counter),
+        }
+    }
+}
+impl metrique::CloseValue for NestedMetrics {
+    type Closed = NestedMetricsEntry;
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}

@@ -1,56 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use darling::FromField;
 use proc_macro2::TokenStream as Ts2;
 use quote::{format_ident, quote};
 use syn::{
     Attribute, DeriveInput, FieldsNamed, FieldsUnnamed, Generics, Ident, Result, Visibility,
-    spanned::Spanned,
 };
 
 use crate::{
-    MetricMode, MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, clean_attrs,
-    entry_impl, generate_close_value_impls, generate_on_drop_wrapper, value_impl,
+    MetricMode, MetricsField, MetricsFieldKind, RootAttributes, clean_attrs, entry_impl,
+    generate_close_value_impls, generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
-
-fn parse_struct_fields(
-    fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Vec<MetricsField>> {
-    let mut parsed_fields = vec![];
-    let mut errors = darling::Error::accumulator();
-
-    for (i, field) in fields.iter().enumerate() {
-        let i = syn::Index::from(i);
-        let (ident, name, span) = match &field.ident {
-            Some(ident) => (quote! { #ident }, Some(ident.to_string()), ident.span()),
-            None => (quote! { #i }, None, field.ty.span()),
-        };
-
-        let attrs = match errors
-            .handle(RawMetricsFieldAttrs::from_field(field).and_then(|attr| attr.validate()))
-        {
-            Some(attrs) => attrs,
-            None => {
-                continue;
-            }
-        };
-
-        parsed_fields.push(MetricsField {
-            ident,
-            name,
-            span,
-            ty: field.ty.clone(),
-            vis: field.vis.clone(),
-            external_attrs: clean_attrs(&field.attrs),
-            attrs,
-        });
-    }
-
-    errors.finish()?;
-
-    Ok(parsed_fields)
-}
 
 pub(crate) fn generate_metrics_for_struct(
     root_attributes: RootAttributes,
@@ -66,23 +26,18 @@ pub(crate) fn generate_metrics_for_struct(
     let guard_name = format_ident!("{}Guard", struct_name);
     let handle_name = format_ident!("{}Handle", struct_name);
 
-    let parsed_fields = parse_struct_fields(fields)?;
+    let parsed_fields = parse_metric_fields(fields)?;
 
     let base_struct = generate_base_struct(
         struct_name,
         &input.vis,
         &input.generics,
-        &input.attrs,
+        &clean_attrs(&input.attrs),
         &parsed_fields,
     )?;
     let warnings = root_attributes.warnings();
 
-    let entry_struct = generate_entry_struct(
-        &entry_name,
-        &input.generics,
-        &parsed_fields,
-        &root_attributes,
-    )?;
+    let entry_struct = generate_entry_struct(&entry_name, &parsed_fields, &root_attributes)?;
 
     let inner_impl = match root_attributes.mode {
         MetricMode::Value => {
@@ -97,7 +52,7 @@ pub(crate) fn generate_metrics_for_struct(
                 &parsed_fields,
             )?
         }
-        _ => entry_impl::generate_entry_impl(&entry_name, &parsed_fields, &root_attributes),
+        _ => entry_impl::generate_struct_entry_impl(&entry_name, &parsed_fields, &root_attributes),
     };
 
     let close_value_impl = generate_close_value_impls_for_struct(
@@ -161,7 +116,6 @@ fn wrap_fields_into_struct_decl(has_named_fields: bool, fields: impl Iterator<It
 
 fn generate_entry_struct(
     name: &Ident,
-    _generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Result<Ts2> {

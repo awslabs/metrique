@@ -102,7 +102,7 @@ pub mod format {
 #[cfg(feature = "test-util")]
 pub mod test_util {
     pub use crate::writer::test_util::{
-        Inspector, Metric, TestEntry, TestEntrySink, test_entry_sink, to_test_entry,
+        Inspector, Metric, TestEntry, TestEntrySink, test_entry_sink, test_metric, to_test_entry,
     };
 }
 

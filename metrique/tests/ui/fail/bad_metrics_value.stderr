@@ -1,93 +1,85 @@
-error: Only structs are supported for entries
+error: Only structs are supported with value, use value(string) with enums
  --> tests/ui/fail/bad_metrics_value.rs:4:1
   |
 4 | / enum Foo {
 5 | | }
   | |_^
 
-error: Only enums are supported for values
- --> tests/ui/fail/bad_metrics_value.rs:8:1
-  |
-8 | / struct Bar {
-9 | | }
-  | |_^
+error: Only structs are supported with value, use value(string) with enums
+  --> tests/ui/fail/bad_metrics_value.rs:8:1
+   |
+8  | / enum EnumWithNakedValue {
+9  | |     Foo
+10 | | }
+   | |_^
+
+error: Only enums are supported with value(string)
+  --> tests/ui/fail/bad_metrics_value.rs:13:1
+   |
+13 | / struct Bar {
+14 | | }
+   | |_^
 
 error: multiple non-ignored fields for #[metrics(value)]
-  --> tests/ui/fail/bad_metrics_value.rs:14:5
+  --> tests/ui/fail/bad_metrics_value.rs:19:5
    |
-14 |     y: u32,
+19 |     y: u32,
    |     ^
 
 error: `name` does not make sense with #[metrics(value)]
-  --> tests/ui/fail/bad_metrics_value.rs:33:5
+  --> tests/ui/fail/bad_metrics_value.rs:38:5
    |
-33 |     u32,
+38 |     u32,
    |     ^^^
 
 error: Unknown field: `p`
-  --> tests/ui/fail/bad_metrics_value.rs:38:15
+  --> tests/ui/fail/bad_metrics_value.rs:43:15
    |
-38 |     #[metrics(p = q)]
+43 |     #[metrics(p = q)]
    |               ^
-
-error: prefix is not supported for #[metrics(value)]
-  --> tests/ui/fail/bad_metrics_value.rs:43:8
-   |
-43 | struct Baz6 {
-   |        ^^^^
 
 error: prefix is not supported for #[metrics(value)]
   --> tests/ui/fail/bad_metrics_value.rs:48:8
    |
-48 | struct Baz7 {
+48 | struct Baz6 {
+   |        ^^^^
+
+error: prefix is not supported for #[metrics(value)]
+  --> tests/ui/fail/bad_metrics_value.rs:53:8
+   |
+53 | struct Baz7 {
    |        ^^^^
 
 error: Only named fields are supported
-  --> tests/ui/fail/bad_metrics_value.rs:53:1
+  --> tests/ui/fail/bad_metrics_value.rs:58:1
    |
-53 | struct Unit; /* not supported right now */
+58 | struct Unit; /* not supported right now */
    | ^^^^^^^^^^^^
 
 error: Unknown field: `p`. Available values: `name`
-  --> tests/ui/fail/bad_metrics_value.rs:57:15
+  --> tests/ui/fail/bad_metrics_value.rs:62:15
    |
-57 |     #[metrics(p="q")]
+62 |     #[metrics(p="q")]
    |               ^
 
 error: Cannot combine `value` with `subfield`
-  --> tests/ui/fail/bad_metrics_value.rs:61:26
+  --> tests/ui/fail/bad_metrics_value.rs:66:26
    |
-61 | #[metrics(value(string), subfield)]
+66 | #[metrics(value(string), subfield)]
    |                          ^^^^^^^^
 
-error: Only structs are supported for entries
-  --> tests/ui/fail/bad_metrics_value.rs:62:1
-   |
-62 | / enum Multi {
-63 | |     X
-64 | | }
-   | |_^
-
 error: value does not make sense with dimension-sets
-  --> tests/ui/fail/bad_metrics_value.rs:66:1
+  --> tests/ui/fail/bad_metrics_value.rs:71:1
    |
-66 | #[metrics(value(string), emf::dimension_sets = [["X"]])]
+71 | #[metrics(value(string), emf::dimension_sets = [["X"]])]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error: Only structs are supported for entries
-  --> tests/ui/fail/bad_metrics_value.rs:67:1
-   |
-67 | / enum Multi2 {
-68 | |     X
-69 | | }
-   | |_^
-
 error[E0412]: cannot find type `Second` in this scope
-  --> tests/ui/fail/bad_metrics_value.rs:19:22
+  --> tests/ui/fail/bad_metrics_value.rs:24:22
    |
-19 |     #[metrics(unit = Second)]
+24 |     #[metrics(unit = Second)]
    |                      ^^^^^^
   --> $RUST/core/src/marker.rs
    |
@@ -95,8 +87,8 @@ error[E0412]: cannot find type `Second` in this scope
    |
 help: a trait with a similar name exists
    |
-19 -     #[metrics(unit = Second)]
-19 +     #[metrics(unit = Send)]
+24 -     #[metrics(unit = Second)]
+24 +     #[metrics(unit = Send)]
    |
 help: consider importing one of these structs
    |
@@ -108,24 +100,22 @@ help: consider importing one of these structs
    |
 
 error[E0277]: `String` cannot be used as a sample group
-  --> tests/ui/fail/bad_metrics_value.rs:78:15
+  --> tests/ui/fail/bad_metrics_value.rs:81:1
    |
-78 |       #[metrics(sample_group)]
-   |                 ^-----------
-   |                 |
-   |  _______________required by a bound introduced by this call
-   | |
-79 | |     group: String,
-   | |_________^ the trait `SampleGroup` is not implemented for `String`
+81 | #[metrics]
+   | ^^^^^^^^^^ the trait `SampleGroup` is not implemented for `String`
+82 | struct WithStringSampleGroup {
+83 |     #[metrics(sample_group)]
+   |               ------------ required by a bound introduced by this call
    |
    = note: sample groups must implement `SampleGroup`
    = note: consider using `&'static str` instead of `String`, or make a new type that implements `SampleGroup`
    = help: the trait `SampleGroup` is implemented for `&str`
 
 error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
-  --> tests/ui/fail/bad_metrics_value.rs:26:5
+  --> tests/ui/fail/bad_metrics_value.rs:31:5
    |
-26 |     x: u32,
+31 |     x: u32,
    |     ^ the trait `Value` is not implemented for `FormattedValue<'_, u32, Foo, _>`
    |
    = note: If `FormattedValue<'_, u32, Foo, _>` is a metric *entry*, flatten it using `#[metrics(flatten)]`
@@ -141,9 +131,9 @@ error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
            and $N others
 
 error[E0277]: CloseValue is not implemented for &String
-  --> tests/ui/fail/bad_metrics_value.rs:73:5
+  --> tests/ui/fail/bad_metrics_value.rs:78:5
    |
-73 |     field: String,
+78 |     field: String,
    |     ^^^^^ This type must implement `CloseValue`
    |
    = help: the trait `CloseValue` is not implemented for `&String`
@@ -152,5 +142,5 @@ error[E0277]: CloseValue is not implemented for &String
    = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
 help: consider dereferencing here
    |
-73 |     *field: String,
+78 |     *field: String,
    |     +

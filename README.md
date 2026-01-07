@@ -59,16 +59,18 @@ However, if your goal is to emit structured events that produce metrics with as 
 
 Most applications and libraries will use [`metrique`](metrique) directly and configure a writer with [`metrique-writer`](metrique-writer). See the [examples](metrique/examples) for several examples of different common patterns.
 
-Applications will define a metrics struct that they annotate with `#[metrics]`:
+Applications will define a metrics entry struct that they annotate with `#[metrics]`:
 ```rust
 use metrique::unit_of_work::metrics;
+use metrique::timers::{Timestamp, Timer};
 
+// Enums containing fields are also supported
 #[metrics(value(string))]
 enum Operation {
-     CountDucks,
+    CountDucks,
 }
 
-#[metrics]
+#[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     operation: Operation, // you can use `operation: &'static str` if you prefer
     #[metrics(timestamp)]
@@ -76,6 +78,7 @@ struct RequestMetrics {
     number_of_ducks: usize,
     #[metrics(unit = Millisecond)]
     operation_time: Timer,
+    success: bool // flushes as 0 or 1
 }
 ```
 
@@ -90,6 +93,7 @@ impl RequestMetrics {
             operation,
             number_of_ducks: 0,
             operation_time: Timer::start_now(),
+            success: false,
         }.append_on_drop(ServiceMetrics::sink())
     }
 }
@@ -100,6 +104,7 @@ The `guard` object can still be mutated via `DerefMut` impl:
 async fn count_ducks() {
     let mut metrics = RequestMetrics::init(Operation::CountDucks);
     metrics.number_of_ducks = 5;
+    metrics.success = true;
     // metrics flushes as scope drops
     // timer records the total time until scope exits
 }

@@ -41,7 +41,8 @@ use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, sink::AttachHandle};
 use metrique::emf::Emf;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
-// define operation as an enum (you can also define operation as a &'static str)
+// Define operation as an enum (you can also define operation as a &'static str).
+// Enums containing fields are also supported - see <#entry-enums>
 #[metrics(value(string))]
 #[derive(Copy, Clone)]
 enum Operation {
@@ -175,6 +176,51 @@ Read [docs/usage_in_libraries.md][usage-in-libs] for more details
 For more complex examples, see the [examples folder].
 
 [examples folder]: https://github.com/awslabs/metrique/tree/main/metrique/examples
+
+### Entry Enums
+
+Enums can be used as entries with different fields per variant. See the [macro documentation](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html#enums) for details. 
+
+Entry enums handle container and field-level attributes like structs. You can optionally include a "tag" field that contains the variant name.
+
+```rust
+use metrique::unit_of_work::metrics;
+
+// generally entry enums will be used as subfields,
+// though they can also be root containers
+#[metrics(tag(name = "operation"), subfield)]
+enum Operation {
+    MeetDogs { dogs_met: usize },
+    FindGoose { goose_found: bool },
+    CountCats(#[metrics(flatten)] CatMetrics),
+}
+
+#[metrics(subfield)]
+struct CatMetrics {
+    cats_counted: usize,
+}
+
+#[metrics]
+struct RequestMetrics {
+    request_id: String,
+    success: bool,
+    #[metrics(flatten)]
+    operation: Operation,
+}
+```
+
+When `RequestMetrics` with `Operation::MeetDogs { dogs_met: 3 }` is emitted, the output includes:
+- `operation` (string value): `"MeetDogs"`
+- `dogs_met` (metric): `3`
+
+When `RequestMetrics` with `Operation::FindGoose { goose_found: true }` is emitted, the output includes:
+- `operation` (string value): `"FindGoose"`
+- `goose_found` (metric): `1` (booleans emit as 0 or 1)
+
+When `RequestMetrics` with `Operation::CountCats(CatMetrics { cats_counted: 7 })` is emitted, the output includes:
+- `operation` (string value): `"CountCats"`
+- `cats_counted` (metric): `7`
+
 
 ### Timing Events
 
@@ -564,7 +610,7 @@ struct RequestMetrics {
 
 #### Combining renaming strategies
 
-You can combine these approaches, with field-level renames taking precedence over struct-level rules:
+You can combine these approaches, with field-level renames taking precedence over container-level rules:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -1103,7 +1149,7 @@ fn test_metrics () {
 
     let entries = inspector.entries();
     assert_eq!(entries[0].values["Operation"], "SayHello");
-    assert_eq!(entries[0].metrics["NumberOfDucks"].as_u64(), 10);
+    assert_eq!(entries[0].metrics["NumberOfDucks"], 10);
 }
 ```
 
