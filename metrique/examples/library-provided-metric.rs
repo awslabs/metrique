@@ -27,7 +27,7 @@ mod library {
     enum AuthorKind {
         Human { name: String },
         Robot { model: RobotKind },
-        Unknown {},
+        Unknown,
     }
 
     #[derive(Copy, Clone)]
@@ -41,7 +41,7 @@ mod library {
     impl From<&str> for AuthorKind {
         fn from(author: &str) -> Self {
             match author {
-                "" => AuthorKind::Unknown {},
+                "" => AuthorKind::Unknown,
                 a if a == Into::<&str>::into(RobotKind::ChatGPT) => AuthorKind::Robot {
                     model: RobotKind::ChatGPT,
                 },
@@ -115,7 +115,7 @@ mod library {
                     .ok_or(LookupBookError::InvalidFormat)?;
                 let book = match book_raw.split_once("-") {
                     None => {
-                        metrics.author = Some(AuthorKind::Unknown {});
+                        metrics.author = Some(AuthorKind::Unknown);
                         book
                     }
                     Some((book, author)) => {

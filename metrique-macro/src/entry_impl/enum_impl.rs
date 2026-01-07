@@ -112,7 +112,15 @@ fn generate_write_arms(
                         }
                     )
                 }
-                None => unreachable!("unit variants are rejected by entry enum parsing"),
+                None => {
+                    // Unit variant - no fields to write, just tag
+                    let pattern = quote::quote_spanned!(variant.ident.span()=> #entry_name::#variant_ident);
+                    quote::quote_spanned!(variant.ident.span()=>
+                        #pattern => {
+                            #tag_write
+                        }
+                    )
+                }
             }
         })
         .collect()
@@ -219,7 +227,11 @@ fn generate_sample_group_arms(
 
                 (struct_pattern(entry_name, variant_ident, &used_fields, false), sample_groups)
             }
-            None => unreachable!("entry impls are only generated for enums with data")
+            None => {
+                // Unit variant - no fields, no sample groups
+                let pattern = quote::quote_spanned!(variant.ident.span()=> #entry_name::#variant_ident);
+                (pattern, vec![])
+            }
         };
 
         if let Some(tag_sg) = tag_sample_group {

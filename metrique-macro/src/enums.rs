@@ -220,18 +220,6 @@ pub(crate) fn parse_enum_variants(
         ));
     }
 
-    // Entry enums must have ALL data variants (no unit variants allowed)
-    if mode == VariantMode::Entry {
-        for variant in &parsed_variants {
-            if variant.data.is_none() {
-                return Err(syn::Error::new_spanned(
-                    &variant.ident,
-                    "entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums",
-                ));
-            }
-        }
-    }
-
     Ok(parsed_variants)
 }
 

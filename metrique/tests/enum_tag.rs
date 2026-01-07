@@ -40,9 +40,12 @@ fn tag_field_name_respects_inflection() {
 #[metrics(tag(name = "op"))]
 enum CustomName {
     #[metrics(name = "custom_read")]
-    Read { bytes: usize },
+    Read {
+        bytes: usize,
+    },
     #[metrics(name = "custom_write")]
     Write(#[metrics(ignore)] usize),
+    Idle, // Unit variant
 }
 
 #[test]
@@ -53,6 +56,11 @@ fn tag_respects_variant_name() {
 
     let entry = test_metric(CustomName::Write(1024));
     assert_eq!(entry.values["op"], "custom_write");
+
+    // Unit variant with tag
+    let entry = test_metric(CustomName::Idle);
+    assert_eq!(entry.values["op"], "Idle");
+    assert!(entry.metrics.is_empty());
 }
 
 #[metrics(subfield)]

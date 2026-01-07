@@ -111,11 +111,4 @@ enum OuterOperation {
     Execute(#[metrics(flatten)] StringWrapper),
 }
 
-// Entry enum with unit variants should error
-#[metrics]
-enum EntryEnumWithUnitVariants {
-    Success,
-    Failure,
-}
-
 fn main() {}

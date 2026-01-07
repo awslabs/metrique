@@ -76,12 +76,6 @@ error: Cannot combine `flatten` with `unit`
 81 |     Variant(#[metrics(flatten, unit = metrique::writer::unit::Millisecond)] u32),
    |                                ^^^^
 
-error: entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums
-   --> tests/ui/fail/enum_kitchen_sink.rs:117:5
-    |
-117 |     Success,
-    |     ^^^^^^^
-
 error[E0277]: CloseValue is not implemented for &TimestampOnClose
   --> tests/ui/fail/enum_kitchen_sink.rs:91:5
    |

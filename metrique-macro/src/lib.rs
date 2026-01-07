@@ -307,13 +307,13 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// let entry = metrique::test_util::test_metric(
 ///     Operation::Read(ReadMetrics { bytes_read: 1024 })
 /// );
-/// assert_eq!(entry.metrics["BytesRead"], 1024);
+/// assert_eq!(entry.metrics["BytesRead"].as_u64(), 1024);
 ///
 /// let entry = metrique::test_util::test_metric(
 ///     Operation::Write { latency: Duration::from_millis(5), bytes_written: 2048 }
 /// );
-/// assert_eq!(entry.metrics["Latency"], 5);
-/// assert_eq!(entry.metrics["BytesWritten"], 2048);
+/// assert_eq!(entry.metrics["Latency"].as_u64(), 5);
+/// assert_eq!(entry.metrics["BytesWritten"].as_u64(), 2048);
 /// ```
 ///
 /// ### Tag Field
@@ -333,11 +333,13 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///         #[metrics(unit = Millisecond)]
 ///         latency: Duration,
 ///     },
+///     // doesn't contain fields, but still has the tag name
+///     Delete,
 /// }
 ///
 /// let entry = test_metric(Request::Read { bytes: 1024 });
 /// assert_eq!(entry.values["Operation"], "Read");  // Tag field with variant name
-/// assert_eq!(entry.metrics["Bytes"], 1024);
+/// assert_eq!(entry.metrics["Bytes"].as_u64(), 1024);
 /// ```
 ///
 /// The tag field name is specified explicitly and not affected by `prefix` or `rename_all`.

@@ -13,6 +13,7 @@ pub struct NestedMetrics {
 #[metrics]
 enum TupleVariantEnum {
     Variant(#[metrics(flatten)] NestedMetrics),
+    UnitVariant, // Unit variant with no fields
 }
 
 #[test]
@@ -20,6 +21,15 @@ fn test_tuple_variant_flatten() {
     let entry = test_metric(TupleVariantEnum::Variant(NestedMetrics { value: 42 }));
 
     assert_eq!(entry.metrics["value"], 42);
+}
+
+#[test]
+fn test_unit_variant() {
+    let entry = test_metric(TupleVariantEnum::UnitVariant);
+
+    // Unit variant has no fields
+    assert!(entry.metrics.is_empty());
+    assert!(entry.values.is_empty());
 }
 
 // Basic tuple variant with flatten_entry (flattens a type that implements Entry)

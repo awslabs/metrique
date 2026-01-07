@@ -61,12 +61,6 @@ error: Cannot combine `value` with `subfield`
 61 | #[metrics(value(string), subfield)]
    |                          ^^^^^^^^
 
-error: entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums
-  --> tests/ui/fail/bad_metrics_value.rs:63:5
-   |
-63 |     X
-   |     ^
-
 error: value does not make sense with dimension-sets
   --> tests/ui/fail/bad_metrics_value.rs:66:1
    |
@@ -74,12 +68,6 @@ error: value does not make sense with dimension-sets
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
-
-error: entry enums cannot have unit variants; use #[metrics(value(string))] for unit-only enums
-  --> tests/ui/fail/bad_metrics_value.rs:68:5
-   |
-68 |     X
-   |     ^
 
 error[E0412]: cannot find type `Second` in this scope
   --> tests/ui/fail/bad_metrics_value.rs:19:22
