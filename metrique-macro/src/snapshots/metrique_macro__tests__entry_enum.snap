@@ -20,32 +20,28 @@ const _: () = {
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    #[allow(non_camel_case_types)]
-                    struct valuePreserve;
-                    impl ::metrique::concat::ConstStr for valuePreserve {
+                    struct ValuePreserve;
+                    impl ::metrique::concat::ConstStr for ValuePreserve {
                         const VAL: &'static str = "value";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct valueKebab;
-                    impl ::metrique::concat::ConstStr for valueKebab {
+                    struct ValueKebab;
+                    impl ::metrique::concat::ConstStr for ValueKebab {
                         const VAL: &'static str = "value";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct valuePascal;
-                    impl ::metrique::concat::ConstStr for valuePascal {
+                    struct ValuePascal;
+                    impl ::metrique::concat::ConstStr for ValuePascal {
                         const VAL: &'static str = "Value";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct valueSnake;
-                    impl ::metrique::concat::ConstStr for valueSnake {
+                    struct ValueSnake;
+                    impl ::metrique::concat::ConstStr for ValueSnake {
                         const VAL: &'static str = "value";
                     }
                     ::metrique::concat::const_str_value::<
                         <NS as ::metrique::NameStyle>::Inflect<
-                            valuePreserve,
-                            valuePascal,
-                            valueSnake,
-                            valueKebab,
+                            ValuePreserve,
+                            ValuePascal,
+                            ValueSnake,
+                            ValueKebab,
                         >,
                     >()
                 },
@@ -160,32 +156,28 @@ const _: () = {
                     ::metrique::writer::EntryWriter::value(
                         writer,
                         {
-                            #[allow(non_camel_case_types)]
-                            struct countPreserve;
-                            impl ::metrique::concat::ConstStr for countPreserve {
+                            struct CountPreserve;
+                            impl ::metrique::concat::ConstStr for CountPreserve {
                                 const VAL: &'static str = "count";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct countKebab;
-                            impl ::metrique::concat::ConstStr for countKebab {
+                            struct CountKebab;
+                            impl ::metrique::concat::ConstStr for CountKebab {
                                 const VAL: &'static str = "count";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct countPascal;
-                            impl ::metrique::concat::ConstStr for countPascal {
+                            struct CountPascal;
+                            impl ::metrique::concat::ConstStr for CountPascal {
                                 const VAL: &'static str = "Count";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct countSnake;
-                            impl ::metrique::concat::ConstStr for countSnake {
+                            struct CountSnake;
+                            impl ::metrique::concat::ConstStr for CountSnake {
                                 const VAL: &'static str = "count";
                             }
                             ::metrique::concat::const_str_value::<
                                 <NS as ::metrique::NameStyle>::Inflect<
-                                    countPreserve,
-                                    countPascal,
-                                    countSnake,
-                                    countKebab,
+                                    CountPreserve,
+                                    CountPascal,
+                                    CountSnake,
+                                    CountKebab,
                                 >,
                             >()
                         },
@@ -194,32 +186,28 @@ const _: () = {
                     ::metrique::writer::EntryWriter::value(
                         writer,
                         {
-                            #[allow(non_camel_case_types)]
-                            struct latencyPreserve;
-                            impl ::metrique::concat::ConstStr for latencyPreserve {
+                            struct LatencyPreserve;
+                            impl ::metrique::concat::ConstStr for LatencyPreserve {
                                 const VAL: &'static str = "latency";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct latencyKebab;
-                            impl ::metrique::concat::ConstStr for latencyKebab {
+                            struct LatencyKebab;
+                            impl ::metrique::concat::ConstStr for LatencyKebab {
                                 const VAL: &'static str = "latency";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct latencyPascal;
-                            impl ::metrique::concat::ConstStr for latencyPascal {
+                            struct LatencyPascal;
+                            impl ::metrique::concat::ConstStr for LatencyPascal {
                                 const VAL: &'static str = "Latency";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct latencySnake;
-                            impl ::metrique::concat::ConstStr for latencySnake {
+                            struct LatencySnake;
+                            impl ::metrique::concat::ConstStr for LatencySnake {
                                 const VAL: &'static str = "latency";
                             }
                             ::metrique::concat::const_str_value::<
                                 <NS as ::metrique::NameStyle>::Inflect<
-                                    latencyPreserve,
-                                    latencyPascal,
-                                    latencySnake,
-                                    latencyKebab,
+                                    LatencyPreserve,
+                                    LatencyPascal,
+                                    LatencySnake,
+                                    LatencyKebab,
                                 >,
                             >()
                         },
@@ -366,32 +354,28 @@ const _: () = {
                     ::metrique::writer::EntryWriter::value(
                         writer,
                         {
-                            #[allow(non_camel_case_types)]
-                            struct bytesPreserve;
-                            impl ::metrique::concat::ConstStr for bytesPreserve {
+                            struct BytesPreserve;
+                            impl ::metrique::concat::ConstStr for BytesPreserve {
                                 const VAL: &'static str = "bytes";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct bytesKebab;
-                            impl ::metrique::concat::ConstStr for bytesKebab {
+                            struct BytesKebab;
+                            impl ::metrique::concat::ConstStr for BytesKebab {
                                 const VAL: &'static str = "bytes";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct bytesPascal;
-                            impl ::metrique::concat::ConstStr for bytesPascal {
+                            struct BytesPascal;
+                            impl ::metrique::concat::ConstStr for BytesPascal {
                                 const VAL: &'static str = "Bytes";
                             }
-                            #[allow(non_camel_case_types)]
-                            struct bytesSnake;
-                            impl ::metrique::concat::ConstStr for bytesSnake {
+                            struct BytesSnake;
+                            impl ::metrique::concat::ConstStr for BytesSnake {
                                 const VAL: &'static str = "bytes";
                             }
                             ::metrique::concat::const_str_value::<
                                 <NS as ::metrique::NameStyle>::Inflect<
-                                    bytesPreserve,
-                                    bytesPascal,
-                                    bytesSnake,
-                                    bytesKebab,
+                                    BytesPreserve,
+                                    BytesPascal,
+                                    BytesSnake,
+                                    BytesKebab,
                                 >,
                             >()
                         },

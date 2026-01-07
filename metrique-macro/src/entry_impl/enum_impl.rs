@@ -82,7 +82,6 @@ fn generate_write_arms(
             let tag_write = tag_name.as_ref().map(|tag_name| {
                 let (extra, name) = make_inflect(
                     &make_ns(root_attrs.rename_all, variant.ident.span()),
-                    tag_name,
                     variant.ident.span(),
                     |style| style.apply(tag_name),
                 );
@@ -97,7 +96,6 @@ fn generate_write_arms(
                 Some(VariantData::Tuple(tuple_data)) => {
                     let (bindings, writes) = generate_tuple_writes(
                         tuple_data,
-                        variant_ident,
                         root_attrs,
                         variant.ident.span(),
                     );
@@ -132,7 +130,6 @@ fn generate_write_arms(
 
 fn generate_tuple_writes(
     tuple_data: &[crate::TupleData],
-    variant_ident: &Ident,
     root_attrs: &RootAttributes,
     variant_span: proc_macro2::Span,
 ) -> (Vec<Ident>, Vec<Ts2>) {
@@ -144,10 +141,9 @@ fn generate_tuple_writes(
             let write = match &td.kind {
                 MetricsFieldKind::Flatten { span, prefix } => {
                     let base_ns = make_ns(root_attrs.rename_all, *span);
-                    let base_name = format!("{}_{}", variant_ident, idx);
                     let (extra, ns) = match prefix {
                         None => (quote!(), base_ns),
-                        Some(prefix) => prefix.append_to(&base_ns, &base_name, variant_span),
+                        Some(prefix) => prefix.append_to(&base_ns, variant_span),
                     };
                     quote::quote_spanned!(*span=>
                         #extra
@@ -202,7 +198,6 @@ fn generate_sample_group_arms(
         let tag_sample_group = if let Some(tag_name) = tag_name.as_ref().filter(|_| include_tag_in_sample_group) {
             let (extra, name) = make_inflect(
                 &make_ns(root_attrs.rename_all, variant.ident.span()),
-                tag_name,
                 variant.ident.span(),
                 |style| style.apply(tag_name),
             );
@@ -217,43 +212,34 @@ fn generate_sample_group_arms(
             None
         };
 
-        match &variant.data {
+        let (pattern, mut sample_groups) = match &variant.data {
             Some(VariantData::Tuple(tuple_data)) => {
                 let bindings: Vec<_> = (0..tuple_data.len()).map(|idx| quote::format_ident!("v{}", idx)).collect();
-                let mut sample_groups: Vec<_> = tuple_data.iter().enumerate().filter_map(|(idx, td)| {
+                let sample_groups: Vec<_> = tuple_data.iter().enumerate().filter_map(|(idx, td)| {
                     collect_tuple_sample_group(&td.kind, root_attrs, &bindings[idx])
                 }).collect();
 
-                if let Some(tag_sg) = tag_sample_group {
-                    sample_groups.insert(0, tag_sg);
-                }
-
-                let pattern = tuple_pattern(entry_name, variant_ident, &bindings);
-                let iter_expr = make_binary_tree_chain(sample_groups);
-
-                quote::quote_spanned!(variant.ident.span()=>
-                    #pattern => #iter_enum_name::#iter_variant_name(#iter_expr)
-                )
+                (tuple_pattern(entry_name, variant_ident, &bindings), sample_groups)
             }
             Some(VariantData::Struct(fields)) => {
-                let (used_fields, mut sample_groups): (Vec<_>, Vec<_>) = fields
+                let (used_fields, sample_groups): (Vec<_>, Vec<_>) = fields
                     .iter()
                     .filter_map(|field| collect_field_sample_group(field, root_attrs, |f| quote!(#f)))
                     .unzip();
 
-                if let Some(tag_sg) = tag_sample_group {
-                    sample_groups.insert(0, tag_sg);
-                }
-
-                let pattern = struct_pattern(entry_name, variant_ident, &used_fields, false);
-                let iter_expr = make_binary_tree_chain(sample_groups);
-
-                quote::quote_spanned!(variant.ident.span()=>
-                    #pattern => #iter_enum_name::#iter_variant_name(#iter_expr)
-                )
+                (struct_pattern(entry_name, variant_ident, &used_fields, false), sample_groups)
             }
             None => unreachable!("entry impls are only generated for enums with data")
+        };
+
+        if let Some(tag_sg) = tag_sample_group {
+            sample_groups.insert(0, tag_sg);
         }
+        let iter_expr = make_binary_tree_chain(sample_groups);
+
+        quote::quote_spanned!(variant.ident.span()=>
+            #pattern => #iter_enum_name::#iter_variant_name(#iter_expr)
+        )
     }).collect()
 }
 

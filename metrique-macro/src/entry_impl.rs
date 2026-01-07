@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! This module generates the implementation of the Entry trait for non-value structs and enums.
-//! This gives us more control over the generated code and improves compile-time errors.
+//! This gives us more control vs. `#[derive(Entry)]` over the generated code and improves compile-time errors.
 
 use proc_macro2::TokenStream as Ts2;
 use quote::{format_ident, quote, quote_spanned};
@@ -29,7 +29,6 @@ fn make_ns(ns: NameStyle, span: proc_macro2::Span) -> Ts2 {
 /// Used to create compile-time constant strings for metric names and prefixes.
 fn const_str(ident: &syn::Ident, value: &str) -> Ts2 {
     quote_spanned! {ident.span()=>
-        #[allow(non_camel_case_types)]
         struct #ident;
         impl ::metrique::concat::ConstStr for #ident {
             const VAL: &'static str = #value;
@@ -43,39 +42,51 @@ fn const_str(ident: &syn::Ident, value: &str) -> Ts2 {
 fn make_inflect_base(
     ns: &Ts2,
     inflect_method: syn::Ident,
-    base_name: &str,
     span: proc_macro2::Span,
     mut name_fn: impl FnMut(NameStyle) -> String,
 ) -> (Ts2, Ts2) {
+    let preserve_val = name_fn(NameStyle::Preserve);
+    let kebab_val = name_fn(NameStyle::KebabCase);
+    let pascal_val = name_fn(NameStyle::PascalCase);
+    let snake_val = name_fn(NameStyle::SnakeCase);
+
+    // Sanitize to create valid Rust identifiers, applying PascalCase explicitly rather than via
+    // name_fn (to overwrite even `name` attributes)
+    let ident_base: String = NameStyle::PascalCase
+        .apply(&preserve_val)
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .collect();
+
     let name_ident = format_ident!(
         "{}{}",
-        base_name,
+        ident_base,
         NameStyle::Preserve.to_word(),
         span = span
     );
     let name_kebab = format_ident!(
         "{}{}",
-        base_name,
+        ident_base,
         NameStyle::KebabCase.to_word(),
         span = span
     );
     let name_pascal = format_ident!(
         "{}{}",
-        base_name,
+        ident_base,
         NameStyle::PascalCase.to_word(),
         span = span
     );
     let name_snake = format_ident!(
         "{}{}",
-        base_name,
+        ident_base,
         NameStyle::SnakeCase.to_word(),
         span = span
     );
 
-    let extra_preserve = const_str(&name_ident, &name_fn(NameStyle::Preserve));
-    let extra_kebab = const_str(&name_kebab, &name_fn(NameStyle::KebabCase));
-    let extra_pascal = const_str(&name_pascal, &name_fn(NameStyle::PascalCase));
-    let extra_snake = const_str(&name_snake, &name_fn(NameStyle::SnakeCase));
+    let extra_preserve = const_str(&name_ident, &preserve_val);
+    let extra_kebab = const_str(&name_kebab, &kebab_val);
+    let extra_pascal = const_str(&name_pascal, &pascal_val);
+    let extra_snake = const_str(&name_snake, &snake_val);
 
     let extra = quote!(
         #extra_preserve
@@ -95,31 +106,23 @@ fn make_inflect_base(
 /// Creates 4 ConstStr structs and returns a namespace type that selects the appropriate variant.
 fn make_inflect(
     ns: &Ts2,
-    base_name: &str,
     span: proc_macro2::Span,
     name_fn: impl FnMut(NameStyle) -> String,
 ) -> (Ts2, Ts2) {
-    make_inflect_base(
-        ns,
-        format_ident!("Inflect", span = span),
-        base_name,
-        span,
-        name_fn,
-    )
+    make_inflect_base(ns, format_ident!("Inflect", span = span), span, name_fn)
 }
 
 /// Generate inflectable affix using the `InflectAffix` method.
 /// Creates 4 ConstStr structs and returns a namespace type that selects the appropriate variant.
+/// Note: This does not append the prefix from `ns` as per the behavior of `InflectAffix`.
 fn make_inflect_affix(
     ns: &Ts2,
-    base_name: &str,
     span: proc_macro2::Span,
     name_fn: impl FnMut(NameStyle) -> String,
 ) -> (Ts2, Ts2) {
     make_inflect_base(
         ns,
         format_ident!("InflectAffix", span = span),
-        base_name,
         span,
         name_fn,
     )
@@ -129,16 +132,8 @@ fn make_inflect_affix(
 /// Creates 4 ConstStr structs (preserve, pascal, snake, kebab) and returns
 /// a namespace type that selects the appropriate variant via InflectAffix.
 /// Returns (extra_code, namespace_with_prefix).
-pub(crate) fn make_inflect_prefix(
-    ns: &Ts2,
-    prefix: &str,
-    base_name: &str,
-    span: proc_macro2::Span,
-) -> (Ts2, Ts2) {
-    let (extra, inflected) =
-        make_inflect_affix(ns, &format!("{}Prefix", base_name), span, |style| {
-            style.apply_prefix(prefix)
-        });
+pub(crate) fn make_inflect_prefix(ns: &Ts2, prefix: &str, span: proc_macro2::Span) -> (Ts2, Ts2) {
+    let (extra, inflected) = make_inflect_affix(ns, span, |style| style.apply_prefix(prefix));
 
     let ns_with_prefix = quote!(
         <#ns as ::metrique::NameStyle>::AppendPrefix<#inflected>
@@ -153,10 +148,12 @@ pub(crate) fn make_inflect_prefix(
 pub(crate) fn make_exact_prefix(
     ns: &Ts2,
     exact_prefix: &str,
-    base_name: &str,
     span: proc_macro2::Span,
 ) -> (Ts2, Ts2) {
-    let prefix_ident = format_ident!("{}Preserve", base_name, span = span);
+    // Apply PascalCase first, then sanitize to create a valid identifier
+    let pascal_val = NameStyle::PascalCase.apply(exact_prefix);
+    let ident_base: String = pascal_val.chars().filter(|c| c.is_alphanumeric()).collect();
+    let prefix_ident = format_ident!("{}Preserve", ident_base, span = span);
     let extra = const_str(&prefix_ident, exact_prefix);
     let ns_with_prefix = quote!(
         <#ns as ::metrique::NameStyle>::AppendPrefix<#prefix_ident>
@@ -194,7 +191,7 @@ fn generate_field_writes(
             MetricsFieldKind::Flatten { span, prefix } => {
                 let (extra, ns) = match prefix {
                     None => (quote!(), ns),
-                    Some(prefix) => prefix.append_to(&ns, &field.ident.to_string(), field_span),
+                    Some(prefix) => prefix.append_to(&ns, field_span),
                 };
                 let field_access = field_access(&field.ident);
                 writes.push(quote_spanned! {*span=>
@@ -206,10 +203,7 @@ fn generate_field_writes(
                 continue;
             }
             MetricsFieldKind::Field { format, .. } => {
-                let (extra, name) =
-                    make_inflect(&ns, &field.ident.to_string(), field_span, |style| {
-                        crate::inflect::metric_name(root_attrs, style, field)
-                    });
+                let (extra, name) = make_inflect_metric_name(root_attrs, field);
                 let field_access = field_access(&field.ident);
                 let value = crate::value_impl::format_value(format, field_span, field_access);
                 writes.push(quote_spanned! {field_span=>
@@ -253,7 +247,6 @@ fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
 fn make_inflect_metric_name(root_attrs: &RootAttributes, field: &MetricsField) -> (Ts2, Ts2) {
     make_inflect(
         &make_ns(root_attrs.rename_all, field.span),
-        &field.ident.to_string(),
         field.span,
         |style| metric_name(root_attrs, style, field),
     )

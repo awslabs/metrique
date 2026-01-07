@@ -1090,15 +1090,14 @@ impl Prefix {
     pub(crate) fn append_to(
         &self,
         ns: &proc_macro2::TokenStream,
-        base_name: &str,
         span: proc_macro2::Span,
     ) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
         match self {
             Prefix::Inflectable { prefix } => {
-                crate::entry_impl::make_inflect_prefix(ns, prefix, base_name, span)
+                crate::entry_impl::make_inflect_prefix(ns, prefix, span)
             }
             Prefix::Exact(exact_prefix) => {
-                crate::entry_impl::make_exact_prefix(ns, exact_prefix, base_name, span)
+                crate::entry_impl::make_exact_prefix(ns, exact_prefix, span)
             }
         }
     }
@@ -1473,6 +1472,20 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_field_inflectable_prefix_struct() {
+        let input = quote! {
+            struct RequestMetrics {
+                #[metrics(flatten, prefix = "api_")]
+                nested: NestedMetrics,
+                operation: &'static str
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("field_inflectable_prefix_struct", parsed_file);
     }
 
     #[test]

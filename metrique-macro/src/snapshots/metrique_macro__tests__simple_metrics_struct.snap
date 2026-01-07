@@ -27,32 +27,28 @@ const _: () = {
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    #[allow(non_camel_case_types)]
-                    struct operationPreserve;
-                    impl ::metrique::concat::ConstStr for operationPreserve {
+                    struct OperationPreserve;
+                    impl ::metrique::concat::ConstStr for OperationPreserve {
                         const VAL: &'static str = "operation";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct operationKebab;
-                    impl ::metrique::concat::ConstStr for operationKebab {
+                    struct OperationKebab;
+                    impl ::metrique::concat::ConstStr for OperationKebab {
                         const VAL: &'static str = "operation";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct operationPascal;
-                    impl ::metrique::concat::ConstStr for operationPascal {
+                    struct OperationPascal;
+                    impl ::metrique::concat::ConstStr for OperationPascal {
                         const VAL: &'static str = "Operation";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct operationSnake;
-                    impl ::metrique::concat::ConstStr for operationSnake {
+                    struct OperationSnake;
+                    impl ::metrique::concat::ConstStr for OperationSnake {
                         const VAL: &'static str = "operation";
                     }
                     ::metrique::concat::const_str_value::<
                         <NS as ::metrique::NameStyle>::Inflect<
-                            operationPreserve,
-                            operationPascal,
-                            operationSnake,
-                            operationKebab,
+                            OperationPreserve,
+                            OperationPascal,
+                            OperationSnake,
+                            OperationKebab,
                         >,
                     >()
                 },
@@ -61,32 +57,28 @@ const _: () = {
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    #[allow(non_camel_case_types)]
-                    struct number_of_ducksPreserve;
-                    impl ::metrique::concat::ConstStr for number_of_ducksPreserve {
+                    struct NumberOfDucksPreserve;
+                    impl ::metrique::concat::ConstStr for NumberOfDucksPreserve {
                         const VAL: &'static str = "number_of_ducks";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct number_of_ducksKebab;
-                    impl ::metrique::concat::ConstStr for number_of_ducksKebab {
+                    struct NumberOfDucksKebab;
+                    impl ::metrique::concat::ConstStr for NumberOfDucksKebab {
                         const VAL: &'static str = "number-of-ducks";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct number_of_ducksPascal;
-                    impl ::metrique::concat::ConstStr for number_of_ducksPascal {
+                    struct NumberOfDucksPascal;
+                    impl ::metrique::concat::ConstStr for NumberOfDucksPascal {
                         const VAL: &'static str = "NumberOfDucks";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct number_of_ducksSnake;
-                    impl ::metrique::concat::ConstStr for number_of_ducksSnake {
+                    struct NumberOfDucksSnake;
+                    impl ::metrique::concat::ConstStr for NumberOfDucksSnake {
                         const VAL: &'static str = "number_of_ducks";
                     }
                     ::metrique::concat::const_str_value::<
                         <NS as ::metrique::NameStyle>::Inflect<
-                            number_of_ducksPreserve,
-                            number_of_ducksPascal,
-                            number_of_ducksSnake,
-                            number_of_ducksKebab,
+                            NumberOfDucksPreserve,
+                            NumberOfDucksPascal,
+                            NumberOfDucksSnake,
+                            NumberOfDucksKebab,
                         >,
                     >()
                 },

@@ -24,43 +24,38 @@ const _: () = {
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestMetricsEntry {
         fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
-            #[allow(non_camel_case_types)]
-            struct nestedPreserve;
-            impl ::metrique::concat::ConstStr for nestedPreserve {
+            struct ApiPreserve;
+            impl ::metrique::concat::ConstStr for ApiPreserve {
                 const VAL: &'static str = "API@";
             }
             ::metrique::InflectableEntry::<
-                <NS as ::metrique::NameStyle>::AppendPrefix<nestedPreserve>,
+                <NS as ::metrique::NameStyle>::AppendPrefix<ApiPreserve>,
             >::write(&self.nested, writer);
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    #[allow(non_camel_case_types)]
-                    struct operationPreserve;
-                    impl ::metrique::concat::ConstStr for operationPreserve {
+                    struct OperationPreserve;
+                    impl ::metrique::concat::ConstStr for OperationPreserve {
                         const VAL: &'static str = "operation";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct operationKebab;
-                    impl ::metrique::concat::ConstStr for operationKebab {
+                    struct OperationKebab;
+                    impl ::metrique::concat::ConstStr for OperationKebab {
                         const VAL: &'static str = "operation";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct operationPascal;
-                    impl ::metrique::concat::ConstStr for operationPascal {
+                    struct OperationPascal;
+                    impl ::metrique::concat::ConstStr for OperationPascal {
                         const VAL: &'static str = "Operation";
                     }
-                    #[allow(non_camel_case_types)]
-                    struct operationSnake;
-                    impl ::metrique::concat::ConstStr for operationSnake {
+                    struct OperationSnake;
+                    impl ::metrique::concat::ConstStr for OperationSnake {
                         const VAL: &'static str = "operation";
                     }
                     ::metrique::concat::const_str_value::<
                         <NS as ::metrique::NameStyle>::Inflect<
-                            operationPreserve,
-                            operationPascal,
-                            operationSnake,
-                            operationKebab,
+                            OperationPreserve,
+                            OperationPascal,
+                            OperationSnake,
+                            OperationKebab,
                         >,
                     >()
                 },
