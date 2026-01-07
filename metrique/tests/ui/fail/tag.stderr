@@ -6,14 +6,11 @@ error: `tag` attribute is only supported on entry enums
 7 | | }
   | |_^
 
-error: `tag` attribute is only supported on entry enums, not value enums
-  --> tests/ui/fail/tag.rs:11:1
+error: value and value(string) do not support tag
+  --> tests/ui/fail/tag.rs:10:30
    |
-11 | / enum Status {
-12 | |     Active,
-13 | |     Inactive,
-14 | | }
-   | |_^
+10 | #[metrics(value(string), tag(name = "operation"))]
+   |                              ^^^^
 
 error: tag requires either name or name_exact parameter: #[metrics(tag(name = "..."))] or #[metrics(tag(name_exact = "..."))]
   --> tests/ui/fail/tag.rs:17:11

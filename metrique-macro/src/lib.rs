@@ -282,7 +282,8 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///
 /// Variants can be tuple variants (which must use flatten/flatten_entry/ignore attributes, since
 /// their fields are unnamed). Or, they can use struct variants with named fields and the full
-/// range of field attributes available.
+/// range of field attributes available. (Unit variants are also supported but don't do much unless
+/// used with a `tag` field; see the following `Tag field` section.)
 ///
 /// ```rust
 /// # use metrique::unit_of_work::metrics;
@@ -333,7 +334,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///         #[metrics(unit = Millisecond)]
 ///         latency: Duration,
 ///     },
-///     // doesn't contain fields, but still has the tag name
+///     // doesn't contain fields, but still has the tag field injected
 ///     Delete,
 /// }
 ///
@@ -518,7 +519,7 @@ struct RawRootAttributes {
     #[darling(rename = "emf::dimension_sets")]
     emf_dimensions: Option<DimensionSets>,
 
-    tag: Option<RawTag>,
+    tag: Option<SpannedValue<RawTag>>,
 
     subfield: Flag,
     #[darling(rename = "subfield_owned")]
@@ -594,6 +595,21 @@ impl RawRootAttributes {
                     .with_span(&ds.span()),
             );
         }
+        let tag = self
+            .tag
+            .map(|tag| match &mode {
+                MetricMode::RootEntry | MetricMode::Subfield | MetricMode::SubfieldOwned => {
+                    Ok(tag.into_inner().into())
+                }
+                MetricMode::Value | MetricMode::ValueString => {
+                    return Err(darling::Error::custom(
+                        "value and value(string) do not support tag",
+                    )
+                    .with_span(&tag.span()));
+                }
+            })
+            .transpose()?;
+
         Ok(RootAttributes {
             prefix: Prefix::from_inflectable_and_exact(
                 &self.prefix,
@@ -603,7 +619,7 @@ impl RawRootAttributes {
             .map(SpannedValue::into_inner),
             rename_all: self.rename_all,
             emf_dimensions: self.emf_dimensions,
-            tag: self.tag.map(Into::into),
+            tag,
             sample_group,
             mode,
         })
@@ -1144,24 +1160,44 @@ fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
 
 fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
     let output = match root_attributes.mode {
-        MetricMode::RootEntry
-        | MetricMode::Subfield
-        | MetricMode::SubfieldOwned
-        | MetricMode::Value => match &input.data {
-            Data::Struct(data_struct) => {
-                if root_attributes.tag.is_some() {
+        MetricMode::RootEntry | MetricMode::Subfield | MetricMode::SubfieldOwned => {
+            match &input.data {
+                Data::Struct(data_struct) => {
+                    if root_attributes.tag.is_some() {
+                            return Err(Error::new_spanned(
+                                &input,
+                                "`tag` attribute is only supported on entry enums",
+                            ));
+                    }
+                    let fields = match &data_struct.fields {
+                        Fields::Named(fields_named) => &fields_named.named,
+                        _ => {
+                            return Err(Error::new_spanned(
+                                &input,
+                                "Only named fields are supported",
+                            ));
+                        }
+                    };
+                    structs::generate_metrics_for_struct(root_attributes, &input, fields)?
+                }
+                Data::Enum(data_enum) => {
+                    let variants =
+                        enums::parse_enum_variants(&data_enum.variants, enums::VariantMode::Entry)?;
+                    enums::generate_metrics_for_enum(root_attributes, &input, &variants)?
+                }
+                Data::Union(_) => {
                     return Err(Error::new_spanned(
                         &input,
-                        "`tag` attribute is only supported on entry enums",
+                        "Only structs and enums are supported for entries",
                     ));
                 }
+            }
+        }
+        MetricMode::Value => match &input.data {
+            Data::Struct(data_struct) => {
                 let fields = match &data_struct.fields {
                     Fields::Named(fields_named) => &fields_named.named,
-                    Fields::Unnamed(fields_unnamed)
-                        if root_attributes.mode == MetricMode::Value =>
-                    {
-                        &fields_unnamed.unnamed
-                    }
+                    Fields::Unnamed(fields_unnamed) => &fields_unnamed.unnamed,
                     _ => {
                         return Err(Error::new_spanned(
                             &input,
@@ -1171,25 +1207,14 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                 };
                 structs::generate_metrics_for_struct(root_attributes, &input, fields)?
             }
-            Data::Enum(data_enum) => {
-                let variants =
-                    enums::parse_enum_variants(&data_enum.variants, enums::VariantMode::Entry)?;
-                enums::generate_metrics_for_enum(root_attributes, &input, &variants)?
-            }
-            Data::Union(_) => {
+            _ => {
                 return Err(Error::new_spanned(
                     &input,
-                    "Only structs and enums are supported for entries",
+                    "Only structs are supported with value, use value(string) with enums",
                 ));
             }
         },
         MetricMode::ValueString => {
-            if root_attributes.tag.is_some() {
-                return Err(Error::new_spanned(
-                    &input,
-                    "`tag` attribute is only supported on entry enums, not value enums",
-                ));
-            }
             let variants = match &input.data {
                 Data::Enum(data_enum) => &data_enum.variants,
                 _ => {

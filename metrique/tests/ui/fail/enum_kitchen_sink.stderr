@@ -1,10 +1,10 @@
-error: value(string) enum variants may not contain data
+error: value(string) enum variants may not contain data. Use #[metrics(tag(name="MyField"))] to inject a value(string) field into an entry enum.
  --> tests/ui/fail/enum_kitchen_sink.rs:9:5
   |
 9 |     Variant(usize),
   |     ^^^^^^^
 
-error: value(string) enum variants may not contain data
+error: value(string) enum variants may not contain data. Use #[metrics(tag(name="MyField"))] to inject a value(string) field into an entry enum.
   --> tests/ui/fail/enum_kitchen_sink.rs:15:5
    |
 15 |     Variant { field: usize },

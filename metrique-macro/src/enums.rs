@@ -173,7 +173,7 @@ pub(crate) fn parse_enum_variants(
         // Check for value enum with data first, before parsing
         if mode == VariantMode::ValueString && !variant.fields.is_empty() {
             errors.push(
-                darling::Error::custom("value(string) enum variants may not contain data")
+                darling::Error::custom("value(string) enum variants may not contain data. Use #[metrics(tag(name=\"MyField\"))] to inject a value(string) field into an entry enum.")
                     .with_span(variant),
             );
             continue;
