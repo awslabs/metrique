@@ -1164,10 +1164,10 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
             match &input.data {
                 Data::Struct(data_struct) => {
                     if root_attributes.tag.is_some() {
-                            return Err(Error::new_spanned(
-                                &input,
-                                "`tag` attribute is only supported on entry enums",
-                            ));
+                        return Err(Error::new_spanned(
+                            &input,
+                            "`tag` attribute is only supported on entry enums",
+                        ));
                     }
                     let fields = match &data_struct.fields {
                         Fields::Named(fields_named) => &fields_named.named,
