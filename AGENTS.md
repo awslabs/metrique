@@ -4,8 +4,22 @@
 - Use `cargo +1.89 nextest run` to run all tests in this workspace
 - If there are mismatches in trybuild or insta snapshots, share the diff for user approval before accepting them
 - For test utilities:
-  - Use `test_metric()` for short, focused examples (e.g., doc examples, simple assertions)
-  - Use `test_entry_sink()` for longer-form tests and examples that need multiple entries or demonstrate queue behavior
+  - `test_metric()` - short, focused examples (e.g., doc examples, simple assertions)
+    ```rust
+    // metrique-writer/src/test_util.rs
+    let entry = test_metric(MyMetrics { field: value });
+    assert_eq!(entry.metrics["Field"].as_u64(), value);
+    ```
+  - `test_entry_sink()` - longer-form tests with multiple entries or queue behavior
+    ```rust
+    // metrique-writer/src/test_util.rs
+    let TestEntrySink { inspector, sink } = test_entry_sink();
+    let mut metrics = MyMetrics::default().append_on_drop(sink);
+    // ... mutate metrics ...
+    drop(metrics);
+    let entries = inspector.take();
+    assert!(entries.iter().any(|e| e.metrics["Field"].as_u64() == expected));
+    ```
 
 # Metrique Trait System
 
