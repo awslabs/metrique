@@ -6,7 +6,7 @@ use metrique::{test_util::test_metric, unit_of_work::metrics};
 // Basic tuple variant with flatten
 #[metrics]
 #[derive(Clone)]
-struct NestedMetrics {
+pub struct NestedMetrics {
     value: u32,
 }
 
@@ -26,7 +26,7 @@ fn test_tuple_variant_flatten() {
 use metrique::writer::Entry;
 
 #[derive(Entry)]
-struct EntryMetrics {
+pub struct EntryMetrics {
     count: u32,
     name: String,
 }
@@ -119,7 +119,7 @@ fn test_enum_prefix() {
 // Tuple variant with field-level prefix
 #[metrics]
 #[derive(Clone)]
-struct PrefixedNested {
+pub struct PrefixedNested {
     metric: u32,
 }
 

@@ -7,7 +7,7 @@ enum Operation {
     Write,
 }
 #[doc(hidden)]
-enum OperationValue {
+pub enum OperationValue {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
@@ -84,7 +84,7 @@ struct Metadata {
     request_id: String,
 }
 #[doc(hidden)]
-struct MetadataEntry {
+pub struct MetadataEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
@@ -224,7 +224,7 @@ enum RequestResult {
     Cancelled(Metadata, StatusEntry),
 }
 #[doc(hidden)]
-enum RequestResultEntry {
+pub enum RequestResultEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]

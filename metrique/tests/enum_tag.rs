@@ -56,7 +56,7 @@ fn tag_respects_variant_name() {
 }
 
 #[metrics(subfield)]
-struct BackendMetrics {
+pub struct BackendMetrics {
     latency_ms: u32,
 }
 
@@ -103,7 +103,7 @@ fn tag_with_flatten_prefix() {
 }
 
 #[derive(Entry)]
-struct StatusEntry {
+pub struct StatusEntry {
     code: u32,
 }
 
@@ -133,7 +133,7 @@ fn tag_with_flatten_entry() {
 }
 
 #[metrics(subfield)]
-struct RegionMetrics {
+pub struct RegionMetrics {
     #[metrics(sample_group)]
     region: &'static str,
     bytes: usize,

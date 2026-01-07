@@ -6,7 +6,7 @@ struct NestedMetrics {
     counter: u32,
 }
 #[doc(hidden)]
-struct NestedMetricsEntry {
+pub struct NestedMetricsEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]

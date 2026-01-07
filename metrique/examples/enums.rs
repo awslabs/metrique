@@ -21,13 +21,13 @@ enum Priority {
 }
 
 #[metrics(subfield)]
-struct ReadMetrics {
+pub struct ReadMetrics {
     bytes_read: usize,
     cache_hit: bool,
 }
 
 #[metrics(subfield)]
-struct WriteMetrics {
+pub struct WriteMetrics {
     bytes_written: usize,
     fsync_required: bool,
 }

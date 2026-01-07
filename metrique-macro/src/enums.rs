@@ -258,7 +258,7 @@ pub(crate) fn generate_metrics_for_enum(
     );
     let warnings = root_attrs.warnings();
 
-    let entry_enum = generate_entry_enum(&entry_name, &input.vis, variants)?;
+    let entry_enum = generate_entry_enum(&entry_name, variants)?;
 
     let inner_impl = match root_attrs.mode {
         MetricMode::ValueString => {
@@ -328,14 +328,14 @@ pub(crate) fn generate_base_enum(
     }
 }
 
-fn generate_entry_enum(name: &Ident, vis: &Visibility, variants: &[MetricsVariant]) -> Result<Ts2> {
+fn generate_entry_enum(name: &Ident, variants: &[MetricsVariant]) -> Result<Ts2> {
     let variants = variants.iter().map(|variant| variant.entry_variant());
     let data = quote! {
         #(#variants,)*
     };
     Ok(quote! {
         #[doc(hidden)]
-        #vis enum #name {
+        pub enum #name {
             #data
         }
     })

@@ -5,14 +5,14 @@ use metrique::{test_util::test_metric, unit_of_work::metrics};
 
 #[metrics]
 #[derive(Clone)]
-struct NestedMetrics {
+pub struct NestedMetrics {
     value: u32,
 }
 
 // Child rename_all + parent prefix
 #[metrics(rename_all = "PascalCase")]
 #[derive(Clone)]
-struct ChildRenamed {
+pub struct ChildRenamed {
     read_data: u32,
 }
 
@@ -51,7 +51,7 @@ fn test_parent_rename_and_prefix() {
 // Competing rename_all (child wins)
 #[metrics(rename_all = "kebab-case")]
 #[derive(Clone)]
-struct ChildKebabCase {
+pub struct ChildKebabCase {
     read_data: u32,
 }
 
@@ -72,7 +72,7 @@ fn test_competing_rename_all() {
 // Child has exact_prefix, parent has rename_all - exact prefix preserved
 #[metrics(exact_prefix = "op-")]
 #[derive(Clone)]
-struct ExactPrefixChild {
+pub struct ExactPrefixChild {
     value: u32,
 }
 
@@ -98,7 +98,7 @@ struct InnerLevel {
 
 #[metrics]
 #[derive(Clone)]
-struct MiddleLevel {
+pub struct MiddleLevel {
     #[metrics(flatten, prefix = "inner_")]
     inner: InnerLevel,
 }
@@ -121,12 +121,12 @@ fn test_triple_prefix_combination() {
 // Subfield enum flattened into parent struct with field-level prefix
 // Uses TimestampOnClose to test subfield_owned (only implements CloseValue for owned, not &T)
 #[metrics(subfield_owned)]
-struct SubfieldNested {
+pub struct SubfieldNested {
     timestamp: metrique::timers::TimestampOnClose,
 }
 
 #[metrics(subfield_owned)]
-enum SubfieldStatus {
+pub enum SubfieldStatus {
     TupleVariant(#[metrics(flatten)] SubfieldNested),
     StructVariant {
         timestamp: metrique::timers::TimestampOnClose,
@@ -203,17 +203,17 @@ fn test_subfield_enum_parent_container_prefix() {
 
 // Tests both struct and tuple variants with types that only implement CloseValue for owned
 #[metrics(subfield_owned)]
-struct TimestampWrapper {
+pub struct TimestampWrapper {
     timestamp: metrique::timers::TimestampOnClose,
 }
 
 #[metrics(subfield_owned)]
-struct StringWrapper {
+pub struct StringWrapper {
     value: String,
 }
 
 #[metrics(subfield_owned)]
-enum InnerStatus {
+pub enum InnerStatus {
     Active {
         timestamp: metrique::timers::TimestampOnClose,
     },
@@ -264,14 +264,14 @@ struct DeepNested {
 
 #[metrics]
 #[derive(Clone)]
-struct MiddleNested {
+pub struct MiddleNested {
     #[metrics(flatten, prefix = "mid_")]
     deep: DeepNested,
     middle_value: u32,
 }
 
 #[metrics]
-enum StructVariantNested {
+pub enum StructVariantNested {
     Variant {
         #[metrics(flatten, prefix = "outer_")]
         middle: MiddleNested,

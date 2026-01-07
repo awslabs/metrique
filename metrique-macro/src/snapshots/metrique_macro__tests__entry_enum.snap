@@ -6,7 +6,7 @@ struct Nested {
     value: u32,
 }
 #[doc(hidden)]
-struct NestedEntry {
+pub struct NestedEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
@@ -79,7 +79,7 @@ enum Status {
     Multi(Nested, u32),
 }
 #[doc(hidden)]
-enum StatusEntry {
+pub enum StatusEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
@@ -300,7 +300,7 @@ enum Operation {
     Write(Nested),
 }
 #[doc(hidden)]
-enum OperationEntry {
+pub enum OperationEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]

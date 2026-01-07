@@ -10,7 +10,7 @@ use metrique_writer_core::SampleGroup;
 
 #[metrics]
 #[derive(Clone)]
-struct NestedMetrics {
+pub struct NestedMetrics {
     value: u32,
 }
 

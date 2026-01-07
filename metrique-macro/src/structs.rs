@@ -37,13 +37,7 @@ pub(crate) fn generate_metrics_for_struct(
     )?;
     let warnings = root_attributes.warnings();
 
-    let entry_struct = generate_entry_struct(
-        &entry_name,
-        &input.vis,
-        &input.generics,
-        &parsed_fields,
-        &root_attributes,
-    )?;
+    let entry_struct = generate_entry_struct(&entry_name, &parsed_fields, &root_attributes)?;
 
     let inner_impl = match root_attributes.mode {
         MetricMode::Value => {
@@ -122,8 +116,6 @@ fn wrap_fields_into_struct_decl(has_named_fields: bool, fields: impl Iterator<It
 
 fn generate_entry_struct(
     name: &Ident,
-    vis: &Visibility,
-    _generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Result<Ts2> {
@@ -134,7 +126,7 @@ fn generate_entry_struct(
     let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
     Ok(quote!(
         #[doc(hidden)]
-        #vis struct #name #body
+        pub struct #name #body
     ))
 }
 

@@ -1,13 +1,12 @@
 ---
 source: metrique-macro/src/lib.rs
-assertion_line: 1201
 expression: parsed_file
 ---
 enum Foo {
     Bar,
 }
 #[doc(hidden)]
-enum FooValue {
+pub enum FooValue {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
