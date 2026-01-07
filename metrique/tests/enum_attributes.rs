@@ -58,24 +58,49 @@ fn test_variant_name_with_rename_all() {
     assert_eq!(entry.metrics["value"].as_u64(), 88);
 }
 
-// Variant name + container prefix (name is NOT prefixed)
+// Variant name + container prefix
+// Variant names (tag values) should NOT get prefix, only rename_all applies
 #[metrics(prefix = "api_")]
 enum VariantNameWithPrefix {
     #[metrics(name = "operation")]
     DefaultOp(#[metrics(flatten)] NestedMetrics),
+    // No name override - tuple variant
+    TupleOp(#[metrics(flatten)] NestedMetrics),
+    // No name override - struct variant, prefix applies to fields
+    StructOp {
+        count: u32,
+    },
 }
 
 #[test]
 fn test_variant_name_with_prefix() {
     let variant = VariantNameWithPrefix::DefaultOp(NestedMetrics { value: 77 });
 
-    // Variant name is NOT prefixed
+    // Variant name override is NOT prefixed
     let name: &'static str = (&variant).into();
     assert_eq!(name, "operation");
     assert_eq!(variant.as_sample_group(), "operation");
 
     let entry = test_metric(variant);
     assert_eq!(entry.metrics["value"].as_u64(), 77);
+
+    // Tuple variant without name override - prefix does NOT apply to variant name
+    let variant2 = VariantNameWithPrefix::TupleOp(NestedMetrics { value: 88 });
+    let name2: &'static str = (&variant2).into();
+    assert_eq!(name2, "TupleOp");
+    assert_eq!(variant2.as_sample_group(), "TupleOp");
+
+    let entry2 = test_metric(variant2);
+    assert_eq!(entry2.metrics["value"].as_u64(), 88);
+
+    // Struct variant without name override - prefix does NOT apply to variant name
+    let variant3 = VariantNameWithPrefix::StructOp { count: 99 };
+    let name3: &'static str = (&variant3).into();
+    assert_eq!(name3, "StructOp");
+    assert_eq!(variant3.as_sample_group(), "StructOp");
+
+    let entry3 = test_metric(variant3);
+    assert_eq!(entry3.metrics["api_count"].as_u64(), 99); // Fields DO get prefix
 }
 
 // Struct variant field with custom name

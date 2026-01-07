@@ -22,16 +22,6 @@ fn tuple_pattern(entry_name: &Ident, variant_ident: &Ident, bindings: &[Ident]) 
     quote!(#entry_name::#variant_ident(#(#bindings),*))
 }
 
-/// Get the tag value for a variant, respecting rename_all and variant name override, but not prefix.
-fn tag_value(variant: &MetricsVariant, root_attrs: &RootAttributes) -> String {
-    variant
-        .attrs
-        .name
-        .as_deref()
-        .map(str::to_owned)
-        .unwrap_or_else(|| root_attrs.rename_all.apply(&variant.ident.to_string()))
-}
-
 pub(crate) fn generate_enum_entry_impl(
     entry_name: &Ident,
     variants: &[MetricsVariant],
@@ -85,7 +75,7 @@ fn generate_write_arms(
                     variant.ident.span(),
                     |style| style.apply(tag_name),
                 );
-                let value = tag_value(variant, root_attrs);
+                let value = crate::inflect::inflect_no_prefix(root_attrs, variant);
                 quote! {
                     #extra
                     ::metrique::writer::EntryWriter::value(writer, ::metrique::concat::const_str_value::<#name>(), #value);
@@ -201,7 +191,7 @@ fn generate_sample_group_arms(
                 variant.ident.span(),
                 |style| style.apply(tag_name),
             );
-            let value = tag_value(variant, root_attrs);
+            let value = crate::inflect::inflect_no_prefix(root_attrs, variant);
             Some(quote! {
                 {
                     #extra

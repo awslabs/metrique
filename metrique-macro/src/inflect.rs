@@ -91,6 +91,17 @@ pub fn metric_name(
         .unwrap_or_else(|| name_style.apply(&base))
 }
 
+/// Inflect a field or variant name, respecting container and field attributes
+/// BESIDES prefix and prefix_exact
+pub fn inflect_no_prefix(root_attrs: &RootAttributes, field: &impl HasInflectableName) -> String {
+    if let Some(name_override) = field.name_override() {
+        return name_override.to_string();
+    };
+
+    let base = field.name();
+    root_attrs.rename_all.apply(&base)
+}
+
 pub trait HasInflectableName {
     fn name_override(&self) -> Option<&str>;
     fn name(&self) -> String;

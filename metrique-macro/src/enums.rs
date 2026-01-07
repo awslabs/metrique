@@ -406,7 +406,7 @@ pub(crate) fn generate_from_and_sample_group_for_enum(
 ) -> Ts2 {
     let variants_and_strings = variants.iter().map(|variant| {
         let variant_ident = &variant.ident;
-        let metric_name = crate::inflect::metric_name(root_attrs, root_attrs.rename_all, variant);
+        let metric_name = crate::inflect::inflect_no_prefix(root_attrs, variant);
         let pattern = match &variant.data {
             None => quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident),
             Some(VariantData::Tuple(tuple_data)) => {
