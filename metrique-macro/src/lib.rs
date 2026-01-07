@@ -601,12 +601,10 @@ impl RawRootAttributes {
                 MetricMode::RootEntry | MetricMode::Subfield | MetricMode::SubfieldOwned => {
                     Ok(tag.into_inner().into())
                 }
-                MetricMode::Value | MetricMode::ValueString => {
-                    Err(darling::Error::custom(
-                        "value and value(string) do not support tag",
-                    )
-                    .with_span(&tag.span()))
-                }
+                MetricMode::Value | MetricMode::ValueString => Err(darling::Error::custom(
+                    "value and value(string) do not support tag",
+                )
+                .with_span(&tag.span())),
             })
             .transpose()?;
 
