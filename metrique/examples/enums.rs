@@ -62,12 +62,12 @@ impl StorageLayer {
     fn read(&self, key: &str) -> (Vec<u8>, ReadMetrics) {
         let cache_hit = key.len() % 2 == 0;
         let data = vec![0u8; 1024];
-        
+
         let metrics = ReadMetrics {
             bytes_read: data.len(),
             cache_hit,
         };
-        
+
         (data, metrics)
     }
 
@@ -86,7 +86,7 @@ impl StorageLayer {
 // Application layer that wraps storage operations with metrics
 fn handle_read_request(storage: &StorageLayer, key: &str, priority: Priority) -> RequestMetrics {
     let (data, read_metrics) = storage.read(key);
-    
+
     RequestMetrics {
         priority,
         details: OperationMetrics::Read(read_metrics),
@@ -95,9 +95,13 @@ fn handle_read_request(storage: &StorageLayer, key: &str, priority: Priority) ->
     }
 }
 
-fn handle_write_request(storage: &StorageLayer, data: Vec<u8>, priority: Priority) -> RequestMetrics {
+fn handle_write_request(
+    storage: &StorageLayer,
+    data: Vec<u8>,
+    priority: Priority,
+) -> RequestMetrics {
     let write_metrics = storage.write(&data);
-    
+
     RequestMetrics {
         priority,
         details: OperationMetrics::Write(write_metrics),
@@ -106,9 +110,13 @@ fn handle_write_request(storage: &StorageLayer, data: Vec<u8>, priority: Priorit
     }
 }
 
-fn handle_delete_request(storage: &StorageLayer, keys: Vec<String>, priority: Priority) -> RequestMetrics {
+fn handle_delete_request(
+    storage: &StorageLayer,
+    keys: Vec<String>,
+    priority: Priority,
+) -> RequestMetrics {
     let key_count = storage.delete(&keys);
-    
+
     RequestMetrics {
         priority,
         details: OperationMetrics::Delete { key_count },
@@ -129,7 +137,11 @@ fn main() {
     let write_entry = test_metric(write_metrics);
 
     // Delete operation - metrics constructed inline
-    let delete_metrics = handle_delete_request(&storage, vec!["key1".to_string(), "key2".to_string()], Priority::Low);
+    let delete_metrics = handle_delete_request(
+        &storage,
+        vec!["key1".to_string(), "key2".to_string()],
+        Priority::Low,
+    );
     let delete_entry = test_metric(delete_metrics);
 
     // Example output for Read operation:
