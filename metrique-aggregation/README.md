@@ -65,7 +65,7 @@ metrics.api_calls.add(ApiCall {
 
 ## How it works
 
-The aggregation system has two levels:
+The aggregation system has three layers:
 
 ### Field-level aggregation
 
@@ -77,7 +77,11 @@ Individual fields use aggregation strategies that implement `AggregateValue<T>`:
 
 ### Entry-level aggregation
 
-The `#[aggregate]` macro generates an implementation of `AggregateEntry` that combines all fields according to their strategies. The macro creates an aggregated version of your struct where each field is replaced with its aggregated type.
+The `#[aggregate]` macro generates implementations of the `Merge` and `AggregateStrategy` traits. The `Merge` trait defines how complete entries are combined, while `AggregateStrategy` ties together the source type, merge behavior, and key extraction.
+
+### Key extraction
+
+Fields marked with `#[aggregate(key)]` become grouping keys. Entries with the same key are merged together, enabling keyed aggregation patterns.
 
 ## Aggregation patterns
 
@@ -165,4 +169,4 @@ latency: Duration,
 
 ## Manual implementation
 
-While `#[aggregate]` is the recommended approach, you can implement `AggregateEntry` manually for full control. See the `manual_aggregation` example for details.
+While `#[aggregate]` is the recommended approach, you can implement the aggregation traits manually for full control. See the `manual_aggregation` test for details.
