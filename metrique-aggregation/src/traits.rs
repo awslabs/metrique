@@ -25,7 +25,7 @@
 //! [`Aggregate<T>`] is the simplest way to aggregate data, typically used as a field in a larger struct.
 //! It wraps an aggregated value and tracks the number of samples merged.
 
-use metrique_core::{CloseEntry, CloseValue};
+use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
 use std::hash::Hash;
 
 /// Defines how individual field values are aggregated.
@@ -120,6 +120,36 @@ pub trait AggregateEntry {
     fn key(source: &Self::Source) -> Self::Key<'_>;
 }
 
+trait Key<Source> {
+    type Key<'a>: Send + Hash + Eq + InflectableEntry;
+    fn from_source(source: &Source) -> Self::Key<'_>;
+    fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static>;
+}
+
+trait Merge {
+    type Merged;
+    fn merge(accum: &mut Self::Merged, input: Self);
+}
+
+trait AggregateStrategy {
+    type Source: Merge;
+    type Key: Key<Self::Source>;
+}
+
+struct MergeEntries<A, B> {
+    a: A,
+    b: B,
+}
+
+impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> InflectableEntry<Ns>
+    for MergeEntries<A, B>
+{
+    fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
+        self.a.write(w);
+        self.b.write(w);
+    }
+}
+
 /// Aggregated allows inline-aggregation of a metric
 ///
 /// Aggregated is simple — more complex designs allow `append_on_drop` via a queue
@@ -176,5 +206,42 @@ where
             aggregated: T::Aggregated::default(),
             num_samples: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use assert2::check;
+    use metrique::{CloseValue, unit_of_work::metrics};
+    use metrique_writer::test_util::test_metric;
+
+    use crate::traits::{Merge, MergeEntries};
+
+    #[test]
+    fn test_merge() {
+        #[metrics]
+        struct A {
+            key_1: usize,
+        }
+
+        #[metrics]
+        struct B {
+            key_2: usize,
+        }
+
+        #[metrics(rename_all = "PascalCase")]
+        struct RootMerge {
+            #[metrics(flatten, no_close)]
+            merge: MergeEntries<<A as CloseValue>::Closed, <B as CloseValue>::Closed>,
+        }
+
+        let entry = RootMerge {
+            merge: MergeEntries {
+                a: A { key_1: 1 }.close(),
+                b: B { key_2: 10 }.close(),
+            },
+        };
+        let entry = test_metric(entry);
+        check!(entry.metrics["Key1"] == 1);
     }
 }
