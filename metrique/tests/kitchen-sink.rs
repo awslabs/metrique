@@ -204,12 +204,12 @@ fn flatten_flush_as_expected() {
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
     // Entry can't be renamed
-    assert_eq!(entry.metrics["foo"].as_u64(), 1);
+    assert_eq!(entry.metrics["foo"], 1);
     // but nested can be
-    assert_eq!(entry.metrics["B"].as_u64(), 1);
+    assert_eq!(entry.metrics["B"], 1);
     assert_eq!(entry.metrics["B"].test_flag, false);
 
-    assert_eq!(entry.metrics["F"].as_u64(), 0);
+    assert_eq!(entry.metrics["F"], 0);
     assert_eq!(
         entry.metrics["F"].dimensions,
         vec![("Foo".to_string(), "Bar".to_string())]
@@ -243,10 +243,10 @@ fn flatten_flush_as_expected_snake() {
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
 
-    assert_eq!(entry.metrics["b"].as_u64(), 1);
+    assert_eq!(entry.metrics["b"], 1);
     assert_eq!(entry.metrics["b"].test_flag, false);
 
-    assert_eq!(entry.metrics["f"].as_u64(), 0);
+    assert_eq!(entry.metrics["f"], 0);
     assert_eq!(
         entry.metrics["f"].dimensions,
         vec![("Foo".to_string(), "Bar".to_string())]
@@ -267,7 +267,7 @@ fn flatten_flush_as_expected_mixed_prefix_casing() {
 
     // check that the rename_all on PrefixSnake2 catches inside it, but not outside it
     // prefixes are inflected, so `.` becomes `-`.
-    assert_eq!(entry.metrics["foo-x-BarValue"].as_u64(), 0);
+    assert_eq!(entry.metrics["foo-x-BarValue"], 0);
 }
 
 #[test]
@@ -278,7 +278,7 @@ fn flatten_flush_as_expected_mixed_prefix_casing_exact() {
     let entry = test_util::to_test_entry(&entries[0]);
 
     // check that the rename_all on PrefixSnake2 catches inside it, but not outside it
-    assert_eq!(entry.metrics["foo:BarValue"].as_u64(), 0);
+    assert_eq!(entry.metrics["foo:BarValue"], 0);
 }
 
 #[test]
@@ -289,8 +289,8 @@ fn flatten_flush_as_expected_mixed_prefix_root_and_name() {
     let entry = test_util::to_test_entry(&entries[0]);
 
     // check that prefix-on-the-root does not apply to prefix-on-fields
-    assert_eq!(entry.metrics["Inner:NestedMetric"].as_u64(), 0);
-    assert_eq!(entry.metrics["Inner2NestedMetric"].as_u64(), 0);
+    assert_eq!(entry.metrics["Inner:NestedMetric"], 0);
+    assert_eq!(entry.metrics["Inner2NestedMetric"], 0);
 }
 
 #[test]
@@ -313,10 +313,10 @@ fn flatten_flush_as_expected_kebab() {
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
 
-    assert_eq!(entry.metrics["b"].as_u64(), 1);
+    assert_eq!(entry.metrics["b"], 1);
     assert_eq!(entry.metrics["b"].test_flag, false);
 
-    assert_eq!(entry.metrics["f"].as_u64(), 0);
+    assert_eq!(entry.metrics["f"], 0);
     assert_eq!(
         entry.metrics["f"].dimensions,
         vec![("Foo".to_string(), "Bar".to_string())]
@@ -341,14 +341,14 @@ fn atomics_flush_as_expected() {
     drop(atomics);
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
-    assert_eq!(entry.metrics["A"].as_u64(), 1);
-    assert_eq!(entry.metrics["B"].as_u64(), 2);
-    assert_eq!(entry.metrics["C"].as_u64(), 3);
-    assert_eq!(entry.metrics["D"].as_u64(), 4);
-    assert_eq!(entry.metrics["E"].as_u64(), 5);
+    assert_eq!(entry.metrics["A"], 1);
+    assert_eq!(entry.metrics["B"], 2);
+    assert_eq!(entry.metrics["C"], 3);
+    assert_eq!(entry.metrics["D"], 4);
+    assert_eq!(entry.metrics["E"], 5);
     // bools set to 1/0
-    assert_eq!(entry.metrics["F"].as_u64(), 0);
-    assert_eq!(entry.metrics["G"].as_u64(), 1);
+    assert_eq!(entry.metrics["F"], 0);
+    assert_eq!(entry.metrics["G"], 1);
 }
 
 #[test]
@@ -368,13 +368,13 @@ fn arc_atomics_flush_as_expected() {
 
     let entry = test_util::to_test_entry(&entries[0]);
 
-    assert_eq!(entry.metrics["A"].as_u64(), 1);
-    assert_eq!(entry.metrics["B"].as_u64(), 2);
-    assert_eq!(entry.metrics["C"].as_u64(), 3);
-    assert_eq!(entry.metrics["D"].as_u64(), 4);
-    assert_eq!(entry.metrics["E"].as_u64(), 5);
+    assert_eq!(entry.metrics["A"], 1);
+    assert_eq!(entry.metrics["B"], 2);
+    assert_eq!(entry.metrics["C"], 3);
+    assert_eq!(entry.metrics["D"], 4);
+    assert_eq!(entry.metrics["E"], 5);
     // For boolean values, we need to check if it's 1 (true)
-    assert_eq!(entry.metrics["F"].as_u64(), 1);
+    assert_eq!(entry.metrics["F"], 1);
 }
 
 #[test]

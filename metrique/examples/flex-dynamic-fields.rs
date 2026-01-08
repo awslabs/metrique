@@ -309,10 +309,10 @@ mod tests {
 
         // Check static fields
         assert_eq!(entry.values["Operation"], "TestOp");
-        assert_eq!(entry.metrics["StaticCounter"].as_u64(), 100);
+        assert_eq!(entry.metrics["StaticCounter"], 100);
 
         // Check dynamic fields
-        assert_eq!(entry.metrics["custom_metric"].as_u64(), 42);
+        assert_eq!(entry.metrics["custom_metric"], 42);
         assert_eq!(entry.values["user_id"], "user123");
         assert_eq!(entry.metrics["computed_value"].as_f64(), 3.14);
     }

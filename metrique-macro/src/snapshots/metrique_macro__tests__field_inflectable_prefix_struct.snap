@@ -3,8 +3,8 @@ source: metrique-macro/src/lib.rs
 expression: parsed_file
 ---
 struct RequestMetrics {
+    nested: NestedMetrics,
     operation: &'static str,
-    number_of_ducks: usize,
 }
 #[doc(hidden)]
 pub struct RequestMetricsEntry {
@@ -12,18 +12,44 @@ pub struct RequestMetricsEntry {
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    operation: <&'static str as metrique::CloseValue>::Closed,
+    nested: <NestedMetrics as metrique::CloseValue>::Closed,
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    number_of_ducks: <usize as metrique::CloseValue>::Closed,
+    operation: <&'static str as metrique::CloseValue>::Closed,
 }
 const _: () = {
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestMetricsEntry {
         fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            struct ApiPreserve;
+            impl ::metrique::concat::ConstStr for ApiPreserve {
+                const VAL: &'static str = "api_";
+            }
+            struct ApiKebab;
+            impl ::metrique::concat::ConstStr for ApiKebab {
+                const VAL: &'static str = "api-";
+            }
+            struct ApiPascal;
+            impl ::metrique::concat::ConstStr for ApiPascal {
+                const VAL: &'static str = "Api";
+            }
+            struct ApiSnake;
+            impl ::metrique::concat::ConstStr for ApiSnake {
+                const VAL: &'static str = "api_";
+            }
+            ::metrique::InflectableEntry::<
+                <NS as ::metrique::NameStyle>::AppendPrefix<
+                    <NS as ::metrique::NameStyle>::InflectAffix<
+                        ApiPreserve,
+                        ApiPascal,
+                        ApiSnake,
+                        ApiKebab,
+                    >,
+                >,
+            >::write(&self.nested, writer);
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -54,43 +80,13 @@ const _: () = {
                 },
                 &self.operation,
             );
-            ::metrique::writer::EntryWriter::value(
-                writer,
-                {
-                    struct NumberOfDucksPreserve;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksPreserve {
-                        const VAL: &'static str = "number_of_ducks";
-                    }
-                    struct NumberOfDucksKebab;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksKebab {
-                        const VAL: &'static str = "number-of-ducks";
-                    }
-                    struct NumberOfDucksPascal;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksPascal {
-                        const VAL: &'static str = "NumberOfDucks";
-                    }
-                    struct NumberOfDucksSnake;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksSnake {
-                        const VAL: &'static str = "number_of_ducks";
-                    }
-                    ::metrique::concat::const_str_value::<
-                        <NS as ::metrique::NameStyle>::Inflect<
-                            NumberOfDucksPreserve,
-                            NumberOfDucksPascal,
-                            NumberOfDucksSnake,
-                            NumberOfDucksKebab,
-                        >,
-                    >()
-                },
-                &self.number_of_ducks,
-            );
         }
         fn sample_group(
             &self,
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
-            ::std::iter::empty()
+            ::metrique::InflectableEntry::<NS>::sample_group(&self.nested)
         }
     }
 };
@@ -99,8 +95,8 @@ impl metrique::CloseValue for RequestMetrics {
     fn close(self) -> Self::Closed {
         #[allow(deprecated)]
         RequestMetricsEntry {
+            nested: metrique::CloseValue::close(self.nested),
             operation: metrique::CloseValue::close(self.operation),
-            number_of_ducks: metrique::CloseValue::close(self.number_of_ducks),
         }
     }
 }

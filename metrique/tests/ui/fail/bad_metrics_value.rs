@@ -4,6 +4,11 @@ use metrique::unit_of_work::metrics;
 enum Foo {
 }
 
+#[metrics(value)]
+enum EnumWithNakedValue {
+    Foo
+}
+
 #[metrics(value(string))]
 struct Bar {
 }

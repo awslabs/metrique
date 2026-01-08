@@ -436,12 +436,12 @@ mod tests {
         );
 
         let entry = metrique_writer::test_util::to_test_entry(&entry);
-        assert_eq!(entry.metrics["f1"].as_u64(), 42);
+        assert_eq!(entry.metrics["f1"], 42);
         assert_eq!(
             entry.metrics["f1"].dimensions,
             vec![("foo".to_string(), "bar".to_string())]
         );
-        assert_eq!(entry.metrics["f2"].as_u64(), 43);
+        assert_eq!(entry.metrics["f2"], 43);
         assert_eq!(
             entry.metrics["f2"].dimensions,
             vec![("foo".to_string(), "bar".to_string())]

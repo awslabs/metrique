@@ -44,7 +44,7 @@ fn test_flex_dynamic_field_name() {
     let entry = &entries[0];
 
     // Field appears with the runtime-determined name
-    assert_eq!(entry.metrics["runtime_field_name"].as_u64(), 42);
+    assert_eq!(entry.metrics["runtime_field_name"], 42);
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn test_flex_set_value_after_creation() {
     let entries = inspector.entries();
     let entry = &entries[0];
 
-    assert_eq!(entry.metrics["my_field"].as_u64(), 100);
+    assert_eq!(entry.metrics["my_field"], 100);
 }
 
 #[test]
@@ -85,7 +85,7 @@ fn test_flex_unset_field_omitted() {
     let entry = &entries[0];
 
     // Set field should appear
-    assert_eq!(entry.metrics["present_field"].as_u64(), 42);
+    assert_eq!(entry.metrics["present_field"], 42);
 
     // Unset field should not appear in output
     assert!(!entry.metrics.contains_key("missing_field"));
