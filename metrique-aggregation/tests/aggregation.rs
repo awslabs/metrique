@@ -6,13 +6,12 @@ use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::{AggregateSink, MergeOnDropExt, MutexAggregator};
+use metrique_aggregation::sink::{AggregateSink, MutexAggregator};
 use metrique_aggregation::traits::Aggregate;
 use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
 use metrique_writer::test_util::{DistributionsExt, test_metric};
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
-use std::borrow::Cow;
 use std::time::Duration;
 
 #[aggregate]
@@ -31,7 +30,7 @@ pub struct ApiCall {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     #[metrics(flatten)]
-    api_calls: Aggregate<ApiCall>,
+    api_calls: Aggregate<ApiCallStrategy>,
     request_id: String,
 }
 
@@ -99,22 +98,21 @@ struct ApiCallWithEndpoint {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithEndpoint {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithEndpoint>,
+    api_calls: MutexAggregator<ApiCallWithEndpointStrategy>,
     request_id: String,
 }
 
 #[test]
 fn test_macro_aggregation_with_key() {
     let metrics = RequestMetricsWithEndpoint {
-        api_calls: MutexAggregator::with_key(Cow::Borrowed(&"GetItem".to_string())),
+        api_calls: MutexAggregator::new(),
         request_id: "5678".to_string(),
     };
 
-    ApiCallWithEndpoint {
+    metrics.api_calls.merge(ApiCallWithEndpoint {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(50),
-    }
-    .merge_on_drop(&metrics.api_calls);
+    });
     metrics.api_calls.merge(ApiCallWithEndpoint {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(75),
@@ -122,7 +120,6 @@ fn test_macro_aggregation_with_key() {
 
     let entry = test_metric(metrics);
     check!(entry.values["RequestId"] == "5678");
-    check!(entry.values["Endpoint"] == "GetItem");
 }
 
 #[aggregate(raw)]
@@ -141,38 +138,31 @@ struct ApiCallWithMultipleKeys {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithMultipleKeys {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithMultipleKeys>,
+    api_calls: MutexAggregator<ApiCallWithMultipleKeysStrategy>,
     request_id: String,
 }
 
 #[test]
 fn test_macro_aggregation_with_multiple_keys() {
     let metrics = RequestMetricsWithMultipleKeys {
-        api_calls: MutexAggregator::with_key((
-            Cow::Borrowed(&"GetItem".to_string()),
-            Cow::Borrowed(&"us-east-1".to_string()),
-        )),
+        api_calls: MutexAggregator::new(),
         request_id: "9999".to_string(),
     };
 
-    ApiCallWithMultipleKeys {
+    metrics.api_calls.merge(ApiCallWithMultipleKeys {
         endpoint: "GetItem".to_string(),
         region: "us-east-1".to_string(),
         latency: Duration::from_millis(30),
-    }
-    .merge_on_drop(&metrics.api_calls);
+    });
 
-    ApiCallWithMultipleKeys {
+    metrics.api_calls.merge(ApiCallWithMultipleKeys {
         endpoint: "GetItem".to_string(),
         region: "us-east-1".to_string(),
         latency: Duration::from_millis(45),
-    }
-    .merge_on_drop(&metrics.api_calls);
+    });
 
     let entry = test_metric(metrics);
     check!(entry.values["RequestId"] == "9999");
-    check!(entry.values["Endpoint"] == "GetItem");
-    check!(entry.values["Region"] == "us-east-1");
 }
 
 #[aggregate]
@@ -186,7 +176,7 @@ struct ApiCallWithTimer {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithTimer {
     #[metrics(flatten)]
-    api_calls: Aggregate<ApiCallWithTimer>,
+    api_calls: Aggregate<ApiCallWithTimerStrategy>,
     request_id: String,
 }
 
@@ -227,14 +217,12 @@ fn test_aggregate_entry_mode_with_timer() {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithTimerMutex {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithTimer>,
+    api_calls: MutexAggregator<ApiCallWithTimerStrategy>,
     request_id: String,
 }
 
 #[test]
 fn test_merge_and_close_on_drop() {
-    use metrique_aggregation::sink::MergeOnDropExt;
-
     let metrics = RequestMetricsWithTimerMutex {
         api_calls: MutexAggregator::new(),
         request_id: "merge-close-test".to_string(),
@@ -242,11 +230,10 @@ fn test_merge_and_close_on_drop() {
 
     let mut call = ApiCallWithTimer {
         latency: Timer::start_now(),
-    }
-    .merge_and_close_on_drop(&metrics.api_calls);
+    };
     std::thread::sleep(Duration::from_millis(10));
     call.latency.stop();
-    drop(call);
+    metrics.api_calls.merge(call);
 
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 1);

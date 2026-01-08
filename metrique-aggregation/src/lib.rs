@@ -12,9 +12,8 @@ pub mod value;
 
 #[doc(hidden)]
 pub mod __macro_plumbing {
-    pub use crate::sink::MergeOnDropExt;
-    pub use crate::traits::{AggregateEntry, AggregateEntryRef, AggregateValue};
-    pub use crate::value::IfYouSeeThisUseAggregateOwned;
+    pub use crate::traits::{AggregateStrategy, AggregateValue, Key, Merge, MergeRef};
+    pub use crate::value::NoKey;
 }
 
 pub use metrique_macro::aggregate;

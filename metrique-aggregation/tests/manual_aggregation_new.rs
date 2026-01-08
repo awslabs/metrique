@@ -5,7 +5,7 @@ use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
-use metrique_aggregation::keyed_sink::KeyedAggregationSinkNew;
+use metrique_aggregation::keyed_sink::KeyedAggregationSink;
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
@@ -83,7 +83,7 @@ impl AggregateStrategy for ApiCallStrategy {
 async fn test_new_aggregation_strategy() {
     let test_sink = test_entry_sink();
     let sink =
-        KeyedAggregationSinkNew::<ApiCallStrategy>::new(test_sink.sink, Duration::from_millis(100));
+        KeyedAggregationSink::<ApiCallStrategy>::new(test_sink.sink, Duration::from_millis(100));
 
     sink.send(ApiCall {
         endpoint: "GetItem".to_string(),

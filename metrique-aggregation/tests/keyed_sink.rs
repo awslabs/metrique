@@ -20,7 +20,7 @@ struct ApiCall {
 fn test_keyed_sink() {
     let test_sink = test_entry_sink();
     let keyed_sink =
-        KeyedAggregationSink::<ApiCall, _>::new(test_sink.sink, Duration::from_millis(100));
+        KeyedAggregationSink::<ApiCallStrategy, _>::new(test_sink.sink, Duration::from_millis(100));
 
     // Send multiple calls to api1
     keyed_sink.send(ApiCall {
@@ -41,6 +41,7 @@ fn test_keyed_sink() {
     std::thread::sleep(Duration::from_millis(150));
 
     let entries = test_sink.inspector.entries();
+    eprintln!("Entries: {:#?}", entries);
     check!(entries.len() == 2);
 
     use metrique_writer::Observation;

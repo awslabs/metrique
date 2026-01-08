@@ -7,70 +7,43 @@ use std::{
 
 use metrique_core::CloseValue;
 
-use crate::traits::{Aggregate, AggregateEntry};
+use crate::traits::{AggregateStrategy, Merge};
 
 /// Handle for metric that will be automatically merged into the target when dropped
-pub struct MergeOnDrop<Entry, Sink>
+pub struct MergeOnDrop<T, Sink>
 where
-    Entry: AggregateEntry,
-    Sink: AggregateSink<Entry>,
+    T: AggregateStrategy,
+    Sink: AggregateSink<T>,
 {
-    value: Option<Entry::Source>,
+    value: Option<T::Source>,
     target: Sink,
 }
 
-impl<Entry, S> Deref for MergeOnDrop<Entry, S>
+impl<T, S> Deref for MergeOnDrop<T, S>
 where
-    Entry: AggregateEntry,
-    S: AggregateSink<Entry>,
+    T: AggregateStrategy,
+    S: AggregateSink<T>,
 {
-    type Target = Entry::Source;
+    type Target = T::Source;
     fn deref(&self) -> &Self::Target {
         self.value.as_ref().expect("unreachable: valid until drop")
     }
 }
 
-impl<Entry, S> DerefMut for MergeOnDrop<Entry, S>
+impl<T, S> DerefMut for MergeOnDrop<T, S>
 where
-    Entry: AggregateEntry,
-    S: AggregateSink<Entry>,
+    T: AggregateStrategy,
+    S: AggregateSink<T>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value.as_mut().expect("unreachable: valid until drop")
     }
 }
 
-/// Extension trait to supporting merging an item into an aggregator on drop
-pub trait MergeOnDropExt: AggregateEntry + Sized {
-    /// Merge an item into a given sink when the guard drops
-    fn merge_on_drop<S>(self, sink: &S) -> MergeOnDrop<Self, S>
-    where
-        Self: AggregateEntry<Source = Self>,
-        S: AggregateSink<Self> + Clone,
-    {
-        MergeOnDrop {
-            value: Some(self),
-            target: sink.clone(),
-        }
-    }
-
-    /// Close and merge an item into a given sink when the guard drops
-    fn merge_and_close_on_drop<S>(self, sink: &S) -> MergeAndCloseOnDrop<Self, S>
-    where
-        Self: CloseValue<Closed = <Self as AggregateEntry>::Source>,
-        S: AggregateSink<Self> + Clone,
-    {
-        MergeAndCloseOnDrop {
-            value: Some(self),
-            target: sink.clone(),
-        }
-    }
-}
-
-impl<Entry, Sink> Drop for MergeOnDrop<Entry, Sink>
+impl<T, Sink> Drop for MergeOnDrop<T, Sink>
 where
-    Entry: AggregateEntry,
-    Sink: AggregateSink<Entry>,
+    T: AggregateStrategy,
+    Sink: AggregateSink<T>,
 {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
@@ -79,55 +52,8 @@ where
     }
 }
 
-/// Handle for metric that will be closed and merged into the target when dropped
-pub struct MergeAndCloseOnDrop<Entry, Sink>
-where
-    Entry: AggregateEntry,
-    Entry: CloseValue<Closed = Entry::Source>,
-    Sink: AggregateSink<Entry>,
-{
-    value: Option<Entry>,
-    target: Sink,
-}
-
-impl<Entry, S> Deref for MergeAndCloseOnDrop<Entry, S>
-where
-    Entry: AggregateEntry,
-    Entry: CloseValue<Closed = Entry::Source>,
-    S: AggregateSink<Entry>,
-{
-    type Target = Entry;
-    fn deref(&self) -> &Self::Target {
-        self.value.as_ref().expect("unreachable: valid until drop")
-    }
-}
-
-impl<Entry, S> DerefMut for MergeAndCloseOnDrop<Entry, S>
-where
-    Entry: AggregateEntry,
-    Entry: CloseValue<Closed = Entry::Source>,
-    S: AggregateSink<Entry>,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.value.as_mut().expect("unreachable: valid until drop")
-    }
-}
-
-impl<Entry, Sink> Drop for MergeAndCloseOnDrop<Entry, Sink>
-where
-    Entry: AggregateEntry,
-    Entry: CloseValue<Closed = Entry::Source>,
-    Sink: AggregateSink<Entry>,
-{
-    fn drop(&mut self) {
-        if let Some(value) = self.value.take() {
-            self.target.merge(value.close());
-        }
-    }
-}
-
 /// Trait that aggregates items
-pub trait AggregateSink<T: AggregateEntry> {
+pub trait AggregateSink<T: AggregateStrategy> {
     /// Merge a given item into the sink
     fn merge(&self, entry: T::Source);
 }
@@ -135,12 +61,12 @@ pub trait AggregateSink<T: AggregateEntry> {
 /// Sink that aggregates a single type of entry backed by a mutex
 ///
 /// Compared to [`Aggregate`], this type allows appending with `&T` so it supports
-/// using [`MergeOnDropExt::merge_on_drop`]
-pub struct MutexAggregator<T: AggregateEntry> {
-    aggregator: Arc<Mutex<Option<T::Aggregated>>>,
+/// using merge_on_drop
+pub struct MutexAggregator<T: AggregateStrategy> {
+    aggregator: Arc<Mutex<<T::Source as Merge>::Merged>>,
 }
 
-impl<T: AggregateEntry> Clone for MutexAggregator<T> {
+impl<T: AggregateStrategy> Clone for MutexAggregator<T> {
     fn clone(&self) -> Self {
         Self {
             aggregator: self.aggregator.clone(),
@@ -150,55 +76,45 @@ impl<T: AggregateEntry> Clone for MutexAggregator<T> {
 
 impl<T> Default for MutexAggregator<T>
 where
-    T: AggregateEntry,
-    for<'a> T::Key<'a>: Default,
+    T: AggregateStrategy,
+    <T::Source as Merge>::Merged: Default,
 {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: AggregateEntry> MutexAggregator<T> {
+impl<T: AggregateStrategy> MutexAggregator<T> {
     /// Creates a new mutex sink
     pub fn new() -> MutexAggregator<T>
     where
-        for<'a> T::Key<'a>: Default,
+        <T::Source as Merge>::Merged: Default,
     {
-        Self::with_key(Default::default())
-    }
-
-    /// Creates a sync from a given key. NOTE: this sink does not aggregate by key
-    ///
-    /// If you create a sink with a non-trivial key, it is your
-    /// responsibility to not mix streams.
-    pub fn with_key<'a>(key: T::Key<'a>) -> MutexAggregator<T> {
         Self {
-            aggregator: Arc::new(Mutex::new(Some(T::new_aggregated(&key)))),
+            aggregator: Arc::new(Mutex::new(<T::Source as Merge>::Merged::default())),
         }
     }
 }
 
-impl<T: AggregateEntry> AggregateSink<T> for MutexAggregator<T> {
+impl<T: AggregateStrategy> AggregateSink<T> for MutexAggregator<T> {
     fn merge(&self, entry: T::Source) {
         let mut aggregator = self.aggregator.lock().unwrap();
-        match &mut *aggregator {
-            Some(v) => {
-                T::merge_entry(v, entry);
-            }
-            None => {
-                unreachable!("it is always initialized with a value")
-            }
-        }
+        T::Source::merge(&mut *aggregator, entry);
     }
 }
 
-impl<T: AggregateEntry> CloseValue for MutexAggregator<T>
+impl<T: AggregateStrategy> CloseValue for MutexAggregator<T>
 where
-    T::Aggregated: CloseValue,
+    <T::Source as Merge>::Merged: CloseValue,
 {
-    type Closed = Option<<Aggregate<T> as CloseValue>::Closed>;
+    type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
-        self.aggregator.lock().unwrap().take().map(|v| v.close())
+        Arc::try_unwrap(self.aggregator)
+            .ok()
+            .expect("MutexAggregator must be the only reference when closing")
+            .into_inner()
+            .unwrap()
+            .close()
     }
 }

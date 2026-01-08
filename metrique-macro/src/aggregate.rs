@@ -1,5 +1,3 @@
-use crate::RawMetricsFieldAttrs;
-use darling::FromField;
 use proc_macro2::{Ident, TokenStream as Ts2};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
@@ -17,7 +15,6 @@ struct AggregateField {
 #[derive(Debug)]
 struct ParsedAggregate {
     fields: Vec<AggregateField>,
-    has_key: bool,
 }
 
 fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
@@ -37,7 +34,6 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
     };
 
     let mut parsed_fields = Vec::new();
-    let mut has_key = false;
 
     for field in fields {
         let name = field
@@ -75,10 +71,6 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             ));
         }
 
-        if is_key {
-            has_key = true;
-        }
-
         let metrics_attrs = field
             .attrs
             .iter()
@@ -97,7 +89,6 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
 
     Ok(ParsedAggregate {
         fields: parsed_fields,
-        has_key,
     })
 }
 
@@ -137,11 +128,7 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
         .iter()
         .find(|attr| attr.path().is_ident("metrics"));
 
-    let derive_default = if !parsed.has_key {
-        quote! { #[derive(Default)] }
-    } else {
-        quote! {}
-    };
+    let derive_default = quote! { #[derive(Default)] };
 
     Ok(quote! {
         #metrics_attr
@@ -152,86 +139,25 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
     })
 }
 
-pub(crate) fn generate_aggregate_entry_impl(
+pub(crate) fn generate_aggregate_strategy_impl(
     input: &DeriveInput,
     entry_mode: bool,
-    owned_mode: bool,
 ) -> Result<Ts2> {
     let parsed = parse_aggregate_fields(input)?;
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
+    let key_name = format_ident!("{}Key", original_name);
+    let key_extractor_name = format_ident!("{}KeyExtractor", original_name);
+    let strategy_name = format_ident!("{}Strategy", original_name);
+    let vis = &input.vis;
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
-    let (key_type, key_expr, static_key_impl, new_aggregated_body) = if key_fields.is_empty() {
-        (
-            quote! { () },
-            quote! { () },
-            quote! { () },
-            quote! { Self::Aggregated::default() },
-        )
-    } else {
-        let key_borrowed_refs = key_fields.iter().map(|f| {
-            let name = &f.name;
-            quote! { ::std::borrow::Cow::Borrowed(&source.#name) }
-        });
-        let key_type_refs = key_fields.iter().map(|f| {
-            let ty = &f.ty;
-            quote! { ::std::borrow::Cow<'a, #ty> }
-        });
-        let key_type = if key_fields.len() == 1 {
-            quote! { #(#key_type_refs)* }
-        } else {
-            quote! { (#(#key_type_refs),*) }
-        };
-        let key_expr = if key_fields.len() == 1 {
-            quote! { #(#key_borrowed_refs)* }
-        } else {
-            quote! { (#(#key_borrowed_refs),*) }
-        };
-
-        let static_key_conversion = if key_fields.len() == 1 {
-            quote! { ::std::borrow::Cow::Owned(key.into_owned()) }
-        } else {
-            let conversions = (0..key_fields.len()).map(|i| {
-                let idx = syn::Index::from(i);
-                quote! { ::std::borrow::Cow::Owned(key.#idx.into_owned()) }
-            });
-            quote! { (#(#conversions),*) }
-        };
-
-        let field_inits = parsed.fields.iter().map(|f| {
-            let name = &f.name;
-            if f.is_key {
-                if key_fields.len() == 1 {
-                    quote! { #name: key.clone().into_owned() }
-                } else {
-                    let idx = syn::Index::from(
-                        key_fields.iter().position(|kf| kf.name == f.name).unwrap(),
-                    );
-                    quote! { #name: key.#idx.clone().into_owned() }
-                }
-            } else {
-                quote! { #name: Default::default() }
-            }
-        });
-
-        (
-            key_type,
-            key_expr,
-            static_key_conversion,
-            quote! {
-                #aggregated_name {
-                    #(#field_inits),*
-                }
-            },
-        )
-    };
-
+    // Generate Merge impl
     let merge_calls = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
-        let source_ty = &f.ty;
         let strategy = f.strategy.as_ref().unwrap();
+        let source_ty = &f.ty;
 
         let value_ty = if entry_mode {
             quote! { <#source_ty as metrique::CloseValue>::Closed }
@@ -239,142 +165,114 @@ pub(crate) fn generate_aggregate_entry_impl(
             quote! { #source_ty }
         };
 
-        let has_unit = entry_mode && RawMetricsFieldAttrs::from_field(&syn::Field {
-            attrs: f.metrics_attrs.clone(),
-            vis: syn::Visibility::Inherited,
-            mutability: syn::FieldMutability::None,
-            ident: Some(f.name.clone()),
-            colon_token: None,
-            ty: f.ty.clone(),
-        })
-        .ok()
-        .and_then(|attrs| attrs.unit)
-        .is_some();
-
-        let entry_value = if has_unit {
-            quote! { *entry.#name }
+        let entry_value = if entry_mode {
+            quote! { metrique::CloseValue::close(input.#name) }
         } else {
-            quote! { entry.#name }
+            quote! { input.#name }
         };
 
         let field_span = name.span();
 
         quote_spanned! { field_span=>
-            #[allow(deprecated)]
-            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(
-                &mut accum.#name,
-                #entry_value,
-            );
+            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(&mut accum.#name, #entry_value);
         }
     }).collect::<Vec<_>>();
 
-    let merge_calls_ref = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
-        let name = &f.name;
-        let source_ty = &f.ty;
-        let strategy = f.strategy.as_ref().unwrap();
+    // Generate Merge impl
+    let merge_impl = quote! {
+        impl metrique_aggregation::__macro_plumbing::Merge for #original_name {
+            type Merged = #aggregated_name;
+            type MergeConfig = ();
 
-        let value_ty = if entry_mode {
-            quote! { <#source_ty as metrique::CloseValue>::Closed }
-        } else {
-            quote! { #source_ty }
-        };
+            fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+                Self::Merged::default()
+            }
 
-        let has_unit = entry_mode && RawMetricsFieldAttrs::from_field(&syn::Field {
-            attrs: f.metrics_attrs.clone(),
-            vis: syn::Visibility::Inherited,
-            mutability: syn::FieldMutability::None,
-            ident: Some(f.name.clone()),
-            colon_token: None,
-            ty: f.ty.clone(),
-        })
-        .ok()
-        .and_then(|attrs| attrs.unit)
-        .is_some();
-
-        let entry_value = if has_unit {
-            quote! { &*entry.#name }
-        } else {
-            quote! { &entry.#name }
-        };
-
-        let field_span = name.span();
-
-        quote_spanned! { field_span=>
-            #[allow(deprecated)]
-            <metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned::<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::add_value(
-                &mut accum.#name,
-                #entry_value,
-            );
+            fn merge(accum: &mut Self::Merged, input: Self) {
+                #(#merge_calls)*
+            }
         }
-    }).collect::<Vec<_>>();
-
-    let source_type = if entry_mode {
-        quote! { <Self as metrique::CloseValue>::Closed }
-    } else {
-        quote! { Self }
     };
 
-    if owned_mode {
-        Ok(quote! {
-            impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for #original_name {}
-
-            impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
-                type Source = #source_type;
-                type Aggregated = #aggregated_name;
-                type Key<'a> = #key_type;
-
-                fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
-                    #static_key_impl
-                }
-
-                fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
-                    #(#merge_calls)*
-                }
-
-                fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
-                    #new_aggregated_body
-                }
-
-                fn key(source: &Self::Source) -> Self::Key<'_> {
-                    #[allow(deprecated)]
-                    #key_expr
-                }
-            }
-        })
+    // Generate Key struct and impl if there are key fields
+    let (key_struct, key_impl, strategy_key_type) = if key_fields.is_empty() {
+        (
+            quote! {},
+            quote! {},
+            quote! { metrique_aggregation::__macro_plumbing::NoKey },
+        )
     } else {
-        Ok(quote! {
-            impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for #original_name {}
+        let key_field_defs = key_fields.iter().map(|f| {
+            let name = &f.name;
+            let ty = &f.ty;
+            let metrics_attrs = &f.metrics_attrs;
+            quote! {
+                #(#metrics_attrs)*
+                #name: ::std::borrow::Cow<'a, #ty>
+            }
+        });
 
-            impl metrique_aggregation::__macro_plumbing::AggregateEntry for #original_name {
-                type Source = #source_type;
-                type Aggregated = #aggregated_name;
-                type Key<'a> = #key_type;
+        let from_source_fields = key_fields.iter().map(|f| {
+            let name = &f.name;
+            quote! {
+                #name: ::std::borrow::Cow::Borrowed(&source.#name)
+            }
+        });
 
-                fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
-                    #static_key_impl
+        let static_key_fields = key_fields.iter().map(|f| {
+            let name = &f.name;
+            quote! {
+                #name: ::std::borrow::Cow::Owned(key.#name.clone().into_owned())
+            }
+        });
+
+        let key_struct = quote! {
+            #[derive(Clone, Hash, PartialEq, Eq)]
+            #[metrics]
+            #vis struct #key_name<'a> {
+                #(#key_field_defs),*
+            }
+        };
+
+        let key_impl = quote! {
+            #vis struct #key_extractor_name;
+
+            impl metrique_aggregation::__macro_plumbing::Key<#original_name> for #key_extractor_name {
+                type Key<'a> = #key_name<'a>;
+
+                fn from_source(source: &#original_name) -> Self::Key<'_> {
+                    #key_name {
+                        #(#from_source_fields),*
+                    }
                 }
 
-                fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
-                    <Self as metrique_aggregation::__macro_plumbing::AggregateEntryRef>::merge_entry_ref(accum, &entry);
-                }
-
-                fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
-                    #new_aggregated_body
-                }
-
-                fn key(source: &Self::Source) -> Self::Key<'_> {
-                    #[allow(deprecated)]
-                    #key_expr
+                fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+                    #key_name {
+                        #(#static_key_fields),*
+                    }
                 }
             }
+        };
 
-            impl metrique_aggregation::__macro_plumbing::AggregateEntryRef for #original_name {
-                fn merge_entry_ref(accum: &mut Self::Aggregated, entry: &Self::Source) {
-                    #(#merge_calls_ref)*
-                }
-            }
-        })
-    }
+        (key_struct, key_impl, quote! { #key_extractor_name })
+    };
+
+    // Generate AggregateStrategy impl
+    let strategy_impl = quote! {
+        #vis struct #strategy_name;
+
+        impl metrique_aggregation::__macro_plumbing::AggregateStrategy for #strategy_name {
+            type Source = #original_name;
+            type Key = #strategy_key_type;
+        }
+    };
+
+    Ok(quote! {
+        #merge_impl
+        #key_struct
+        #key_impl
+        #strategy_impl
+    })
 }
 
 pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
@@ -430,7 +328,7 @@ mod tests {
             output.extend(aggregated_struct);
         }
 
-        if let Ok(aggregate_impl) = generate_aggregate_entry_impl(&input, entry_mode, true) {
+        if let Ok(aggregate_impl) = generate_aggregate_strategy_impl(&input, entry_mode) {
             output.extend(aggregate_impl);
         }
 

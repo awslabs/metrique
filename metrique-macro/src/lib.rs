@@ -540,13 +540,12 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let attr_str = attr.to_string();
     let entry_mode = attr.is_empty() || attr_str.trim() != "raw";
-    let owned_mode = attr_str.trim() == "owned";
 
     let mut output = Ts2::new();
 
     // Try to generate both the struct and impl
     let struct_result = aggregate::generate_aggregated_struct(&input, entry_mode);
-    let impl_result = aggregate::generate_aggregate_entry_impl(&input, entry_mode, owned_mode);
+    let impl_result = aggregate::generate_aggregate_strategy_impl(&input, entry_mode);
 
     match (struct_result, impl_result) {
         (Ok(aggregated_struct), Ok(aggregate_impl)) => {

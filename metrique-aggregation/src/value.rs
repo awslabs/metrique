@@ -68,3 +68,41 @@ where
         <S as AggregateValue<T>>::add_value(accum, *value);
     }
 }
+
+/// Key type for aggregations with no key fields
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub struct NoKey;
+
+impl<T> crate::traits::Key<T> for NoKey {
+    type Key<'a> = NoKey;
+
+    fn from_source(_source: &T) -> Self::Key<'_> {
+        NoKey
+    }
+
+    fn static_key<'a>(_key: &Self::Key<'a>) -> Self::Key<'static> {
+        NoKey
+    }
+}
+
+impl metrique_core::CloseValue for NoKey {
+    type Closed = Self;
+
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
+
+impl<NS: metrique_core::NameStyle> metrique_core::InflectableEntry<NS> for NoKey {
+    fn write<'a>(&'a self, _w: &mut impl metrique_writer::EntryWriter<'a>) {}
+}
+
+impl metrique_writer::Entry for NoKey {
+    fn write<'a>(&'a self, _w: &mut impl metrique_writer::EntryWriter<'a>) {}
+
+    fn sample_group(
+        &self,
+    ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
+        std::iter::empty()
+    }
+}
