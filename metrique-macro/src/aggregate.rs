@@ -139,7 +139,6 @@ pub(crate) fn generate_aggregate_strategy_impl(
     let aggregated_name = format_ident!("Aggregated{}", original_name);
     let key_name = format_ident!("{}Key", original_name);
     let key_extractor_name = format_ident!("{}KeyExtractor", original_name);
-    let strategy_name = format_ident!("{}Strategy", original_name);
     let vis = &input.vis;
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();

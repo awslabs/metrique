@@ -16,11 +16,11 @@ struct ApiCall {
     latency: Duration,
 }
 
-#[test]
-fn test_keyed_sink() {
+#[tokio::test]
+async fn test_keyed_sink() {
     let test_sink = test_entry_sink();
     let keyed_sink =
-        KeyedAggregationSink::<ApiCall, _>::new(test_sink.sink, Duration::from_millis(100));
+        KeyedAggregationSink::<ApiCall>::new(test_sink.sink, Duration::from_millis(100));
 
     // Send multiple calls to api1
     keyed_sink.send(ApiCall {
@@ -38,7 +38,7 @@ fn test_keyed_sink() {
         latency: Duration::from_millis(50),
     });
 
-    std::thread::sleep(Duration::from_millis(150));
+    keyed_sink.flush().await;
 
     let entries = test_sink.inspector.entries();
     eprintln!("Entries: {:#?}", entries);

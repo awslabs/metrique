@@ -15,31 +15,9 @@ use std::{
 };
 use tokio::sync::oneshot;
 
-/// Helper that "Roots" an inflectable entry (temporary copy from metrique, needs to move to core)
-pub struct RootEntry<M: InflectableEntry> {
-    metric: M,
-}
-
-impl<M: InflectableEntry> RootEntry<M> {
-    /// create a new [`RootEntry`]
-    pub fn new(metric: M) -> Self {
-        Self { metric }
-    }
-}
-
-impl<M: InflectableEntry> Entry for RootEntry<M> {
-    fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
-        self.metric.write(w);
-    }
-
-    fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
-        self.metric.sample_group()
-    }
-}
-
 use metrique_writer::BoxEntrySink;
 
-use crate::traits::{AggregateStrategy, Key, Merge};
+use crate::traits::{AggregateStrategy, AggregateTy, Key, KeyTy, Merge};
 
 enum QueueMessage<T> {
     Entry(T),
@@ -67,18 +45,16 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
 
 impl<T, Sink> KeyedAggregationSink<T, Sink>
 where
-    T: AggregateStrategy + 'static,
-    T::Source: Merge + Send,
-    <T::Source as Merge>::Merged: metrique_core::CloseEntry + Default + Send,
+    T: AggregateStrategy,
+    T::Source: Send,
+    <T::Source as Merge>::Merged: Send,
+    <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
 {
     /// Create a new keyed aggregation sink with a flush interval
     pub fn new(sink: Sink, flush_interval: Duration) -> KeyedAggregationSink<T, Sink> {
         let (sender, receiver) = channel();
-        let mut storage: HashMap<
-            <<T as AggregateStrategy>::Key as Key<T::Source>>::Key<'static>,
-            <T::Source as Merge>::Merged,
-        > = HashMap::new();
+        let mut storage: HashMap<KeyTy<'static, T>, AggregateTy<T>> = HashMap::new();
 
         let handle = thread::spawn(move || {
             loop {
@@ -88,7 +64,7 @@ where
                         let key = T::Key::static_key(&T::Key::from_source(&entry));
                         let accum = storage
                             .entry(key)
-                            .or_insert_with(|| T::Source::new_default_merged());
+                            .or_insert_with(|| T::Source::new_merged(&Default::default()));
                         T::Source::merge(accum, entry);
                     }
                     Ok(QueueMessage::Flush(sender)) => {

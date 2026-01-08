@@ -120,7 +120,7 @@ pub trait MergeRef: Merge {
 }
 
 /// Aggregation strategy combining source, merge, and key extraction
-pub trait AggregateStrategy {
+pub trait AggregateStrategy: 'static {
     /// The source type being aggregated
     type Source: Merge;
     /// The key extraction strategy
@@ -130,6 +130,9 @@ pub trait AggregateStrategy {
 /// The key type for an aggregation strategy
 pub type KeyTy<'a, T> =
     <<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'a>;
+
+/// The aggregated type for an aggregation strategy
+pub type AggregateTy<T> = <<T as AggregateStrategy>::Source as Merge>::Merged;
 
 /// Merges two entries together by writing both
 pub struct AggregationResult<K, Agg> {
