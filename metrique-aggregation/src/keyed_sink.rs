@@ -57,7 +57,7 @@ pub struct KeyedAggregationSinkNew<T: AggregateStrategy, Sink = BoxEntrySink> {
 
 /// The Entry type you have when merging entries
 pub type AggregatedEntry<T> = crate::traits::MergeEntries<
-    <<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'static>,
+    <<<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'static> as CloseValue>::Closed,
     <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
 >;
 
@@ -80,6 +80,7 @@ where
             loop {
                 match receiver.recv_timeout(flush_interval) {
                     Ok(entry) => {
+                        // TODO: optimize this with hashbrown to avoid needing to always create a static key
                         let key = T::Key::static_key(&T::Key::from_source(&entry));
                         let accum = storage
                             .entry(key)
@@ -89,7 +90,7 @@ where
                     Err(_) => {
                         for (key, aggregated) in storage.drain() {
                             let merged = crate::traits::MergeEntries {
-                                a: key,
+                                a: key.close(),
                                 b: aggregated.close(),
                             };
                             sink.append(merged);

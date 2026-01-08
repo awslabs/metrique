@@ -123,7 +123,7 @@ pub trait AggregateEntry {
 /// Key extraction trait for aggregation strategies
 pub trait Key<Source> {
     /// The key type with lifetime parameter
-    type Key<'a>: Send + Hash + Eq + InflectableEntry;
+    type Key<'a>: Send + Hash + Eq + CloseEntry;
     /// Extract key from source
     fn from_source(source: &Source) -> Self::Key<'_>;
     /// Convert borrowed key to static lifetime
