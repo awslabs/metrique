@@ -149,6 +149,12 @@ pub trait Merge {
     fn merge(accum: &mut Self::Merged, input: Self);
 }
 
+/// A version of `Merge` where the input is borrowed
+pub trait MergeRef: Merge {
+    /// Merge input into accumulator
+    fn merge_ref(accum: &mut Self::Merged, input: &Self);
+}
+
 /// Aggregation strategy combining source, merge, and key extraction
 pub trait AggregateStrategy {
     /// The source type being aggregated

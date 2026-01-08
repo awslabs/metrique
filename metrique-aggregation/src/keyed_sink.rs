@@ -55,19 +55,18 @@ pub struct KeyedAggregationSinkNew<T: AggregateStrategy, Sink = BoxEntrySink> {
     _phantom: PhantomData<Sink>,
 }
 
+/// The Entry type you have when merging entries
+pub type AggregatedEntry<T> = crate::traits::MergeEntries<
+    <<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'static>,
+    <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
+>;
+
 impl<T, Sink> KeyedAggregationSinkNew<T, Sink>
 where
     T: AggregateStrategy + 'static,
     T::Source: Merge + Send,
     <T::Source as Merge>::Merged: metrique_core::CloseEntry + Default + Send,
-    T::Key: Key<T::Source>,
-    Sink: metrique_writer::EntrySink<
-            crate::traits::MergeEntries<
-                <<T as AggregateStrategy>::Key as Key<T::Source>>::Key<'static>,
-                <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
-            >,
-        > + Send
-        + 'static,
+    Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
 {
     /// Create a new keyed aggregation sink with a flush interval
     pub fn new(sink: Sink, flush_interval: Duration) -> KeyedAggregationSinkNew<T, Sink> {
