@@ -13,6 +13,7 @@ use std::{
     thread,
     time::Duration,
 };
+use tokio::sync::oneshot;
 
 /// Helper that "Roots" an inflectable entry (temporary copy from metrique, needs to move to core)
 pub struct RootEntry<M: InflectableEntry> {
@@ -42,6 +43,11 @@ use metrique_writer::BoxEntrySink;
 
 use crate::traits::{AggregateEntry, AggregateStrategy, Key, Merge};
 
+enum QueueMessage<T> {
+    Entry(T),
+    Flush(oneshot::Sender<()>),
+}
+
 /// New implementation of [`KeyedAggregationSink`] using AggregateStrategy trait
 ///
 /// It is fronted by a channel, and serviced by a dedicated background thread.
@@ -50,13 +56,13 @@ use crate::traits::{AggregateEntry, AggregateStrategy, Key, Merge};
 /// are configurable.
 #[derive(Clone)]
 pub struct KeyedAggregationSinkNew<T: AggregateStrategy, Sink = BoxEntrySink> {
-    sender: Sender<T::Source>,
+    sender: Sender<QueueMessage<T::Source>>,
     _handle: Arc<thread::JoinHandle<()>>,
     _phantom: PhantomData<Sink>,
 }
 
 /// The Entry type you have when merging entries
-pub type AggregatedEntry<T> = crate::traits::AggregateEntryXX<
+pub type AggregatedEntry<T> = crate::traits::AggregationResult<
     <<<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'static> as CloseValue>::Closed,
     <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
 >;
@@ -79,7 +85,7 @@ where
         let handle = thread::spawn(move || {
             loop {
                 match receiver.recv_timeout(flush_interval) {
-                    Ok(entry) => {
+                    Ok(QueueMessage::Entry(entry)) => {
                         // TODO: optimize this with hashbrown to avoid needing to always create a static key
                         let key = T::Key::static_key(&T::Key::from_source(&entry));
                         let accum = storage
@@ -87,9 +93,12 @@ where
                             .or_insert_with(|| T::Source::new_default_merged());
                         T::Source::merge(accum, entry);
                     }
+                    Ok(QueueMessage::Flush(sender)) => {
+                        let _ = sender.send(());
+                    }
                     Err(_) => {
                         for (key, aggregated) in storage.drain() {
-                            let merged = crate::traits::AggregateEntryXX {
+                            let merged = crate::traits::AggregationResult {
                                 key: key.close(),
                                 b: aggregated.close(),
                             };
@@ -109,7 +118,16 @@ where
 
     /// Send an entry to be aggregated
     pub fn send(&self, entry: T::Source) {
-        let _ = self.sender.send(entry);
+        let _ = self.sender.send(QueueMessage::Entry(entry));
+    }
+
+    /// Flush all pending entries
+    ///
+    /// Returns when all entries sent before this call have been processed
+    pub async fn flush(&self) {
+        let (tx, rx) = oneshot::channel();
+        let _ = self.sender.send(QueueMessage::Flush(tx));
+        let _ = rx.await;
     }
 }
 

@@ -14,6 +14,7 @@ smallvec = "1.13"
 histogram.workspace = true
 ordered-float = "5"
 metrique-writer-core = { version = "0.1.8", path = "../metrique-writer-core" }
+tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }

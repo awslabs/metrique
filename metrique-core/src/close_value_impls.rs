@@ -70,17 +70,6 @@ close_value!(
     Cow<'static, str>
 );
 
-impl<T> CloseValue for Cow<'static, T>
-where
-    T: CloseValue + Clone,
-{
-    type Closed = T::Closed;
-
-    fn close(self) -> Self::Closed {
-        self.into_owned().close()
-    }
-}
-
 #[diagnostic::do_not_recommend]
 impl<T, C> CloseValue for &'_ Arc<T>
 where

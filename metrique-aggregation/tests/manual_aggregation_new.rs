@@ -1,13 +1,11 @@
 //! Example demonstrating manual implementation of the new AggregateStrategy traits.
 
 use assert2::check;
-use metrique::CloseValue;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::keyed_sink::KeyedAggregationSinkNew;
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
-use metrique_writer::Entry;
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
 use std::thread::sleep;
@@ -22,33 +20,12 @@ pub struct ApiCall {
     latency: Duration,
 }
 
-#[metrics]
-pub struct ApiCallByEndpointStatusCode {
-    key: ApiCallKey<'static>,
-}
-
 // Key is a metrics struct
 #[derive(Clone, Hash, PartialEq, Eq)]
+#[metrics(emf::dimension_sets = [["endpoint", "status_code"]])]
 pub struct ApiCallKey<'a> {
     endpoint: Cow<'a, String>,
     status_code: Cow<'a, usize>,
-}
-
-#[derive(Entry)]
-pub struct ApiCallKeyEntry<'zz> {
-    endpoint: Cow<'zz, String>,
-    status_code: Cow<'zz, usize>,
-}
-
-impl<'a> CloseValue for ApiCallKey<'a> {
-    type Closed = ApiCallKeyEntry<'a>;
-
-    fn close(self) -> Self::Closed {
-        ApiCallKeyEntry {
-            endpoint: self.endpoint,
-            status_code: self.status_code,
-        }
-    }
 }
 
 // Implement Merge for ApiCall
@@ -73,9 +50,9 @@ pub struct AggregatedApiCall {
 }
 
 // Key extraction for ApiCall
-struct ApiCallKeyExtractor;
+struct ApiCallByEndpointStatusCode;
 
-impl Key<ApiCall> for ApiCallKeyExtractor {
+impl Key<ApiCall> for ApiCallByEndpointStatusCode {
     type Key<'a> = ApiCallKey<'a>;
 
     fn from_source(source: &ApiCall) -> Self::Key<'_> {
@@ -87,8 +64,8 @@ impl Key<ApiCall> for ApiCallKeyExtractor {
 
     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
         ApiCallKey {
-            endpoint: Cow::Owned(key.endpoint.as_ref().clone()),
-            status_code: Cow::Owned(*key.status_code),
+            endpoint: Cow::Owned(key.endpoint.clone().into_owned()),
+            status_code: Cow::Owned(key.status_code.clone().into_owned()),
         }
     }
 }
@@ -98,7 +75,7 @@ struct ApiCallStrategy;
 
 impl AggregateStrategy for ApiCallStrategy {
     type Source = ApiCall;
-    type Key = ApiCallKeyExtractor;
+    type Key = ApiCallByEndpointStatusCode;
 }
 
 #[test]

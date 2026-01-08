@@ -124,7 +124,7 @@ pub trait AggregateEntry {
 /// Key extraction trait for aggregation strategies
 pub trait Key<Source> {
     /// The key type with lifetime parameter
-    type Key<'a>: Send + Hash + Eq + CloseValue<Closed: Entry>;
+    type Key<'a>: Send + Hash + Eq + CloseEntry;
     /// Extract key from source
     fn from_source(source: &Source) -> Self::Key<'_>;
     /// Convert borrowed key to static lifetime
@@ -162,15 +162,6 @@ pub trait AggregateStrategy {
     type Source: Merge;
     /// The key extraction strategy
     type Key: Key<Self::Source>;
-
-    /// The emitted entry
-    type FinalEntry: CloseEntry;
-
-    // The final entry type
-    fn final_entry(
-        key: KeyTy<'static, Self>,
-        accum: <Self::Source as Merge>::Merged,
-    ) -> Self::FinalEntry;
 }
 
 /// The key type for an aggregation strategy
@@ -178,13 +169,13 @@ pub type KeyTy<'a, T> =
     <<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'a>;
 
 /// Merges two entries together by writing both
-pub struct AggregateEntryXX<K, Agg> {
+pub struct AggregationResult<K, Agg> {
     pub(crate) key: K,
     pub(crate) b: Agg,
 }
 
-impl<Ns: NameStyle, A: Entry, B: InflectableEntry<Ns>> InflectableEntry<Ns>
-    for AggregateEntryXX<A, B>
+impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> InflectableEntry<Ns>
+    for AggregationResult<A, B>
 {
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
         self.key.write(w);
@@ -192,7 +183,7 @@ impl<Ns: NameStyle, A: Entry, B: InflectableEntry<Ns>> InflectableEntry<Ns>
     }
 }
 
-impl<A: Entry, B: InflectableEntry> metrique_writer::Entry for AggregateEntryXX<A, B> {
+impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for AggregationResult<A, B> {
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
         self.key.write(w);
         self.b.write(w);
