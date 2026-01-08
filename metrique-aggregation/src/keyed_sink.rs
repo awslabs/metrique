@@ -69,7 +69,7 @@ where
                         for (key, aggregated) in storage.drain() {
                             let merged = crate::traits::AggregationResult {
                                 key: key.close(),
-                                b: aggregated.close(),
+                                aggregated: aggregated.close(),
                             };
                             sink.append(merged);
                         }
@@ -79,7 +79,7 @@ where
                         for (key, aggregated) in storage.drain() {
                             let merged = crate::traits::AggregationResult {
                                 key: key.close(),
-                                b: aggregated.close(),
+                                aggregated: aggregated.close(),
                             };
                             sink.append(merged);
                         }

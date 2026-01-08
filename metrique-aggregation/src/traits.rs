@@ -137,7 +137,7 @@ pub type AggregateTy<T> = <<T as AggregateStrategy>::Source as Merge>::Merged;
 /// Merges two entries together by writing both
 pub struct AggregationResult<K, Agg> {
     pub(crate) key: K,
-    pub(crate) b: Agg,
+    pub(crate) aggregated: Agg,
 }
 
 impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> InflectableEntry<Ns>
@@ -145,20 +145,22 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
 {
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
         self.key.write(w);
-        self.b.write(w);
+        self.aggregated.write(w);
     }
 }
 
 impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for AggregationResult<A, B> {
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
         self.key.write(w);
-        self.b.write(w);
+        self.aggregated.write(w);
     }
 
     fn sample_group(
         &self,
     ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
-        self.key.sample_group().chain(self.b.sample_group())
+        self.key
+            .sample_group()
+            .chain(self.aggregated.sample_group())
     }
 }
 

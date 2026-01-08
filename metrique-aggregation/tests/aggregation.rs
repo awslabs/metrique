@@ -16,7 +16,6 @@ use std::time::Duration;
 
 #[aggregate]
 #[metrics]
-#[derive(Clone)]
 pub struct ApiCall {
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
     #[metrics(unit = Millisecond)]
