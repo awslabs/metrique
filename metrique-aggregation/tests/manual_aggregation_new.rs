@@ -82,10 +82,8 @@ impl AggregateStrategy for ApiCallStrategy {
 #[tokio::test]
 async fn test_new_aggregation_strategy() {
     let test_sink = test_entry_sink();
-    let sink = KeyedAggregationSinkNew::<ApiCallStrategy, _>::new(
-        test_sink.sink,
-        Duration::from_millis(100),
-    );
+    let sink =
+        KeyedAggregationSinkNew::<ApiCallStrategy>::new(test_sink.sink, Duration::from_millis(100));
 
     sink.send(ApiCall {
         endpoint: "GetItem".to_string(),
