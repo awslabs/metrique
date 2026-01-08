@@ -56,7 +56,7 @@ pub struct KeyedAggregationSinkNew<T: AggregateStrategy, Sink = BoxEntrySink> {
 }
 
 /// The Entry type you have when merging entries
-pub type AggregatedEntry<T> = crate::traits::MergeEntries<
+pub type AggregatedEntry<T> = crate::traits::AggregateEntryXX<
     <<<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'static> as CloseValue>::Closed,
     <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
 >;
@@ -89,8 +89,8 @@ where
                     }
                     Err(_) => {
                         for (key, aggregated) in storage.drain() {
-                            let merged = crate::traits::MergeEntries {
-                                a: key.close(),
+                            let merged = crate::traits::AggregateEntryXX {
+                                key: key.close(),
                                 b: aggregated.close(),
                             };
                             sink.append(merged);

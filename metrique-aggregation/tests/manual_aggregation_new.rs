@@ -1,27 +1,49 @@
 //! Example demonstrating manual implementation of the new AggregateStrategy traits.
 
 use assert2::check;
+use metrique::CloseValue;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::keyed_sink::KeyedAggregationSinkNew;
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
+use metrique_writer::Entry;
 use metrique_writer::test_util::test_entry_sink;
+use std::borrow::Cow;
+use std::thread::sleep;
 use std::time::Duration;
 
 #[metrics]
-#[derive(Clone)]
 pub struct ApiCall {
     endpoint: String,
+    status_code: usize,
+
     #[metrics(unit = Millisecond)]
     latency: Duration,
 }
 
 // Key is a metrics struct
-#[metrics]
 #[derive(Clone, Hash, PartialEq, Eq)]
-pub struct ApiCallKey {
-    endpoint: String,
+pub struct ApiCallKey<'a> {
+    endpoint: Cow<'a, String>,
+    status_code: Cow<'a, usize>,
+}
+
+#[derive(Entry)]
+pub struct ApiCallKeyEntry<'zz> {
+    endpoint: Cow<'zz, String>,
+    status_code: Cow<'zz, usize>,
+}
+
+impl<'a> CloseValue for ApiCallKey<'a> {
+    type Closed = ApiCallKeyEntry<'a>;
+
+    fn close(self) -> Self::Closed {
+        ApiCallKeyEntry {
+            endpoint: self.endpoint,
+            status_code: self.status_code,
+        }
+    }
 }
 
 // Implement Merge for ApiCall
@@ -49,16 +71,20 @@ pub struct AggregatedApiCall {
 struct ApiCallKeyExtractor;
 
 impl Key<ApiCall> for ApiCallKeyExtractor {
-    type Key<'a> = ApiCallKey;
+    type Key<'a> = ApiCallKey<'a>;
 
     fn from_source(source: &ApiCall) -> Self::Key<'_> {
         ApiCallKey {
-            endpoint: source.endpoint.clone(),
+            endpoint: Cow::Borrowed(&source.endpoint),
+            status_code: Cow::Borrowed(&source.status_code),
         }
     }
 
     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
-        key.clone()
+        ApiCallKey {
+            endpoint: Cow::Owned(key.endpoint.as_ref().clone()),
+            status_code: Cow::Owned(*key.status_code),
+        }
     }
 }
 
@@ -81,21 +107,24 @@ fn test_new_aggregation_strategy() {
     sink.send(ApiCall {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(10),
+        status_code: 200,
     });
 
     sink.send(ApiCall {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(20),
+        status_code: 500,
     });
 
     sink.send(ApiCall {
         endpoint: "PutItem".to_string(),
         latency: Duration::from_millis(30),
+        status_code: 529,
     });
 
     drop(sink);
-    std::thread::sleep(Duration::from_millis(150));
+    sleep(Duration::from_millis(100));
 
-    let entries = test_sink.inspector.entries();
-    check!(entries.len() == 2);
+    let entries = dbg!(test_sink.inspector.entries());
+    check!(entries.len() == 3);
 }

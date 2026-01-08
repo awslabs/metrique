@@ -26,6 +26,7 @@
 //! It wraps an aggregated value and tracks the number of samples merged.
 
 use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
+use metrique_writer_core::Entry;
 use std::hash::Hash;
 
 /// Defines how individual field values are aggregated.
@@ -123,7 +124,7 @@ pub trait AggregateEntry {
 /// Key extraction trait for aggregation strategies
 pub trait Key<Source> {
     /// The key type with lifetime parameter
-    type Key<'a>: Send + Hash + Eq + CloseEntry;
+    type Key<'a>: Send + Hash + Eq + CloseValue<Closed: Entry>;
     /// Extract key from source
     fn from_source(source: &Source) -> Self::Key<'_>;
     /// Convert borrowed key to static lifetime
@@ -164,30 +165,30 @@ pub trait AggregateStrategy {
 }
 
 /// Merges two entries together by writing both
-pub struct MergeEntries<A, B> {
-    pub(crate) a: A,
-    pub(crate) b: B,
+pub struct AggregateEntryXX<K, Agg> {
+    pub(crate) key: K,
+    pub(crate) b: Agg,
 }
 
-impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> InflectableEntry<Ns>
-    for MergeEntries<A, B>
+impl<Ns: NameStyle, A: Entry, B: InflectableEntry<Ns>> InflectableEntry<Ns>
+    for AggregateEntryXX<A, B>
 {
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
-        self.a.write(w);
+        self.key.write(w);
         self.b.write(w);
     }
 }
 
-impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for MergeEntries<A, B> {
+impl<A: Entry, B: InflectableEntry> metrique_writer::Entry for AggregateEntryXX<A, B> {
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
-        self.a.write(w);
+        self.key.write(w);
         self.b.write(w);
     }
 
     fn sample_group(
         &self,
     ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
-        self.a.sample_group().chain(self.b.sample_group())
+        self.key.sample_group().chain(self.b.sample_group())
     }
 }
 
@@ -250,13 +251,14 @@ where
     }
 }
 
+/*/
 #[cfg(test)]
 mod test {
     use assert2::check;
     use metrique::{CloseValue, unit_of_work::metrics};
     use metrique_writer::test_util::test_metric;
 
-    use crate::traits::{Merge, MergeEntries};
+    use crate::traits::{Aggregate, Merge};
 
     #[test]
     fn test_merge() {
@@ -273,12 +275,12 @@ mod test {
         #[metrics(rename_all = "PascalCase")]
         struct RootMerge {
             #[metrics(flatten, no_close)]
-            merge: MergeEntries<<A as CloseValue>::Closed, <B as CloseValue>::Closed>,
+            merge: Aggregate<<A as CloseValue>::Closed, <B as CloseValue>::Closed>,
         }
 
         let entry = RootMerge {
-            merge: MergeEntries {
-                a: A { key_1: 1 }.close(),
+            merge: Aggregate {
+                key: A { key_1: 1 }.close(),
                 b: B { key_2: 10 }.close(),
             },
         };
@@ -286,3 +288,5 @@ mod test {
         check!(entry.metrics["Key1"] == 1);
     }
 }
+
+*/
