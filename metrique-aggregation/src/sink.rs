@@ -60,7 +60,7 @@ pub trait AggregateSink<T: AggregateStrategy> {
 
 /// Sink that aggregates a single type of entry backed by a mutex
 ///
-/// Compared to [`Aggregate`], this type allows appending with `&T` so it supports
+/// Compared to [`crate::traits::Aggregate`], this type allows appending with `&T` so it supports
 /// using merge_on_drop
 pub struct MutexAggregator<T: AggregateStrategy> {
     aggregator: Arc<Mutex<<T::Source as Merge>::Merged>>,

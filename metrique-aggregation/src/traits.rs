@@ -1,24 +1,36 @@
 //! Traits for aggregation
 //!
-//! This module provides a two-level aggregation system:
+//! This module provides a composable aggregation system with three main layers:
 //!
 //! ## Field-level aggregation: [`AggregateValue`]
 //!
 //! Defines how individual field values are merged. For example, [`crate::value::Sum`] sums values,
-//! while `Histogram` collects values into buckets. This trait enables compile-time type resolution:
+//! while [`crate::histogram::Histogram`] collects values into distributions. This trait enables
+//! compile-time type resolution:
 //!
 //! ```rust
 //! use metrique_aggregation::value::Sum;
 //! use metrique_aggregation::traits::AggregateValue;
 //! type AggregatedType = <Sum as AggregateValue<u64>>::Aggregated;
 //! //                     ^^^                   ^^
-//! //                     Aggregation strategy  input type
+//! //                     Strategy              Input type
 //! ```
 //!
-//! ## Entry-level aggregation: [`AggregateEntry`]
+//! ## Entry-level aggregation: [`Merge`] and [`AggregateStrategy`]
 //!
-//! Defines how entire metric entries are merged together. Implement this trait to aggregate
-//! complete metric structs, not just individual fields.
+//! The [`Merge`] trait defines how complete metric entries are combined. It specifies:
+//! - The accumulated type (`Merged`)
+//! - How to create new accumulators (`new_merged`)
+//! - How to merge entries into accumulators (`merge`)
+//!
+//! The [`AggregateStrategy`] trait ties together a source type with its merge behavior and
+//! key extraction strategy. The `#[aggregate]` macro generates these implementations automatically.
+//!
+//! ## Key extraction: [`Key`]
+//!
+//! The [`Key`] trait extracts grouping keys from source entries, enabling keyed aggregation
+//! where entries with the same key are merged together. Fields marked with `#[aggregate(key)]`
+//! become part of the key.
 //!
 //! ## The [`Aggregate`] wrapper
 //!
@@ -84,7 +96,56 @@ pub trait AggregateValue<T> {
     fn add_value(accum: &mut Self::Aggregated, value: T);
 }
 
-/// Key extraction trait for aggregation strategies
+/// Key extraction trait for aggregation strategies.
+///
+/// Extracts grouping keys from source entries to enable keyed aggregation. Entries with
+/// the same key are merged together. The `#[aggregate]` macro generates implementations
+/// for fields marked with `#[aggregate(key)]`.
+///
+/// # Type Parameters
+///
+/// - `Source`: The type being aggregated
+///
+/// # Associated Types
+///
+/// - `Key<'a>`: The key type with lifetime parameter for borrowed data
+///
+/// # Example
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::traits::Key;
+/// use std::borrow::Cow;
+///
+/// struct ApiCall {
+///     endpoint: String,
+///     latency: u64,
+/// }
+///
+/// #[derive(Clone, Hash, PartialEq, Eq)]
+/// #[metrics]
+/// struct ApiCallKey<'a> {
+///     endpoint: Cow<'a, String>,
+/// }
+///
+/// struct ApiCallByEndpoint;
+///
+/// impl Key<ApiCall> for ApiCallByEndpoint {
+///     type Key<'a> = ApiCallKey<'a>;
+///
+///     fn from_source(source: &ApiCall) -> Self::Key<'_> {
+///         ApiCallKey {
+///             endpoint: Cow::Borrowed(&source.endpoint),
+///         }
+///     }
+///
+///     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+///         ApiCallKey {
+///             endpoint: Cow::Owned(key.endpoint.clone().into_owned()),
+///         }
+///     }
+/// }
+/// ```
 pub trait Key<Source> {
     /// The key type with lifetime parameter
     type Key<'a>: Send + Hash + Eq + CloseEntry;
@@ -94,7 +155,55 @@ pub trait Key<Source> {
     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static>;
 }
 
-/// Merge trait for aggregating values
+/// Defines how complete metric entries are merged together.
+///
+/// This trait operates at the entry level, combining entire structs rather than individual fields.
+/// The `#[aggregate]` macro generates implementations that merge each field according to its
+/// `#[aggregate(strategy = ...)]` attribute.
+///
+/// # Type Parameters
+///
+/// - `Self`: The source type being aggregated
+///
+/// # Associated Types
+///
+/// - `Merged`: The accumulated type that holds aggregated values
+/// - `MergeConfig`: Configuration needed to create new merged values (often `()`)
+///
+/// # Example
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::traits::Merge;
+/// use metrique_aggregation::histogram::Histogram;
+/// use std::time::Duration;
+///
+/// struct ApiCall {
+///     latency: Duration,
+///     response_size: usize,
+/// }
+///
+/// #[derive(Default)]
+/// #[metrics]
+/// struct AggregatedApiCall {
+///     latency: Histogram<Duration>,
+///     response_size: usize,
+/// }
+///
+/// impl Merge for ApiCall {
+///     type Merged = AggregatedApiCall;
+///     type MergeConfig = ();
+///
+///     fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+///         Self::Merged::default()
+///     }
+///
+///     fn merge(accum: &mut Self::Merged, input: Self) {
+///         accum.latency.add_value(&input.latency);
+///         accum.response_size += input.response_size;
+///     }
+/// }
+/// ```
 pub trait Merge {
     /// The merged/accumulated type
     type Merged: CloseEntry;
@@ -113,13 +222,61 @@ pub trait Merge {
     fn merge(accum: &mut Self::Merged, input: Self);
 }
 
-/// A version of `Merge` where the input is borrowed
+/// Borrowed version of [`Merge`] for more efficient aggregation.
+///
+/// When the source type can be borrowed during merging, implement this trait to avoid
+/// unnecessary clones. This is particularly useful for types with expensive clone operations.
 pub trait MergeRef: Merge {
-    /// Merge input into accumulator
+    /// Merge borrowed input into accumulator
     fn merge_ref(accum: &mut Self::Merged, input: &Self);
 }
 
-/// Aggregation strategy combining source, merge, and key extraction
+/// Ties together source type, merge behavior, and key extraction.
+///
+/// This trait combines all the pieces needed for aggregation into a single strategy type.
+/// The `#[aggregate]` macro generates an implementation automatically.
+///
+/// # Type Parameters
+///
+/// None - this is a marker trait that associates types
+///
+/// # Associated Types
+///
+/// - `Source`: The type being aggregated (must implement [`Merge`])
+/// - `Key`: The key extraction strategy (must implement [`Key<Source>`])
+///
+/// # Example
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
+/// use metrique_aggregation::value::NoKey;
+///
+/// struct ApiCall {
+///     latency: u64,
+/// }
+///
+/// #[derive(Default)]
+/// #[metrics]
+/// struct AggregatedApiCall {
+///     latency: u64,
+/// }
+///
+/// impl Merge for ApiCall {
+///     type Merged = AggregatedApiCall;
+///     type MergeConfig = ();
+///     fn new_merged(_: &()) -> Self::Merged { Self::Merged::default() }
+///     fn merge(accum: &mut Self::Merged, input: Self) { accum.latency += input.latency; }
+/// }
+///
+/// // Strategy type generated by #[aggregate]
+/// struct ApiCallStrategy;
+///
+/// impl AggregateStrategy for ApiCallStrategy {
+///     type Source = ApiCall;
+///     type Key = NoKey;  // No key fields, aggregate everything together
+/// }
+/// ```
 pub trait AggregateStrategy: 'static {
     /// The source type being aggregated
     type Source: Merge;
@@ -127,14 +284,17 @@ pub trait AggregateStrategy: 'static {
     type Key: Key<Self::Source>;
 }
 
-/// The key type for an aggregation strategy
+/// Type alias for the key type of an aggregation strategy.
 pub type KeyTy<'a, T> =
     <<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'a>;
 
-/// The aggregated type for an aggregation strategy
+/// Type alias for the aggregated type of an aggregation strategy.
 pub type AggregateTy<T> = <<T as AggregateStrategy>::Source as Merge>::Merged;
 
-/// Merges two entries together by writing both
+/// Result of keyed aggregation combining key and aggregated value.
+///
+/// Used by [`crate::keyed_sink::KeyedAggregationSink`] to emit aggregated entries
+/// with their associated keys.
 pub struct AggregationResult<K, Agg> {
     pub(crate) key: K,
     pub(crate) aggregated: Agg,
@@ -164,10 +324,49 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
     }
 }
 
-/// Aggregated allows inline-aggregation of a metric
+/// Simple wrapper for inline aggregation of metrics.
 ///
-/// Aggregated is simple — more complex designs allow `append_on_drop` via a queue
-/// or guard. Aggregate is a minimal version.
+/// `Aggregate<T>` is the most straightforward way to aggregate data. It wraps an aggregated
+/// value and tracks the number of samples merged. Typically used as a field in a larger
+/// metrics struct.
+///
+/// For thread-safe aggregation or more advanced patterns, see [`crate::sink::MutexAggregator`]
+/// and [`crate::keyed_sink::KeyedAggregationSink`].
+///
+/// # Example
+///
+/// ```rust
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, traits::Aggregate};
+/// use metrique_aggregation::histogram::Histogram;
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+/// }
+///
+/// #[metrics]
+/// struct RequestMetrics {
+///     request_id: String,
+///     #[metrics(flatten)]
+///     api_calls: Aggregate<ApiCall>,
+/// }
+///
+/// let mut metrics = RequestMetrics {
+///     request_id: "req-123".to_string(),
+///     api_calls: Aggregate::default(),
+/// };
+///
+/// metrics.api_calls.add(ApiCall {
+///     latency: Duration::from_millis(45),
+/// });
+/// metrics.api_calls.add(ApiCall {
+///     latency: Duration::from_millis(67),
+/// });
+/// ```
 pub struct Aggregate<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
     num_samples: usize,
@@ -194,7 +393,7 @@ impl<T: AggregateStrategy> Aggregate<T> {
         T::Source::merge(&mut self.aggregated, entry);
     }
 
-    /// Creates a `Aggreate` that is initialized to a given value
+    /// Creates an `Aggregate` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
         Self {
             aggregated: value,
@@ -214,43 +413,3 @@ where
         }
     }
 }
-
-/*/
-#[cfg(test)]
-mod test {
-    use assert2::check;
-    use metrique::{CloseValue, unit_of_work::metrics};
-    use metrique_writer::test_util::test_metric;
-
-    use crate::traits::{Aggregate, Merge};
-
-    #[test]
-    fn test_merge() {
-        #[metrics]
-        struct A {
-            key_1: usize,
-        }
-
-        #[metrics]
-        struct B {
-            key_2: usize,
-        }
-
-        #[metrics(rename_all = "PascalCase")]
-        struct RootMerge {
-            #[metrics(flatten, no_close)]
-            merge: Aggregate<<A as CloseValue>::Closed, <B as CloseValue>::Closed>,
-        }
-
-        let entry = RootMerge {
-            merge: Aggregate {
-                key: A { key_1: 1 }.close(),
-                b: B { key_2: 10 }.close(),
-            },
-        };
-        let entry = test_metric(entry);
-        check!(entry.metrics["Key1"] == 1);
-    }
-}
-
-*/
