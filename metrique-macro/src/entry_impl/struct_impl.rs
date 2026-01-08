@@ -2,18 +2,28 @@ use super::*;
 
 pub(crate) fn generate_struct_entry_impl(
     entry_name: &Ident,
+    generics: &syn::Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
     let writes = generate_write_statements(fields, root_attrs);
     let sample_groups = generate_sample_group_statements(fields, root_attrs);
+
+    // Add NS as an additional generic parameter
+    let mut impl_generics = generics.clone();
+    impl_generics
+        .params
+        .push(syn::parse_quote!(NS: ::metrique::NameStyle));
+    let (impl_generics, _, _) = impl_generics.split_for_impl();
+    let (_, ty_generics, where_clause) = generics.split_for_impl();
+
     // we generate one entry impl for each namestyle. This will then allow the parent to
     // transitively set the namestyle
     quote! {
         const _: () = {
             #[expect(deprecated)]
-            impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for #entry_name {
-                fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
+                fn write<'__metrique_write>(&'__metrique_write self, writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>) {
                     #(#writes)*
                 }
 

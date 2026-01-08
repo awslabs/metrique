@@ -51,24 +51,37 @@ macro_rules! close_value {
 // This allows us to have specific impls for things like `WithDimensions`
 
 close_value_ref!(
-    bool,
-    Duration,
-    f32,
-    f64,
-    u16,
-    u32,
-    u64,
-    u8,
-    usize,
-    &'static str,
-    SystemTime
+    bool, Duration, f32, f64, u16, u32, u64, u8, usize, SystemTime
 );
 
-close_value!(
-    String,
-    // I believe a generic implementation for Cow is possible but the trait bounds are nontrivial. I imagine this is the most common use case.
-    Cow<'static, str>
-);
+close_value!(String);
+
+#[diagnostic::do_not_recommend]
+impl<'a> CloseValue for &'a str {
+    type Closed = &'a str;
+
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<'a> CloseValue for &&'a str {
+    type Closed = &'a str;
+
+    fn close(self) -> Self::Closed {
+        *self
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<'a, T: ToOwned + ?Sized> CloseValue for Cow<'a, T> {
+    type Closed = Cow<'a, T>;
+
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
 
 #[diagnostic::do_not_recommend]
 impl<T, C> CloseValue for &'_ Arc<T>

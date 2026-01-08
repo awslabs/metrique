@@ -1235,6 +1235,10 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
 }
 
 /// Generate the on_drop_wrapper implementation
+fn has_lifetimes(generics: &syn::Generics) -> bool {
+    generics.lifetimes().next().is_some()
+}
+
 pub(crate) fn generate_on_drop_wrapper(
     vis: &Visibility,
     guard: &Ident,
@@ -1263,15 +1267,18 @@ fn generate_close_value_impls(
     root_attrs: &RootAttributes,
     base_ty: &Ident,
     closed_ty: &Ident,
+    generics: &syn::Generics,
     impl_body: Ts2,
 ) -> Ts2 {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     let (metrics_struct_ty, proxy_impl) = match root_attrs.ownership_kind() {
-        OwnershipKind::ByValue => (quote!(#base_ty), quote!()),
+        OwnershipKind::ByValue => (quote!(#base_ty #ty_generics), quote!()),
         OwnershipKind::ByRef => (
-            quote!(&'_ #base_ty),
+            quote!(&'_ #base_ty #ty_generics),
             // for a by-ref ownership, also add a proxy impl for by-value
-            quote!(impl metrique::CloseValue for #base_ty {
-                type Closed = #closed_ty;
+            quote!(impl #impl_generics metrique::CloseValue for #base_ty #ty_generics #where_clause {
+                type Closed = #closed_ty #ty_generics;
                 fn close(self) -> Self::Closed {
                     <&Self>::close(&self)
                 }
@@ -1279,8 +1286,8 @@ fn generate_close_value_impls(
         ),
     };
     quote! {
-        impl metrique::CloseValue for #metrics_struct_ty {
-            type Closed = #closed_ty;
+        impl #impl_generics metrique::CloseValue for #metrics_struct_ty #where_clause {
+            type Closed = #closed_ty #ty_generics;
             fn close(self) -> Self::Closed {
                 #impl_body
             }
@@ -1497,6 +1504,32 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_metrics_with_lifetime() {
+        let input = quote! {
+            struct Foo<'a> {
+                a: &'a str,
+                b: usize
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("metrics_with_lifetime", parsed_file);
+    }
+
+    #[test]
+    fn test_metrics_with_cow_lifetime() {
+        let input = quote! {
+            struct Foo<'a> {
+                a: Cow<'a, str>,
+                b: usize
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("metrics_with_cow_lifetime", parsed_file);
     }
 
     #[test]

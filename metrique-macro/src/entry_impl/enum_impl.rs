@@ -24,6 +24,7 @@ fn tuple_pattern(entry_name: &Ident, variant_ident: &Ident, bindings: &[Ident]) 
 
 pub(crate) fn generate_enum_entry_impl(
     entry_name: &Ident,
+    generics: &syn::Generics,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
@@ -31,13 +32,21 @@ pub(crate) fn generate_enum_entry_impl(
     let (iter_enum, sample_group_arms) =
         generate_sample_group_impl(entry_name, variants, root_attrs);
 
+    // Add NS as an additional generic parameter
+    let mut impl_generics = generics.clone();
+    impl_generics
+        .params
+        .push(syn::parse_quote!(NS: ::metrique::NameStyle));
+    let (impl_generics, _, _) = impl_generics.split_for_impl();
+    let (_, ty_generics, where_clause) = generics.split_for_impl();
+
     quote! {
         const _: () = {
             #iter_enum
 
             #[expect(deprecated)]
-            impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for #entry_name {
-                fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+            impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
+                fn write<'__metrique_write>(&'__metrique_write self, writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>) {
                     #[allow(deprecated)]
                     match self {
                         #(#write_arms)*

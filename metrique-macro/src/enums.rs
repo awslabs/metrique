@@ -6,7 +6,7 @@ use proc_macro2::TokenStream as Ts2;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Result, Visibility, spanned::Spanned};
 
-use crate::{MetricMode, TupleData, generate_on_drop_wrapper};
+use crate::{MetricMode, TupleData, generate_on_drop_wrapper, has_lifetimes};
 use crate::{
     MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, SpannedKv, clean_attrs,
     parse_metric_fields, value_impl,
@@ -246,13 +246,21 @@ pub(crate) fn generate_metrics_for_enum(
     );
     let warnings = root_attrs.warnings();
 
-    let entry_enum = generate_entry_enum(&entry_name, variants)?;
+    let entry_enum = generate_entry_enum(&entry_name, &input.generics, variants)?;
 
     let inner_impl = match root_attrs.mode {
-        MetricMode::ValueString => {
-            value_impl::generate_value_impl_for_enum(&root_attrs, &entry_name, variants)
-        }
-        _ => crate::entry_impl::generate_enum_entry_impl(&entry_name, variants, &root_attrs),
+        MetricMode::ValueString => value_impl::generate_value_impl_for_enum(
+            &root_attrs,
+            &entry_name,
+            &input.generics,
+            variants,
+        ),
+        _ => crate::entry_impl::generate_enum_entry_impl(
+            &entry_name,
+            &input.generics,
+            variants,
+            &root_attrs,
+        ),
     };
 
     let close_value_impl = match root_attrs.mode {
@@ -262,25 +270,38 @@ pub(crate) fn generate_metrics_for_enum(
                 quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident => #entry_name::#variant_ident)
             });
             let variants_map = quote!(#[allow(deprecated)] match self { #(#variants_map),* });
-            crate::generate_close_value_impls(&root_attrs, enum_name, &entry_name, variants_map)
+            crate::generate_close_value_impls(
+                &root_attrs,
+                enum_name,
+                &entry_name,
+                &input.generics,
+                variants_map,
+            )
         }
-        _ => generate_close_value_impl_for_enum(enum_name, &entry_name, variants, &root_attrs),
+        _ => generate_close_value_impl_for_enum(
+            enum_name,
+            &entry_name,
+            &input.generics,
+            variants,
+            &root_attrs,
+        ),
     };
 
     let from_and_sample_group =
-        generate_from_and_sample_group_for_enum(enum_name, variants, &root_attrs);
+        generate_from_and_sample_group_for_enum(enum_name, &input.generics, variants, &root_attrs);
 
     let vis = &input.vis;
 
     let root_entry_specifics = match root_attrs.mode {
-        MetricMode::RootEntry => {
+        MetricMode::RootEntry if !has_lifetimes(&input.generics) => {
             let on_drop_wrapper =
                 generate_on_drop_wrapper(vis, &guard_name, enum_name, &entry_name, &handle_name);
             quote! {
                 #on_drop_wrapper
             }
         }
-        MetricMode::Subfield
+        MetricMode::RootEntry
+        | MetricMode::Subfield
         | MetricMode::SubfieldOwned
         | MetricMode::ValueString
         | MetricMode::Value => {
@@ -316,14 +337,18 @@ pub(crate) fn generate_base_enum(
     }
 }
 
-fn generate_entry_enum(name: &Ident, variants: &[MetricsVariant]) -> Result<Ts2> {
+fn generate_entry_enum(
+    name: &Ident,
+    generics: &Generics,
+    variants: &[MetricsVariant],
+) -> Result<Ts2> {
     let variants = variants.iter().map(|variant| variant.entry_variant());
     let data = quote! {
         #(#variants,)*
     };
     Ok(quote! {
         #[doc(hidden)]
-        pub enum #name {
+        pub enum #name #generics {
             #data
         }
     })
@@ -332,6 +357,7 @@ fn generate_entry_enum(name: &Ident, variants: &[MetricsVariant]) -> Result<Ts2>
 fn generate_close_value_impl_for_enum(
     enum_name: &Ident,
     entry_name: &Ident,
+    generics: &Generics,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
@@ -384,11 +410,13 @@ fn generate_close_value_impl_for_enum(
     });
 
     let match_expr = quote!(#[allow(deprecated)] match self { #(#match_arms),* });
-    crate::generate_close_value_impls(root_attrs, enum_name, entry_name, match_expr)
+
+    crate::generate_close_value_impls(root_attrs, enum_name, entry_name, generics, match_expr)
 }
 
 pub(crate) fn generate_from_and_sample_group_for_enum(
     enum_name: &Ident,
+    generics: &Generics,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
@@ -408,20 +436,22 @@ pub(crate) fn generate_from_and_sample_group_for_enum(
         quote::quote_spanned!(variant.ident.span()=> #pattern => #metric_name)
     });
 
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     quote! {
-        impl ::std::convert::From<&'_ #enum_name> for &'static str {
-            fn from(value: &#enum_name) -> Self {
+        impl #impl_generics ::std::convert::From<&'_ #enum_name #ty_generics> for &'static str #where_clause {
+            fn from(value: &#enum_name #ty_generics) -> Self {
                 #[allow(deprecated)] match value {
                     #(#variants_and_strings),*
                 }
             }
         }
-        impl ::std::convert::From<#enum_name> for &'static str {
-            fn from(value: #enum_name) -> Self {
+        impl #impl_generics ::std::convert::From<#enum_name #ty_generics> for &'static str #where_clause {
+            fn from(value: #enum_name #ty_generics) -> Self {
                 <&str as ::std::convert::From<&_>>::from(&value)
             }
         }
-        impl ::metrique::writer::core::SampleGroup for #enum_name {
+        impl #impl_generics ::metrique::writer::core::SampleGroup for #enum_name #ty_generics #where_clause {
             fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
                 ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
             }

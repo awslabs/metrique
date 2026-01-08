@@ -7,17 +7,21 @@ use syn::Ident;
 pub(crate) fn generate_value_impl_for_enum(
     root_attrs: &RootAttributes,
     value_name: &Ident,
+    generics: &syn::Generics,
     parsed_variants: &[MetricsVariant],
 ) -> Ts2 {
     let from_and_sample_group = crate::enums::generate_from_and_sample_group_for_enum(
         value_name,
+        generics,
         parsed_variants,
         root_attrs,
     );
 
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     quote!(
         #from_and_sample_group
-        impl ::metrique::writer::Value for #value_name {
+        impl #impl_generics ::metrique::writer::Value for #value_name #ty_generics #where_clause {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 writer.string(::std::convert::Into::<&str>::into(self));
             }
