@@ -20,7 +20,7 @@ struct ApiCall {
 fn test_keyed_sink() {
     let test_sink = test_entry_sink();
     let keyed_sink =
-        KeyedAggregationSink::<ApiCallStrategy, _>::new(test_sink.sink, Duration::from_millis(100));
+        KeyedAggregationSink::<ApiCall, _>::new(test_sink.sink, Duration::from_millis(100));
 
     // Send multiple calls to api1
     keyed_sink.send(ApiCall {

@@ -30,7 +30,7 @@ pub struct ApiCall {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     #[metrics(flatten)]
-    api_calls: Aggregate<ApiCallStrategy>,
+    api_calls: Aggregate<ApiCall>,
     request_id: String,
 }
 
@@ -98,7 +98,7 @@ struct ApiCallWithEndpoint {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithEndpoint {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithEndpointStrategy>,
+    api_calls: MutexAggregator<ApiCallWithEndpoint>,
     request_id: String,
 }
 
@@ -138,7 +138,7 @@ struct ApiCallWithMultipleKeys {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithMultipleKeys {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithMultipleKeysStrategy>,
+    api_calls: MutexAggregator<ApiCallWithMultipleKeys>,
     request_id: String,
 }
 
@@ -176,7 +176,7 @@ struct ApiCallWithTimer {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithTimer {
     #[metrics(flatten)]
-    api_calls: Aggregate<ApiCallWithTimerStrategy>,
+    api_calls: Aggregate<ApiCallWithTimer>,
     request_id: String,
 }
 
@@ -217,7 +217,7 @@ fn test_aggregate_entry_mode_with_timer() {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithTimerMutex {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithTimerStrategy>,
+    api_calls: MutexAggregator<ApiCallWithTimer>,
     request_id: String,
 }
 

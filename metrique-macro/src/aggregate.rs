@@ -250,9 +250,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     // Generate AggregateStrategy impl
     let strategy_impl = quote! {
-        #vis struct #strategy_name;
-
-        impl metrique_aggregation::__macro_plumbing::AggregateStrategy for #strategy_name {
+        impl metrique_aggregation::__macro_plumbing::AggregateStrategy for #original_name {
             type Source = #original_name;
             type Key = #strategy_key_type;
         }
