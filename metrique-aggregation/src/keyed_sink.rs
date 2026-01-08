@@ -1,8 +1,6 @@
 //! Keyed aggregation sink with background thread
 
-use metrique_core::{CloseValue, InflectableEntry};
-use metrique_writer::{Entry, EntryWriter};
-use metrique_writer_core::entry::SampleGroupElement;
+use metrique_core::CloseValue;
 use std::{
     collections::HashMap,
     marker::PhantomData,
