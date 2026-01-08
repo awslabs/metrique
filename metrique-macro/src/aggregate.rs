@@ -98,28 +98,19 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
     let aggregated_name = format_ident!("Aggregated{}", original_name);
     let vis = &input.vis;
 
-    let aggregated_fields = parsed.fields.iter().map(|f| {
+    let aggregated_fields = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
         let metrics_attrs = &f.metrics_attrs;
-
-        if f.is_key {
-            let ty = &f.ty;
-            quote! {
-                #(#metrics_attrs)*
-                #name: #ty
-            }
+        let strategy = f.strategy.as_ref().unwrap();
+        let source_ty = &f.ty;
+        let value_ty = if entry_mode {
+            quote! { <#source_ty as metrique::CloseValue>::Closed }
         } else {
-            let strategy = f.strategy.as_ref().unwrap();
-            let source_ty = &f.ty;
-            let value_ty = if entry_mode {
-                quote! { <#source_ty as metrique::CloseValue>::Closed }
-            } else {
-                quote! { #source_ty }
-            };
-            quote! {
-                #(#metrics_attrs)*
-                #name: <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
-            }
+            quote! { #source_ty }
+        };
+        quote! {
+            #(#metrics_attrs)*
+            #name: <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
         }
     }).collect::<Vec<_>>();
 
