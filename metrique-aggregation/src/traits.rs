@@ -120,33 +120,47 @@ pub trait AggregateEntry {
     fn key(source: &Self::Source) -> Self::Key<'_>;
 }
 
-trait Key<Source> {
+/// Key extraction trait for aggregation strategies
+pub trait Key<Source> {
+    /// The key type with lifetime parameter
     type Key<'a>: Send + Hash + Eq + InflectableEntry;
+    /// Extract key from source
     fn from_source(source: &Source) -> Self::Key<'_>;
+    /// Convert borrowed key to static lifetime
     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static>;
 }
 
-trait Merge {
+/// Merge trait for aggregating values
+pub trait Merge {
+    /// The merged/accumulated type
     type Merged: CloseEntry;
+    /// Configuration for creating new merged values
     type MergeConfig;
+    /// Create a new merged value with configuration
     fn new_merged(conf: &Self::MergeConfig) -> Self::Merged;
+    /// Create a new merged value using Default
     fn new_default_merged() -> Self::Merged
     where
         Self::Merged: Default,
     {
         Self::Merged::default()
     }
+    /// Merge input into accumulator
     fn merge(accum: &mut Self::Merged, input: Self);
 }
 
-trait AggregateStrategy {
+/// Aggregation strategy combining source, merge, and key extraction
+pub trait AggregateStrategy {
+    /// The source type being aggregated
     type Source: Merge;
+    /// The key extraction strategy
     type Key: Key<Self::Source>;
 }
 
-struct MergeEntries<A, B> {
-    a: A,
-    b: B,
+/// Merges two entries together by writing both
+pub struct MergeEntries<A, B> {
+    pub(crate) a: A,
+    pub(crate) b: B,
 }
 
 impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> InflectableEntry<Ns>
@@ -155,6 +169,19 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
     fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
         self.a.write(w);
         self.b.write(w);
+    }
+}
+
+impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for MergeEntries<A, B> {
+    fn write<'a>(&'a self, w: &mut impl metrique_writer::EntryWriter<'a>) {
+        self.a.write(w);
+        self.b.write(w);
+    }
+
+    fn sample_group(
+        &self,
+    ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
+        self.a.sample_group().chain(self.b.sample_group())
     }
 }
 
