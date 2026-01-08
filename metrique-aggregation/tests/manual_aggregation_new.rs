@@ -3,12 +3,12 @@
 use assert2::check;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
+use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::keyed_sink::KeyedAggregationSinkNew;
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
-use std::thread::sleep;
 use std::time::Duration;
 
 #[metrics]
@@ -25,6 +25,7 @@ pub struct ApiCall {
 #[metrics(emf::dimension_sets = [["endpoint", "status_code"]])]
 pub struct ApiCallKey<'a> {
     endpoint: Cow<'a, String>,
+    #[metrics(format = ToString)]
     status_code: Cow<'a, usize>,
 }
 
@@ -78,8 +79,8 @@ impl AggregateStrategy for ApiCallStrategy {
     type Key = ApiCallByEndpointStatusCode;
 }
 
-#[test]
-fn test_new_aggregation_strategy() {
+#[tokio::test]
+async fn test_new_aggregation_strategy() {
     let test_sink = test_entry_sink();
     let sink = KeyedAggregationSinkNew::<ApiCallStrategy, _>::new(
         test_sink.sink,
@@ -104,8 +105,7 @@ fn test_new_aggregation_strategy() {
         status_code: 529,
     });
 
-    drop(sink);
-    sleep(Duration::from_millis(100));
+    sink.flush().await;
 
     let entries = dbg!(test_sink.inspector.entries());
     check!(entries.len() == 3);

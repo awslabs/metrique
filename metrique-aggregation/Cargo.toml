@@ -25,6 +25,7 @@ assert2 = "0.3"
 rstest = "0.23"
 trybuild.workspace = true
 rustversion.workspace = true
+tokio = { version = "1", features = ["full"] }
 
 [[bench]]
 name = "aggregation"

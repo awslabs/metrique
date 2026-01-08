@@ -94,6 +94,13 @@ where
                         T::Source::merge(accum, entry);
                     }
                     Ok(QueueMessage::Flush(sender)) => {
+                        for (key, aggregated) in storage.drain() {
+                            let merged = crate::traits::AggregationResult {
+                                key: key.close(),
+                                b: aggregated.close(),
+                            };
+                            sink.append(merged);
+                        }
                         let _ = sender.send(());
                     }
                     Err(_) => {
@@ -127,7 +134,7 @@ where
     pub async fn flush(&self) {
         let (tx, rx) = oneshot::channel();
         let _ = self.sender.send(QueueMessage::Flush(tx));
-        let _ = rx.await;
+        rx.await.unwrap()
     }
 }
 
