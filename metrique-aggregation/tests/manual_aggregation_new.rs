@@ -22,6 +22,11 @@ pub struct ApiCall {
     latency: Duration,
 }
 
+#[metrics]
+pub struct ApiCallByEndpointStatusCode {
+    key: ApiCallKey<'static>,
+}
+
 // Key is a metrics struct
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct ApiCallKey<'a> {

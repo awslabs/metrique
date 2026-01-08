@@ -162,7 +162,20 @@ pub trait AggregateStrategy {
     type Source: Merge;
     /// The key extraction strategy
     type Key: Key<Self::Source>;
+
+    /// The emitted entry
+    type FinalEntry: CloseEntry;
+
+    // The final entry type
+    fn final_entry(
+        key: KeyTy<'static, Self>,
+        accum: <Self::Source as Merge>::Merged,
+    ) -> Self::FinalEntry;
 }
+
+/// The key type for an aggregation strategy
+pub type KeyTy<'a, T> =
+    <<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'a>;
 
 /// Merges two entries together by writing both
 pub struct AggregateEntryXX<K, Agg> {
