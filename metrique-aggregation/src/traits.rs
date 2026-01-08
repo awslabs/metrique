@@ -127,7 +127,15 @@ trait Key<Source> {
 }
 
 trait Merge {
-    type Merged;
+    type Merged: CloseEntry;
+    type MergeConfig;
+    fn new_merged(conf: &Self::MergeConfig) -> Self::Merged;
+    fn new_default_merged() -> Self::Merged
+    where
+        Self::Merged: Default,
+    {
+        Self::Merged::default()
+    }
     fn merge(accum: &mut Self::Merged, input: Self);
 }
 
