@@ -1,4 +1,5 @@
 use assert2::check;
+use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
@@ -23,20 +24,29 @@ async fn test_keyed_sink() {
         KeyedAggregationSink::<ApiCall>::new(test_sink.sink, Duration::from_millis(100));
 
     // Send multiple calls to api1
-    keyed_sink.send(ApiCall {
-        endpoint: "api1".to_string(),
-        latency: Duration::from_millis(10),
-    });
-    keyed_sink.send(ApiCall {
-        endpoint: "api1".to_string(),
-        latency: Duration::from_millis(20),
-    });
+    keyed_sink.send(
+        ApiCall {
+            endpoint: "api1".to_string(),
+            latency: Duration::from_millis(10),
+        }
+        .close(),
+    );
+    keyed_sink.send(
+        ApiCall {
+            endpoint: "api1".to_string(),
+            latency: Duration::from_millis(20),
+        }
+        .close(),
+    );
 
     // Send one call to api2
-    keyed_sink.send(ApiCall {
-        endpoint: "api2".to_string(),
-        latency: Duration::from_millis(50),
-    });
+    keyed_sink.send(
+        ApiCall {
+            endpoint: "api2".to_string(),
+            latency: Duration::from_millis(50),
+        }
+        .close(),
+    );
 
     keyed_sink.flush().await;
 

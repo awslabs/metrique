@@ -123,6 +123,29 @@ where
     }
 }
 
+/// Extension trait for creating merge-on-drop guards
+pub trait CloseAndMergeOnDropExt: Sized + AggregateStrategy + CloseValue {
+    /// Create a guard that will close and merge this value on drop
+    fn close_and_merge_on_drop<Sink: CloseAggregateSink<Self>>(
+        self,
+        sink: Sink,
+    ) -> CloseAndMergeOnDrop<Self, Sink> {
+        CloseAndMergeOnDrop::new(self, sink)
+    }
+}
+
+impl<T> CloseAndMergeOnDropExt for T where T: AggregateStrategy + CloseValue {}
+
+/// Extension trait for creating merge-on-drop guards (raw mode)
+pub trait MergeOnDropExt: Sized + AggregateStrategy<Source = Self> {
+    /// Create a guard that will merge this value on drop
+    fn merge_on_drop<Sink: AggregateSink<Self>>(self, sink: Sink) -> MergeOnDrop<Self, Sink> {
+        MergeOnDrop::new(self, sink)
+    }
+}
+
+impl<T> MergeOnDropExt for T where T: AggregateStrategy<Source = Self> {}
+
 /// Trait that aggregates items (for raw mode)
 pub trait AggregateSink<T: AggregateStrategy> {
     /// Merge a given item into the sink
