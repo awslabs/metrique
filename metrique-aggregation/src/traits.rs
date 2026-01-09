@@ -224,8 +224,8 @@ pub trait Merge {
 
 /// Borrowed version of [`Merge`] for more efficient aggregation.
 ///
-/// When the source type can be borrowed during merging, implement this trait to avoid
-/// unnecessary clones. This is particularly useful for types with expensive clone operations.
+/// When the source type can be borrowed during merging, it becomes possible
+/// to aggregate the same input across multiple sinks (or to send it to multiple sinks.)
 pub trait MergeRef: Merge {
     /// Merge borrowed input into accumulator
     fn merge_ref(accum: &mut Self::Merged, input: &Self);
