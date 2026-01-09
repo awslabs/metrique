@@ -7,22 +7,31 @@ use syn::Ident;
 pub(crate) fn generate_value_impl_for_enum(
     root_attrs: &RootAttributes,
     value_name: &Ident,
+    generics: &syn::Generics,
     parsed_variants: &[MetricsVariant],
-) -> Ts2 {
+) -> Result<Ts2, syn::Error> {
+    if !generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            generics,
+            "generics and lifetimes are not supported for #[metrics(value)] enums",
+        ));
+    }
+
     let from_and_sample_group = crate::enums::generate_from_and_sample_group_for_enum(
         value_name,
+        generics,
         parsed_variants,
         root_attrs,
     );
 
-    quote!(
+    Ok(quote!(
         #from_and_sample_group
         impl ::metrique::writer::Value for #value_name {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 writer.string(::std::convert::Into::<&str>::into(self));
             }
         }
-    )
+    ))
 }
 
 pub fn validate_value_impl_for_struct(
@@ -101,6 +110,7 @@ pub(crate) fn format_value(format: &Option<syn::Path>, span: Span, field: Ts2) -
 pub(crate) fn generate_value_impl_for_struct(
     root_attrs: &RootAttributes,
     value_name: &Ident,
+    generics: &syn::Generics,
     parsed_fields: &[MetricsField],
 ) -> Result<Ts2, syn::Error> {
     // support struct with only ignored fields as no value for orthogonality
@@ -128,8 +138,9 @@ pub(crate) fn generate_value_impl_for_struct(
                 );
                 let sample_group_impl = if root_attrs.sample_group {
                     // SampleGroup impl is only valid if there is a field
+                    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
                     quote_spanned! {field.span=>
-                        impl ::metrique::writer::core::SampleGroup for #value_name {
+                        impl #impl_generics ::metrique::writer::core::SampleGroup for #value_name #ty_generics #where_clause {
                             fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
                                 #[allow(deprecated)] {
                                     ::metrique::writer::core::SampleGroup::as_sample_group(&self.#ident)
@@ -148,8 +159,11 @@ pub(crate) fn generate_value_impl_for_struct(
             )),
         })
         .transpose()?.unzip();
+
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     Ok(quote! {
-        impl ::metrique::writer::Value for #value_name {
+        impl #impl_generics ::metrique::writer::Value for #value_name #ty_generics #where_clause {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 #[allow(deprecated)] {
                     #body

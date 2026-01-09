@@ -1,0 +1,14 @@
+error: generics and lifetimes are not supported for #[metrics(value)] enums
+ --> tests/ui/fail/value_enum_with_generic.rs:4:26
+  |
+4 | enum ValueEnumWithGeneric<T> {
+  |                          ^^^
+
+error[E0392]: type parameter `T` is never used
+ --> tests/ui/fail/value_enum_with_generic.rs:4:27
+  |
+4 | enum ValueEnumWithGeneric<T> {
+  |                           ^ unused type parameter
+  |
+  = help: consider removing `T`, referring to it in a field, or using a marker such as `PhantomData`
+  = help: if you intended `T` to be a const parameter, use `const T: /* Type */` instead

@@ -99,7 +99,10 @@ pub struct MetadataEntry {
 const _: () = {
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for MetadataEntry {
-        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -314,7 +317,10 @@ const _: () = {
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestResultEntry {
-        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
             #[allow(deprecated)]
             match self {
                 RequestResultEntry::Success { operation, bytes } => {

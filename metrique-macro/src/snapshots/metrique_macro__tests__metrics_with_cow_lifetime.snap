@@ -1,0 +1,134 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct Foo<'a> {
+    a: Cow<'a, str>,
+    b: usize,
+}
+#[doc(hidden)]
+pub struct FooEntry<'a> {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    a: <Cow<'a, str> as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    b: <usize as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    #[expect(deprecated)]
+    impl<'a, NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for FooEntry<'a> {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct APreserve;
+                    impl ::metrique::concat::ConstStr for APreserve {
+                        const VAL: &'static str = "a";
+                    }
+                    struct AKebab;
+                    impl ::metrique::concat::ConstStr for AKebab {
+                        const VAL: &'static str = "a";
+                    }
+                    struct APascal;
+                    impl ::metrique::concat::ConstStr for APascal {
+                        const VAL: &'static str = "A";
+                    }
+                    struct ASnake;
+                    impl ::metrique::concat::ConstStr for ASnake {
+                        const VAL: &'static str = "a";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            APreserve,
+                            APascal,
+                            ASnake,
+                            AKebab,
+                        >,
+                    >()
+                },
+                &self.a,
+            );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct BPreserve;
+                    impl ::metrique::concat::ConstStr for BPreserve {
+                        const VAL: &'static str = "b";
+                    }
+                    struct BKebab;
+                    impl ::metrique::concat::ConstStr for BKebab {
+                        const VAL: &'static str = "b";
+                    }
+                    struct BPascal;
+                    impl ::metrique::concat::ConstStr for BPascal {
+                        const VAL: &'static str = "B";
+                    }
+                    struct BSnake;
+                    impl ::metrique::concat::ConstStr for BSnake {
+                        const VAL: &'static str = "b";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            BPreserve,
+                            BPascal,
+                            BSnake,
+                            BKebab,
+                        >,
+                    >()
+                },
+                &self.b,
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            ::std::iter::empty()
+        }
+    }
+};
+impl<'a> metrique::CloseValue for Foo<'a> {
+    type Closed = FooEntry<'a>;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        FooEntry {
+            a: metrique::CloseValue::close(self.a),
+            b: metrique::CloseValue::close(self.b),
+        }
+    }
+}
+#[doc = concat!(
+    "Metrics guard returned from [`", "Foo",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type FooGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    Foo<'static>,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "FooGuard", "::handle`], similar to an `Arc<",
+    "FooGuard", ">`."
+)]
+type FooHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    Foo<'static>,
+    Q,
+>;
+impl Foo<'static> {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<FooEntry<'static>>> + Send
+            + Sync + 'static,
+    >(self, sink: Q) -> FooGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

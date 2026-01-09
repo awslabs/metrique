@@ -23,8 +23,8 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{ToTokens, quote, quote_spanned};
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, Ident, Result, Type, Visibility,
-    parse_macro_input, spanned::Spanned,
+    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Result, Type,
+    Visibility, parse_macro_input, spanned::Spanned,
 };
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
@@ -1234,6 +1234,27 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     Ok(output)
 }
 
+/// Generates `Ident<'static, 'static, T, N, ...>` with all lifetimes replaced by 'static
+fn with_static_lifetimes(ident: &Ident, generics: &Generics) -> Ts2 {
+    if generics.params.is_empty() {
+        return quote! { #ident };
+    }
+
+    let args = generics.params.iter().map(|param| match param {
+        GenericParam::Lifetime(_) => quote! { 'static },
+        GenericParam::Type(ty) => {
+            let ident = &ty.ident;
+            quote! { #ident }
+        }
+        GenericParam::Const(c) => {
+            let ident = &c.ident;
+            quote! { #ident }
+        }
+    });
+
+    quote! { #ident<#(#args),*> }
+}
+
 /// Generate the on_drop_wrapper implementation
 pub(crate) fn generate_on_drop_wrapper(
     vis: &Visibility,
@@ -1241,18 +1262,25 @@ pub(crate) fn generate_on_drop_wrapper(
     inner: &Ident,
     target: &Ident,
     handle: &Ident,
+    generics: &Generics,
 ) -> Ts2 {
     let inner_str = inner.to_string();
     let guard_str = guard.to_string();
+
+    let (_impl_generics, _, where_clause) = generics.split_for_impl();
+    let inner_static = with_static_lifetimes(inner, generics);
+    let target_static = with_static_lifetimes(target, generics);
+
     quote! {
         #[doc = concat!("Metrics guard returned from [`", #inner_str, "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped.")]
-        #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner, Q>;
-        #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
-        #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner, Q>;
+        #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner_static, Q>;
 
-        impl #inner {
+        #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
+        #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner_static, Q>;
+
+        impl #inner_static #where_clause {
             #[doc = "Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
-            #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
+            #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target_static>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
         }
@@ -1263,15 +1291,18 @@ fn generate_close_value_impls(
     root_attrs: &RootAttributes,
     base_ty: &Ident,
     closed_ty: &Ident,
+    generics: &syn::Generics,
     impl_body: Ts2,
 ) -> Ts2 {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
     let (metrics_struct_ty, proxy_impl) = match root_attrs.ownership_kind() {
-        OwnershipKind::ByValue => (quote!(#base_ty), quote!()),
+        OwnershipKind::ByValue => (quote!(#base_ty #ty_generics), quote!()),
         OwnershipKind::ByRef => (
-            quote!(&'_ #base_ty),
+            quote!(&'_ #base_ty #ty_generics),
             // for a by-ref ownership, also add a proxy impl for by-value
-            quote!(impl metrique::CloseValue for #base_ty {
-                type Closed = #closed_ty;
+            quote!(impl #impl_generics metrique::CloseValue for #base_ty #ty_generics #where_clause {
+                type Closed = #closed_ty #ty_generics;
                 fn close(self) -> Self::Closed {
                     <&Self>::close(&self)
                 }
@@ -1279,8 +1310,8 @@ fn generate_close_value_impls(
         ),
     };
     quote! {
-        impl metrique::CloseValue for #metrics_struct_ty {
-            type Closed = #closed_ty;
+        impl #impl_generics metrique::CloseValue for #metrics_struct_ty #where_clause {
+            type Closed = #closed_ty #ty_generics;
             fn close(self) -> Self::Closed {
                 #impl_body
             }
@@ -1497,6 +1528,32 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_metrics_with_lifetime() {
+        let input = quote! {
+            struct Foo<'a> {
+                a: &'a str,
+                b: usize
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("metrics_with_lifetime", parsed_file);
+    }
+
+    #[test]
+    fn test_metrics_with_cow_lifetime() {
+        let input = quote! {
+            struct Foo<'a> {
+                a: Cow<'a, str>,
+                b: usize
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("metrics_with_cow_lifetime", parsed_file);
     }
 
     #[test]
