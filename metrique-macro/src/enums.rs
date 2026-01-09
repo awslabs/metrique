@@ -6,7 +6,7 @@ use proc_macro2::TokenStream as Ts2;
 use quote::quote;
 use syn::{Attribute, Generics, Ident, Result, Visibility, spanned::Spanned};
 
-use crate::{MetricMode, TupleData, generate_on_drop_wrapper, has_lifetimes};
+use crate::{MetricMode, TupleData, generate_on_drop_wrapper};
 use crate::{
     MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, SpannedKv, clean_attrs,
     parse_metric_fields, value_impl,
@@ -293,15 +293,20 @@ pub(crate) fn generate_metrics_for_enum(
     let vis = &input.vis;
 
     let root_entry_specifics = match root_attrs.mode {
-        MetricMode::RootEntry if !has_lifetimes(&input.generics) => {
-            let on_drop_wrapper =
-                generate_on_drop_wrapper(vis, &guard_name, enum_name, &entry_name, &handle_name);
+        MetricMode::RootEntry => {
+            let on_drop_wrapper = generate_on_drop_wrapper(
+                vis,
+                &guard_name,
+                enum_name,
+                &entry_name,
+                &handle_name,
+                &input.generics,
+            );
             quote! {
                 #on_drop_wrapper
             }
         }
-        MetricMode::RootEntry
-        | MetricMode::Subfield
+        MetricMode::Subfield
         | MetricMode::SubfieldOwned
         | MetricMode::ValueString
         | MetricMode::Value => {

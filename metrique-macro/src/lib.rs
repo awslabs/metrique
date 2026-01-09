@@ -23,8 +23,8 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{ToTokens, quote, quote_spanned};
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, Ident, Result, Type, Visibility,
-    parse_macro_input, spanned::Spanned,
+    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Result, Type,
+    Visibility, parse_macro_input, spanned::Spanned,
 };
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
@@ -1234,29 +1234,53 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     Ok(output)
 }
 
-/// Generate the on_drop_wrapper implementation
-fn has_lifetimes(generics: &syn::Generics) -> bool {
-    generics.lifetimes().next().is_some()
+/// Generates `Ident<'static, 'static, T, N, ...>` with all lifetimes replaced by 'static
+fn with_static_lifetimes(ident: &Ident, generics: &Generics) -> Ts2 {
+    if generics.params.is_empty() {
+        return quote! { #ident };
+    }
+
+    let args = generics.params.iter().map(|param| match param {
+        GenericParam::Lifetime(_) => quote! { 'static },
+        GenericParam::Type(ty) => {
+            let ident = &ty.ident;
+            quote! { #ident }
+        }
+        GenericParam::Const(c) => {
+            let ident = &c.ident;
+            quote! { #ident }
+        }
+    });
+
+    quote! { #ident<#(#args),*> }
 }
 
+/// Generate the on_drop_wrapper implementation
 pub(crate) fn generate_on_drop_wrapper(
     vis: &Visibility,
     guard: &Ident,
     inner: &Ident,
     target: &Ident,
     handle: &Ident,
+    generics: &Generics,
 ) -> Ts2 {
     let inner_str = inner.to_string();
     let guard_str = guard.to_string();
+
+    let (_impl_generics, _, where_clause) = generics.split_for_impl();
+    let inner_static = with_static_lifetimes(inner, generics);
+    let target_static = with_static_lifetimes(target, generics);
+
     quote! {
         #[doc = concat!("Metrics guard returned from [`", #inner_str, "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped.")]
-        #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner, Q>;
-        #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
-        #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner, Q>;
+        #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner_static, Q>;
 
-        impl #inner {
+        #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
+        #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner_static, Q>;
+
+        impl #inner_static #where_clause {
             #[doc = "Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
-            #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
+            #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target_static>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
         }

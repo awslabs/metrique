@@ -107,3 +107,28 @@ impl<'a> metrique::CloseValue for Foo<'a> {
         }
     }
 }
+#[doc = concat!(
+    "Metrics guard returned from [`", "Foo",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type FooGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    Foo<'static>,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "FooGuard", "::handle`], similar to an `Arc<",
+    "FooGuard", ">`."
+)]
+type FooHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    Foo<'static>,
+    Q,
+>;
+impl Foo<'static> {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<FooEntry<'static>>> + Send
+            + Sync + 'static,
+    >(self, sink: Q) -> FooGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

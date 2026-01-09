@@ -1,5 +1,8 @@
 use assert2::check;
-use metrique::{test_util::test_metric, unit_of_work::metrics};
+use metrique::{
+    test_util::{TestEntrySink, test_entry_sink, test_metric},
+    unit_of_work::metrics,
+};
 use std::borrow::Cow;
 
 #[metrics]
@@ -31,4 +34,21 @@ fn metrics_work() {
 
     let entry = test_metric(foo);
     check!(entry.values["a"] == "123");
+}
+
+#[test]
+fn static_metrics_append_on_drop() {
+    let TestEntrySink { inspector, sink } = test_entry_sink();
+    let foo: Foo<'static> = Foo {
+        a: Cow::Borrowed(&"123"),
+        b: 5,
+        c: Cow::Owned("1234".to_string()),
+    };
+    let mut guard = foo.append_on_drop(sink);
+    guard.b = 10;
+    drop(guard);
+    let entry = inspector.entries()[0].clone();
+    check!(entry.metrics["b"] == 10);
+    check!(entry.values["a"] == "123");
+    check!(entry.values["c"] == "1234");
 }

@@ -9,7 +9,7 @@ use syn::{
 
 use crate::{
     MetricMode, MetricsField, MetricsFieldKind, RootAttributes, clean_attrs, entry_impl,
-    generate_on_drop_wrapper, has_lifetimes, parse_metric_fields, value_impl,
+    generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
 
 pub(crate) fn generate_metrics_for_struct(
@@ -75,15 +75,20 @@ pub(crate) fn generate_metrics_for_struct(
     let vis = &input.vis;
 
     let root_entry_specifics = match root_attributes.mode {
-        MetricMode::RootEntry if !has_lifetimes(&input.generics) => {
-            let on_drop_wrapper =
-                generate_on_drop_wrapper(vis, &guard_name, struct_name, &entry_name, &handle_name);
+        MetricMode::RootEntry => {
+            let on_drop_wrapper = generate_on_drop_wrapper(
+                vis,
+                &guard_name,
+                struct_name,
+                &entry_name,
+                &handle_name,
+                &input.generics,
+            );
             quote! {
                 #on_drop_wrapper
             }
         }
-        MetricMode::RootEntry
-        | MetricMode::Subfield
+        MetricMode::Subfield
         | MetricMode::SubfieldOwned
         | MetricMode::ValueString
         | MetricMode::Value => {
