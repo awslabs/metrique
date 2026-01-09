@@ -54,6 +54,7 @@ pub(crate) fn generate_metrics_for_struct(
             value_impl::generate_value_impl_for_struct(
                 &root_attributes,
                 &entry_name,
+                &input.generics,
                 &parsed_fields,
             )?
         }

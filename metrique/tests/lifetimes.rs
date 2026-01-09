@@ -24,6 +24,23 @@ struct MultipleLifetimes<'a, 'b> {
     b: Cow<'b, str>,
 }
 
+#[metrics(value)]
+struct MetricsValueLifetime<'a> {
+    a: &'a str,
+}
+
+#[metrics]
+struct UtilizeValue {
+    v: MetricsValueLifetime<'static>,
+}
+
+/* Currently impossible -- we need a setting to not attempt to generate the `Ref` impl I think?
+#[metrics(value)]
+struct MetricsValueLifetimeCow<'a> {
+    cow: Cow<'a, str>,
+}
+*/
+
 #[test]
 fn metrics_work() {
     let foo = Foo {
@@ -51,4 +68,12 @@ fn static_metrics_append_on_drop() {
     check!(entry.metrics["b"] == 10);
     check!(entry.values["a"] == "123");
     check!(entry.values["c"] == "1234");
+}
+
+#[test]
+fn value_test() {
+    let metric = UtilizeValue {
+        v: MetricsValueLifetime { a: "123" },
+    };
+    check!(test_metric(metric).values["v"] == "123");
 }
