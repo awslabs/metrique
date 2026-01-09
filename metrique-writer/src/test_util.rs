@@ -80,14 +80,18 @@ impl<T> std::ops::Deref for TestMap<T> {
 impl<T> std::ops::Index<&str> for TestMap<T> {
     type Output = T;
 
+    #[track_caller]
     fn index(&self, key: &str) -> &Self::Output {
-        self.0.get(key).unwrap_or_else(|| {
-            let available_keys: Vec<_> = self.0.keys().map(|k| k.as_str()).collect();
-            panic!(
-                "key '{}' not found. Available keys: {:?}",
-                key, available_keys
-            )
-        })
+        match self.0.get(key) {
+            Some(key) => key,
+            None => {
+                let available_keys: Vec<_> = self.0.keys().map(|k| k.as_str()).collect();
+                panic!(
+                    "key '{}' not found. Available keys: {:?}",
+                    key, available_keys
+                )
+            }
+        }
     }
 }
 
