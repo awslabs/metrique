@@ -58,7 +58,7 @@ where
     <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
-    fn add(&self, entry: T::Source) {
+    fn merge(&self, entry: T::Source) {
         let mut storage = self.storage.lock().unwrap();
         let key = T::Key::static_key(&T::Key::from_source(&entry));
         let accum = storage
@@ -75,7 +75,7 @@ where
     <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
-    fn add_ref(&self, entry: &T::Source) {
+    fn merge_ref(&self, entry: &T::Source) {
         let mut storage = self.storage.lock().unwrap();
         let key = T::Key::static_key(&T::Key::from_source(entry));
         let accum = storage
@@ -137,7 +137,7 @@ where
             loop {
                 match receiver.recv_timeout(flush_interval) {
                     Ok(QueueMessage::Entry(entry)) => {
-                        inner.add(entry);
+                        inner.merge(entry);
                     }
                     Ok(QueueMessage::Flush(sender)) => {
                         inner.flush();
@@ -170,7 +170,7 @@ where
     }
 }
 
-impl<T, Inner> crate::sink::AggregateSink<T> for BackgroundThreadSink<T, Inner>
+impl<T, Inner> crate::traits::AggregateSink<T> for BackgroundThreadSink<T, Inner>
 where
     T: Send + 'static,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,

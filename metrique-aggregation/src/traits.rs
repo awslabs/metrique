@@ -514,7 +514,7 @@ where
 /// Trait for sinks that accept aggregated entries by value
 pub trait AggregateSink<T> {
     /// Add an entry to be aggregated
-    fn add(&self, entry: T);
+    fn merge(&self, entry: T);
 }
 
 /// Trait for sinks that accept aggregated entries by reference
@@ -523,7 +523,7 @@ pub trait AggregateSink<T> {
 /// Requires the source type to implement `MergeRef`.
 pub trait AggregateSinkRef<T: ?Sized> {
     /// Add an entry to be aggregated by reference
-    fn add_ref(&self, entry: &T);
+    fn merge_ref(&self, entry: &T);
 }
 
 /// Trait for sinks that can be flushed

@@ -23,9 +23,9 @@ where
     A: AggregateSink<T>,
     B: AggregateSinkRef<T>,
 {
-    fn add(&self, entry: T) {
-        self.sink_b.add_ref(&entry);
-        self.sink_a.add(entry);
+    fn merge(&self, entry: T) {
+        self.sink_b.merge_ref(&entry);
+        self.sink_a.merge(entry);
     }
 }
 
