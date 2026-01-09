@@ -38,7 +38,7 @@
 //! It wraps an aggregated value and tracks the number of samples merged.
 
 use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
-use std::hash::Hash;
+use std::{hash::Hash, marker::PhantomData};
 
 /// Defines how individual field values are aggregated.
 ///
@@ -370,6 +370,55 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
 pub struct Aggregate<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
     num_samples: usize,
+}
+
+/// new version of aggregate that does close
+pub struct Aggregate2<T, Strat: AggregateStrategy = T> {
+    aggregated: <Strat::Source as Merge>::Merged,
+    _t: PhantomData<T>,
+}
+
+impl<T, Strat: AggregateStrategy> Default for Aggregate2<T, Strat>
+where
+    <Strat::Source as Merge>::Merged: Default,
+{
+    fn default() -> Self {
+        Self {
+            aggregated: Default::default(),
+            _t: Default::default(),
+        }
+    }
+}
+
+impl<T, Strat: AggregateStrategy> CloseValue for Aggregate2<T, Strat> {
+    type Closed = <AggregateTy<Strat> as CloseValue>::Closed;
+
+    fn close(self) -> Self::Closed {
+        self.aggregated.close()
+    }
+}
+
+impl<T, S> Aggregate2<T, S>
+where
+    T: CloseAggregateEntry<S>,
+    S: AggregateStrategy,
+{
+    /// merge a value into this aggregate
+    pub fn add(&mut self, value: T) {
+        S::Source::merge(&mut self.aggregated, value.close())
+    }
+}
+
+/// An object that can be closed & Aggregated with `Strat`
+#[diagnostic::on_unimplemented(label = "test test test")]
+pub trait CloseAggregateEntry<Strat: AggregateStrategy>:
+    CloseValue<Closed = Strat::Source>
+{
+}
+
+impl<S: AggregateStrategy, T: ?Sized + CloseValue<Closed = S::Source>> CloseAggregateEntry<S>
+    for T
+{
 }
 
 impl<T: AggregateStrategy> CloseValue for Aggregate<T>
