@@ -52,6 +52,20 @@ where
     }
 }
 
+impl<T, Sink> MergeOnDrop<T, Sink>
+where
+    T: AggregateStrategy<Source = T>,
+    Sink: AggregateSink<T>,
+{
+    /// Create a new MergeOnDrop that will merge the value on drop
+    pub fn new(value: T, target: Sink) -> Self {
+        Self {
+            value: Some(value),
+            target,
+        }
+    }
+}
+
 /// Handle for metric that will be closed and merged into the target when dropped (for entry mode)
 pub struct CloseAndMergeOnDrop<T, Sink>
 where
@@ -91,6 +105,20 @@ where
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
             self.target.merge(value);
+        }
+    }
+}
+
+impl<T, Sink> CloseAndMergeOnDrop<T, Sink>
+where
+    T: AggregateStrategy + CloseValue,
+    Sink: CloseAggregateSink<T>,
+{
+    /// Create a new CloseAndMergeOnDrop that will close and merge the value on drop
+    pub fn new(value: T, target: Sink) -> Self {
+        Self {
+            value: Some(value),
+            target,
         }
     }
 }
