@@ -5,6 +5,7 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::keyed_sink::KeyedAggregationSink;
+use metrique_aggregation::sink::{CloseAndMergeOnDropExt, MergeOnDropExt};
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
@@ -92,6 +93,7 @@ async fn test_manual_aggregation_strategy() {
         latency: Duration::from_millis(10),
         status_code: 200,
     };
+    api_call.merge_on_drop(_sink.clone());
 
     // TODO: impl trait for keyed aggregation sink
     // let api_call = MergeOnDrop::new(api_call, _sink);

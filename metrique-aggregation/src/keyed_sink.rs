@@ -32,9 +32,6 @@ pub struct KeyedAggregator<T: AggregateStrategy, Sink = BoxEntrySink> {
     _phantom: PhantomData<T>,
 }
 
-// Manual Send impl since PhantomData<T> doesn't require T: Send
-unsafe impl<T: AggregateStrategy, Sink: Send> Send for KeyedAggregator<T, Sink> {}
-
 impl<T, Sink> KeyedAggregator<T, Sink>
 where
     T: AggregateStrategy,
@@ -175,14 +172,21 @@ where
 ///
 /// It emits aggregated entry to a secondary sink, `Sink`. The interval and conditions for aggregation
 /// are configurable.
-#[derive(Clone)]
 pub struct KeyedAggregationSink<T: AggregateStrategy, Sink = BoxEntrySink> {
     inner: BackgroundThreadSink<T::Source, KeyedAggregator<T, Sink>>,
 }
 
+impl<T: AggregateStrategy, Sink> Clone for KeyedAggregationSink<T, Sink> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
 impl<T, Sink> KeyedAggregationSink<T, Sink>
 where
-    T: AggregateStrategy,
+    T: AggregateStrategy + Send,
     T::Source: Send,
     <T::Source as Merge>::Merged: Send,
     <T::Source as Merge>::MergeConfig: Default,
@@ -204,5 +208,31 @@ where
     /// Flush all pending entries
     pub async fn flush(&self) {
         self.inner.flush().await;
+    }
+}
+
+impl<T, Sink> crate::sink::AggregateSink<T> for KeyedAggregationSink<T, Sink>
+where
+    T: AggregateStrategy + Send,
+    T::Source: Send,
+    <T::Source as Merge>::Merged: Send,
+    <T::Source as Merge>::MergeConfig: Default,
+    Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
+{
+    fn merge(&self, entry: T::Source) {
+        self.send(entry);
+    }
+}
+
+impl<T, Sink> crate::sink::CloseAggregateSink<T> for KeyedAggregationSink<T, Sink>
+where
+    T: AggregateStrategy + CloseValue<Closed = T::Source> + Send,
+    T::Source: Send,
+    <T::Source as Merge>::Merged: Send,
+    <T::Source as Merge>::MergeConfig: Default,
+    Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
+{
+    fn merge(&self, entry: T) {
+        self.send(entry.close());
     }
 }
