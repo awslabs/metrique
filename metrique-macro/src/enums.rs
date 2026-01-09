@@ -254,7 +254,7 @@ pub(crate) fn generate_metrics_for_enum(
             &entry_name,
             &input.generics,
             variants,
-        ),
+        )?,
         _ => crate::entry_impl::generate_enum_entry_impl(
             &entry_name,
             &input.generics,

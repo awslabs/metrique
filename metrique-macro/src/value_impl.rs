@@ -9,7 +9,14 @@ pub(crate) fn generate_value_impl_for_enum(
     value_name: &Ident,
     generics: &syn::Generics,
     parsed_variants: &[MetricsVariant],
-) -> Ts2 {
+) -> Result<Ts2, syn::Error> {
+    if !generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            generics,
+            "generics and lifetimes are not supported for #[metrics(value)] enums",
+        ));
+    }
+
     let from_and_sample_group = crate::enums::generate_from_and_sample_group_for_enum(
         value_name,
         generics,
@@ -17,16 +24,14 @@ pub(crate) fn generate_value_impl_for_enum(
         root_attrs,
     );
 
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-
-    quote!(
+    Ok(quote!(
         #from_and_sample_group
-        impl #impl_generics ::metrique::writer::Value for #value_name #ty_generics #where_clause {
+        impl ::metrique::writer::Value for #value_name {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 writer.string(::std::convert::Into::<&str>::into(self));
             }
         }
-    )
+    ))
 }
 
 pub fn validate_value_impl_for_struct(
@@ -154,9 +159,9 @@ pub(crate) fn generate_value_impl_for_struct(
             )),
         })
         .transpose()?.unzip();
-    
+
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    
+
     Ok(quote! {
         impl #impl_generics ::metrique::writer::Value for #value_name #ty_generics #where_clause {
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
