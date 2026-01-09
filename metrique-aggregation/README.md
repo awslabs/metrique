@@ -132,6 +132,7 @@ Use `KeyedAggregationSink` to aggregate by key with time-based flushing:
 # use metrique_aggregation::aggregate;
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::histogram::Histogram;
+# use metrique::CloseValue;
 # #[aggregate]
 # #[metrics]
 # struct ApiCall {
@@ -149,7 +150,7 @@ let sink = KeyedAggregationSink::<ApiCall, _>::new(
 sink.send(ApiCall {
     endpoint: "GetItem".to_string(),
     latency: Duration::from_millis(10),
-});
+}.close());
 ```
 
 ## Histogram strategies

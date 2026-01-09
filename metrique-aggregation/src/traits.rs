@@ -511,3 +511,24 @@ where
         }
     }
 }
+
+/// Trait for sinks that accept aggregated entries by value
+pub trait AggregateSink<T> {
+    /// Add an entry to be aggregated
+    fn add(&self, entry: T);
+}
+
+/// Trait for sinks that accept aggregated entries by reference
+///
+/// This enables aggregating the same input across multiple sinks without cloning.
+/// Requires the source type to implement `MergeRef`.
+pub trait AggregateSinkRef<T: ?Sized> {
+    /// Add an entry to be aggregated by reference
+    fn add_ref(&self, entry: &T);
+}
+
+/// Trait for sinks that can be flushed
+pub trait FlushableSink {
+    /// Flush all accumulated entries to the output sink
+    fn flush(&self);
+}

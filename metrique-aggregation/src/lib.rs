@@ -7,7 +7,7 @@
 pub mod histogram;
 pub mod keyed_sink;
 pub mod sink;
-pub mod sink_poc;
+pub mod split_sink;
 pub mod traits;
 pub mod value;
 
