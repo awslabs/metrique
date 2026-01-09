@@ -28,7 +28,7 @@ async fn test_close_and_merge_on_drop_with_keyed_sink() {
             endpoint: "api1".to_string(),
             latency: Duration::from_millis(10),
         }
-        .close_and_merge_on_drop(&keyed_sink);
+        .close_and_merge(keyed_sink.clone());
 
         // Modify before drop
         call.latency = Duration::from_millis(15);
@@ -39,7 +39,7 @@ async fn test_close_and_merge_on_drop_with_keyed_sink() {
             endpoint: "api1".to_string(),
             latency: Duration::from_millis(20),
         }
-        .close_and_merge_on_drop(&keyed_sink);
+        .close_and_merge(keyed_sink.clone());
     } // Automatically merged on drop
 
     keyed_sink.flush().await;

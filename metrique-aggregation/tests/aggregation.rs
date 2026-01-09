@@ -238,7 +238,7 @@ fn test_merge_and_close_on_drop() {
 
     ts.update_instant(Duration::from_secs(10));
 
-    let call = call.close_and_merge_on_drop(&metrics.api_calls);
+    let call = call.close_and_merge(metrics.api_calls.clone());
     drop(call);
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 1);
