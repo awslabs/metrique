@@ -4,7 +4,7 @@ expression: parsed_file
 ---
 #[metrics]
 #[derive(Default)]
-struct AggregatedApiCallWithOperation {
+pub struct AggregatedApiCallWithOperation {
     #[metrics(unit = Millisecond)]
     latency: <Histogram<
         Duration,
@@ -26,7 +26,7 @@ impl metrique_aggregation::__macro_plumbing::Merge for ApiCallWithOperation {
 }
 #[derive(Clone, Hash, PartialEq, Eq)]
 #[metrics]
-struct ApiCallWithOperationKey<'a> {
+pub struct ApiCallWithOperationKey<'a> {
     endpoint: ::std::borrow::Cow<'a, String>,
 }
 struct ApiCallWithOperationKeyExtractor;
@@ -34,6 +34,7 @@ impl metrique_aggregation::__macro_plumbing::Key<ApiCallWithOperation>
 for ApiCallWithOperationKeyExtractor {
     type Key<'a> = ApiCallWithOperationKey<'a>;
     fn from_source(source: &ApiCallWithOperation) -> Self::Key<'_> {
+        #[allow(deprecated)]
         ApiCallWithOperationKey {
             endpoint: ::std::borrow::Cow::Borrowed(&source.endpoint),
         }

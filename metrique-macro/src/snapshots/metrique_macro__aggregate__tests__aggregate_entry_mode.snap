@@ -4,7 +4,7 @@ expression: parsed_file
 ---
 #[metrics]
 #[derive(Default)]
-struct AggregatedApiCall {
+pub struct AggregatedApiCall {
     #[metrics(unit = Millisecond, name = "latency_2")]
     latency: <Histogram<
         Duration,

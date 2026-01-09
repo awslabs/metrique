@@ -10,6 +10,7 @@ struct AggregateField {
     ty: Type,
     strategy: Option<Type>,
     is_key: bool,
+    use_clone: bool,
     metrics_attrs: Vec<Attribute>,
 }
 
@@ -44,6 +45,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
 
         let mut strategy = None;
         let mut is_key = false;
+        let mut use_clone = false;
 
         for attr in &field.attrs {
             if attr.path().is_ident("aggregate") {
@@ -54,6 +56,9 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
                         Ok(())
                     } else if meta.path.is_ident("key") {
                         is_key = true;
+                        Ok(())
+                    } else if meta.path.is_ident("clone") {
+                        use_clone = true;
                         Ok(())
                     } else {
                         Err(meta.error("unknown aggregate attribute"))
@@ -84,6 +89,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             ty: field.ty.clone(),
             strategy,
             is_key,
+            use_clone,
             metrics_attrs,
         });
     }
@@ -293,6 +299,73 @@ pub(crate) fn generate_aggregate_strategy_impl(
         #key_impl
         #strategy_impl
     })
+}
+
+pub(crate) fn generate_merge_ref_impl(
+    input: &DeriveInput,
+    entry_mode: bool,
+    disable_merge_ref: bool,
+) -> Result<Option<Ts2>> {
+    let parsed = parse_aggregate_fields(input)?;
+
+    // Don't generate if #[aggregate(owned)] is present
+    if disable_merge_ref {
+        return Ok(None);
+    }
+
+    let original_name = &input.ident;
+
+    // Determine the source type
+    let source_ty = if entry_mode {
+        quote! { <#original_name as metrique::CloseValue>::Closed }
+    } else {
+        quote! { #original_name }
+    };
+
+    // Generate merge_ref calls for non-key fields
+    let merge_ref_calls = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
+        let name = &f.name;
+        let strategy = f.strategy.as_ref().unwrap();
+        let field_ty = &f.ty;
+
+        let value_ty = if entry_mode {
+            quote! { <#field_ty as metrique::CloseValue>::Closed }
+        } else {
+            quote! { #field_ty }
+        };
+
+        let field_span = name.span();
+
+        let expect_deprecated = if entry_mode {
+            quote! { #[expect(deprecated)] }
+        } else {
+            quote! {}
+        };
+
+        if f.use_clone {
+            // Use clone for this field
+            quote_spanned! { field_span=>
+                #expect_deprecated
+                <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(&mut accum.#name, input.#name.clone());
+            }
+        } else {
+            // Use IfYouSeeThisUseAggregateOwned wrapper for Copy types
+            quote_spanned! { field_span=>
+                #expect_deprecated
+                <metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::add_value(&mut accum.#name, &input.#name);
+            }
+        }
+    }).collect::<Vec<_>>();
+
+    let merge_ref_impl = quote! {
+        impl metrique_aggregation::__macro_plumbing::MergeRef for #source_ty {
+            fn merge_ref(accum: &mut Self::Merged, input: &Self) {
+                #(#merge_ref_calls)*
+            }
+        }
+    };
+
+    Ok(Some(merge_ref_impl))
 }
 
 pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {

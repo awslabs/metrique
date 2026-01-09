@@ -1,9 +1,4 @@
 //! Test demonstrating SplitSink pattern
-//!
-//! This test is currently disabled because it requires MergeRef implementations
-//! from the #[aggregate] macro, which haven't been generated yet.
-
-#![cfg(feature = "never_enabled")]
 
 use assert2::check;
 use metrique::CloseValue;
@@ -27,11 +22,8 @@ pub struct ApiCall {
 }
 
 /// This test demonstrates the SplitSink pattern - aggregating the same input
-/// across multiple sinks using AggregateSinkRef to avoid cloning.
-///
-/// Currently ignored because the #[aggregate] macro doesn't generate MergeRef impls yet.
+/// across multiple sinks using MergeRef to avoid cloning.
 #[test]
-#[ignore = "Requires MergeRef impl from #[aggregate] macro"]
 fn test_split_sink() {
     // Create two output sinks - both will receive aggregated entries
     let aggregated_sink_a = test_entry_sink();
