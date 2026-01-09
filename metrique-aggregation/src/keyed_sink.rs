@@ -23,6 +23,10 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
     <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
 >;
 
+/// Keyed aggregation sink
+pub type KeyedAggregationSink<T> =
+    BackgroundThreadSink<<T as AggregateStrategy>::Source, KeyedAggregator<T>>;
+
 /// Keyed aggregator that uses a HashMap to aggregate entries by key
 ///
 /// This is the core aggregation logic without any threading or channel concerns.
@@ -166,71 +170,12 @@ where
     }
 }
 
-impl<T, Inner, Strat> crate::sink::AggregateSink<Strat> for BackgroundThreadSink<T, Inner>
+impl<T, Inner> crate::sink::AggregateSink<T> for BackgroundThreadSink<T, Inner>
 where
     T: Send + 'static,
-    Strat: AggregateStrategy<Source = T>,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,
 {
     fn merge(&self, entry: T) {
-        self.send(entry);
-    }
-}
-
-/// [`KeyedAggregationSink`] uses a HashMap to aggregate a set of keys
-///
-/// It is fronted by a channel, and serviced by a dedicated background thread.
-///
-/// It emits aggregated entry to a secondary sink, `Sink`. The interval and conditions for aggregation
-/// are configurable.
-pub struct KeyedAggregationSink<T: AggregateStrategy, Sink = BoxEntrySink> {
-    inner: BackgroundThreadSink<T::Source, KeyedAggregator<T, Sink>>,
-}
-
-impl<T: AggregateStrategy, Sink> Clone for KeyedAggregationSink<T, Sink> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-        }
-    }
-}
-
-impl<T, Sink> KeyedAggregationSink<T, Sink>
-where
-    T: AggregateStrategy + Send,
-    T::Source: Send,
-    <T::Source as Merge>::Merged: Send,
-    <T::Source as Merge>::MergeConfig: Default,
-    Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
-{
-    /// Create a new keyed aggregation sink with a flush interval
-    pub fn new(sink: Sink, flush_interval: Duration) -> Self {
-        let aggregator = KeyedAggregator::<T, Sink>::new(sink);
-        Self {
-            inner: BackgroundThreadSink::new(aggregator, flush_interval),
-        }
-    }
-
-    /// Send an entry to be aggregated
-    pub fn send(&self, entry: T::Source) {
-        self.inner.send(entry);
-    }
-
-    /// Flush all pending entries
-    pub async fn flush(&self) {
-        self.inner.flush().await;
-    }
-}
-
-impl<T, Sink> crate::sink::AggregateSink<T> for KeyedAggregationSink<T, Sink>
-where
-    T: AggregateStrategy + Send,
-    T::Source: Send,
-    <T::Source as Merge>::Merged: Send,
-    <T::Source as Merge>::MergeConfig: Default,
-    Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
-{
-    fn merge(&self, entry: T::Source) {
         self.send(entry);
     }
 }

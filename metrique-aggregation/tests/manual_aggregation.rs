@@ -4,7 +4,7 @@ use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
-use metrique_aggregation::keyed_sink::KeyedAggregationSink;
+use metrique_aggregation::keyed_sink::{KeyedAggregationSink, KeyedAggregator};
 use metrique_aggregation::sink::MergeOnDropExt;
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
@@ -86,7 +86,10 @@ const _: () = {
 #[ignore] // Ignored because KeyedAggregationSink only supports entry mode currently
 async fn test_manual_aggregation_strategy() {
     let test_sink = test_entry_sink();
-    let _sink = KeyedAggregationSink::<ApiCall>::new(test_sink.sink, Duration::from_millis(100));
+    let _sink = KeyedAggregationSink::<ApiCall>::new(
+        KeyedAggregator::new(test_sink.sink),
+        Duration::from_millis(100),
+    );
 
     let api_call = ApiCall {
         endpoint: "GetItem".to_string(),

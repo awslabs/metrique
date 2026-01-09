@@ -410,7 +410,6 @@ where
 }
 
 /// An object that can be closed & Aggregated with `Strat`
-#[diagnostic::on_unimplemented(label = "test test test")]
 pub trait CloseAggregateEntry<Strat: AggregateStrategy>:
     CloseValue<Closed = Strat::Source>
 {

@@ -80,38 +80,29 @@ async fn test_split_sink() {
     let split = SplitSink::new(aggregator_a, aggregator_b);
     let sink = BackgroundThreadSink::new(split, Duration::from_secs(10));
 
-    // Send entries with varying latencies
-    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
-        ApiCall {
-            endpoint: "api1".to_string(),
-            latency: Duration::from_millis(500),
-        },
-        sink.clone(),
-    );
+    ApiCall {
+        endpoint: "api1".to_string(),
+        latency: Duration::from_millis(500),
+    }
+    .close_and_merge(sink.clone());
 
-    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
-        ApiCall {
-            endpoint: "api1".to_string(),
-            latency: Duration::from_millis(1500),
-        },
-        sink.clone(),
-    );
+    ApiCall {
+        endpoint: "api1".to_string(),
+        latency: Duration::from_millis(1500),
+    }
+    .close_and_merge(sink.clone());
 
-    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
-        ApiCall {
-            endpoint: "api1".to_string(),
-            latency: Duration::from_millis(800),
-        },
-        sink.clone(),
-    );
+    ApiCall {
+        endpoint: "api1".to_string(),
+        latency: Duration::from_millis(800),
+    }
+    .close_and_merge(sink.clone());
 
-    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
-        ApiCall {
-            endpoint: "api2".to_string(),
-            latency: Duration::from_millis(2000),
-        },
-        sink.clone(),
-    );
+    ApiCall {
+        endpoint: "api2".to_string(),
+        latency: Duration::from_millis(2000),
+    }
+    .close_and_merge(sink.clone());
 
     // Flush both sinks
     sink.flush().await;
