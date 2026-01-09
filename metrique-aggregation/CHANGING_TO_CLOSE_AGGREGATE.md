@@ -1,5 +1,31 @@
 Our next task is creating a parallel path between Entry/CloseEntry and aggregation.
 
+## ✅ COMPLETED
+
+The following changes have been implemented:
+
+1. **AggregateStrategy::Source now uses closed type in entry mode**
+   - In entry mode: `type Source = <UserType as CloseValue>::Closed`
+   - In raw mode: `type Source = UserType`
+
+2. **WithUnit dereferencing**
+   - Fields with `#[metrics(unit = ...)]` are dereferenced in entry mode
+   - Uses `*input.field` to unwrap the `WithUnit` wrapper
+
+3. **Deprecated field handling**
+   - Added `#[expect(deprecated)]` before merge calls in entry mode
+
+4. **Separate types for entry and raw modes**
+   - `Aggregate<T>` for entry mode - accepts user type, closes it, then merges
+   - `AggregateRaw<T>` for raw mode - accepts `T::Source` directly without closing
+   - `CloseAggregateSink` trait for entry mode aggregation
+   - `AggregateSink` trait for raw mode aggregation
+
+5. **KeyedAggregationSink updated**
+   - Now accepts user type and closes it before aggregating
+
+## Original Requirements
+
 Right now, the `Source` type of `AggregateStrategy` is the "user type":
 
 ```rust
