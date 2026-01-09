@@ -166,6 +166,17 @@ where
     }
 }
 
+impl<T, Inner, Strat> crate::sink::AggregateSink<Strat> for BackgroundThreadSink<T, Inner>
+where
+    T: Send + 'static,
+    Strat: AggregateStrategy<Source = T>,
+    Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,
+{
+    fn merge(&self, entry: T) {
+        self.send(entry);
+    }
+}
+
 /// [`KeyedAggregationSink`] uses a HashMap to aggregate a set of keys
 ///
 /// It is fronted by a channel, and serviced by a dedicated background thread.
@@ -221,18 +232,5 @@ where
 {
     fn merge(&self, entry: T::Source) {
         self.send(entry);
-    }
-}
-
-impl<T, Sink> crate::sink::CloseAggregateSink<T> for KeyedAggregationSink<T, Sink>
-where
-    T: AggregateStrategy + CloseValue<Closed = T::Source> + Send,
-    T::Source: Send,
-    <T::Source as Merge>::Merged: Send,
-    <T::Source as Merge>::MergeConfig: Default,
-    Sink: metrique_writer::EntrySink<AggregatedEntry<T>> + Send + 'static,
-{
-    fn merge(&self, entry: T) {
-        self.send(entry.close());
     }
 }

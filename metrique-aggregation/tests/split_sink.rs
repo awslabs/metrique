@@ -1,14 +1,13 @@
 //! Test demonstrating SplitSink pattern
 
 use assert2::check;
-use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::keyed_sink::{BackgroundThreadSink, KeyedAggregator};
 use metrique_aggregation::sink::CloseAndMergeOnDropExt;
 use metrique_aggregation::split_sink::SplitSink;
-use metrique_aggregation::traits::{AggregateSink, AggregateStrategy, FlushableSink, Key};
+use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
 use std::time::Duration;
@@ -65,8 +64,8 @@ impl AggregateStrategy for ByEndpointAndThreshold {
 ///
 /// Sink A: Groups by endpoint, tracks latency histogram
 /// Sink B: Groups by endpoint + duration threshold (< 1s vs >= 1s), counts requests
-#[test]
-fn test_split_sink() {
+#[tokio::test]
+async fn test_split_sink() {
     // Create two output sinks
     let aggregated_sink_a = test_entry_sink();
     let aggregated_sink_b = test_entry_sink();
@@ -82,38 +81,40 @@ fn test_split_sink() {
     let sink = BackgroundThreadSink::new(split, Duration::from_secs(10));
 
     // Send entries with varying latencies
-    ApiCall {
-        endpoint: "api1".to_string(),
-        latency: Duration::from_millis(500),
-    }.close_and_merge(sink.clone());
-
-    split.add(
-        .close(),
+    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
+        ApiCall {
+            endpoint: "api1".to_string(),
+            latency: Duration::from_millis(500),
+        },
+        sink.clone(),
     );
-    split.add(
+
+    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
         ApiCall {
             endpoint: "api1".to_string(),
             latency: Duration::from_millis(1500),
-        }
-        .close(),
+        },
+        sink.clone(),
     );
-    split.add(
+
+    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
         ApiCall {
             endpoint: "api1".to_string(),
             latency: Duration::from_millis(800),
-        }
-        .close(),
+        },
+        sink.clone(),
     );
-    split.add(
+
+    CloseAndMergeOnDropExt::<ApiCall>::close_and_merge(
         ApiCall {
             endpoint: "api2".to_string(),
             latency: Duration::from_millis(2000),
-        }
-        .close(),
+        },
+        sink.clone(),
     );
 
     // Flush both sinks
-    split.flush();
+    sink.flush().await;
 
     // Sink A: grouped by endpoint only
     let entries_a = aggregated_sink_a.inspector.entries();
