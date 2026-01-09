@@ -9,7 +9,14 @@ struct MyStruct {
 }
 ```
 
-Right now, during the merge, step, the inner values are closed. What we want _instead_ is that the `Source` type is the `Entry` type (aka, the resolve of `MyStruct::Closed`)
+Right now, during the merge, step, the inner values are closed. What we want _instead_ is that the `Source` type is the `Entry` type (aka, the resolve of `MyStruct::Closed`):
+
+```
+struct MyStructStrategy;
+impl AggregateStrategy for MyStructStrategy {
+  type Source = MyStruct::Closed;
+  // ...
+}
 
 In the `#[aggregate]` macro, unless `#[aggregate(no_close)]` is used (this is currently "raw"), we should be aggregating on the closed type.
 
