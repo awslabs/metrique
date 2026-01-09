@@ -434,6 +434,55 @@ where
 
 impl<T: AggregateStrategy> Aggregate<T> {
     /// Add a new entry into this aggregate
+    pub fn add(&mut self, entry: T)
+    where
+        T: CloseValue<Closed = T::Source>,
+        T::Source: Merge,
+    {
+        self.num_samples += 1;
+        T::Source::merge(&mut self.aggregated, entry.close());
+    }
+
+    /// Creates an `Aggregate` initialized to a given value.
+    pub fn new(value: <T::Source as Merge>::Merged) -> Self {
+        Self {
+            aggregated: value,
+            num_samples: 0,
+        }
+    }
+}
+
+/// Aggregates values without closing them (for raw mode)
+pub struct AggregateRaw<T: AggregateStrategy> {
+    aggregated: <T::Source as Merge>::Merged,
+    num_samples: usize,
+}
+
+impl<T: AggregateStrategy> Default for AggregateRaw<T>
+where
+    <T::Source as Merge>::Merged: Default,
+{
+    fn default() -> Self {
+        Self {
+            aggregated: Default::default(),
+            num_samples: 0,
+        }
+    }
+}
+
+impl<T: AggregateStrategy> CloseValue for AggregateRaw<T>
+where
+    <T::Source as Merge>::Merged: CloseValue,
+{
+    type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
+
+    fn close(self) -> <Self as CloseValue>::Closed {
+        self.aggregated.close()
+    }
+}
+
+impl<T: AggregateStrategy> AggregateRaw<T> {
+    /// Add a new entry into this aggregate without closing
     pub fn add(&mut self, entry: T::Source)
     where
         T::Source: Merge,
@@ -442,7 +491,7 @@ impl<T: AggregateStrategy> Aggregate<T> {
         T::Source::merge(&mut self.aggregated, entry);
     }
 
-    /// Creates an `Aggregate` initialized to a given value.
+    /// Creates an `AggregateRaw` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
         Self {
             aggregated: value,

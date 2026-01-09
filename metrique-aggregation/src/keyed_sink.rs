@@ -43,7 +43,7 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
 
 impl<T, Sink> KeyedAggregationSink<T, Sink>
 where
-    T: AggregateStrategy,
+    T: AggregateStrategy + CloseValue<Closed = T::Source>,
     T::Source: Send,
     <T::Source as Merge>::Merged: Send,
     <T::Source as Merge>::MergeConfig: Default,
@@ -96,8 +96,8 @@ where
     }
 
     /// Send an entry to be aggregated
-    pub fn send(&self, entry: T::Source) {
-        let _ = self.sender.send(QueueMessage::Entry(entry));
+    pub fn send(&self, entry: T) {
+        let _ = self.sender.send(QueueMessage::Entry(entry.close()));
     }
 
     /// Flush all pending entries

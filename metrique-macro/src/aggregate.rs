@@ -1,3 +1,4 @@
+use darling::FromField;
 use proc_macro2::{Ident, TokenStream as Ts2};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
@@ -143,34 +144,63 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
+    // Determine the source type for AggregateStrategy
+    let source_ty = if entry_mode {
+        quote! { <#original_name as metrique::CloseValue>::Closed }
+    } else {
+        quote! { #original_name }
+    };
+
     // Generate Merge impl
     let merge_calls = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
         let strategy = f.strategy.as_ref().unwrap();
-        let source_ty = &f.ty;
+        let field_ty = &f.ty;
 
         let value_ty = if entry_mode {
-            quote! { <#source_ty as metrique::CloseValue>::Closed }
+            quote! { <#field_ty as metrique::CloseValue>::Closed }
         } else {
-            quote! { #source_ty }
+            quote! { #field_ty }
         };
 
-        let entry_value = if entry_mode {
-            quote! { metrique::CloseValue::close(input.#name) }
+        // Check if field has a unit attribute by parsing metrics attributes
+        // Only dereference in entry mode, where the field is wrapped in WithUnit
+        let has_unit = entry_mode && crate::RawMetricsFieldAttrs::from_field(&syn::Field {
+            attrs: f.metrics_attrs.clone(),
+            vis: syn::Visibility::Inherited,
+            mutability: syn::FieldMutability::None,
+            ident: Some(f.name.clone()),
+            colon_token: None,
+            ty: f.ty.clone(),
+        })
+        .ok()
+        .and_then(|attrs| attrs.unit)
+        .is_some();
+
+        // In entry mode with unit, need to dereference WithUnit wrapper
+        let entry_value = if has_unit {
+            quote! { *input.#name }
         } else {
             quote! { input.#name }
         };
 
         let field_span = name.span();
 
+        let expect_deprecated = if entry_mode {
+            quote! { #[expect(deprecated)] }
+        } else {
+            quote! {}
+        };
+
         quote_spanned! { field_span=>
+            #expect_deprecated
             <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(&mut accum.#name, #entry_value);
         }
     }).collect::<Vec<_>>();
 
     // Generate Merge impl
     let merge_impl = quote! {
-        impl metrique_aggregation::__macro_plumbing::Merge for #original_name {
+        impl metrique_aggregation::__macro_plumbing::Merge for #source_ty {
             type Merged = #aggregated_name;
             type MergeConfig = ();
 
@@ -227,10 +257,10 @@ pub(crate) fn generate_aggregate_strategy_impl(
         let key_impl = quote! {
             #vis struct #key_extractor_name;
 
-            impl metrique_aggregation::__macro_plumbing::Key<#original_name> for #key_extractor_name {
+            impl metrique_aggregation::__macro_plumbing::Key<#source_ty> for #key_extractor_name {
                 type Key<'a> = #key_name<'a>;
 
-                fn from_source(source: &#original_name) -> Self::Key<'_> {
+                fn from_source(source: &#source_ty) -> Self::Key<'_> {
                     #key_name {
                         #(#from_source_fields),*
                     }
@@ -250,7 +280,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
     // Generate AggregateStrategy impl
     let strategy_impl = quote! {
         impl metrique_aggregation::__macro_plumbing::AggregateStrategy for #original_name {
-            type Source = #original_name;
+            type Source = #source_ty;
             type Key = #strategy_key_type;
         }
     };

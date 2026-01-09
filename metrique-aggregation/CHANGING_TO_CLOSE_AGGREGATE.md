@@ -20,7 +20,11 @@ impl AggregateStrategy for MyStructStrategy {
 
 In the `#[aggregate]` macro, unless `#[aggregate(no_close)]` is used (this is currently "raw"), we should be aggregating on the closed type.
 
-I've set up the `CloseAggregateEntry` trait and added `Aggregate2` demonstrating how it will be used. In the future we'll have `Aggregate` and `AggregateRaw` -- `Aggregate` accepts something with `Close
+I've set up the `CloseAggregateEntry` trait and added `Aggregate2` demonstrating how it will be used. In the future we'll have `Aggregate` and `AggregateRaw` -- `Aggregate` accepts something with `Close.
+
+Actions:
+- Rename `Aggregate` to `AggregateRaw`
+- Rename `Aggreagte2` to `Aggregate`
 
 ### Tricky Issues
 #### Units

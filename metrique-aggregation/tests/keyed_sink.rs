@@ -8,7 +8,7 @@ use std::time::Duration;
 
 #[aggregate]
 #[metrics]
-struct ApiCall {
+pub struct ApiCall {
     #[aggregate(key)]
     endpoint: String,
 
