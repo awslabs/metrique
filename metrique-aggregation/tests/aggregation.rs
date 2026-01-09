@@ -222,7 +222,7 @@ struct RequestMetricsWithTimerMutex {
 
 #[test]
 fn test_merge_and_close_on_drop() {
-    use metrique_aggregation::sink::CloseAggregateSink;
+    use metrique_aggregation::sink::CloseAndMergeOnDropExt;
 
     let metrics = RequestMetricsWithTimerMutex {
         api_calls: MutexAggregator::new(),
@@ -232,10 +232,9 @@ fn test_merge_and_close_on_drop() {
     let mut call = ApiCallWithTimer {
         latency: Timer::start_now(),
     };
-    std::thread::sleep(Duration::from_millis(10));
-    call.latency.stop();
-    CloseAggregateSink::merge(&metrics.api_calls, call);
 
+    let call = call.close_and_merge_on_drop(&metrics.api_calls);
+    drop(call);
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 1);
     check!(entry.values["RequestId"] == "merge-close-test");

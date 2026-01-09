@@ -126,11 +126,11 @@ where
 /// Extension trait for creating merge-on-drop guards
 pub trait CloseAndMergeOnDropExt: Sized + AggregateStrategy + CloseValue {
     /// Create a guard that will close and merge this value on drop
-    fn close_and_merge_on_drop<Sink: CloseAggregateSink<Self>>(
+    fn close_and_merge_on_drop<Sink: CloseAggregateSink<Self> + Clone>(
         self,
-        sink: Sink,
+        sink: &Sink,
     ) -> CloseAndMergeOnDrop<Self, Sink> {
-        CloseAndMergeOnDrop::new(self, sink)
+        CloseAndMergeOnDrop::new(self, sink.clone())
     }
 }
 

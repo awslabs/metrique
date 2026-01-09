@@ -6,6 +6,7 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::keyed_sink::KeyedAggregationSink;
+use metrique_aggregation::sink::{CloseAndMergeOnDrop, MergeOnDrop};
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
@@ -71,10 +72,7 @@ impl Key<ApiCall> for ApiCallByEndpointStatusCode {
     }
 }
 
-// Combine into AggregateStrategy (raw mode - Source is the user type)
-struct ApiCallStrategy;
-
-impl AggregateStrategy for ApiCallStrategy {
+impl AggregateStrategy for ApiCall {
     type Source = ApiCall;
     type Key = ApiCallByEndpointStatusCode;
 }
@@ -87,14 +85,16 @@ impl AggregateStrategy for ApiCallStrategy {
 #[ignore] // Ignored because KeyedAggregationSink only supports entry mode currently
 async fn test_manual_aggregation_strategy() {
     let test_sink = test_entry_sink();
-    let _sink =
-        KeyedAggregationSink::<ApiCallStrategy>::new(test_sink.sink, Duration::from_millis(100));
+    let _sink = KeyedAggregationSink::<ApiCall>::new(test_sink.sink, Duration::from_millis(100));
 
     let api_call = ApiCall {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(10),
         status_code: 200,
     };
+
+    // TODO: impl trait for keyed aggregation sink
+    // let api_call = MergeOnDrop::new(api_call, _sink);
 
     // This would work if we had KeyedAggregationSinkRaw:
     // sink.send(ApiCall {
