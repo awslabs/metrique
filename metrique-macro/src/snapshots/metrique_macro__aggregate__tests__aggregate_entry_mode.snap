@@ -13,29 +13,24 @@ struct AggregatedApiCall {
         <Timer as metrique::CloseValue>::Closed,
     >>::Aggregated,
 }
-impl metrique_aggregation::__macro_plumbing::MergeOnDropExt for ApiCall {}
-impl metrique_aggregation::__macro_plumbing::AggregateEntry for ApiCall {
-    type Source = <Self as metrique::CloseValue>::Closed;
-    type Aggregated = AggregatedApiCall;
-    type Key<'a> = ();
-    fn static_key<'a>(key: Self::Key<'a>) -> Self::Key<'static> {
-        ()
+impl metrique_aggregation::__macro_plumbing::Merge for ApiCall {
+    type Merged = AggregatedApiCall;
+    type MergeConfig = ();
+    fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+        Self::Merged::default()
     }
-    fn merge_entry(accum: &mut Self::Aggregated, entry: Self::Source) {
-        #[allow(deprecated)]
+    fn merge(accum: &mut Self::Merged, input: Self) {
         <Histogram<
             Duration,
             SortAndMerge,
         > as metrique_aggregation::__macro_plumbing::AggregateValue<
             <Timer as metrique::CloseValue>::Closed,
-        >>::add_value(&mut accum.latency, *entry.latency);
+        >>::add_value(&mut accum.latency, metrique::CloseValue::close(input.latency));
     }
-    fn new_aggregated<'a>(key: &Self::Key<'a>) -> Self::Aggregated {
-        Self::Aggregated::default()
-    }
-    fn key(source: &Self::Source) -> Self::Key<'_> {
-        #[allow(deprecated)] ()
-    }
+}
+impl metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
+    type Source = ApiCall;
+    type Key = metrique_aggregation::__macro_plumbing::NoKey;
 }
 #[metrics]
 struct ApiCall {

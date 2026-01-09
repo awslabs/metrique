@@ -9,7 +9,7 @@ use syn::{
 
 use crate::{
     MetricMode, MetricsField, MetricsFieldKind, RootAttributes, clean_attrs, entry_impl,
-    generate_close_value_impls, generate_on_drop_wrapper, parse_metric_fields, value_impl,
+    generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
 
 pub(crate) fn generate_metrics_for_struct(
@@ -37,7 +37,12 @@ pub(crate) fn generate_metrics_for_struct(
     )?;
     let warnings = root_attributes.warnings();
 
-    let entry_struct = generate_entry_struct(&entry_name, &parsed_fields, &root_attributes)?;
+    let entry_struct = generate_entry_struct(
+        &entry_name,
+        &input.generics,
+        &parsed_fields,
+        &root_attributes,
+    )?;
 
     let inner_impl = match root_attributes.mode {
         MetricMode::Value => {
@@ -49,15 +54,22 @@ pub(crate) fn generate_metrics_for_struct(
             value_impl::generate_value_impl_for_struct(
                 &root_attributes,
                 &entry_name,
+                &input.generics,
                 &parsed_fields,
             )?
         }
-        _ => entry_impl::generate_struct_entry_impl(&entry_name, &parsed_fields, &root_attributes),
+        _ => entry_impl::generate_struct_entry_impl(
+            &entry_name,
+            &input.generics,
+            &parsed_fields,
+            &root_attributes,
+        ),
     };
 
     let close_value_impl = generate_close_value_impls_for_struct(
         struct_name,
         &entry_name,
+        &input.generics,
         &parsed_fields,
         &root_attributes,
     );
@@ -65,8 +77,14 @@ pub(crate) fn generate_metrics_for_struct(
 
     let root_entry_specifics = match root_attributes.mode {
         MetricMode::RootEntry => {
-            let on_drop_wrapper =
-                generate_on_drop_wrapper(vis, &guard_name, struct_name, &entry_name, &handle_name);
+            let on_drop_wrapper = generate_on_drop_wrapper(
+                vis,
+                &guard_name,
+                struct_name,
+                &entry_name,
+                &handle_name,
+                &input.generics,
+            );
             quote! {
                 #on_drop_wrapper
             }
@@ -116,6 +134,7 @@ fn wrap_fields_into_struct_decl(has_named_fields: bool, fields: impl Iterator<It
 
 fn generate_entry_struct(
     name: &Ident,
+    generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Result<Ts2> {
@@ -126,13 +145,14 @@ fn generate_entry_struct(
     let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
     Ok(quote!(
         #[doc(hidden)]
-        pub struct #name #body
+        pub struct #name #generics #body
     ))
 }
 
 fn generate_close_value_impls_for_struct(
     metrics_struct: &Ident,
     entry: &Ident,
+    generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
@@ -141,18 +161,16 @@ fn generate_close_value_impls_for_struct(
         .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)))
         .map(|f| f.close_value(root_attrs.ownership_kind()));
     let config: Vec<Ts2> = root_attrs.create_configuration();
-    generate_close_value_impls(
-        root_attrs,
-        metrics_struct,
-        entry,
-        quote! {
-            #[allow(deprecated)]
-            #entry {
-                #(#config,)*
-                #(#fields,)*
-            }
-        },
-    )
+
+    let impl_body = quote! {
+        #[allow(deprecated)]
+        #entry {
+            #(#config,)*
+            #(#fields,)*
+        }
+    };
+
+    crate::generate_close_value_impls(root_attrs, metrics_struct, entry, generics, impl_body)
 }
 
 pub(crate) fn clean_base_struct(

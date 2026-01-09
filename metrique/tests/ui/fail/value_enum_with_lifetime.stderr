@@ -1,0 +1,13 @@
+error: generics and lifetimes are not supported for #[metrics(value)] enums
+ --> tests/ui/fail/value_enum_with_lifetime.rs:4:27
+  |
+4 | enum ValueEnumWithLifetime<'a> {
+  |                           ^^^^
+
+error[E0392]: lifetime parameter `'a` is never used
+ --> tests/ui/fail/value_enum_with_lifetime.rs:4:28
+  |
+4 | enum ValueEnumWithLifetime<'a> {
+  |                            ^^ unused lifetime parameter
+  |
+  = help: consider removing `'a`, referring to it in a field, or using a marker such as `PhantomData`

@@ -16,7 +16,10 @@ pub struct NestedEntry {
 const _: () = {
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for NestedEntry {
-        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -149,7 +152,10 @@ const _: () = {
     }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for StatusEntry {
-        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
             #[allow(deprecated)]
             match self {
                 StatusEntry::Active { count, latency } => {
@@ -347,7 +353,10 @@ const _: () = {
     }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for OperationEntry {
-        fn write<'a>(&'a self, writer: &mut impl ::metrique::writer::EntryWriter<'a>) {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
             #[allow(deprecated)]
             match self {
                 OperationEntry::Read { bytes } => {
