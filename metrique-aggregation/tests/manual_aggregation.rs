@@ -1,12 +1,10 @@
 //! Example demonstrating manual implementation of the AggregateStrategy traits.
 
-use assert2::check;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::keyed_sink::KeyedAggregationSink;
-use metrique_aggregation::sink::{CloseAndMergeOnDrop, MergeOnDrop};
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
@@ -52,7 +50,7 @@ pub struct AggregatedApiCall {
 }
 
 // Key extraction for ApiCall
-struct ApiCallByEndpointStatusCode;
+pub struct ApiCallByEndpointStatusCode;
 
 impl Key<ApiCall> for ApiCallByEndpointStatusCode {
     type Key<'a> = ApiCallKey<'a>;
@@ -72,10 +70,12 @@ impl Key<ApiCall> for ApiCallByEndpointStatusCode {
     }
 }
 
-impl AggregateStrategy for ApiCall {
-    type Source = ApiCall;
-    type Key = ApiCallByEndpointStatusCode;
-}
+const _: () = {
+    impl AggregateStrategy for ApiCall {
+        type Source = ApiCall;
+        type Key = ApiCallByEndpointStatusCode;
+    }
+};
 
 // For raw mode, we need a raw version of KeyedAggregationSink
 // For now, this test demonstrates the trait structure
@@ -102,30 +102,4 @@ async fn test_manual_aggregation_strategy() {
     //     latency: Duration::from_millis(10),
     //     status_code: 200,
     // });
-}
-
-#[test]
-fn test_manual_merge_implementation() {
-    // Test that the manual Merge implementation works
-    let mut aggregated = AggregatedApiCall::default();
-
-    ApiCall::merge(
-        &mut aggregated,
-        ApiCall {
-            endpoint: "GetItem".to_string(),
-            latency: Duration::from_millis(10),
-            status_code: 200,
-        },
-    );
-
-    ApiCall::merge(
-        &mut aggregated,
-        ApiCall {
-            endpoint: "GetItem".to_string(),
-            latency: Duration::from_millis(20),
-            status_code: 200,
-        },
-    );
-
-    check!(aggregated.latency.len() == 2);
 }

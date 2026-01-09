@@ -740,6 +740,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-macro",
+ "metrique-timesource",
  "metrique-writer",
  "metrique-writer-core",
  "ordered-float",

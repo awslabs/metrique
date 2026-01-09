@@ -97,7 +97,6 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
     let parsed = parse_aggregate_fields(input)?;
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
-    let vis = &input.vis;
 
     let aggregated_fields = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
         let name = &f.name;
@@ -125,7 +124,8 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
     Ok(quote! {
         #metrics_attr
         #derive_default
-        #vis struct #aggregated_name {
+        // aggregated needs to be pub because it is used in a trait
+        pub struct #aggregated_name {
             #(#aggregated_fields),*
         }
     })
@@ -249,7 +249,8 @@ pub(crate) fn generate_aggregate_strategy_impl(
         let key_struct = quote! {
             #[derive(Clone, Hash, PartialEq, Eq)]
             #[metrics]
-            #vis struct #key_name<'a> {
+            // key struct needs to be pub because it is used in a trait
+            pub struct #key_name<'a> {
                 #(#key_field_defs),*
             }
         };
@@ -261,6 +262,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
                 type Key<'a> = #key_name<'a>;
 
                 fn from_source(source: &#source_ty) -> Self::Key<'_> {
+                    #[allow(deprecated)]
                     #key_name {
                         #(#from_source_fields),*
                     }

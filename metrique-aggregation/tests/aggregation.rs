@@ -9,10 +9,12 @@ use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::MutexAggregator;
 use metrique_aggregation::traits::Aggregate;
 use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
+use metrique_timesource::TimeSource;
+use metrique_timesource::fakes::ManuallyAdvancedTimeSource;
 use metrique_writer::test_util::{DistributionsExt, test_metric};
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 #[aggregate]
 #[metrics]
@@ -228,15 +230,25 @@ fn test_merge_and_close_on_drop() {
         api_calls: MutexAggregator::new(),
         request_id: "merge-close-test".to_string(),
     };
+    let ts = ManuallyAdvancedTimeSource::at_time(UNIX_EPOCH);
 
-    let mut call = ApiCallWithTimer {
-        latency: Timer::start_now(),
+    let call = ApiCallWithTimer {
+        latency: Timer::start_now_with_timesource(TimeSource::custom(ts.clone())),
     };
+
+    ts.update_instant(Duration::from_secs(10));
 
     let call = call.close_and_merge_on_drop(&metrics.api_calls);
     drop(call);
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].distribution.len() == 1);
+    check!(
+        entry.metrics["latency_2"].distribution
+            == [Observation::Repeated {
+                total: Duration::from_secs(10).as_micros() as f64,
+                occurrences: 1
+            }]
+    );
     check!(entry.values["RequestId"] == "merge-close-test");
 }
 
