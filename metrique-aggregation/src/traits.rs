@@ -369,18 +369,6 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
 /// ```
 pub struct Aggregate<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
-    num_samples: usize,
-}
-
-/// An object that can be closed & Aggregated with `Strat`
-pub trait CloseAggregateEntry<Strat: AggregateStrategy>:
-    CloseValue<Closed = Strat::Source>
-{
-}
-
-impl<S: AggregateStrategy, T: ?Sized + CloseValue<Closed = S::Source>> CloseAggregateEntry<S>
-    for T
-{
 }
 
 impl<T: AggregateStrategy> CloseValue for Aggregate<T>
@@ -401,23 +389,18 @@ impl<T: AggregateStrategy> Aggregate<T> {
         T: CloseValue<Closed = T::Source>,
         T::Source: Merge,
     {
-        self.num_samples += 1;
         T::Source::merge(&mut self.aggregated, entry.close());
     }
 
     /// Creates an `Aggregate` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
-        Self {
-            aggregated: value,
-            num_samples: 0,
-        }
+        Self { aggregated: value }
     }
 }
 
 /// Aggregates values without closing them (for raw mode)
 pub struct AggregateRaw<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
-    num_samples: usize,
 }
 
 impl<T: AggregateStrategy> Default for AggregateRaw<T>
@@ -427,7 +410,6 @@ where
     fn default() -> Self {
         Self {
             aggregated: Default::default(),
-            num_samples: 0,
         }
     }
 }
@@ -449,16 +431,12 @@ impl<T: AggregateStrategy> AggregateRaw<T> {
     where
         T::Source: Merge,
     {
-        self.num_samples += 1;
         T::Source::merge(&mut self.aggregated, entry);
     }
 
     /// Creates an `AggregateRaw` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
-        Self {
-            aggregated: value,
-            num_samples: 0,
-        }
+        Self { aggregated: value }
     }
 }
 
@@ -469,7 +447,6 @@ where
     fn default() -> Self {
         Self {
             aggregated: <T::Source as Merge>::Merged::default(),
-            num_samples: 0,
         }
     }
 }
