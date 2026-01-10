@@ -68,22 +68,19 @@ where
 }
 
 /// Handle for metric that will be closed and merged into the target when dropped (for entry mode)
-pub struct CloseAndMergeOnDrop<T, Sink, Strat = T>
+pub struct CloseAndMergeOnDrop<T, Sink>
 where
-    T: CloseAggregateEntry<Strat>,
-    Strat: AggregateStrategy,
-    Sink: AggregateSink<Strat::Source>,
+    T: CloseValue,
+    Sink: AggregateSink<T::Closed>,
 {
     value: Option<T>,
-    strat: PhantomData<Strat>,
     target: Sink,
 }
 
-impl<T, S, Strat> Deref for CloseAndMergeOnDrop<T, S, Strat>
+impl<T, S> Deref for CloseAndMergeOnDrop<T, S>
 where
-    T: CloseAggregateEntry<Strat>,
-    Strat: AggregateStrategy,
-    S: AggregateSink<Strat::Source>,
+    T: CloseValue,
+    S: AggregateSink<T::Closed>,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -91,22 +88,20 @@ where
     }
 }
 
-impl<T, S, Strat> DerefMut for CloseAndMergeOnDrop<T, S, Strat>
+impl<T, S> DerefMut for CloseAndMergeOnDrop<T, S>
 where
-    T: CloseAggregateEntry<Strat>,
-    Strat: AggregateStrategy,
-    S: AggregateSink<Strat::Source>,
+    T: CloseValue,
+    S: AggregateSink<T::Closed>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value.as_mut().expect("unreachable: valid until drop")
     }
 }
 
-impl<T, Sink, Strat> Drop for CloseAndMergeOnDrop<T, Sink, Strat>
+impl<T, Sink> Drop for CloseAndMergeOnDrop<T, Sink>
 where
-    T: CloseAggregateEntry<Strat>,
-    Strat: AggregateStrategy,
-    Sink: AggregateSink<Strat::Source>,
+    T: CloseValue,
+    Sink: AggregateSink<T::Closed>,
 {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
@@ -115,29 +110,27 @@ where
     }
 }
 
-impl<T, Sink, Strat> CloseAndMergeOnDrop<T, Sink, Strat>
+impl<T, Sink> CloseAndMergeOnDrop<T, Sink>
 where
-    T: CloseAggregateEntry<Strat>,
-    Strat: AggregateStrategy,
-    Sink: AggregateSink<Strat::Source>,
+    T: CloseValue,
+    Sink: AggregateSink<T::Closed>,
 {
     /// Create a new CloseAndMergeOnDrop that will close and merge the value on drop
     pub fn new(value: T, target: Sink) -> Self {
         Self {
             value: Some(value),
-            strat: PhantomData,
             target,
         }
     }
 }
 
 /// Extension trait for creating merge-on-drop guards
-pub trait CloseAndMergeOnDropExt: AggregateStrategy + Sized + CloseAggregateEntry<Self> {
+pub trait CloseAndMergeOnDropExt: CloseValue + Sized {
     /// Create a guard that will close and merge this value on drop
-    fn close_and_merge<Sink: AggregateSink<Self::Source>>(
+    fn close_and_merge<Sink: AggregateSink<Self::Closed>>(
         self,
         sink: Sink,
-    ) -> CloseAndMergeOnDrop<Self, Sink, Self> {
+    ) -> CloseAndMergeOnDrop<Self, Sink> {
         CloseAndMergeOnDrop::new(self, sink)
     }
 }
