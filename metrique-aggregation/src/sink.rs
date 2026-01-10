@@ -7,7 +7,7 @@ use std::{
 
 use metrique_core::CloseValue;
 
-use crate::traits::{AggregateSink, AggregateStrategy, CloseAggregateEntry, Merge};
+use crate::traits::{AggregateSink, AggregateStrategy, Merge};
 
 /// Handle for metric that will be automatically merged into the target when dropped (for raw mode)
 pub struct MergeOnDrop<T, Sink>
@@ -122,34 +122,6 @@ where
         }
     }
 }
-
-/// Extension trait for creating merge-on-drop guards
-pub trait CloseAndMergeOnDropExt: CloseValue + Sized {
-    /// Create a guard that will close and merge this value on drop
-    fn close_and_merge<Sink: AggregateSink<Self::Closed>>(
-        self,
-        sink: Sink,
-    ) -> CloseAndMergeOnDrop<Self, Sink> {
-        CloseAndMergeOnDrop::new(self, sink)
-    }
-}
-
-impl<T> CloseAndMergeOnDropExt for T
-where
-    T: CloseAggregateEntry<T>,
-    T: AggregateStrategy,
-{
-}
-
-/// Extension trait for creating merge-on-drop guards (raw mode)
-pub trait MergeOnDropExt: Sized + AggregateStrategy<Source = Self> {
-    /// Create a guard that will merge this value on drop
-    fn merge<Sink: AggregateSink<Self>>(self, sink: Sink) -> MergeOnDrop<Self, Sink> {
-        MergeOnDrop::new(self, sink)
-    }
-}
-
-impl<T> MergeOnDropExt for T where T: AggregateStrategy<Source = Self> {}
 
 /// Sink that aggregates a single type of entry backed by a mutex
 ///
