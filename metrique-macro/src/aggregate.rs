@@ -368,6 +368,39 @@ pub(crate) fn generate_merge_ref_impl(
     Ok(Some(merge_ref_impl))
 }
 
+pub(crate) fn generate_merge_on_drop_methods(input: &DeriveInput, entry_mode: bool) -> Result<Ts2> {
+    let original_name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    if entry_mode {
+        // Default mode: generate close_and_merge method
+        Ok(quote! {
+            impl #impl_generics #original_name #ty_generics #where_clause {
+                /// Create a guard that will close and merge this value on drop
+                pub fn close_and_merge<Sink: metrique_aggregation::traits::AggregateSink<<Self as metrique::CloseValue>::Closed>>(
+                    self,
+                    sink: Sink,
+                ) -> metrique_aggregation::sink::CloseAndMergeOnDrop<Self, Sink> {
+                    metrique_aggregation::sink::CloseAndMergeOnDrop::new(self, sink)
+                }
+            }
+        })
+    } else {
+        // Raw mode: generate merge method
+        Ok(quote! {
+            impl #impl_generics #original_name #ty_generics #where_clause {
+                /// Create a guard that will merge this value on drop
+                pub fn merge<Sink: metrique_aggregation::traits::AggregateSink<Self>>(
+                    self,
+                    sink: Sink,
+                ) -> metrique_aggregation::sink::MergeOnDrop<Self, Sink> {
+                    metrique_aggregation::sink::MergeOnDrop::new(self, sink)
+                }
+            }
+        })
+    }
+}
+
 pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
     let adt_name = &input.ident;
     let vis = &input.vis;

@@ -38,7 +38,7 @@
 //! It wraps an aggregated value and tracks the number of samples merged.
 
 use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
-use std::{hash::Hash, marker::PhantomData};
+use std::hash::Hash;
 
 /// Defines how individual field values are aggregated.
 ///

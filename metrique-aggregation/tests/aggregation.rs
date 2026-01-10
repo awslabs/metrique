@@ -224,8 +224,6 @@ struct RequestMetricsWithTimerMutex {
 
 #[test]
 fn test_merge_and_close_on_drop() {
-    use metrique_aggregation::sink::CloseAndMergeOnDropExt;
-
     let metrics = RequestMetricsWithTimerMutex {
         api_calls: MutexAggregator::new(),
         request_id: "merge-close-test".to_string(),

@@ -5,7 +5,6 @@ use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::keyed_sink::{BackgroundThreadSink, KeyedAggregator};
-use metrique_aggregation::sink::CloseAndMergeOnDropExt;
 use metrique_aggregation::split_sink::SplitSink;
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_writer::test_util::test_entry_sink;

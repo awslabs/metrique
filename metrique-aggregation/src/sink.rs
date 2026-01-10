@@ -1,7 +1,6 @@
 //! Sinks for aggregation
 
 use std::{
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
