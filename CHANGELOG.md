@@ -13,9 +13,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add support for lifetimes with `#[metrics]` ([#169](https://github.com/awslabs/metrique/pull/169))
 
-### Other
-
 - Add support for entry enums ([#156](https://github.com/awslabs/metrique/pull/156))
+
+Entry enum example:
+```rust
+#[metrics(tag(name = "Operation"), subfield)]
+enum OperationMetrics {
+    Read(#[metrics(flatten)] ReadMetrics),
+    Delete {
+        key_count: usize,
+    },
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct MyMetrics {
+  operation: MyOperationMetrics,
+  success: bool, // this could be an enum too, if you wanted detailed success/failure metrics!
+  request_id: String,
+}
+
+#[metrics(subfield)]
+struct ReadMetrics {
+  files_read: usize
+}
+
+// you would normally compose this gradually, and append on drop
+let a_metric = RequestMetrics {
+  success: true,
+  request_id: "my_request".to_string(),
+  operation: OperationMetrics::Delete { key_count: 5 }
+};
+// Values: { "RequestId": "my_request", "Operation": "Delete" }
+// Metrics: { "Success": 1, "KeyCount": 5 }
+```
+
+- [more information on entry enums](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html#enums)
+- [longer-form entry enum example](metrique/examples/enums.rs)
+
+
 
 ## [0.1.12](https://github.com/awslabs/metrique/compare/metrique-v0.1.11...metrique-v0.1.12) - 2026-01-06
 
