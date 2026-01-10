@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.13](https://github.com/awslabs/metrique/compare/metrique-v0.1.12...metrique-v0.1.13) - 2026-01-10
+
+### Added
+
+- Add support for lifetimes with `#[metrics]` ([#169](https://github.com/awslabs/metrique/pull/169))
+
+### Other
+
+- Add support for entry enums ([#156](https://github.com/awslabs/metrique/pull/156))
+
 ## [0.1.12](https://github.com/awslabs/metrique/compare/metrique-v0.1.11...metrique-v0.1.12) - 2026-01-06
 
 ### Added

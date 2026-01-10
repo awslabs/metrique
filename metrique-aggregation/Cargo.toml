@@ -1,14 +1,14 @@
 [package]
 name = "metrique-aggregation"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.89" # build.yml
 license = "Apache-2.0"
 description = "Library for working with unit of work metrics - aggregation"
 
 [dependencies]
-metrique-writer = { path = "../metrique-writer", version = "0.1.12" }
-metrique-core = { path = "../metrique-core", version = "0.1.10" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.13" }
+metrique-core = { path = "../metrique-core", version = "0.1.11" }
 smallvec = "1.13"
 histogram.workspace = true
 ordered-float = "5"
