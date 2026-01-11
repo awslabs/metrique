@@ -44,6 +44,12 @@ for ApiCallWithOperationKeyExtractor {
             endpoint: ::std::borrow::Cow::Owned(key.endpoint.clone().into_owned()),
         }
     }
+    fn static_key_matches<'a>(
+        owned: &Self::Key<'static>,
+        borrowed: &Self::Key<'a>,
+    ) -> bool {
+        owned.endpoint == borrowed.endpoint
+    }
 }
 impl metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCallWithOperation {
     type Source = ApiCallWithOperation;

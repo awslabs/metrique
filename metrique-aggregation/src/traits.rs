@@ -37,7 +37,6 @@
 //! [`Aggregate<T>`] is the simplest way to aggregate data, typically used as a field in a larger struct.
 //! It wraps an aggregated value and tracks the number of samples merged.
 
-use hashbrown::Equivalent;
 use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
 use std::hash::Hash;
 

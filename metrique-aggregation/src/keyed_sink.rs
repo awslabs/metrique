@@ -2,7 +2,6 @@
 
 use metrique_core::CloseValue;
 use std::{
-    collections::HashMap,
     marker::PhantomData,
     sync::{
         Arc, Mutex,
@@ -52,8 +51,8 @@ where
     }
 }
 
-use hashbrown::{Equivalent, hash_map::RawEntryMut};
-use std::hash::{BuildHasher, Hash, Hasher};
+use hashbrown::hash_map::RawEntryMut;
+use std::hash::BuildHasher;
 
 impl<T, Sink> crate::traits::AggregateSink<T::Source> for KeyedAggregator<T, Sink>
 where
@@ -66,11 +65,11 @@ where
 
         // Compute hash once using the borrowed key
         let hash = {
-            let mut hasher = storage.hasher().build_hasher();
+            
             // Create a borrowed key from the entry
             let borrowed_key = T::Key::from_source(&entry);
-            borrowed_key.hash(&mut hasher);
-            hasher.finish()
+            
+            storage.hasher().hash_one(&borrowed_key)
         };
         let borrowed_key = T::Key::from_source(&entry);
 

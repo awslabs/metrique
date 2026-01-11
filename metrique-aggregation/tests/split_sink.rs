@@ -51,6 +51,10 @@ impl Key<ApiCallEntry> for ThresholdKeyExtractor {
             over_1s: key.over_1s,
         }
     }
+
+    fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+        owned.endpoint == borrowed.endpoint && owned.over_1s == borrowed.over_1s
+    }
 }
 
 impl AggregateStrategy for ByEndpointAndThreshold {

@@ -252,6 +252,13 @@ pub(crate) fn generate_aggregate_strategy_impl(
             }
         });
 
+        let key_matches_fields = key_fields.iter().map(|f| {
+            let name = &f.name;
+            quote! {
+                owned.#name == borrowed.#name
+            }
+        });
+
         let key_struct = quote! {
             #[derive(Clone, Hash, PartialEq, Eq)]
             #[metrics]
@@ -278,6 +285,10 @@ pub(crate) fn generate_aggregate_strategy_impl(
                     #key_name {
                         #(#static_key_fields),*
                     }
+                }
+
+                fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+                    #(#key_matches_fields)&&*
                 }
             }
         };
