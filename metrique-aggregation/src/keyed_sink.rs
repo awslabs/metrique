@@ -31,7 +31,7 @@ pub type KeyedAggregationSink<T> =
 ///
 /// This is the core aggregation logic without any threading or channel concerns.
 pub struct KeyedAggregator<T: AggregateStrategy, Sink = BoxEntrySink> {
-    storage: Mutex<HashMap<KeyTy<'static, T>, AggregateTy<T>>>,
+    storage: Mutex<hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>>,
     sink: Sink,
     _phantom: PhantomData<T>,
 }
@@ -45,12 +45,15 @@ where
     /// Create a new keyed aggregator
     pub fn new(sink: Sink) -> Self {
         Self {
-            storage: Mutex::new(HashMap::new()),
+            storage: Default::default(),
             sink,
             _phantom: PhantomData,
         }
     }
 }
+
+use hashbrown::{Equivalent, hash_map::RawEntryMut};
+use std::hash::{BuildHasher, Hash, Hasher};
 
 impl<T, Sink> crate::traits::AggregateSink<T::Source> for KeyedAggregator<T, Sink>
 where
@@ -60,11 +63,34 @@ where
 {
     fn merge(&self, entry: T::Source) {
         let mut storage = self.storage.lock().unwrap();
-        let key = T::Key::static_key(&T::Key::from_source(&entry));
-        let accum = storage
-            .entry(key)
-            .or_insert_with(|| T::Source::new_merged(&Default::default()));
-        T::Source::merge(accum, entry);
+
+        // Compute hash once using the borrowed key
+        let hash = {
+            let mut hasher = storage.hasher().build_hasher();
+            // Create a borrowed key from the entry
+            let borrowed_key = T::Key::from_source(&entry);
+            borrowed_key.hash(&mut hasher);
+            hasher.finish()
+        };
+        let borrowed_key = T::Key::from_source(&entry);
+
+        // Look up by hash and equality, avoiding clone if entry exists
+        match storage
+            .raw_entry_mut()
+            .from_hash(hash, move |k| T::Key::static_key_matches(k, &borrowed_key))
+        {
+            RawEntryMut::Occupied(mut occupied) => {
+                // Entry exists - merge without cloning the key
+                T::Source::merge(occupied.get_mut(), entry);
+            }
+            RawEntryMut::Vacant(vacant) => {
+                // Entry doesn't exist - only now do we need the static key
+                let static_key = T::Key::static_key(&T::Key::from_source(&entry));
+                let new_value = T::Source::new_merged(&Default::default());
+                let (_, accum) = vacant.insert_hashed_nocheck(hash, static_key, new_value);
+                T::Source::merge(accum, entry);
+            }
+        }
     }
 }
 

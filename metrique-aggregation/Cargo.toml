@@ -16,6 +16,7 @@ ordered-float = "5"
 metrique-writer-core = { version = "0.1.8", path = "../metrique-writer-core" }
 tokio = { version = "1", default-features = false, features = ["sync"] }
 metrique-timesource = { version = "0.1.6", path = "../metrique-timesource", features = ["test-util"] }
+hashbrown.workspace = true
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["test-util"] }

@@ -83,6 +83,10 @@ impl<T> crate::traits::Key<T> for NoKey {
     fn static_key<'a>(_key: &Self::Key<'a>) -> Self::Key<'static> {
         NoKey
     }
+
+    fn static_key_matches<'a>(_owned: &Self::Key<'static>, _borrowed: &Self::Key<'a>) -> bool {
+        true
+    }
 }
 
 impl metrique_core::CloseValue for NoKey {

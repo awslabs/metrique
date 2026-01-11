@@ -37,6 +37,7 @@
 //! [`Aggregate<T>`] is the simplest way to aggregate data, typically used as a field in a larger struct.
 //! It wraps an aggregated value and tracks the number of samples merged.
 
+use hashbrown::Equivalent;
 use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
 use std::hash::Hash;
 
@@ -153,6 +154,11 @@ pub trait Key<Source> {
     fn from_source(source: &Source) -> Self::Key<'_>;
     /// Convert borrowed key to static lifetime
     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static>;
+    /// Compare the static and reference versions of the key for equality.
+    ///
+    /// Why not use Equivalent or another trait?
+    /// Equivalent has a blanket impl that prevents it from being used
+    fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool;
 }
 
 /// Defines how complete metric entries are merged together.

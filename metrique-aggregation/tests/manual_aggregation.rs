@@ -76,6 +76,10 @@ impl Key<ApiCall> for ApiCallByEndpointStatusCode {
             status_code: Cow::Owned(key.status_code.clone().into_owned()),
         }
     }
+
+    fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+        owned.endpoint == borrowed.endpoint && owned.status_code == borrowed.status_code
+    }
 }
 
 const _: () = {
