@@ -4,15 +4,14 @@
 
 //! Histogram implementations for aggregating metrique metrics.
 
+pub mod aggregator;
 pub mod histogram;
-pub mod keyed_sink;
 pub mod sink;
-pub mod split_sink;
 pub mod traits;
 pub mod value;
 
-pub use keyed_sink::KeyedAggregator;
-pub use sink::{MutexSink, WorkerSink};
+pub use aggregator::{Aggregate, KeyedAggregator};
+pub use sink::{MutexSink, RawSink, SplitSink, WorkerSink};
 
 #[doc(hidden)]
 pub mod __macro_plumbing {

@@ -7,7 +7,7 @@
 use metrique::test_util::test_entry_sink;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::split_sink::{RawSink, SplitSink};
+use metrique_aggregation::sink::{RawSink, SplitSink};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;

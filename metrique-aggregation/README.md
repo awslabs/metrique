@@ -14,7 +14,7 @@ Consider aggregation when:
 - **Fan-out operations**: A single unit of work spawns multiple sub-operations you want to aggregate
 - **Background processing**: Queue workers that generate one metric per processed item at an extremely high rate
 
-**Most request/response services should use sampling instead of aggregation.**
+Typically, aggregation should only be used when sampling is not sufficient, however, metrique can help you achieve both: Since metrique has access to the raw entries during aggregation, you can emit a sampled set of full events (e.g. with congressional sampling to ensure all errors are precisely recorded) to one sink while aggregating data to another sink.
 
 ## Quick Start
 
@@ -23,7 +23,7 @@ Use the [`aggregate`] macro to define aggregatable metrics:
 ```rust
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
-use metrique_aggregation::traits::Aggregate;
+use metrique_aggregation::Aggregate;
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
@@ -83,7 +83,8 @@ The [`aggregate`] macro generates implementations that define how complete entri
 
 ### Keys
 
-Fields marked with `#[aggregate(key)]` become grouping keys. Entries with the same key are merged together:
+Fields marked with `#[aggregate(key)]` become grouping keys. Entries with the same key are merged together when using a
+[`KeyedAggregator`].
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -113,7 +114,7 @@ Use [`Aggregate<T>`] as a field in your metrics struct when a single unit of wor
 ```rust
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
-use metrique_aggregation::traits::Aggregate;
+use metrique_aggregation::Aggregate;
 use std::time::Duration;
 
 #[aggregate]
@@ -164,9 +165,11 @@ async fn execute_query(query: &str) {
 
 See the `embedded` example for a complete working implementation.
 
+Note that [`MutexSink`] can also be embedded directly, allowing fan-out / multithreaded merging, all within the same root entry.
+
 ### Sink-Level Aggregation
 
-Use [`WorkerSink`] or [`MutexSink`] for extremely high-rate background processing where you want aggregation across many separate operations:
+Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric entries where the entire entry is aggregated. Both can be combined with [`KeyedAggregator`] to perform aggregation against a set of keys.
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -229,18 +232,18 @@ Use [`SplitSink`] to aggregate the same data to multiple destinations - useful f
 
 ```rust
 use metrique_aggregation::{KeyedAggregator, WorkerSink};
-use metrique_aggregation::split_sink::{SplitSink, RawSink};
+use metrique_aggregation::sink::{SplitSink, RawSink};
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::{aggregate, histogram::Histogram};
 # use std::time::Duration;
-# #[aggregate]
-# #[metrics]
-# struct QueueItem {
-#     #[aggregate(key)]
-#     item_type: String,
-#     #[aggregate(strategy = Histogram<Duration>)]
-#     processing_time: Duration,
-# }
+#[aggregate]
+#[metrics]
+struct QueueItem {
+    #[aggregate(key)]
+    item_type: String,
+    #[aggregate(strategy = Histogram<Duration>)]
+    processing_time: Duration,
+}
 
 # fn main() {
 # use metrique::test_util::test_entry_sink;
@@ -376,12 +379,12 @@ Run examples with: `cargo run --example <name>`
 [`Sum`]: crate::value::Sum
 [`Histogram<T>`]: crate::histogram::Histogram
 [`LastValueWins`]: crate::value::LastValueWins
-[`Aggregate<T>`]: crate::traits::Aggregate
+[`Aggregate<T>`]: crate::aggregator::Aggregate
 [`WorkerSink`]: crate::sink::WorkerSink
 [`MutexSink`]: crate::sink::MutexSink
-[`KeyedAggregator`]: crate::keyed_sink::KeyedAggregator
-[`SplitSink`]: crate::split_sink::SplitSink
-[`RawSink`]: crate::split_sink::RawSink
+[`KeyedAggregator`]: crate::aggregator::KeyedAggregator
+[`SplitSink`]: crate::sink::SplitSink
+[`RawSink`]: crate::sink::RawSink
 [`Merge`]: crate::traits::Merge
 [`MergeRef`]: crate::traits::MergeRef
 [`Key`]: crate::traits::Key

@@ -4,7 +4,7 @@ use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::split_sink::{RawSink, SplitSink};
+use metrique_aggregation::sink::{RawSink, SplitSink};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_aggregation::{KeyedAggregator, WorkerSink};
 use metrique_writer::test_util::test_entry_sink;

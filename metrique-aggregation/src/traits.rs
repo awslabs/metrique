@@ -32,15 +32,13 @@
 //! where entries with the same key are merged together. Fields marked with `#[aggregate(key)]`
 //! become part of the key.
 //!
-//! ## The [`Aggregate`] wrapper
+//! ## The [`crate::aggregator::Aggregate`] wrapper
 //!
-//! [`Aggregate<T>`] is the simplest way to aggregate data, typically used as a field in a larger struct.
+//! [`crate::aggregator::Aggregate`] is the simplest way to aggregate data, typically used as a field in a larger struct.
 //! It wraps an aggregated value and tracks the number of samples merged.
 
-use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
+use metrique_core::{CloseEntry, InflectableEntry, NameStyle};
 use std::hash::Hash;
-
-use crate::value::NoKey;
 
 /// Defines how individual field values are aggregated.
 ///
@@ -306,7 +304,7 @@ pub type AggregateTy<T> = <<T as AggregateStrategy>::Source as Merge>::Merged;
 
 /// Result of keyed aggregation combining key and aggregated value.
 ///
-/// Used by [`crate::keyed_sink::KeyedAggregator`] to emit aggregated entries
+/// Used by [`crate::aggregator::KeyedAggregator`] to emit aggregated entries
 /// with their associated keys.
 pub struct AggregationResult<K, Agg> {
     pub(crate) key: K,
@@ -334,156 +332,6 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
         self.key
             .sample_group()
             .chain(self.aggregated.sample_group())
-    }
-}
-
-/// Inline metrics aggregator
-///
-/// `Aggregate<T>` is designed to be used in a larger metrics struct to aggregate on an indiviual field.
-///
-/// It is not designed to be used when `Key` is present.
-///
-/// For an aggregator that works with keys, see [`KeyedAggregator`].
-/// For sinks that compose with this to using on-drop-guards, see [`sink`].
-///
-/// [`sink`]: crate::sink
-/// [`KeyedAggregator`]: crate::keyed_sink::KeyedAggregator
-///
-/// # Example
-///
-/// ```rust
-/// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, traits::Aggregate};
-/// use metrique_aggregation::histogram::Histogram;
-/// use std::time::Duration;
-///
-/// #[aggregate]
-/// #[metrics]
-/// struct ApiCall {
-///     #[aggregate(strategy = Histogram<Duration>)]
-///     latency: Duration,
-/// }
-///
-/// #[metrics]
-/// struct RequestMetrics {
-///     request_id: String,
-///     #[metrics(flatten)]
-///     api_calls: Aggregate<ApiCall>,
-/// }
-///
-/// let mut metrics = RequestMetrics {
-///     request_id: "req-123".to_string(),
-///     api_calls: Aggregate::default(),
-/// };
-///
-/// metrics.api_calls.insert(ApiCall {
-///     latency: Duration::from_millis(45),
-/// });
-/// metrics.api_calls.insert(ApiCall {
-///     latency: Duration::from_millis(67),
-/// });
-/// ```
-pub struct Aggregate<T: AggregateStrategy> {
-    aggregated: <T::Source as Merge>::Merged,
-}
-
-impl<T: AggregateStrategy> CloseValue for Aggregate<T>
-where
-    <T::Source as Merge>::Merged: CloseValue,
-{
-    type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
-
-    fn close(self) -> <Self as CloseValue>::Closed {
-        self.aggregated.close()
-    }
-}
-
-impl<T: AggregateStrategy> Aggregate<T> {
-    /// Add a new entry into this aggregate
-    pub fn insert(&mut self, entry: T)
-    where
-        T: CloseValue<Closed = T::Source>,
-        T: AggregateStrategy<Key = NoKey>,
-        T::Source: Merge,
-    {
-        T::Source::merge(&mut self.aggregated, entry.close());
-    }
-
-    /// Creates an `Aggregate` initialized to a given value.
-    pub fn new(value: <T::Source as Merge>::Merged) -> Self {
-        Self { aggregated: value }
-    }
-}
-
-impl<T> AggregateSink<T::Source> for Aggregate<T>
-where
-    T: AggregateStrategy,
-{
-    fn merge(&mut self, entry: T::Source) {
-        T::Source::merge(&mut self.aggregated, entry);
-    }
-}
-
-impl<T> AggregateSinkRef<T::Source> for Aggregate<T>
-where
-    T: AggregateStrategy,
-    T::Source: MergeRef,
-{
-    fn merge_ref(&mut self, entry: &T::Source) {
-        T::Source::merge_ref(&mut self.aggregated, entry);
-    }
-}
-
-/// Aggregates values without closing them (for raw mode)
-pub struct AggregateRaw<T: AggregateStrategy> {
-    aggregated: <T::Source as Merge>::Merged,
-}
-
-impl<T: AggregateStrategy> Default for AggregateRaw<T>
-where
-    <T::Source as Merge>::Merged: Default,
-{
-    fn default() -> Self {
-        Self {
-            aggregated: Default::default(),
-        }
-    }
-}
-
-impl<T: AggregateStrategy> CloseValue for AggregateRaw<T>
-where
-    <T::Source as Merge>::Merged: CloseValue,
-{
-    type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
-
-    fn close(self) -> <Self as CloseValue>::Closed {
-        self.aggregated.close()
-    }
-}
-
-impl<T: AggregateStrategy> AggregateRaw<T> {
-    /// Add a new entry into this aggregate without closing
-    pub fn insert(&mut self, entry: T::Source)
-    where
-        T::Source: Merge,
-    {
-        T::Source::merge(&mut self.aggregated, entry);
-    }
-
-    /// Creates an `AggregateRaw` initialized to a given value.
-    pub fn new(value: <T::Source as Merge>::Merged) -> Self {
-        Self { aggregated: value }
-    }
-}
-
-impl<T: AggregateStrategy> Default for Aggregate<T>
-where
-    <T::Source as Merge>::Merged: Default,
-{
-    fn default() -> Self {
-        Self {
-            aggregated: <T::Source as Merge>::Merged::default(),
-        }
     }
 }
 

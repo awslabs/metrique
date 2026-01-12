@@ -8,7 +8,7 @@ use crate::traits::{AggregateSink, RootSink};
 
 /// Sink that aggregates a single type of entry backed by a mutex
 ///
-/// Compared to [`crate::traits::Aggregate`], this type allows appending with `&T` so it supports
+/// Compared to [`crate::aggregator::Aggregate`], this type allows appending with `&T` so it supports
 /// using merge_on_drop
 pub struct MutexSink<Inner> {
     inner: Arc<Mutex<Inner>>,
