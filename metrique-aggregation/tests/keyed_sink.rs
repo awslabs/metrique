@@ -3,7 +3,7 @@ use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerSink};
+use metrique_aggregation::{KeyedAggregator, WorkerSink};
 use metrique_writer::test_util::test_entry_sink;
 use std::time::Duration;
 

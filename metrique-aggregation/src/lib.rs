@@ -11,6 +11,9 @@ pub mod split_sink;
 pub mod traits;
 pub mod value;
 
+pub use keyed_sink::KeyedAggregator;
+pub use sink::{MutexSink, WorkerSink};
+
 #[doc(hidden)]
 pub mod __macro_plumbing {
     pub use crate::traits::{AggregateStrategy, AggregateValue, Key, Merge, MergeRef};

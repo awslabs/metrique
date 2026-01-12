@@ -4,6 +4,9 @@ Aggregation system for combining multiple metric observations into single entrie
 
 When emitting high-frequency metrics, you often want to aggregate multiple observations into a single metric entry rather than emitting each one individually. This crate provides an aggregation system that collects observations and emits them as distributions, sums, or other aggregate forms.
 
+Metrique supports two fundamental mechanisms for aggregating data, inline and full. Inline aggregation allows you to aggregate a struct
+within an existing entry. For example, suppose your application makes 
+
 ## When to use this
 
 Use aggregation when you have many observations of the same metric within a single unit of work:
@@ -121,7 +124,7 @@ struct RequestMetrics {
 Use `KeyedAggregator` with `WorkerSink` to aggregate by key with time-based flushing:
 
 ```rust,no_run
-use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerSink};
+use metrique_aggregation::{KeyedAggregator, WorkerSink};
 use std::time::Duration;
 use metrique_aggregation::aggregate;
 use metrique::unit_of_work::metrics;
