@@ -234,7 +234,8 @@ use metrique_aggregation::sink::{SplitSink, RawSink};
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::{aggregate, histogram::Histogram};
 # use std::time::Duration;
-#[aggregate]
+// to use multi-sink aggregation, it must be possible to aggregate by reference:
+#[aggregate(ref)]
 #[metrics]
 struct QueueItem {
     #[aggregate(key)]
