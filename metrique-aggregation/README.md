@@ -1,10 +1,6 @@
 # metrique-aggregation
 
-Aggregation system for combining multiple metric observations into single entries.
-
-**Aggregation is an optional optimization for specific high-volume scenarios. For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md) is the better approach.**
-
-When emitting high-frequency metrics, you often want to aggregate multiple observations into a single metric entry rather than emitting each one individually. This crate provides an aggregation system that collects observations and emits them as distributions, sums, or other aggregate forms.
+When emitting high-frequency metrics, you often want to aggregate multiple observations into a single metric entry rather than emitting each one individually. This crate provides an aggregation system for metrique that collects observations and emits them as distributions, sums, or other aggregate forms.
 
 ## When to Use Aggregation
 
@@ -15,6 +11,8 @@ Consider aggregation when:
 - **Background processing**: Queue workers that generate one metric per processed item at an extremely high rate
 
 Typically, aggregation should only be used when sampling is not sufficient, however, metrique can help you achieve both: Since metrique has access to the raw entries during aggregation, you can emit a sampled set of full events (e.g. with congressional sampling to ensure all errors are precisely recorded) to one sink while aggregating data to another sink.
+
+metrique supports both embedded aggregation (within a larger unit of work) as well as "full" aggregation aggregated entries are written to a global sink outside of a specific unit of work.
 
 ## Quick Start
 
@@ -228,7 +226,7 @@ See the `sink_level` example for a complete working implementation.
 
 ### Split Aggregation
 
-Use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled raw events:
+Use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled raw events. Split aggregation can also allow aggregating the same metric by multiple different sets of dimensions (see the `split` example).
 
 ```rust
 use metrique_aggregation::{KeyedAggregator, WorkerSink};
