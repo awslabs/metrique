@@ -5,7 +5,7 @@ use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerAggregator};
-use metrique_aggregation::split_sink::SplitSink;
+use metrique_aggregation::split_sink::{RawSink, SplitSink};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
@@ -72,6 +72,7 @@ async fn test_split_sink() {
     // Create two output sinks
     let aggregated_sink_a = test_entry_sink();
     let aggregated_sink_b = test_entry_sink();
+    let raw_sink = test_entry_sink();
 
     // Aggregator A: standard ApiCall aggregation (by endpoint, histogram)
     let aggregator_a = KeyedAggregator::<ApiCall>::new(aggregated_sink_a.sink);
@@ -80,7 +81,10 @@ async fn test_split_sink() {
     let aggregator_b = KeyedAggregator::<ByEndpointAndThreshold>::new(aggregated_sink_b.sink);
 
     // Combine them with SplitSink
-    let split = SplitSink::new(aggregator_a, aggregator_b);
+    let split = SplitSink::new(
+        aggregator_a,
+        SplitSink::new(aggregator_b, RawSink::new(raw_sink.sink)),
+    );
     let sink = WorkerAggregator::new(split, Duration::from_secs(10));
 
     ApiCall {
@@ -147,4 +151,7 @@ async fn test_split_sink() {
         .find(|e| e.values["endpoint"] == "api2" && e.metrics["over_1s"] == true)
         .unwrap();
     check!(api2_over.metrics["latency"].distribution.len() == 1); // 2000ms
+
+    // Check raw sink
+    check!(raw_sink.inspector.entries().len() == 4);
 }

@@ -153,10 +153,12 @@ pub trait Key<Source> {
     fn from_source(source: &Source) -> Self::Key<'_>;
     /// Convert borrowed key to static lifetime
     fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static>;
+
     /// Compare the static and reference versions of the key for equality.
     ///
     /// Why not use Equivalent or another trait?
-    /// Equivalent has a blanket impl that prevents it from being used
+    /// - Equivalent has a blanket impl that prevents it from being used
+    /// - You can implement this by doing `owned == borrowed` on your concrete type, however the bounds seem hard to express
     fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool;
 }
 
