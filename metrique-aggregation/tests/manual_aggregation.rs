@@ -4,7 +4,7 @@ use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::Histogram;
-use metrique_aggregation::keyed_sink::{KeyedAggregationSink, KeyedAggregator};
+use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerAggregator};
 use metrique_aggregation::sink::MergeOnDrop;
 use metrique_aggregation::traits::{AggregateSink, AggregateStrategy, Key, Merge};
 use metrique_writer::test_util::test_entry_sink;
@@ -78,7 +78,7 @@ impl Key<ApiCall> for ApiCallByEndpointStatusCode {
     }
 
     fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
-        owned.endpoint == borrowed.endpoint && owned.status_code == borrowed.status_code
+        owned == borrowed
     }
 }
 
@@ -97,10 +97,8 @@ const _: () = {
 #[ignore] // Ignored because KeyedAggregationSink only supports entry mode currently
 async fn test_manual_aggregation_strategy() {
     let test_sink = test_entry_sink();
-    let _sink = KeyedAggregationSink::<ApiCall>::new(
-        KeyedAggregator::new(test_sink.sink),
-        Duration::from_millis(100),
-    );
+    let keyed_aggregator: KeyedAggregator<ApiCall> = KeyedAggregator::new(test_sink.sink);
+    let _sink = WorkerAggregator::new(keyed_aggregator, Duration::from_millis(100));
 
     let api_call = ApiCall {
         endpoint: "GetItem".to_string(),
