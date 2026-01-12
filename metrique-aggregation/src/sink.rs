@@ -1,13 +1,14 @@
 //! Sinks for aggregation
 
 use std::{
+    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
 
 use metrique_core::CloseValue;
 
-use crate::traits::{AggregateStrategy, Merge, RootSink};
+use crate::traits::{AggregateSink, AggregateStrategy, Merge, MergeRef, RootSink};
 
 /// Handle for metric that will be automatically merged into the target when dropped (for raw mode)
 pub struct MergeOnDrop<T, Sink>
@@ -127,60 +128,115 @@ where
 ///
 /// Compared to [`crate::traits::Aggregate`], this type allows appending with `&T` so it supports
 /// using merge_on_drop
-pub struct MutexSink<T: AggregateStrategy> {
-    aggregator: Arc<Mutex<<T::Source as Merge>::Merged>>,
+pub struct MutexSink<Inner> {
+    inner: Arc<Mutex<Inner>>,
 }
 
-impl<T: AggregateStrategy> Clone for MutexSink<T> {
+impl<Inner> Clone for MutexSink<Inner> {
     fn clone(&self) -> Self {
         Self {
-            aggregator: self.aggregator.clone(),
+            inner: self.inner.clone(),
         }
     }
 }
 
-impl<T> Default for MutexSink<T>
+impl<Inner: Default> Default for MutexSink<Inner> {
+    fn default() -> Self {
+        Self::new(Inner::default())
+    }
+}
+
+impl<Inner> MutexSink<Inner> {
+    /// Creates a new mutex sink wrapping the inner aggregator
+    pub fn new(inner: Inner) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(inner)),
+        }
+    }
+}
+
+impl<T, Inner> RootSink<T> for MutexSink<Inner>
+where
+    Inner: AggregateSink<T>,
+{
+    fn merge(&self, entry: T) {
+        self.inner.lock().unwrap().merge(entry);
+    }
+}
+
+impl<Inner> CloseValue for MutexSink<Inner>
+where
+    Inner: CloseValue,
+{
+    type Closed = Inner::Closed;
+
+    fn close(self) -> Self::Closed {
+        Arc::try_unwrap(self.inner)
+            .ok()
+            .expect("MutexSink must be the only reference when closing")
+            .into_inner()
+            .unwrap()
+            .close()
+    }
+}
+
+/// Simple aggregator that merges entries into a single accumulated value
+pub struct Aggregator<T: AggregateStrategy> {
+    accumulated: <T::Source as Merge>::Merged,
+    _phantom: PhantomData<T>,
+}
+
+impl<T> Default for Aggregator<T>
 where
     T: AggregateStrategy,
     <T::Source as Merge>::Merged: Default,
 {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T: AggregateStrategy> MutexSink<T> {
-    /// Creates a new mutex sink
-    pub fn new() -> MutexSink<T>
-    where
-        <T::Source as Merge>::Merged: Default,
-    {
         Self {
-            aggregator: Arc::new(Mutex::new(<T::Source as Merge>::Merged::default())),
+            accumulated: Default::default(),
+            _phantom: PhantomData,
         }
     }
 }
 
-impl<T: AggregateStrategy> RootSink<T::Source> for MutexSink<T> {
-    fn merge(&self, entry: T::Source) {
-        let mut aggregator = self.aggregator.lock().unwrap();
-        T::Source::merge(&mut *aggregator, entry);
+impl<T> Aggregator<T>
+where
+    T: AggregateStrategy,
+    <T::Source as Merge>::Merged: Default,
+{
+    /// Create a new aggregator
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
-impl<T: AggregateStrategy> CloseValue for MutexSink<T>
+impl<T> AggregateSink<T::Source> for Aggregator<T>
 where
+    T: AggregateStrategy,
+{
+    fn merge(&mut self, entry: T::Source) {
+        T::Source::merge(&mut self.accumulated, entry);
+    }
+}
+
+impl<T> crate::traits::AggregateSinkRef<T::Source> for Aggregator<T>
+where
+    T: AggregateStrategy,
+    T::Source: MergeRef,
+{
+    fn merge_ref(&mut self, entry: &T::Source) {
+        T::Source::merge_ref(&mut self.accumulated, entry);
+    }
+}
+
+impl<T> CloseValue for Aggregator<T>
+where
+    T: AggregateStrategy,
     <T::Source as Merge>::Merged: CloseValue,
 {
     type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
-        // TODO: relax this constraint, fix MutexAggregator
-        Arc::try_unwrap(self.aggregator)
-            .ok()
-            .expect("MutexAggregator must be the only reference when closing")
-            .into_inner()
-            .unwrap()
-            .close()
+        self.accumulated.close()
     }
 }

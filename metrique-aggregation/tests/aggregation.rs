@@ -6,7 +6,7 @@ use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::MutexSink;
+use metrique_aggregation::sink::{Aggregator, MutexSink};
 use metrique_aggregation::traits::Aggregate;
 use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
 use metrique_timesource::TimeSource;
@@ -218,14 +218,14 @@ fn test_aggregate_entry_mode_with_timer() {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithTimerMutex {
     #[metrics(flatten)]
-    api_calls: MutexSink<ApiCallWithTimer>,
+    api_calls: MutexSink<Aggregator<ApiCallWithTimer>>,
     request_id: String,
 }
 
 #[test]
 fn test_merge_and_close_on_drop() {
     let metrics = RequestMetricsWithTimerMutex {
-        api_calls: MutexSink::new(),
+        api_calls: MutexSink::new(Aggregator::new()),
         request_id: "merge-close-test".to_string(),
     };
     let ts = ManuallyAdvancedTimeSource::at_time(UNIX_EPOCH);
