@@ -4,8 +4,10 @@
 //! within a single unit of work. A distributed query fans out to multiple backend shards,
 //! and we aggregate all the backend call metrics into a single entry.
 
-use metrique::test_util::test_entry_sink;
+use metrique::DefaultSink;
+use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
+use metrique::writer::{FormatExt, sink::FlushImmediatelyBuilder};
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::traits::Aggregate;
 use metrique_aggregation::value::Sum;
@@ -27,7 +29,7 @@ struct BackendCall {
     errors: u64,
 }
 
-#[metrics(rename_all = "PascalCase")]
+#[metrics(rename_all = "PascalCase", emf::dimension_sets = [["QueryId"]])]
 struct DistributedQuery {
     query_id: String,
     #[metrics(flatten)]
@@ -56,7 +58,15 @@ async fn call_backend(shard: &str, _query: &str) -> Result<String, String> {
 }
 
 async fn execute_distributed_query(query: &str) {
-    let sink = test_entry_sink();
+    // Create EMF sink that outputs to stdout
+    let emf_stream = Emf::builder(
+        "DistributedQueryMetrics".to_string(),
+        vec![vec!["QueryId".to_string()]],
+    )
+    .build()
+    .output_to_makewriter(|| std::io::stdout().lock());
+
+    let emf: DefaultSink = FlushImmediatelyBuilder::new().build_boxed(emf_stream);
 
     let mut metrics = DistributedQuery {
         query_id: uuid::Uuid::new_v4().to_string(),
@@ -87,27 +97,9 @@ async fn execute_distributed_query(query: &str) {
         });
     }
 
-    // Emit the aggregated metrics
-    metrics.append_on_drop(sink.sink);
-
-    // Inspect the emitted entry
-    let entries = sink.inspector.entries();
-    assert_eq!(entries.len(), 1);
-
-    let entry = &entries[0];
-    println!("\nEmitted metric entry:");
-    println!("  QueryId: {}", entry.values["QueryId"]);
-    println!("  RequestsMade: {}", entry.metrics["RequestsMade"].as_u64());
-    println!("  Errors: {}", entry.metrics["Errors"].as_u64());
-    println!(
-        "  Latency distribution: {} observations",
-        entry.metrics["Latency"].distribution.len()
-    );
-
-    // Verify the aggregation
-    assert_eq!(entry.metrics["RequestsMade"].as_u64(), 5);
-    assert_eq!(entry.metrics["Errors"].as_u64(), 1);
-    assert_eq!(entry.metrics["Latency"].distribution.len(), 5);
+    println!("\nEmitting EMF metric to stdout:");
+    // Emit the aggregated metrics to EMF
+    metrics.append_on_drop(emf);
 }
 
 #[tokio::main]
