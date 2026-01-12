@@ -130,6 +130,7 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
     Ok(quote! {
         #metrics_attr
         #derive_default
+        #[allow(clippy::type_complexity)]
         // aggregated needs to be pub because it is used in a trait
         pub struct #aggregated_name {
             #(#aggregated_fields),*

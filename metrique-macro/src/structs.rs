@@ -145,6 +145,7 @@ fn generate_entry_struct(
     let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
     Ok(quote!(
         #[doc(hidden)]
+        #[allow(clippy::type_complexity)]
         pub struct #name #generics #body
     ))
 }
