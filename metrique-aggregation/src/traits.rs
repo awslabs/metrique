@@ -369,10 +369,10 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
 ///     api_calls: Aggregate::default(),
 /// };
 ///
-/// metrics.api_calls.add(ApiCall {
+/// metrics.api_calls.insert(ApiCall {
 ///     latency: Duration::from_millis(45),
 /// });
-/// metrics.api_calls.add(ApiCall {
+/// metrics.api_calls.insert(ApiCall {
 ///     latency: Duration::from_millis(67),
 /// });
 /// ```

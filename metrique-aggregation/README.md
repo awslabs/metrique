@@ -51,11 +51,11 @@ let mut metrics = RequestMetrics {
 };
 
 // Add multiple observations
-metrics.api_calls.add(ApiCall {
+metrics.api_calls.insert(ApiCall {
     latency: Duration::from_millis(45),
     response_size: 1024,
 });
-metrics.api_calls.add(ApiCall {
+metrics.api_calls.insert(ApiCall {
     latency: Duration::from_millis(67),
     response_size: 2048,
 });
@@ -116,61 +116,40 @@ struct RequestMetrics {
 }
 ```
 
-This works well when there is no grouping key (or all examples have identical keys).
+### Keyed aggregation with `KeyedAggregator` and `WorkerAggregator`
 
-### Thread-safe aggregation with `MutexAggregator<T>`
-
-Use `MutexAggregator<T>` when you need to aggregate from multiple threads or use `merge_and_close_on_drop`:
-
-```rust,ignore
-use metrique::timers::Timer;
-
-let metrics = RequestMetrics {
-    api_calls: MutexAggregator::new(),
-    request_id: "1234".to_string(),
-};
-
-// Create a guard that closes and merges on drop
-let mut call = ApiCall {
-    latency: Timer::start_now(),
-    response_size: 50,
-}.merge_and_close_on_drop(&metrics.api_calls);
-
-// Modify the call before it's closed and merged
-call.latency.stop();
-call.response_size = 75;
-// Automatically closed and merged when guard drops
-```
-
-### Keyed aggregation with `KeyedAggregationSink`
-
-Use `KeyedAggregationSink` to aggregate by key with time-based flushing:
+Use `KeyedAggregator` with `WorkerAggregator` to aggregate by key with time-based flushing:
 
 ```rust,no_run
-# use metrique_aggregation::keyed_sink::KeyedAggregationSink;
+# use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerAggregator};
 # use std::time::Duration;
 # use metrique_aggregation::aggregate;
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::histogram::Histogram;
-# use metrique::CloseValue;
 # #[aggregate]
 # #[metrics]
 # struct ApiCall {
 #     #[aggregate(key)]
 #     endpoint: String,
+#     #[aggregate(key)]
+#     region: String,
 #     #[aggregate(strategy = Histogram<Duration>)]
 #     latency: Duration,
 # }
 # let my_sink = metrique_writer::test_util::test_entry_sink().sink;
-let sink = KeyedAggregationSink::<ApiCall, _>::new(
-    my_sink,
-    Duration::from_secs(60), // Flush every 60 seconds
-);
+let keyed_aggregator = KeyedAggregator::<ApiCall>::new(my_sink);
+let sink = WorkerAggregator::new(keyed_aggregator, Duration::from_secs(60));
 
-sink.send(ApiCall {
-    endpoint: "GetItem".to_string(),
-    latency: Duration::from_millis(10),
-}.close());
+{
+    let mut call = ApiCall {
+        endpoint: "GetItem".to_string(),
+        region: "us-east-1".to_string(),
+        latency: Duration::from_millis(10),
+    }
+    .close_and_merge(sink.clone());
+    
+    call.latency = Duration::from_millis(15);
+} // Automatically merged on drop
 ```
 
 ## Histogram strategies
