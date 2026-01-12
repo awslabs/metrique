@@ -237,6 +237,9 @@ pub trait Merge {
 ///
 /// When the source type can be borrowed during merging, it becomes possible
 /// to aggregate the same input across multiple sinks (or to send it to multiple sinks.)
+#[diagnostic::on_unimplemented(
+    message = "{Self} does not implement `MergeRef`. To implement `MergeRef` automatically, use `#[aggregate(ref)]`"
+)]
 pub trait MergeRef: Merge {
     /// Merge borrowed input into accumulator
     fn merge_ref(accum: &mut Self::Merged, input: &Self);

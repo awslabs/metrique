@@ -24,9 +24,9 @@ where
 ///
 /// NOTE: When using this strategy with types that are not copy, you
 /// will need to use `aggregate(owned)`
-pub struct LastValueWins;
+pub struct KeepLast;
 
-impl<T: Clone> AggregateValue<T> for LastValueWins {
+impl<T: Clone> AggregateValue<T> for KeepLast {
     type Aggregated = Option<T>;
 
     fn insert(accum: &mut Self::Aggregated, value: T) {

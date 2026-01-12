@@ -8,7 +8,7 @@ use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregator::{Aggregate, AggregateRaw};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::MutexSink;
-use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
+use metrique_aggregation::value::{KeepLast, MergeOptions, Sum};
 use metrique_timesource::TimeSource;
 use metrique_timesource::fakes::ManuallyAdvancedTimeSource;
 use metrique_writer::test_util::test_metric;
@@ -272,7 +272,7 @@ fn last_value_wins() {
     #[aggregate(owned)]
     #[metrics]
     pub struct MetricWithOwnedValue {
-        #[aggregate(strategy = MergeOptions<LastValueWins>)]
+        #[aggregate(strategy = MergeOptions<KeepLast>)]
         value: Option<String>,
     }
 }

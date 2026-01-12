@@ -10,12 +10,12 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::{FormatExt, sink::FlushImmediatelyBuilder};
 use metrique_aggregation::aggregator::Aggregate;
 use metrique_aggregation::histogram::Histogram;
-use metrique_aggregation::value::Sum;
+use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, histogram::SortAndMerge};
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
-#[aggregate]
+#[aggregate(owned)]
 #[metrics]
 struct BackendCall {
     #[aggregate(strategy = Sum)]
@@ -27,6 +27,11 @@ struct BackendCall {
 
     #[aggregate(strategy = Sum)]
     errors: u64,
+
+    // In order to use non-copy types, use `aggregate(owned)`. This avoids
+    // generating an implementation of `AggregateSinkRef`.
+    #[aggregate(strategy = KeepLast)]
+    error_message: Option<String>,
 }
 
 #[metrics(rename_all = "PascalCase", emf::dimension_sets = [["QueryId"]])]
@@ -91,6 +96,7 @@ async fn execute_distributed_query(query: &str) {
             requests_made: 1,
             latency,
             errors: if result.is_err() { 1 } else { 0 },
+            error_message: result.err().map(|err| format!("{err}")),
         });
     }
 

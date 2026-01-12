@@ -15,7 +15,7 @@ pub struct AggregatedApiCall {
         usize,
     >>::Aggregated,
     response_value: <MergeOptions<
-        LastValueWins,
+        KeepLast,
     > as metrique_aggregation::__macro_plumbing::AggregateValue<
         Option<String>,
     >>::Aggregated,
@@ -37,7 +37,7 @@ impl metrique_aggregation::__macro_plumbing::Merge for ApiCall {
             usize,
         >>::insert(&mut accum.response_size, input.response_size);
         <MergeOptions<
-            LastValueWins,
+            KeepLast,
         > as metrique_aggregation::__macro_plumbing::AggregateValue<
             Option<String>,
         >>::insert(&mut accum.response_value, input.response_value);

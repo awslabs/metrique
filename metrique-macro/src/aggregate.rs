@@ -504,7 +504,7 @@ mod tests {
                 #[aggregate(strategy = Counter)]
                 #[metrics(unit = Byte)]
                 response_size: usize,
-                #[aggregate(strategy = MergeOptions<LastValueWins>)]
+                #[aggregate(strategy = MergeOptions<KeepLast>)]
                 response_value: Option<String>,
             }
         };

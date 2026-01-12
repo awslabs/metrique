@@ -73,7 +73,7 @@ Individual fields use aggregation strategies that implement [`AggregateValue<T>`
 
 - **[`Sum`]** - Sums values together (use for counts, totals)
 - **[`Histogram<T>`]** - Collects values into a distribution (use for latency, sizes)
-- **[`LastValueWins`]** - Keeps the most recent value (use for gauges, current state)
+- **[`KeepLast`]** - Keeps the most recent value (use for gauges, current state)
 
 ### Entry-Level Aggregation
 
@@ -345,7 +345,7 @@ See the `histogram` example for more usage patterns.
 
 The aggregation system is built on several traits that work together:
 
-- **[`AggregateValue<T>`]** - Defines how individual field values are merged (Sum, Histogram, LastValueWins)
+- **[`AggregateValue<T>`]** - Defines how individual field values are merged (Sum, Histogram, KeepLast)
 - **[`Merge`]** - Defines how complete entries are merged together by consuming the source
 - **[`MergeRef`]** - Like [`Merge`], but merges by reference (enables [`SplitSink`] to send to multiple destinations)
 - **[`Key`]** - Extracts grouping keys from entries to determine which entries should be merged
@@ -376,7 +376,7 @@ Run examples with: `cargo run --example <name>`
 [`AggregateValue<T>`]: crate::traits::AggregateValue
 [`Sum`]: crate::value::Sum
 [`Histogram<T>`]: crate::histogram::Histogram
-[`LastValueWins`]: crate::value::LastValueWins
+[`KeepLast`]: crate::value::KeepLast
 [`Aggregate<T>`]: crate::aggregator::Aggregate
 [`WorkerSink`]: crate::sink::WorkerSink
 [`MutexSink`]: crate::sink::MutexSink
