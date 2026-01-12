@@ -16,7 +16,7 @@ pub use sink::{MutexSink, RawSink, SplitSink, WorkerSink};
 #[doc(hidden)]
 pub mod __macro_plumbing {
     pub use crate::traits::{AggregateStrategy, AggregateValue, Key, Merge, MergeRef};
-    pub use crate::value::{IfYouSeeThisUseAggregateOwned, NoKey};
+    pub use crate::value::{CopyWrapper, NoKey};
 }
 
 pub use metrique_macro::aggregate;

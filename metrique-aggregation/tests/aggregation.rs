@@ -269,7 +269,7 @@ fn test_mutex_sink_close_with_outstanding_references() {
 
 #[test]
 fn last_value_wins() {
-    #[aggregate(owned)]
+    #[aggregate]
     #[metrics]
     pub struct MetricWithOwnedValue {
         #[aggregate(strategy = MergeOptions<KeepLast>)]

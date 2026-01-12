@@ -15,7 +15,7 @@ use metrique_aggregation::{aggregate, histogram::SortAndMerge};
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
-#[aggregate(owned)]
+#[aggregate]
 #[metrics]
 struct BackendCall {
     #[aggregate(strategy = Sum)]
@@ -28,8 +28,7 @@ struct BackendCall {
     #[aggregate(strategy = Sum)]
     errors: u64,
 
-    // In order to use non-copy types, use `aggregate(owned)`. This avoids
-    // generating an implementation of `AggregateSinkRef`.
+    // Non-copy types work by default. Use `aggregate(ref)` if you need MergeRef.
     #[aggregate(strategy = KeepLast)]
     error_message: Option<String>,
 }

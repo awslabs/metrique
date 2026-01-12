@@ -11,7 +11,7 @@ use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
 use std::time::Duration;
 
-#[aggregate]
+#[aggregate(ref)]
 #[metrics]
 pub struct ApiCall {
     #[aggregate(key)]

@@ -309,12 +309,12 @@ pub(crate) fn generate_aggregate_strategy_impl(
 pub(crate) fn generate_merge_ref_impl(
     input: &DeriveInput,
     entry_mode: bool,
-    disable_merge_ref: bool,
+    enable_merge_ref: bool,
 ) -> Result<Option<Ts2>> {
     let parsed = parse_aggregate_fields(input)?;
 
-    // Don't generate if #[aggregate(owned)] is present
-    if disable_merge_ref {
+    // Only generate if #[aggregate(ref)] is present
+    if !enable_merge_ref {
         return Ok(None);
     }
 
@@ -354,10 +354,10 @@ pub(crate) fn generate_merge_ref_impl(
                 <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, input.#name.clone());
             }
         } else {
-            // Use IfYouSeeThisUseAggregateOwned wrapper for Copy types
+            // Use CopyWrapper for Copy types
             quote_spanned! { field_span=>
                 #expect_deprecated
-                <metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::insert(&mut accum.#name, &input.#name);
+                <metrique_aggregation::__macro_plumbing::CopyWrapper<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::insert(&mut accum.#name, &input.#name);
             }
         }
     }).collect::<Vec<_>>();

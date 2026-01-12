@@ -540,7 +540,7 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let attr_str = attr.to_string();
     let entry_mode = attr.is_empty() || attr_str.trim() != "raw";
-    let disable_merge_ref = attr_str.contains("owned");
+    let enable_merge_ref = attr_str.contains("ref");
 
     let mut output = Ts2::new();
 
@@ -548,7 +548,7 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let struct_result = aggregate::generate_aggregated_struct(&input, entry_mode);
     let impl_result = aggregate::generate_aggregate_strategy_impl(&input, entry_mode);
     let merge_ref_result =
-        aggregate::generate_merge_ref_impl(&input, entry_mode, disable_merge_ref);
+        aggregate::generate_merge_ref_impl(&input, entry_mode, enable_merge_ref);
     let merge_methods_result = aggregate::generate_merge_on_drop_methods(&input, entry_mode);
 
     match (

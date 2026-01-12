@@ -13,7 +13,7 @@ use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
-#[aggregate]
+#[aggregate(ref)]
 #[metrics]
 struct ApiCall {
     #[aggregate(key)]
