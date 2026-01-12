@@ -77,7 +77,7 @@ Individual fields use aggregation strategies that implement `AggregateValue<T>`:
 
 ### Entry-level aggregation
 
-The `#[aggregate]` macro generates implementations of the `Merge` and `AggregateStrategy` traits. The `Merge` trait defines how complete entries are combined, while `AggregateStrategy` ties together the source type, merge behavior, and key extraction.
+The `#[aggregate]` macro generates implementations of the `Merge`, `Key`, `AggregateStrategy` traits. The `Merge` trait defines how complete entries are combined, while `AggregateStrategy` ties together the source type, merge behavior, and key extraction.
 
 ### Key extraction
 
@@ -89,7 +89,25 @@ Fields marked with `#[aggregate(key)]` become grouping keys. Entries with the sa
 
 Use `Aggregate<T>` as a field in your metrics struct for straightforward aggregation:
 
-```rust,ignore
+```rust
+use metrique::unit_of_work::metrics;
+use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
+use metrique_aggregation::traits::Aggregate;
+use metrique::unit::{Millisecond, Byte};
+use std::time::Duration;
+
+#[aggregate]
+#[metrics]
+struct ApiCall {
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+    
+    #[aggregate(strategy = Sum)]
+    #[metrics(unit = Byte)]
+    response_size: usize,
+}
+
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     #[metrics(flatten)]
@@ -97,6 +115,8 @@ struct RequestMetrics {
     request_id: String,
 }
 ```
+
+This works well when there is no grouping key (or all examples have identical keys).
 
 ### Thread-safe aggregation with `MutexAggregator<T>`
 

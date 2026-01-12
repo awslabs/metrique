@@ -7,6 +7,7 @@ license = "Apache-2.0"
 description = "Library for working with unit of work metrics - aggregation"
 
 [dependencies]
+metrique = { path = "../metrique", version = "0.1"}
 metrique-writer = { path = "../metrique-writer", version = "0.1.9"}
 metrique-core = { path = "../metrique-core", version = "0.1.9"}
 metrique-macro = { path = "../metrique-macro", version = "0.1.8"}
