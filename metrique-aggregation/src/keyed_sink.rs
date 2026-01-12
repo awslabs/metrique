@@ -122,13 +122,13 @@ enum QueueMessage<T> {
 }
 
 /// Wraps any AggregateSink with a channel and background thread
-pub struct WorkerAggregator<T, Inner> {
+pub struct WorkerSink<T, Inner> {
     sender: Sender<QueueMessage<T>>,
     _handle: Arc<thread::JoinHandle<()>>,
     _phantom: PhantomData<Inner>,
 }
 
-impl<T, Inner> Clone for WorkerAggregator<T, Inner> {
+impl<T, Inner> Clone for WorkerSink<T, Inner> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
@@ -138,7 +138,7 @@ impl<T, Inner> Clone for WorkerAggregator<T, Inner> {
     }
 }
 
-impl<T, Inner> WorkerAggregator<T, Inner>
+impl<T, Inner> WorkerSink<T, Inner>
 where
     T: Send + 'static,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,
@@ -184,7 +184,7 @@ where
     }
 }
 
-impl<T, Inner> crate::traits::RootSink<T> for WorkerAggregator<T, Inner>
+impl<T, Inner> crate::traits::RootSink<T> for WorkerSink<T, Inner>
 where
     T: Send + 'static,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,

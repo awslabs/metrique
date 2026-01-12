@@ -467,7 +467,7 @@ where
 
 /// Root sink trait for thread-safe entry points (takes `&self`)
 ///
-/// This is the trait that `WorkerAggregator` and other thread-safe wrappers implement.
+/// This is the trait that `WorkerSink` and other thread-safe wrappers implement.
 /// Use this for `MergeOnDrop` and `CloseAndMergeOnDrop` targets.
 pub trait RootSink<T> {
     /// Add an entry to be aggregated

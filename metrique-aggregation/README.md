@@ -116,12 +116,12 @@ struct RequestMetrics {
 }
 ```
 
-### Keyed aggregation with `KeyedAggregator` and `WorkerAggregator`
+### Keyed aggregation with `KeyedAggregator` and `WorkerSink`
 
-Use `KeyedAggregator` with `WorkerAggregator` to aggregate by key with time-based flushing:
+Use `KeyedAggregator` with `WorkerSink` to aggregate by key with time-based flushing:
 
 ```rust,no_run
-use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerAggregator};
+use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerSink};
 use std::time::Duration;
 use metrique_aggregation::aggregate;
 use metrique::unit_of_work::metrics;
@@ -138,7 +138,7 @@ struct ApiCall {
 }
 let my_sink = metrique_writer::test_util::test_entry_sink().sink;
 let keyed_aggregator = KeyedAggregator::<ApiCall>::new(my_sink);
-let sink = WorkerAggregator::new(keyed_aggregator, Duration::from_secs(60));
+let sink = WorkerSink::new(keyed_aggregator, Duration::from_secs(60));
 
 {
     let mut call = ApiCall {

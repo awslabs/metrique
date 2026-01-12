@@ -5,7 +5,7 @@ use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerAggregator};
+use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerSink};
 use metrique_aggregation::sink::MergeOnDrop;
 use metrique_aggregation::traits::{AggregateStrategy, Key, Merge, RootSink};
 use metrique_writer::test_util::test_entry_sink;
@@ -94,7 +94,7 @@ impl AggregateStrategy for ApiCall {
 async fn test_manual_aggregation_strategy() {
     let test_sink = test_entry_sink();
     let keyed_aggregator: KeyedAggregator<ApiCall> = KeyedAggregator::new(test_sink.sink);
-    let sink = WorkerAggregator::new(keyed_aggregator, Duration::from_millis(100));
+    let sink = WorkerSink::new(keyed_aggregator, Duration::from_millis(100));
 
     let mut api_call = ApiCall {
         endpoint: "GetItem".to_string(),
