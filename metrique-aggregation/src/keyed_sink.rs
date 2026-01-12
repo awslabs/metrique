@@ -50,6 +50,33 @@ where
 use hashbrown::hash_map::RawEntryMut;
 use std::hash::BuildHasher;
 
+impl<T, Sink> KeyedAggregator<T, Sink>
+where
+    T: AggregateStrategy,
+    <T::Source as Merge>::MergeConfig: Default,
+    Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
+{
+    fn get_or_create_accum<'a>(
+        storage: &'a mut hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>,
+        entry: &T::Source,
+    ) -> &'a mut AggregateTy<T> {
+        let borrowed_key = T::Key::from_source(entry);
+        let hash = storage.hasher().hash_one(&borrowed_key);
+
+        match storage
+            .raw_entry_mut()
+            .from_hash(hash, |k| T::Key::static_key_matches(k, &borrowed_key))
+        {
+            RawEntryMut::Occupied(occupied) => occupied.into_mut(),
+            RawEntryMut::Vacant(vacant) => {
+                let static_key = T::Key::static_key(&borrowed_key);
+                let new_value = T::Source::new_merged(&Default::default());
+                vacant.insert_hashed_nocheck(hash, static_key, new_value).1
+            }
+        }
+    }
+}
+
 impl<T, Sink> crate::traits::AggregateSink<T::Source> for KeyedAggregator<T, Sink>
 where
     T: AggregateStrategy,
@@ -58,33 +85,8 @@ where
 {
     fn merge(&self, entry: T::Source) {
         let mut storage = self.storage.lock().unwrap();
-
-        // Compute hash once using the borrowed key
-        let hash = {
-            // Create a borrowed key from the entry
-            let borrowed_key = T::Key::from_source(&entry);
-
-            storage.hasher().hash_one(&borrowed_key)
-        };
-        let borrowed_key = T::Key::from_source(&entry);
-
-        // Look up by hash and equality, avoiding clone if entry exists
-        match storage
-            .raw_entry_mut()
-            .from_hash(hash, move |k| T::Key::static_key_matches(k, &borrowed_key))
-        {
-            RawEntryMut::Occupied(mut occupied) => {
-                // Entry exists - merge without cloning the key
-                T::Source::merge(occupied.get_mut(), entry);
-            }
-            RawEntryMut::Vacant(vacant) => {
-                // Entry doesn't exist - only now do we need the static key
-                let static_key = T::Key::static_key(&T::Key::from_source(&entry));
-                let new_value = T::Source::new_merged(&Default::default());
-                let (_, accum) = vacant.insert_hashed_nocheck(hash, static_key, new_value);
-                T::Source::merge(accum, entry);
-            }
-        }
+        let accum = Self::get_or_create_accum(&mut storage, &entry);
+        T::Source::merge(accum, entry);
     }
 }
 
@@ -97,10 +99,7 @@ where
 {
     fn merge_ref(&self, entry: &T::Source) {
         let mut storage = self.storage.lock().unwrap();
-        let key = T::Key::static_key(&T::Key::from_source(entry));
-        let accum = storage
-            .entry(key)
-            .or_insert_with(|| T::Source::new_merged(&Default::default()));
+        let accum = Self::get_or_create_accum(&mut storage, entry);
         T::Source::merge_ref(accum, entry);
     }
 }
