@@ -48,7 +48,7 @@ for ApiCallWithOperationKeyExtractor {
         owned: &Self::Key<'static>,
         borrowed: &Self::Key<'a>,
     ) -> bool {
-        owned.endpoint == borrowed.endpoint
+        owned == borrowed
     }
 }
 impl metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCallWithOperation {
