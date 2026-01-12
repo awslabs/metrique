@@ -138,7 +138,7 @@ async fn explicit_timer_stop() {
     // advance time 3 more seconds before dropping
     tokio::time::advance(Duration::from_secs(3)).await;
     drop(metric);
-    assert_eq!(inspector.entries()[0].metrics["Time"].as_f64(), 3.0);
+    assert_eq!(inspector.entries()[0].metrics["Time"], 3.0);
 }
 #[tokio::test]
 async fn subevents() {
