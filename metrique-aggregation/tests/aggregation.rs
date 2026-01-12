@@ -6,12 +6,12 @@ use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::MutexAggregator;
+use metrique_aggregation::sink::MutexSink;
 use metrique_aggregation::traits::Aggregate;
 use metrique_aggregation::value::{LastValueWins, MergeOptions, Sum};
 use metrique_timesource::TimeSource;
 use metrique_timesource::fakes::ManuallyAdvancedTimeSource;
-use metrique_writer::test_util::{DistributionsExt, test_metric};
+use metrique_writer::test_util::test_metric;
 use metrique_writer::unit::{NegativeScale, PositiveScale};
 use metrique_writer::{Observation, Unit};
 use std::time::{Duration, UNIX_EPOCH};
@@ -210,7 +210,7 @@ fn test_aggregate_entry_mode_with_timer() {
     metrics.api_calls.add(call2);
 
     let entry = test_metric(metrics);
-    check!(entry.metrics["latency_2"].distribution.num_observations() == 2);
+    check!(entry.metrics["latency_2"].num_observations() == 2);
     check!(entry.values["RequestId"] == "timer-test");
     check!(entry.metrics["latency_2"].unit == Unit::Second(NegativeScale::Micro));
 }
@@ -218,14 +218,14 @@ fn test_aggregate_entry_mode_with_timer() {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithTimerMutex {
     #[metrics(flatten)]
-    api_calls: MutexAggregator<ApiCallWithTimer>,
+    api_calls: MutexSink<ApiCallWithTimer>,
     request_id: String,
 }
 
 #[test]
 fn test_merge_and_close_on_drop() {
     let metrics = RequestMetricsWithTimerMutex {
-        api_calls: MutexAggregator::new(),
+        api_calls: MutexSink::new(),
         request_id: "merge-close-test".to_string(),
     };
     let ts = ManuallyAdvancedTimeSource::at_time(UNIX_EPOCH);

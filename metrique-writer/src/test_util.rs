@@ -19,6 +19,7 @@ use metrique_writer_core::{
     entry::SampleGroupElement,
     value::{FlagConstructor, ForceFlag, MetricOptions},
 };
+use ordered_float::OrderedFloat;
 
 use crate::{
     AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter, sink::FlushWait,
@@ -131,28 +132,6 @@ pub struct Metric {
     pub test_flag: bool,
 }
 
-/// Test helper for inspecting metrics
-pub trait DistributionsExt {
-    /// Number of total observations in this distribution
-    ///
-    /// When this distribution contains an Repeated observation, this counts
-    /// the number of occurences.
-    fn num_observations(&self) -> u64;
-}
-
-impl DistributionsExt for Vec<Observation> {
-    fn num_observations(&self) -> u64 {
-        self.iter()
-            .map(|obs| match obs {
-                Observation::Unsigned(_) => 1,
-                Observation::Floating(_) => 1,
-                Observation::Repeated { occurrences, .. } => *occurrences,
-                _ => unreachable!(),
-            })
-            .sum()
-    }
-}
-
 impl Metric {
     /// Returns the value in this observation as a u64
     ///
@@ -198,6 +177,36 @@ impl Metric {
             }
             _ => unreachable!(),
         }
+    }
+
+    /// Returns the total number of observations, correctly accounting for `Repeated`
+    pub fn num_observations(&self) -> u64 {
+        self.distribution
+            .iter()
+            .map(|obs| match obs {
+                Observation::Unsigned(_) => 1,
+                Observation::Floating(_) => 1,
+                Observation::Repeated { occurrences, .. } => *occurrences,
+                _ => unreachable!(),
+            })
+            .sum()
+    }
+
+    /// Returns all observations in a sorted Vec of f64, flatten repeated obsevations
+    pub fn flatten_and_sort(&self) -> Vec<f64> {
+        let mut out = Vec::with_capacity(self.num_observations() as usize);
+        self.distribution.iter().for_each(|obs| match obs {
+            Observation::Unsigned(v) => out.push(*v as f64),
+            Observation::Floating(v) => out.push(*v),
+            Observation::Repeated { occurrences, total } => {
+                for _ in 0..*occurrences {
+                    out.push(total / *occurrences as f64)
+                }
+            }
+            _ => unreachable!(),
+        });
+        out.sort_by_key(|f| OrderedFloat(*f));
+        out
     }
 }
 

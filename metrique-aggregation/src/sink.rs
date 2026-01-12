@@ -127,11 +127,11 @@ where
 ///
 /// Compared to [`crate::traits::Aggregate`], this type allows appending with `&T` so it supports
 /// using merge_on_drop
-pub struct MutexAggregator<T: AggregateStrategy> {
+pub struct MutexSink<T: AggregateStrategy> {
     aggregator: Arc<Mutex<<T::Source as Merge>::Merged>>,
 }
 
-impl<T: AggregateStrategy> Clone for MutexAggregator<T> {
+impl<T: AggregateStrategy> Clone for MutexSink<T> {
     fn clone(&self) -> Self {
         Self {
             aggregator: self.aggregator.clone(),
@@ -139,7 +139,7 @@ impl<T: AggregateStrategy> Clone for MutexAggregator<T> {
     }
 }
 
-impl<T> Default for MutexAggregator<T>
+impl<T> Default for MutexSink<T>
 where
     T: AggregateStrategy,
     <T::Source as Merge>::Merged: Default,
@@ -149,9 +149,9 @@ where
     }
 }
 
-impl<T: AggregateStrategy> MutexAggregator<T> {
+impl<T: AggregateStrategy> MutexSink<T> {
     /// Creates a new mutex sink
-    pub fn new() -> MutexAggregator<T>
+    pub fn new() -> MutexSink<T>
     where
         <T::Source as Merge>::Merged: Default,
     {
@@ -161,14 +161,14 @@ impl<T: AggregateStrategy> MutexAggregator<T> {
     }
 }
 
-impl<T: AggregateStrategy> RootSink<T::Source> for MutexAggregator<T> {
+impl<T: AggregateStrategy> RootSink<T::Source> for MutexSink<T> {
     fn merge(&self, entry: T::Source) {
         let mut aggregator = self.aggregator.lock().unwrap();
         T::Source::merge(&mut *aggregator, entry);
     }
 }
 
-impl<T: AggregateStrategy> CloseValue for MutexAggregator<T>
+impl<T: AggregateStrategy> CloseValue for MutexSink<T>
 where
     <T::Source as Merge>::Merged: CloseValue,
 {

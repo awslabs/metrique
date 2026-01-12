@@ -841,6 +841,7 @@ dependencies = [
  "metrique-writer-core",
  "metrique-writer-format-emf",
  "metrique-writer-macro",
+ "ordered-float",
  "rand",
  "rstest 0.26.1",
  "serde_json",
