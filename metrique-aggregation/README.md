@@ -18,13 +18,13 @@ Consider aggregation when:
 
 ## Quick Start
 
-Use the `#[aggregate]` macro to define aggregatable metrics:
+Use the [`aggregate`] macro to define aggregatable metrics:
 
-```rust,no_run
+```rust
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
 use metrique_aggregation::traits::Aggregate;
-use metrique::unit::{Millisecond, Byte};
+use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
 #[aggregate]
@@ -35,7 +35,6 @@ struct ApiCall {
     latency: Duration,
     
     #[aggregate(strategy = Sum)]
-    #[metrics(unit = Byte)]
     response_size: usize,
 }
 
@@ -46,6 +45,7 @@ struct RequestMetrics {
     api_calls: Aggregate<ApiCall>,
 }
 
+# fn main() {
 let mut metrics = RequestMetrics {
     request_id: "query-123".to_string(),
     api_calls: Aggregate::default(),
@@ -62,6 +62,7 @@ metrics.api_calls.insert(ApiCall {
 });
 
 // When metrics drops, emits a single entry with aggregated values
+# }
 ```
 
 **Output**: Single metric entry with `RequestId: "query-123"`, `Latency: [45ms, 67ms]`, `ResponseSize: 3072`
@@ -70,21 +71,25 @@ metrics.api_calls.insert(ApiCall {
 
 ### Field-Level Strategies
 
-Individual fields use aggregation strategies that implement `AggregateValue<T>`:
+Individual fields use aggregation strategies that implement [`AggregateValue<T>`]:
 
-- **`Sum`** - Sums values together (use for counts, totals)
-- **`Histogram<T>`** - Collects values into a distribution (use for latency, sizes)
-- **`LastValueWins`** - Keeps the most recent value (use for gauges, current state)
+- **[`Sum`]** - Sums values together (use for counts, totals)
+- **[`Histogram<T>`]** - Collects values into a distribution (use for latency, sizes)
+- **[`LastValueWins`]** - Keeps the most recent value (use for gauges, current state)
 
 ### Entry-Level Aggregation
 
-The `#[aggregate]` macro generates implementations that define how complete entries are combined. It creates the merge logic, key extraction, and aggregation strategy for your type.
+The [`aggregate`] macro generates implementations that define how complete entries are combined. It creates the merge logic, key extraction, and aggregation strategy for your type.
 
 ### Keys
 
 Fields marked with `#[aggregate(key)]` become grouping keys. Entries with the same key are merged together:
 
-```rust,no_run
+```rust
+use metrique::unit_of_work::metrics;
+use metrique_aggregation::{aggregate, histogram::Histogram};
+use std::time::Duration;
+
 #[aggregate]
 #[metrics]
 struct ApiCall {
@@ -94,6 +99,7 @@ struct ApiCall {
     #[aggregate(strategy = Histogram<Duration>)]
     latency: Duration,
 }
+# fn main() {}
 ```
 
 Calls to the same endpoint will be aggregated together, while different endpoints remain separate.
@@ -102,9 +108,9 @@ Calls to the same endpoint will be aggregated together, while different endpoint
 
 ### Embedded Aggregation
 
-Use `Aggregate<T>` as a field in your metrics struct when a single unit of work fans out to multiple sub-operations:
+Use [`Aggregate<T>`] as a field in your metrics struct when a single unit of work fans out to multiple sub-operations:
 
-```rust,no_run
+```rust
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
 use metrique_aggregation::traits::Aggregate;
@@ -130,9 +136,10 @@ struct DistributedQuery {
     backend_calls: Aggregate<BackendCall>,
 }
 
+# async fn call_backend(_backend: &str, _query: &str) -> Result<String, String> { Ok("result".to_string()) }
 async fn execute_query(query: &str) {
     let mut metrics = DistributedQuery {
-        query_id: uuid::Uuid::new_v4().to_string(),
+        query_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         backend_calls: Aggregate::default(),
     };
 
@@ -150,18 +157,20 @@ async fn execute_query(query: &str) {
     
     // Metrics automatically emitted when dropped
 }
+# fn main() {}
 ```
 
 **Output**: Single entry with `QueryId: "550e8400-..."`, `RequestsMade: 3`, `Latency: [45ms, 67ms, 52ms]`, `Errors: 1`
 
-See [`examples/embedded.rs`](examples/embedded.rs) for a complete working example.
+See the `embedded` example for a complete working implementation.
 
 ### Sink-Level Aggregation
 
-Use `WorkerSink` or `MutexSink` for extremely high-rate background processing where you want aggregation across many separate operations:
+Use [`WorkerSink`] or [`MutexSink`] for extremely high-rate background processing where you want aggregation across many separate operations:
 
-```rust,no_run
-use metrique_aggregation::{aggregate, KeyedAggregator, WorkerSink};
+```rust
+use metrique::unit_of_work::metrics;
+use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum, KeyedAggregator, WorkerSink};
 use std::time::Duration;
 
 #[aggregate]
@@ -180,18 +189,22 @@ struct QueueItem {
     processing_time: Duration,
 }
 
+# async fn process_item(_item: &str) {}
+# struct Item { type_name: String, priority: u8 }
+# async fn get_item() -> Option<Item> { None }
 async fn setup_queue_processor() {
-    let base_sink = ServiceMetrics::sink();
+    # use metrique::test_util::test_entry_sink;
+    # let base_sink = test_entry_sink().sink;
     let keyed_aggregator = KeyedAggregator::<QueueItem>::new(base_sink);
     let sink = WorkerSink::new(keyed_aggregator, Duration::from_secs(60));
     
     // Process queue items
-    while let Ok(item) = queue.recv().await {
+    while let Some(item) = get_item().await {
         let start = std::time::Instant::now();
-        process_item(&item).await;
+        process_item(&item.type_name).await;
         
         QueueItem {
-            item_type: item.type_name(),
+            item_type: item.type_name,
             priority: item.priority,
             items_processed: 1,
             processing_time: start.elapsed(),
@@ -201,22 +214,38 @@ async fn setup_queue_processor() {
     
     // Periodically flushes aggregated results (every 60 seconds)
 }
+# fn main() {}
 ```
 
 **Output**: Multiple aggregated entries like `ItemType: "email", Priority: 1, ItemsProcessed: 1247, ProcessingTime: [histogram]`
 
-**`WorkerSink`** runs a background thread that flushes periodically. **`MutexSink`** is a synchronous alternative that flushes manually or when a threshold is reached.
+[`WorkerSink`] runs a background thread that flushes periodically. [`MutexSink`] is a synchronous alternative that flushes manually or when a threshold is reached.
 
-See [`examples/sink_level.rs`](examples/sink_level.rs) for a complete working example.
+See the `sink_level` example for a complete working implementation.
 
 ### Split Aggregation
 
-Use `SplitSink` to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled raw events:
+Use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled raw events:
 
-```rust,no_run
+```rust
 use metrique_aggregation::{KeyedAggregator, WorkerSink};
 use metrique_aggregation::split_sink::{SplitSink, RawSink};
+# use metrique::unit_of_work::metrics;
+# use metrique_aggregation::{aggregate, histogram::Histogram};
+# use std::time::Duration;
+# #[aggregate]
+# #[metrics]
+# struct QueueItem {
+#     #[aggregate(key)]
+#     item_type: String,
+#     #[aggregate(strategy = Histogram<Duration>)]
+#     processing_time: Duration,
+# }
 
+# fn main() {
+# use metrique::test_util::test_entry_sink;
+# let aggregated_sink = test_entry_sink().sink;
+# let raw_events_sink = test_entry_sink().sink;
 // Aggregator for precise counts
 let aggregator = KeyedAggregator::<QueueItem>::new(aggregated_sink);
 
@@ -228,42 +257,101 @@ let split = SplitSink::new(aggregator, raw);
 let sink = WorkerSink::new(split, Duration::from_secs(60));
 
 // Each entry goes to both sinks
-QueueItem { /* ... */ }.close_and_merge(sink.clone());
+QueueItem {
+    item_type: "email".to_string(),
+    processing_time: Duration::from_millis(10),
+}
+.close_and_merge(sink.clone());
+# }
 ```
 
 This gives you:
 - **Precise aggregated metrics**: Exact counts and distributions
 - **Raw event samples**: Individual events for tracing and debugging
 
-See [`examples/split.rs`](examples/split.rs) for a complete working example.
+See the `split` example for a complete working implementation.
+
+## Histograms
+
+Histograms collect observations into distributions, allowing you to track percentiles, min, max, and other statistical properties.
+
+### Basic Usage
+
+```rust
+use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::Histogram;
+use metrique_writer::unit::Millisecond;
+use std::time::Duration;
+
+#[metrics]
+struct Metrics {
+    #[metrics(unit = Millisecond)]
+    latency: Histogram<Duration>,
+}
+
+# fn main() {
+let mut metrics = Metrics {
+    latency: Histogram::default(),
+};
+
+metrics.latency.add_value(Duration::from_millis(10));
+metrics.latency.add_value(Duration::from_millis(20));
+metrics.latency.add_value(Duration::from_millis(15));
+# }
+```
+
+### Aggregation Strategies
+
+Histograms support different bucketing strategies:
+
+- **[`ExponentialAggregationStrategy`]** (default) - Exponential bucketing with ~6.25% error, memory efficient
+- **[`SortAndMerge`]** - Stores all observations exactly for perfect precision
+- **[`AtomicExponentialAggregationStrategy`]** - Thread-safe exponential bucketing for [`SharedHistogram`]
+
+```rust
+use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use std::time::Duration;
+
+# fn example() {
+// Use SortAndMerge for exact precision
+let histogram: Histogram<Duration, SortAndMerge<64>> = Histogram::default();
+# }
+# fn main() {}
+```
+
+### Thread-Safe Histograms
+
+For concurrent access, use [`SharedHistogram`]:
+
+```rust
+use metrique_aggregation::histogram::SharedHistogram;
+use std::sync::Arc;
+
+# fn main() {
+let histogram = Arc::new(SharedHistogram::<u64>::default());
+
+// Can be shared across threads
+let h = histogram.clone();
+std::thread::spawn(move || {
+    h.add_value(42);
+});
+# }
+```
+
+See the `histogram` example for more usage patterns.
 
 ## Aggregation Traits and How They Work Together
 
 The aggregation system is built on several traits that work together:
 
-- **[`AggregateValue<T>`](src/traits.rs)** - Defines how individual field values are merged (Sum, Histogram, LastValueWins)
-- **[`Merge`](src/traits.rs)** - Defines how complete entries are merged together by consuming the source
-- **[`MergeRef`](src/traits.rs)** - Like `Merge`, but merges by reference (enables `SplitSink` to send to multiple destinations)
-- **[`Key`](src/traits.rs)** - Extracts grouping keys from entries to determine which entries should be merged
-- **[`AggregateStrategy`](src/traits.rs)** - Ties together the source type, merge behavior, and key extraction
-- **[`AggregateSink<T>`](src/traits.rs)** - Destination that accepts and aggregates entries
+- **[`AggregateValue<T>`]** - Defines how individual field values are merged (Sum, Histogram, LastValueWins)
+- **[`Merge`]** - Defines how complete entries are merged together by consuming the source
+- **[`MergeRef`]** - Like [`Merge`], but merges by reference (enables [`SplitSink`] to send to multiple destinations)
+- **[`Key`]** - Extracts grouping keys from entries to determine which entries should be merged
+- **[`AggregateStrategy`]** - Ties together the source type, merge behavior, and key extraction
+- **[`AggregateSink<T>`]** - Destination that accepts and aggregates entries
 
-The `#[aggregate]` macro generates implementations of these traits for your type. For most use cases, you don't need to implement these manually - the macro handles it.
-
-## Histogram Strategies
-
-Histograms support different bucketing strategies:
-
-- **`ExponentialAggregationStrategy`** (default) - Exponential bucketing with ~6.25% error, memory efficient
-- **`SortAndMerge`** - Stores all observations exactly for perfect precision
-- **`AtomicExponentialAggregationStrategy`** - Thread-safe exponential bucketing for `SharedHistogram`
-
-```rust,ignore
-use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-
-#[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
-latency: Duration,
-```
+The [`aggregate`] macro generates implementations of these traits for your type. For most use cases, you don't need to implement these manually - the macro handles it.
 
 ## When NOT to Use Aggregation
 
@@ -272,8 +360,34 @@ latency: Duration,
 - **Need individual event details**: Aggregation loses individual event context
 - **Simple counting**: Basic counters don't need aggregation complexity
 
-## Next Steps
+## Examples
 
-- See the [`examples/`](examples/) directory for complete working examples
-- Read the [trait documentation](src/traits.rs) for advanced usage
-- Learn about [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md) for the recommended approach for most applications
+This crate includes several complete examples:
+
+- `embedded` - Distributed query with [`Aggregate<T>`]
+- `sink_level` - Queue processor with [`WorkerSink`] and [`KeyedAggregator`]
+- `split` - [`SplitSink`] pattern showing aggregation + raw events
+- `histogram` - Histogram usage patterns and strategies
+
+Run examples with: `cargo run --example <name>`
+
+[`aggregate`]: macro@crate::aggregate
+[`AggregateValue<T>`]: crate::traits::AggregateValue
+[`Sum`]: crate::value::Sum
+[`Histogram<T>`]: crate::histogram::Histogram
+[`LastValueWins`]: crate::value::LastValueWins
+[`Aggregate<T>`]: crate::traits::Aggregate
+[`WorkerSink`]: crate::sink::WorkerSink
+[`MutexSink`]: crate::sink::MutexSink
+[`KeyedAggregator`]: crate::keyed_sink::KeyedAggregator
+[`SplitSink`]: crate::split_sink::SplitSink
+[`RawSink`]: crate::split_sink::RawSink
+[`Merge`]: crate::traits::Merge
+[`MergeRef`]: crate::traits::MergeRef
+[`Key`]: crate::traits::Key
+[`AggregateStrategy`]: crate::traits::AggregateStrategy
+[`AggregateSink<T>`]: crate::traits::AggregateSink
+[`ExponentialAggregationStrategy`]: crate::histogram::ExponentialAggregationStrategy
+[`SortAndMerge`]: crate::histogram::SortAndMerge
+[`AtomicExponentialAggregationStrategy`]: crate::histogram::AtomicExponentialAggregationStrategy
+[`SharedHistogram`]: crate::histogram::SharedHistogram
