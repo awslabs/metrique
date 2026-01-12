@@ -412,6 +412,25 @@ impl<T: AggregateStrategy> Aggregate<T> {
     }
 }
 
+impl<T> AggregateSink<T::Source> for Aggregate<T>
+where
+    T: AggregateStrategy,
+{
+    fn merge(&mut self, entry: T::Source) {
+        T::Source::merge(&mut self.aggregated, entry);
+    }
+}
+
+impl<T> AggregateSinkRef<T::Source> for Aggregate<T>
+where
+    T: AggregateStrategy,
+    T::Source: MergeRef,
+{
+    fn merge_ref(&mut self, entry: &T::Source) {
+        T::Source::merge_ref(&mut self.aggregated, entry);
+    }
+}
+
 /// Aggregates values without closing them (for raw mode)
 pub struct AggregateRaw<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,

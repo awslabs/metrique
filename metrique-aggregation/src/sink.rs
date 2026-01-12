@@ -1,14 +1,13 @@
 //! Sinks for aggregation
 
 use std::{
-    marker::PhantomData,
     ops::{Deref, DerefMut},
     sync::{Arc, Mutex},
 };
 
 use metrique_core::CloseValue;
 
-use crate::traits::{AggregateSink, AggregateStrategy, Merge, MergeRef, RootSink};
+use crate::traits::{AggregateSink, AggregateStrategy, RootSink};
 
 /// Handle for metric that will be automatically merged into the target when dropped (for raw mode)
 pub struct MergeOnDrop<T, Sink>
@@ -177,66 +176,5 @@ where
             .into_inner()
             .unwrap()
             .close()
-    }
-}
-
-/// Simple aggregator that merges entries into a single accumulated value
-pub struct Aggregator<T: AggregateStrategy> {
-    accumulated: <T::Source as Merge>::Merged,
-    _phantom: PhantomData<T>,
-}
-
-impl<T> Default for Aggregator<T>
-where
-    T: AggregateStrategy,
-    <T::Source as Merge>::Merged: Default,
-{
-    fn default() -> Self {
-        Self {
-            accumulated: Default::default(),
-            _phantom: PhantomData,
-        }
-    }
-}
-
-impl<T> Aggregator<T>
-where
-    T: AggregateStrategy,
-    <T::Source as Merge>::Merged: Default,
-{
-    /// Create a new aggregator
-    pub fn new() -> Self {
-        Self::default()
-    }
-}
-
-impl<T> AggregateSink<T::Source> for Aggregator<T>
-where
-    T: AggregateStrategy,
-{
-    fn merge(&mut self, entry: T::Source) {
-        T::Source::merge(&mut self.accumulated, entry);
-    }
-}
-
-impl<T> crate::traits::AggregateSinkRef<T::Source> for Aggregator<T>
-where
-    T: AggregateStrategy,
-    T::Source: MergeRef,
-{
-    fn merge_ref(&mut self, entry: &T::Source) {
-        T::Source::merge_ref(&mut self.accumulated, entry);
-    }
-}
-
-impl<T> CloseValue for Aggregator<T>
-where
-    T: AggregateStrategy,
-    <T::Source as Merge>::Merged: CloseValue,
-{
-    type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
-
-    fn close(self) -> Self::Closed {
-        self.accumulated.close()
     }
 }
