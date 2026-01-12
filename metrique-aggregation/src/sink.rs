@@ -165,16 +165,12 @@ where
 
 impl<Inner> CloseValue for MutexSink<Inner>
 where
-    Inner: CloseValue,
+    Inner: CloseValue + Default,
 {
     type Closed = Inner::Closed;
 
     fn close(self) -> Self::Closed {
-        Arc::try_unwrap(self.inner)
-            .ok()
-            .expect("MutexSink must be the only reference when closing")
-            .into_inner()
-            .unwrap()
-            .close()
+        let mut guard = self.inner.lock().unwrap();
+        std::mem::take(&mut *guard).close()
     }
 }

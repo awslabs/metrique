@@ -251,6 +251,23 @@ fn test_merge_and_close_on_drop() {
 }
 
 #[test]
+fn test_mutex_sink_close_with_outstanding_references() {
+    // This test verifies that MutexSink can be closed even when there are
+    // outstanding cloned references (which would cause Arc::try_unwrap to fail)
+    let metrics = RequestMetricsWithTimerMutex {
+        api_calls: MutexSink::new(Aggregate::default()),
+        request_id: "outstanding-ref-test".to_string(),
+    };
+
+    // Clone creates an outstanding reference
+    let _outstanding_ref = metrics.api_calls.clone();
+
+    // This should not panic - it uses mem::take instead of Arc::try_unwrap
+    let entry = test_metric(metrics);
+    check!(entry.values["RequestId"] == "outstanding-ref-test");
+}
+
+#[test]
 fn last_value_wins() {
     #[aggregate(owned)]
     #[metrics]
