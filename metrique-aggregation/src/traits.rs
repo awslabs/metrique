@@ -40,6 +40,8 @@
 use metrique_core::{CloseEntry, CloseValue, InflectableEntry, NameStyle};
 use std::hash::Hash;
 
+use crate::value::NoKey;
+
 /// Defines how individual field values are aggregated.
 ///
 /// This trait operates at the field level, not the entry level. Each aggregation
@@ -331,11 +333,11 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
     }
 }
 
-/// Simple wrapper for inline aggregation of metrics.
+/// Inline metrics aggregator
 ///
-/// `Aggregate<T>` is the most straightforward way to aggregate data. It wraps an aggregated
-/// value and tracks the number of samples merged. Typically used as a field in a larger
-/// metrics struct.
+/// `Aggregate<T>` is designed to be used in a larger metrics struct to aggregate on an indiviual field.
+///
+/// It is not designed to be used when `Key` is present.
 ///
 /// For thread-safe aggregation or more advanced patterns, see [`crate::sink::MutexAggregator`]
 /// and [`crate::keyed_sink::KeyedAggregationSink`].
@@ -391,9 +393,10 @@ where
 
 impl<T: AggregateStrategy> Aggregate<T> {
     /// Add a new entry into this aggregate
-    pub fn add(&mut self, entry: T)
+    pub fn insert(&mut self, entry: T)
     where
         T: CloseValue<Closed = T::Source>,
+        T: AggregateStrategy<Key = NoKey>,
         T::Source: Merge,
     {
         T::Source::merge(&mut self.aggregated, entry.close());
@@ -434,7 +437,7 @@ where
 
 impl<T: AggregateStrategy> AggregateRaw<T> {
     /// Add a new entry into this aggregate without closing
-    pub fn add(&mut self, entry: T::Source)
+    pub fn insert(&mut self, entry: T::Source)
     where
         T::Source: Merge,
     {

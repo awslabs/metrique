@@ -42,21 +42,21 @@ fn test_macro_aggregation() {
         request_id: "1234".to_string(),
     };
 
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.insert(ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
     });
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.insert(ApiCall {
         latency: Duration::from_millis(100),
         response_size: 50,
     });
 
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.insert(ApiCall {
         latency: Duration::from_millis(200),
         response_size: 75,
     });
 
-    metrics.api_calls.add(ApiCall {
+    metrics.api_calls.insert(ApiCall {
         latency: Duration::from_millis(150),
         response_size: 60,
     });
@@ -110,11 +110,11 @@ fn test_macro_aggregation_with_key() {
         request_id: "5678".to_string(),
     };
 
-    metrics.api_calls.add(ApiCallWithEndpoint {
+    metrics.api_calls.insert(ApiCallWithEndpoint {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(50),
     });
-    metrics.api_calls.add(ApiCallWithEndpoint {
+    metrics.api_calls.insert(ApiCallWithEndpoint {
         endpoint: "GetItem".to_string(),
         latency: Duration::from_millis(75),
     });
@@ -150,13 +150,13 @@ fn test_macro_aggregation_with_multiple_keys() {
         request_id: "9999".to_string(),
     };
 
-    metrics.api_calls.add(ApiCallWithMultipleKeys {
+    metrics.api_calls.insert(ApiCallWithMultipleKeys {
         endpoint: "GetItem".to_string(),
         region: "us-east-1".to_string(),
         latency: Duration::from_millis(30),
     });
 
-    metrics.api_calls.add(ApiCallWithMultipleKeys {
+    metrics.api_calls.insert(ApiCallWithMultipleKeys {
         endpoint: "GetItem".to_string(),
         region: "us-east-1".to_string(),
         latency: Duration::from_millis(45),
@@ -201,13 +201,13 @@ fn test_aggregate_entry_mode_with_timer() {
         latency: Timer::start_now(),
     };
     call1.latency.stop();
-    metrics.api_calls.add(call1);
+    metrics.api_calls.insert(call1);
 
     let mut call2 = ApiCallWithTimer {
         latency: Timer::start_now(),
     };
     call2.latency.stop();
-    metrics.api_calls.add(call2);
+    metrics.api_calls.insert(call2);
 
     let entry = test_metric(metrics);
     check!(entry.metrics["latency_2"].num_observations() == 2);
