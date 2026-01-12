@@ -1,5 +1,6 @@
 [workspace]
 git_release_enable = false
+changelog_update = false
 
 [[package]]
 name = "metrique"
@@ -16,4 +17,5 @@ changelog_include = [
     "metrique-aggregation"
 ]
 changelog_path = "./CHANGELOG.md"
+changelog_update = true
 git_release_enable = true
