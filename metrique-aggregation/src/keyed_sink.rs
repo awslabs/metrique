@@ -3,10 +3,8 @@
 use metrique_core::CloseValue;
 use std::{
     marker::PhantomData,
-    sync::{
-        Arc, Mutex,
-        mpsc::{Sender, channel},
-    },
+    sync::Arc,
+    sync::mpsc::{Sender, channel},
     thread,
     time::Duration,
 };
@@ -26,7 +24,7 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
 ///
 /// This is the core aggregation logic without any threading or channel concerns.
 pub struct KeyedAggregator<T: AggregateStrategy, Sink = BoxEntrySink> {
-    storage: Mutex<hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>>,
+    storage: hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>,
     sink: Sink,
     _phantom: PhantomData<T>,
 }
@@ -83,9 +81,8 @@ where
     <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
-    fn merge(&self, entry: T::Source) {
-        let mut storage = self.storage.lock().unwrap();
-        let accum = Self::get_or_create_accum(&mut storage, &entry);
+    fn merge(&mut self, entry: T::Source) {
+        let accum = Self::get_or_create_accum(&mut self.storage, &entry);
         T::Source::merge(accum, entry);
     }
 }
@@ -97,9 +94,8 @@ where
     <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
-    fn merge_ref(&self, entry: &T::Source) {
-        let mut storage = self.storage.lock().unwrap();
-        let accum = Self::get_or_create_accum(&mut storage, entry);
+    fn merge_ref(&mut self, entry: &T::Source) {
+        let accum = Self::get_or_create_accum(&mut self.storage, entry);
         T::Source::merge_ref(accum, entry);
     }
 }
@@ -109,9 +105,8 @@ where
     T: AggregateStrategy,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
-    fn flush(&self) {
-        let mut storage = self.storage.lock().unwrap();
-        for (key, aggregated) in storage.drain() {
+    fn flush(&mut self) {
+        for (key, aggregated) in self.storage.drain() {
             let merged = crate::traits::AggregationResult {
                 key: key.close(),
                 aggregated: aggregated.close(),
@@ -149,7 +144,7 @@ where
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,
 {
     /// Create a new background thread sink
-    pub fn new(inner: Inner, flush_interval: Duration) -> Self {
+    pub fn new(mut inner: Inner, flush_interval: Duration) -> Self {
         let (sender, receiver) = channel();
 
         let handle = thread::spawn(move || {
@@ -189,7 +184,7 @@ where
     }
 }
 
-impl<T, Inner> crate::traits::AggregateSink<T> for WorkerAggregator<T, Inner>
+impl<T, Inner> crate::traits::RootSink<T> for WorkerAggregator<T, Inner>
 where
     T: Send + 'static,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,

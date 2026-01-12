@@ -456,23 +456,34 @@ where
     }
 }
 
-/// Trait for sinks that accept aggregated entries by value
-pub trait AggregateSink<T> {
+/// Root sink trait for thread-safe entry points (takes `&self`)
+///
+/// This is the trait that `WorkerAggregator` and other thread-safe wrappers implement.
+/// Use this for `MergeOnDrop` and `CloseAndMergeOnDrop` targets.
+pub trait RootSink<T> {
     /// Add an entry to be aggregated
     fn merge(&self, entry: T);
 }
 
-/// Trait for sinks that accept aggregated entries by reference
+/// Trait for sinks that accept aggregated entries by value (takes `&mut self`)
+///
+/// This is for single-threaded aggregation contexts where exclusive access is available.
+pub trait AggregateSink<T> {
+    /// Add an entry to be aggregated
+    fn merge(&mut self, entry: T);
+}
+
+/// Trait for sinks that accept aggregated entries by reference (takes `&mut self`)
 ///
 /// This enables aggregating the same input across multiple sinks without cloning.
 /// Requires the source type to implement `MergeRef`.
 pub trait AggregateSinkRef<T: ?Sized> {
     /// Add an entry to be aggregated by reference
-    fn merge_ref(&self, entry: &T);
+    fn merge_ref(&mut self, entry: &T);
 }
 
-/// Trait for sinks that can be flushed
+/// Trait for sinks that can be flushed (takes `&mut self`)
 pub trait FlushableSink {
     /// Flush all accumulated entries to the output sink
-    fn flush(&self);
+    fn flush(&mut self);
 }

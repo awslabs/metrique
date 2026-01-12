@@ -23,7 +23,7 @@ where
     A: AggregateSink<T>,
     B: AggregateSinkRef<T>,
 {
-    fn merge(&self, entry: T) {
+    fn merge(&mut self, entry: T) {
         self.sink_b.merge_ref(&entry);
         self.sink_a.merge(entry);
     }
@@ -34,7 +34,7 @@ where
     A: FlushableSink,
     B: FlushableSink,
 {
-    fn flush(&self) {
+    fn flush(&mut self) {
         self.sink_a.flush();
         self.sink_b.flush();
     }

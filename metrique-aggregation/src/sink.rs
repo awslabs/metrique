@@ -7,13 +7,13 @@ use std::{
 
 use metrique_core::CloseValue;
 
-use crate::traits::{AggregateSink, AggregateStrategy, Merge};
+use crate::traits::{AggregateStrategy, Merge, RootSink};
 
 /// Handle for metric that will be automatically merged into the target when dropped (for raw mode)
 pub struct MergeOnDrop<T, Sink>
 where
     T: AggregateStrategy<Source = T>,
-    Sink: AggregateSink<T>,
+    Sink: RootSink<T>,
 {
     value: Option<T>,
     target: Sink,
@@ -22,7 +22,7 @@ where
 impl<T, S> Deref for MergeOnDrop<T, S>
 where
     T: AggregateStrategy<Source = T>,
-    S: AggregateSink<T>,
+    S: RootSink<T>,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -33,7 +33,7 @@ where
 impl<T, S> DerefMut for MergeOnDrop<T, S>
 where
     T: AggregateStrategy<Source = T>,
-    S: AggregateSink<T>,
+    S: RootSink<T>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value.as_mut().expect("unreachable: valid until drop")
@@ -43,7 +43,7 @@ where
 impl<T, Sink> Drop for MergeOnDrop<T, Sink>
 where
     T: AggregateStrategy<Source = T>,
-    Sink: AggregateSink<T>,
+    Sink: RootSink<T>,
 {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
@@ -55,7 +55,7 @@ where
 impl<T, Sink> MergeOnDrop<T, Sink>
 where
     T: AggregateStrategy<Source = T>,
-    Sink: AggregateSink<T>,
+    Sink: RootSink<T>,
 {
     /// Create a new MergeOnDrop that will merge the value on drop
     pub fn new(value: T, target: Sink) -> Self {
@@ -70,7 +70,7 @@ where
 pub struct CloseAndMergeOnDrop<T, Sink>
 where
     T: CloseValue,
-    Sink: AggregateSink<T::Closed>,
+    Sink: RootSink<T::Closed>,
 {
     value: Option<T>,
     target: Sink,
@@ -79,7 +79,7 @@ where
 impl<T, S> Deref for CloseAndMergeOnDrop<T, S>
 where
     T: CloseValue,
-    S: AggregateSink<T::Closed>,
+    S: RootSink<T::Closed>,
 {
     type Target = T;
     fn deref(&self) -> &Self::Target {
@@ -90,7 +90,7 @@ where
 impl<T, S> DerefMut for CloseAndMergeOnDrop<T, S>
 where
     T: CloseValue,
-    S: AggregateSink<T::Closed>,
+    S: RootSink<T::Closed>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.value.as_mut().expect("unreachable: valid until drop")
@@ -100,7 +100,7 @@ where
 impl<T, Sink> Drop for CloseAndMergeOnDrop<T, Sink>
 where
     T: CloseValue,
-    Sink: AggregateSink<T::Closed>,
+    Sink: RootSink<T::Closed>,
 {
     fn drop(&mut self) {
         if let Some(value) = self.value.take() {
@@ -112,7 +112,7 @@ where
 impl<T, Sink> CloseAndMergeOnDrop<T, Sink>
 where
     T: CloseValue,
-    Sink: AggregateSink<T::Closed>,
+    Sink: RootSink<T::Closed>,
 {
     /// Create a new CloseAndMergeOnDrop that will close and merge the value on drop
     pub fn new(value: T, target: Sink) -> Self {
@@ -161,7 +161,7 @@ impl<T: AggregateStrategy> MutexAggregator<T> {
     }
 }
 
-impl<T: AggregateStrategy> AggregateSink<T::Source> for MutexAggregator<T> {
+impl<T: AggregateStrategy> RootSink<T::Source> for MutexAggregator<T> {
     fn merge(&self, entry: T::Source) {
         let mut aggregator = self.aggregator.lock().unwrap();
         T::Source::merge(&mut *aggregator, entry);

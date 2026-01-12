@@ -388,7 +388,7 @@ pub(crate) fn generate_merge_on_drop_methods(input: &DeriveInput, entry_mode: bo
         Ok(quote! {
             impl #impl_generics #original_name #ty_generics #where_clause {
                 /// Create a guard that will close and merge this value on drop
-                pub fn close_and_merge<Sink: metrique_aggregation::traits::AggregateSink<<Self as metrique::CloseValue>::Closed>>(
+                pub fn close_and_merge<Sink: metrique_aggregation::traits::RootSink<<Self as metrique::CloseValue>::Closed>>(
                     self,
                     sink: Sink,
                 ) -> metrique_aggregation::sink::CloseAndMergeOnDrop<Self, Sink> {
@@ -401,7 +401,7 @@ pub(crate) fn generate_merge_on_drop_methods(input: &DeriveInput, entry_mode: bo
         Ok(quote! {
             impl #impl_generics #original_name #ty_generics #where_clause {
                 /// Create a guard that will merge this value on drop
-                pub fn merge<Sink: metrique_aggregation::traits::AggregateSink<Self>>(
+                pub fn merge<Sink: metrique_aggregation::traits::RootSink<Self>>(
                     self,
                     sink: Sink,
                 ) -> metrique_aggregation::sink::MergeOnDrop<Self, Sink> {
