@@ -4,6 +4,7 @@ expression: parsed_file
 ---
 #[metrics]
 #[derive(Default)]
+#[allow(clippy::type_complexity)]
 pub struct AggregatedApiCall {
     #[metrics(unit = Millisecond, name = "latency_2")]
     latency: <Histogram<
