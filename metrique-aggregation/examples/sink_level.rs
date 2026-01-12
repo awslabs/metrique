@@ -4,8 +4,11 @@
 //! background processing. A queue processor handles items and aggregates metrics by
 //! item type and priority, flushing periodically.
 
-use metrique::test_util::test_entry_sink;
+use metrique::ServiceMetrics;
+use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
+use metrique::writer::value::ToString;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
 use metrique_writer::unit::Millisecond;
@@ -13,12 +16,13 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 
 #[aggregate]
-#[metrics]
+#[metrics(emf::dimension_sets = [["item_type", "priority"]])]
 struct QueueItem {
     #[aggregate(key)]
     item_type: String,
 
     #[aggregate(key)]
+    #[metrics(format = ToString)]
     priority: u8,
 
     #[aggregate(strategy = metrique_aggregation::value::Sum)]
@@ -60,8 +64,7 @@ async fn process_item(item: &Item) -> Result<(), String> {
 }
 
 async fn queue_processor(mut queue: mpsc::Receiver<Item>) {
-    let sink = test_entry_sink();
-    let keyed_aggregator = KeyedAggregator::<QueueItem>::new(sink.sink);
+    let keyed_aggregator = KeyedAggregator::<QueueItem>::new(ServiceMetrics::sink());
     let worker_sink = WorkerSink::new(keyed_aggregator, Duration::from_millis(500));
 
     println!("Queue processor started. Flush interval: 500ms\n");
@@ -97,26 +100,25 @@ async fn queue_processor(mut queue: mpsc::Receiver<Item>) {
 
     // Flush remaining aggregated metrics
     println!("\nFlushing final metrics...");
+    println!("Emitting EMF metrics to stdout:");
     worker_sink.flush().await;
-
-    // Inspect the aggregated entries
-    let entries = sink.inspector.entries();
-    println!("\nAggregated metric entries: {}", entries.len());
-
-    for entry in entries {
-        println!(
-            "  Type: {}, Priority: {}, Processed: {}, Errors: {}, Latency observations: {}",
-            entry.values["item_type"],
-            entry.metrics["priority"].as_u64(),
-            entry.metrics["items_processed"].as_u64(),
-            entry.metrics["processing_errors"].as_u64(),
-            entry.metrics["processing_time"].distribution.len()
-        );
-    }
 }
 
 #[tokio::main]
 async fn main() {
+    // Initialize tracing to see validation errors
+    tracing_subscriber::fmt::init();
+
+    // Attach global EMF sink
+    let _handle = ServiceMetrics::attach_to_stream(
+        Emf::builder(
+            "QueueProcessorMetrics".to_string(),
+            vec![vec!["item_type".to_string(), "priority".to_string()]],
+        )
+        .build()
+        .output_to_makewriter(|| std::io::stdout().lock()),
+    );
+
     let (tx, rx) = mpsc::channel(100);
 
     // Spawn the queue processor
