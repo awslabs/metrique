@@ -12,6 +12,7 @@ use metrique_aggregation::aggregator::Aggregate;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, histogram::SortAndMerge};
+use metrique_writer::BoxEntrySink;
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
@@ -28,7 +29,6 @@ struct BackendCall {
     #[aggregate(strategy = Sum)]
     errors: u64,
 
-    // Non-copy types work by default. Use `aggregate(ref)` if you need MergeRef.
     #[aggregate(strategy = KeepLast)]
     error_message: Option<String>,
 }
@@ -61,14 +61,7 @@ async fn call_backend(shard: &str, _query: &str) -> Result<String, String> {
     }
 }
 
-async fn execute_distributed_query(query: &str) {
-    // Create EMF sink that outputs to stdout
-    let emf_stream = Emf::builder("DistributedQueryMetrics".to_string(), vec![vec![]])
-        .build()
-        .output_to_makewriter(|| std::io::stdout().lock());
-
-    let emf: DefaultSink = FlushImmediatelyBuilder::new().build_boxed(emf_stream);
-
+async fn execute_distributed_query(query: &str, sink: BoxEntrySink) {
     let mut metrics = DistributedQuery {
         query_id: uuid::Uuid::new_v4().to_string(),
         backend_calls: Aggregate::default(),
@@ -101,10 +94,17 @@ async fn execute_distributed_query(query: &str) {
 
     println!("\nEmitting EMF metric to stdout:");
     // Emit the aggregated metrics to EMF
-    metrics.append_on_drop(emf);
+    metrics.append_on_drop(sink);
 }
 
 #[tokio::main]
 async fn main() {
-    execute_distributed_query("SELECT * FROM users WHERE active = true").await;
+    // Create EMF sink that outputs to stdout
+    let emf_stream = Emf::builder("DistributedQueryMetrics".to_string(), vec![vec![]])
+        .build()
+        .output_to_makewriter(|| std::io::stdout().lock());
+
+    let emf: DefaultSink = FlushImmediatelyBuilder::new().build_boxed(emf_stream);
+
+    execute_distributed_query("SELECT * FROM users WHERE active = true", emf).await;
 }

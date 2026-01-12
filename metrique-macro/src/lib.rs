@@ -547,8 +547,7 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     // Try to generate struct, impl, MergeRef, and merge methods
     let struct_result = aggregate::generate_aggregated_struct(&input, entry_mode);
     let impl_result = aggregate::generate_aggregate_strategy_impl(&input, entry_mode);
-    let merge_ref_result =
-        aggregate::generate_merge_ref_impl(&input, entry_mode, enable_merge_ref);
+    let merge_ref_result = aggregate::generate_merge_ref_impl(&input, entry_mode, enable_merge_ref);
     let merge_methods_result = aggregate::generate_merge_on_drop_methods(&input, entry_mode);
 
     match (
