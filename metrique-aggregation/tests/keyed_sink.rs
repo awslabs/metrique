@@ -3,7 +3,7 @@ use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::keyed_sink::{KeyedAggregationSink, KeyedAggregator};
+use metrique_aggregation::keyed_sink::{KeyedAggregationSink, KeyedAggregator, WorkerAggregator};
 use metrique_writer::test_util::test_entry_sink;
 use std::time::Duration;
 
@@ -20,10 +20,8 @@ pub struct ApiCall {
 #[tokio::test]
 async fn test_keyed_sink() {
     let test_sink = test_entry_sink();
-    let keyed_sink = KeyedAggregationSink::<ApiCall>::new(
-        KeyedAggregator::new(test_sink.sink),
-        Duration::from_millis(100),
-    );
+    let keyed_aggregator: KeyedAggregator<ApiCall> = KeyedAggregator::new(test_sink.sink);
+    let keyed_sink = WorkerAggregator::new(keyed_aggregator, Duration::from_millis(100));
 
     // Send multiple calls to api1
     keyed_sink.send(

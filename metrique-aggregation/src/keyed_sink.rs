@@ -22,10 +22,6 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
     <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
 >;
 
-/// Keyed aggregation sink
-pub type KeyedAggregationSink<T> =
-    BackgroundThreadSink<<T as AggregateStrategy>::Source, KeyedAggregator<T>>;
-
 /// Keyed aggregator that uses a HashMap to aggregate entries by key
 ///
 /// This is the core aggregation logic without any threading or channel concerns.
@@ -65,10 +61,9 @@ where
 
         // Compute hash once using the borrowed key
         let hash = {
-            
             // Create a borrowed key from the entry
             let borrowed_key = T::Key::from_source(&entry);
-            
+
             storage.hasher().hash_one(&borrowed_key)
         };
         let borrowed_key = T::Key::from_source(&entry);
@@ -133,13 +128,13 @@ enum QueueMessage<T> {
 }
 
 /// Wraps any AggregateSink with a channel and background thread
-pub struct BackgroundThreadSink<T, Inner> {
+pub struct WorkerAggregator<T, Inner> {
     sender: Sender<QueueMessage<T>>,
     _handle: Arc<thread::JoinHandle<()>>,
     _phantom: PhantomData<Inner>,
 }
 
-impl<T, Inner> Clone for BackgroundThreadSink<T, Inner> {
+impl<T, Inner> Clone for WorkerAggregator<T, Inner> {
     fn clone(&self) -> Self {
         Self {
             sender: self.sender.clone(),
@@ -149,7 +144,7 @@ impl<T, Inner> Clone for BackgroundThreadSink<T, Inner> {
     }
 }
 
-impl<T, Inner> BackgroundThreadSink<T, Inner>
+impl<T, Inner> WorkerAggregator<T, Inner>
 where
     T: Send + 'static,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,
@@ -195,7 +190,7 @@ where
     }
 }
 
-impl<T, Inner> crate::traits::AggregateSink<T> for BackgroundThreadSink<T, Inner>
+impl<T, Inner> crate::traits::AggregateSink<T> for WorkerAggregator<T, Inner>
 where
     T: Send + 'static,
     Inner: crate::traits::AggregateSink<T> + FlushableSink + Send + 'static,

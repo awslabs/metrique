@@ -4,7 +4,7 @@ use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::keyed_sink::{BackgroundThreadSink, KeyedAggregator};
+use metrique_aggregation::keyed_sink::{KeyedAggregator, WorkerAggregator};
 use metrique_aggregation::split_sink::SplitSink;
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_writer::test_util::test_entry_sink;
@@ -81,7 +81,7 @@ async fn test_split_sink() {
 
     // Combine them with SplitSink
     let split = SplitSink::new(aggregator_a, aggregator_b);
-    let sink = BackgroundThreadSink::new(split, Duration::from_secs(10));
+    let sink = WorkerAggregator::new(split, Duration::from_secs(10));
 
     ApiCall {
         endpoint: "api1".to_string(),

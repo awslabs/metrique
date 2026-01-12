@@ -175,6 +175,7 @@ where
     type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
+        // TODO: relax this constraint, fix MutexAggregator
         Arc::try_unwrap(self.aggregator)
             .ok()
             .expect("MutexAggregator must be the only reference when closing")
