@@ -517,7 +517,7 @@ where
 {
     type Aggregated = Histogram<T, S>;
 
-    fn add_value(accum: &mut Self::Aggregated, value: T) {
+    fn insert(accum: &mut Self::Aggregated, value: T) {
         accum.add_value(value);
     }
 }

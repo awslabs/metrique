@@ -200,7 +200,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
         quote_spanned! { field_span=>
             #expect_deprecated
-            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(&mut accum.#name, #entry_value);
+            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, #entry_value);
         }
     }).collect::<Vec<_>>();
 
@@ -350,13 +350,13 @@ pub(crate) fn generate_merge_ref_impl(
             // Use clone for this field
             quote_spanned! { field_span=>
                 #expect_deprecated
-                <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::add_value(&mut accum.#name, input.#name.clone());
+                <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, input.#name.clone());
             }
         } else {
             // Use IfYouSeeThisUseAggregateOwned wrapper for Copy types
             quote_spanned! { field_span=>
                 #expect_deprecated
-                <metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::add_value(&mut accum.#name, &input.#name);
+                <metrique_aggregation::__macro_plumbing::IfYouSeeThisUseAggregateOwned<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::insert(&mut accum.#name, &input.#name);
             }
         }
     }).collect::<Vec<_>>();

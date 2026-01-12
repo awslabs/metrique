@@ -25,10 +25,10 @@ impl metrique_aggregation::__macro_plumbing::Merge for ApiCall {
             Duration,
         > as metrique_aggregation::__macro_plumbing::AggregateValue<
             Duration,
-        >>::add_value(&mut accum.latency, input.latency);
+        >>::insert(&mut accum.latency, input.latency);
         <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
             usize,
-        >>::add_value(&mut accum.response_size, input.response_size);
+        >>::insert(&mut accum.response_size, input.response_size);
     }
 }
 impl metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
