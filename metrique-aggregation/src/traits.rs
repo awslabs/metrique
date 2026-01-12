@@ -146,6 +146,10 @@ pub trait AggregateValue<T> {
 ///             endpoint: Cow::Owned(key.endpoint.clone().into_owned()),
 ///         }
 ///     }
+///
+///     fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+///         owned.endpoint == borrowed.endpoint
+///     }
 /// }
 /// ```
 pub trait Key<Source> {
@@ -208,7 +212,7 @@ pub trait Key<Source> {
 ///     }
 ///
 ///     fn merge(accum: &mut Self::Merged, input: Self) {
-///         accum.latency.insert(&input.latency);
+///         accum.latency.add_value(&input.latency);
 ///         accum.response_size += input.response_size;
 ///     }
 /// }
