@@ -306,7 +306,7 @@ pub type AggregateTy<T> = <<T as AggregateStrategy>::Source as Merge>::Merged;
 
 /// Result of keyed aggregation combining key and aggregated value.
 ///
-/// Used by [`crate::keyed_sink::KeyedAggregationSink`] to emit aggregated entries
+/// Used by [`crate::keyed_sink::KeyedAggregator`] to emit aggregated entries
 /// with their associated keys.
 pub struct AggregationResult<K, Agg> {
     pub(crate) key: K,
@@ -343,8 +343,11 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
 ///
 /// It is not designed to be used when `Key` is present.
 ///
-/// For thread-safe aggregation or more advanced patterns, see [`crate::sink::MutexAggregator`]
-/// and [`crate::keyed_sink::KeyedAggregationSink`].
+/// For an aggregator that works with keys, see [`KeyedAggregator`].
+/// For sinks that compose with this to using on-drop-guards, see [`sink`].
+///
+/// [`sink`]: crate::sink
+/// [`KeyedAggregator`]: crate::keyed_sink::KeyedAggregator
 ///
 /// # Example
 ///
