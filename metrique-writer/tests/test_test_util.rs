@@ -42,17 +42,15 @@ fn test_sink_records_entries() {
 
     assert_eq!(handle.entries().len(), 1);
     // check coercions & auto equality & auto ord
-    assert_eq!(handle.entries()[0].metrics["a"].as_u64(), 1);
+    assert_eq!(handle.entries()[0].metrics["a"], 1);
     assert_eq!(handle.entries()[0].metrics["a"].as_bool(), true);
     assert_eq!(handle.entries()[0].metrics["a"], true);
-    assert_eq!(handle.entries()[0].metrics["a"], 1);
     assert!(handle.entries()[0].metrics["a"] > 0);
 
-    assert_eq!(handle.entries()[0].metrics["a"].as_f64(), 1.0);
     assert_eq!(handle.entries()[0].metrics["a"], 1.0);
     assert!(handle.entries()[0].metrics["a"] > 0.0);
-    assert_eq!(handle.entries()[0].metrics["b"].as_f64(), 2.5);
-    assert_eq!(handle.entries()[0].metrics["b"].as_u64(), 2);
+    assert_eq!(handle.entries()[0].metrics["b"], 2.5);
+    assert_eq!(handle.entries()[0].metrics["b"], 2);
     assert_eq!(handle.entries()[0].values["c"], "label");
 }
 

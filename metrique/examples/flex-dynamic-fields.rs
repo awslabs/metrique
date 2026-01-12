@@ -314,6 +314,6 @@ mod tests {
         // Check dynamic fields
         assert_eq!(entry.metrics["custom_metric"], 42);
         assert_eq!(entry.values["user_id"], "user123");
-        assert_eq!(entry.metrics["computed_value"].as_f64(), 3.14);
+        assert_eq!(entry.metrics["computed_value"], 3.14);
     }
 }
