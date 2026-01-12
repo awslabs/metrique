@@ -32,7 +32,7 @@ impl ApiCall {
 #[derive(Clone, Hash, PartialEq, Eq)]
 #[metrics(emf::dimension_sets = [["endpoint", "status_code"]])]
 pub struct ApiCallKey<'a> {
-    endpoint: Cow<'a, String>,
+    endpoint: Cow<'a, str>,
     #[metrics(format = ToString)]
     status_code: Cow<'a, usize>,
 }

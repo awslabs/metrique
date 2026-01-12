@@ -12,7 +12,7 @@ Consider aggregation when:
 
 - **High-frequency, low-level events**: TLS handshakes, storage operations, or other infrastructure-level metrics
 - **Fan-out operations**: A single unit of work spawns multiple sub-operations you want to aggregate
-- **Background processing**: Queue workers that generate one metric per processed item
+- **Background processing**: Queue workers that generate one metric per processed item at an extremely high rate
 
 **Most request/response services should use sampling instead of aggregation.**
 
@@ -273,7 +273,7 @@ See the `split` example for a complete working implementation.
 
 ## Histograms
 
-Histograms collect observations into distributions, allowing you to track percentiles, min, max, and other statistical properties.
+When aggregating data, a Histogram is often the best way to do it. Using fields like a `gauge` often lose critical information, but a histogram can capture a much richer picture. Histograms collect observations into distributions, allowing you to track percentiles, min, max, and other statistical properties. Histograms can be used with `#[aggregate]` or embedded directly in your metrics.
 
 ### Basic Usage
 
