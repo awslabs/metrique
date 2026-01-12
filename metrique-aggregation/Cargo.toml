@@ -29,6 +29,7 @@ rstest = "0.23"
 trybuild.workspace = true
 rustversion.workspace = true
 tokio = { version = "1", features = ["full"] }
+uuid = { version = "1", features = ["v4"] }
 
 [[bench]]
 name = "aggregation"
