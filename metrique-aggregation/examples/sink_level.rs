@@ -10,6 +10,7 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use metrique_aggregation::value::{MergeOptions, Sum};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
 use metrique_writer::unit::Millisecond;
 use std::time::Duration;
@@ -25,14 +26,15 @@ struct QueueItem {
     #[metrics(format = ToString)]
     priority: u8,
 
-    #[aggregate(strategy = metrique_aggregation::value::Sum)]
+    #[aggregate(strategy = Sum)]
     items_processed: u64,
 
-    #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+    // NOTE: in the future, I think we can have the proc macro auto-add this for Option<T>
+    #[aggregate(strategy = MergeOptions<Histogram<Duration, SortAndMerge>>)]
     #[metrics(unit = Millisecond)]
-    processing_time: Duration,
+    processing_time: Option<Duration>,
 
-    #[aggregate(strategy = metrique_aggregation::value::Sum)]
+    #[aggregate(strategy = Sum)]
     processing_errors: u64,
 }
 
@@ -92,7 +94,7 @@ async fn queue_processor(mut queue: mpsc::Receiver<Item>) {
             item_type: item.item_type.clone(),
             priority: item.priority,
             items_processed: 1,
-            processing_time,
+            processing_time: Some(processing_time),
             processing_errors: if result.is_err() { 1 } else { 0 },
         }
         .close_and_merge(worker_sink.clone());
@@ -111,12 +113,9 @@ async fn main() {
 
     // Attach global EMF sink
     let _handle = ServiceMetrics::attach_to_stream(
-        Emf::builder(
-            "QueueProcessorMetrics".to_string(),
-            vec![vec!["item_type".to_string(), "priority".to_string()]],
-        )
-        .build()
-        .output_to_makewriter(|| std::io::stdout().lock()),
+        Emf::builder("QueueProcessorMetrics".to_string(), vec![vec![]])
+            .build()
+            .output_to_makewriter(|| std::io::stdout().lock()),
     );
 
     let (tx, rx) = mpsc::channel(100);

@@ -59,12 +59,9 @@ async fn call_backend(shard: &str, _query: &str) -> Result<String, String> {
 
 async fn execute_distributed_query(query: &str) {
     // Create EMF sink that outputs to stdout
-    let emf_stream = Emf::builder(
-        "DistributedQueryMetrics".to_string(),
-        vec![vec!["QueryId".to_string()]],
-    )
-    .build()
-    .output_to_makewriter(|| std::io::stdout().lock());
+    let emf_stream = Emf::builder("DistributedQueryMetrics".to_string(), vec![vec![]])
+        .build()
+        .output_to_makewriter(|| std::io::stdout().lock());
 
     let emf: DefaultSink = FlushImmediatelyBuilder::new().build_boxed(emf_stream);
 
