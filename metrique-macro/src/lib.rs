@@ -519,7 +519,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram, Aggregate};
+/// use metrique_aggregation::{aggregate, histogram::Histogram, aggregator::Aggregate};
 /// use std::time::Duration;
 ///
 /// #[aggregate]
