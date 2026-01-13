@@ -9,7 +9,7 @@ use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
-use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use std::time::Duration;
 use tokio::sync::mpsc;
 

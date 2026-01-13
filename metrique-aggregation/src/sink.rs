@@ -78,7 +78,9 @@ where
 ///
 /// ```
 /// use metrique::{unit_of_work::metrics, timers::Timer};
-/// use metrique_aggregation::{aggregate, sink::DropGuard, value::Sum, KeyedAggregator, MutexSink};
+/// use metrique_aggregation::{aggregate, sink::DropGuard, value::Sum};
+/// use metrique_aggregation::aggregator::KeyedAggregator;
+/// use metrique_aggregation::sink::MutexSink;
 /// # use metrique::test_util::test_entry_sink;
 /// #[aggregate]
 /// #[metrics]

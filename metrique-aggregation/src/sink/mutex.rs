@@ -13,7 +13,9 @@ use crate::traits::{AggregateSink, RootSink};
 ///
 /// # Example
 /// ```
-/// use metrique_aggregation::{aggregate, MutexSink, Aggregate, value::Sum};
+/// use metrique_aggregation::{aggregate, value::Sum};
+/// use metrique_aggregation::aggregator::Aggregate;
+/// use metrique_aggregation::sink::MutexSink;
 /// use metrique::unit_of_work::metrics;
 ///
 /// #[aggregate]

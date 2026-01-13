@@ -22,7 +22,7 @@ Use the [`aggregate`] macro to define aggregatable metrics:
 use metrique::{unit_of_work::metrics, ServiceMetrics, unit::Millisecond};
 use metrique::writer::GlobalEntrySink;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
-use metrique_aggregation::Aggregate;
+use metrique_aggregation::aggregator::Aggregate;
 use std::time::Duration;
 
 #[aggregate]
@@ -112,7 +112,7 @@ Use [`Aggregate<T>`] as a field in your metrics struct when a single unit of wor
 ```rust
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
-use metrique_aggregation::Aggregate;
+use metrique_aggregation::aggregator::Aggregate;
 use std::time::Duration;
 
 #[aggregate]
@@ -175,7 +175,9 @@ Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric e
 use metrique::unit_of_work::metrics;
 use metrique::timers::Timer;
 use metrique_aggregation::sink::DropGuard;
-use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum, KeyedAggregator, WorkerSink};
+use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
+use metrique_aggregation::aggregator::KeyedAggregator;
+use metrique_aggregation::sink::WorkerSink;
 use std::time::Duration;
 
 #[aggregate]
@@ -232,8 +234,8 @@ async fn setup_queue_processor() {
 Use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled raw events. Split aggregation can also allow aggregating the same metric by multiple different sets of dimensions (see the `split` example).
 
 ```rust
-use metrique_aggregation::{KeyedAggregator, WorkerSink};
-use metrique_aggregation::sink::{SplitSink, EntrySinkAsAggregateSink};
+use metrique_aggregation::aggregator::KeyedAggregator;
+use metrique_aggregation::sink::{SplitSink, EntrySinkAsAggregateSink, WorkerSink};
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::{aggregate, histogram::Histogram};
 # use std::time::Duration;
