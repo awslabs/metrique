@@ -14,7 +14,7 @@ pub mod worker;
 pub use mutex::MutexSink;
 pub use worker::WorkerSink;
 
-/// Handle for metric that will be automatically merged into the target when dropped (for raw mode)
+/// Handle for metric that will be automatically merged into the target when dropped (for `#[aggregate(direct)]`)
 pub struct MergeOnDrop<T, Sink>
 where
     T: AggregateStrategy<Source = T>,
@@ -216,7 +216,7 @@ pub fn non_aggregate<T>(value: T) -> NonAggregatedSink<T> {
 ///
 /// Note: `flush` does NOT call the underlying flush method and is a no-op.
 ///
-/// This is because, you typically _don't_ want to "flush" the raw sink whenever you want to flush out a new aggregate.
+/// This is because, you typically _don't_ want to "flush" the non-aggregated sink whenever you want to flush out a new aggregate.
 pub struct NonAggregatedSink<T>(T);
 
 impl<T> NonAggregatedSink<T> {
@@ -238,6 +238,6 @@ where
 
 impl<T> FlushableSink for NonAggregatedSink<T> {
     fn flush(&mut self) {
-        // flushing a raw sink doesn't do anything
+        // flushing is a no-op
     }
 }

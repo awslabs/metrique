@@ -73,7 +73,7 @@ async fn test_split_sink() {
     // Create two output sinks
     let aggregated_sink_a = test_entry_sink();
     let aggregated_sink_b = test_entry_sink();
-    let raw_sink = test_entry_sink();
+    let non_aggregated_sink = test_entry_sink();
 
     // Aggregator A: standard ApiCall aggregation (by endpoint, histogram)
     let aggregator_a = KeyedAggregator::<ApiCall>::new(aggregated_sink_a.sink);
@@ -84,7 +84,7 @@ async fn test_split_sink() {
     // Combine them with SplitSink
     let split = Tee::new(
         aggregator_a,
-        Tee::new(aggregator_b, non_aggregate(raw_sink.sink)),
+        Tee::new(aggregator_b, non_aggregate(non_aggregated_sink.sink)),
     );
     let sink = WorkerSink::new(split, Duration::from_secs(10));
 
@@ -154,5 +154,5 @@ async fn test_split_sink() {
     check!(api2_over.metrics["latency"].distribution.len() == 1); // 2000ms
 
     // Check raw sink
-    check!(raw_sink.inspector.entries().len() == 4);
+    check!(non_aggregated_sink.inspector.entries().len() == 4);
 }

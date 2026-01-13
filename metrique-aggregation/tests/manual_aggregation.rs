@@ -38,7 +38,7 @@ pub struct ApiCallKey<'a> {
     status_code: Cow<'a, usize>,
 }
 
-// Implement Merge for ApiCall (raw mode - merge the user type directly)
+// Implement Merge for ApiCall (direct mode - merge the user type directly)
 impl Merge for ApiCall {
     type Merged = AggregatedApiCall;
     type MergeConfig = ();

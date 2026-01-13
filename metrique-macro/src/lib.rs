@@ -417,7 +417,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// | Attribute | Type | Description | Example |
 /// |-----------|------|-------------|---------|
-/// | `direct` | Flag | Aggregates on the raw struct instead of the closed entry (default: aggregates on closed entry) | `#[aggregate(direct)]` |
+/// | `direct` | Flag | Aggregates on the struct itself instead of the closed entry (default: aggregates on closed entry) | `#[aggregate(direct)]` |
 ///
 /// # Field Attributes
 ///
@@ -452,7 +452,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// ## Direct Mode
 ///
-/// Use `#[aggregate(direct)]` to aggregate on the raw struct before closing. In direct mode:
+/// Use `#[aggregate(direct)]` to aggregate on the struct iteslf. In direct mode:
 /// - Aggregation strategies receive the raw field type before `CloseValue` is applied
 /// - Use this if the base struct is not also a metric
 ///
