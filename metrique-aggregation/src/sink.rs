@@ -171,7 +171,7 @@ where
 /// the source type must implement `MergeRef`.
 ///
 /// - You can chain more impls by nesting SplitSink.
-/// - You can write entries to an `EntrySink` (unaggregated) by wrapping an entry sink in [`EntrySinkAsAggregatorSink`]
+/// - You can write entries to an `EntrySink` (unaggregated) by wrapping an entry sink in [`EntrySinkAsAggregateSink`]
 pub struct SplitSink<A, B> {
     sink_a: A,
     sink_b: B,
