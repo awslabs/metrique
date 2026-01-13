@@ -41,7 +41,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
         let name = field
             .ident
             .clone()
-            .ok_or_else(|| Error::new(field.span(), "aggregate only supports named fields"))?;
+            .expect("unreachable: aggregate only supports named fields, checked above.");
 
         let mut strategy = None;
         let mut is_key = false;
@@ -116,7 +116,7 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
         };
         quote! {
             #(#metrics_attrs)*
-            #name: <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
+            #name: <#strategy as ::metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::Aggregated
         }
     }).collect::<Vec<_>>();
 
@@ -201,13 +201,13 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
         quote_spanned! { field_span=>
             #expect_deprecated
-            <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, #entry_value);
+            <#strategy as ::metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, #entry_value);
         }
     }).collect::<Vec<_>>();
 
     // Generate Merge impl
     let merge_impl = quote! {
-        impl metrique_aggregation::__macro_plumbing::Merge for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::Merge for #source_ty {
             type Merged = #aggregated_name;
             type MergeConfig = ();
 
@@ -226,7 +226,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
         (
             quote! {},
             quote! {},
-            quote! { metrique_aggregation::__macro_plumbing::NoKey },
+            quote! { ::metrique_aggregation::__macro_plumbing::NoKey },
         )
     } else {
         let key_field_defs = key_fields.iter().map(|f| {
@@ -265,7 +265,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
         let key_impl = quote! {
             #vis struct #key_extractor_name;
 
-            impl metrique_aggregation::__macro_plumbing::Key<#source_ty> for #key_extractor_name {
+            impl ::metrique_aggregation::__macro_plumbing::Key<#source_ty> for #key_extractor_name {
                 type Key<'a> = #key_name<'a>;
 
                 fn from_source(source: &#source_ty) -> Self::Key<'_> {
@@ -292,7 +292,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     // Generate AggregateStrategy impl
     let strategy_impl = quote! {
-        impl metrique_aggregation::__macro_plumbing::AggregateStrategy for #original_name {
+        impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for #original_name {
             type Source = #source_ty;
             type Key = #strategy_key_type;
         }
@@ -351,19 +351,19 @@ pub(crate) fn generate_merge_ref_impl(
             // Use clone for this field
             quote_spanned! { field_span=>
                 #expect_deprecated
-                <#strategy as metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, input.#name.clone());
+                <#strategy as ::metrique_aggregation::__macro_plumbing::AggregateValue<#value_ty>>::insert(&mut accum.#name, input.#name.clone());
             }
         } else {
             // Use CopyWrapper for Copy types
             quote_spanned! { field_span=>
                 #expect_deprecated
-                <metrique_aggregation::__macro_plumbing::CopyWrapper<#strategy> as metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::insert(&mut accum.#name, &input.#name);
+                <::metrique_aggregation::__macro_plumbing::CopyWrapper<#strategy> as ::metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::insert(&mut accum.#name, &input.#name);
             }
         }
     }).collect::<Vec<_>>();
 
     let merge_ref_impl = quote! {
-        impl metrique_aggregation::__macro_plumbing::MergeRef for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #source_ty {
             fn merge_ref(accum: &mut Self::Merged, input: &Self) {
                 #(#merge_ref_calls)*
             }
@@ -382,11 +382,11 @@ pub(crate) fn generate_merge_on_drop_methods(input: &DeriveInput, entry_mode: bo
         Ok(quote! {
             impl #impl_generics #original_name #ty_generics #where_clause {
                 /// Create a guard that will close and merge this value on drop
-                pub fn close_and_merge<Sink: metrique_aggregation::traits::RootSink<<Self as metrique::CloseValue>::Closed>>(
+                pub fn close_and_merge<Sink: ::metrique_aggregation::traits::RootSink<<Self as metrique::CloseValue>::Closed>>(
                     self,
                     sink: Sink,
-                ) -> metrique_aggregation::sink::CloseAndMergeOnDrop<Self, Sink> {
-                    metrique_aggregation::sink::CloseAndMergeOnDrop::new(self, sink)
+                ) -> ::metrique_aggregation::sink::CloseAndMergeOnDrop<Self, Sink> {
+                    ::metrique_aggregation::sink::CloseAndMergeOnDrop::new(self, sink)
                 }
             }
         })
@@ -395,11 +395,11 @@ pub(crate) fn generate_merge_on_drop_methods(input: &DeriveInput, entry_mode: bo
         Ok(quote! {
             impl #impl_generics #original_name #ty_generics #where_clause {
                 /// Create a guard that will merge this value on drop
-                pub fn merge<Sink: metrique_aggregation::traits::RootSink<Self>>(
+                pub fn merge<Sink: ::metrique_aggregation::traits::RootSink<Self>>(
                     self,
                     sink: Sink,
-                ) -> metrique_aggregation::sink::MergeOnDrop<Self, Sink> {
-                    metrique_aggregation::sink::MergeOnDrop::new(self, sink)
+                ) -> ::metrique_aggregation::sink::MergeOnDrop<Self, Sink> {
+                    ::metrique_aggregation::sink::MergeOnDrop::new(self, sink)
                 }
             }
         })

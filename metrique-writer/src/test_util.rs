@@ -187,7 +187,7 @@ impl Metric {
                 Observation::Unsigned(_) => 1,
                 Observation::Floating(_) => 1,
                 Observation::Repeated { occurrences, .. } => *occurrences,
-                _ => unreachable!(),
+                _ => unreachable!("Observation is non_exhaustive"),
             })
             .sum()
     }

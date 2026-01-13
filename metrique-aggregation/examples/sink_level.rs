@@ -71,18 +71,13 @@ async fn queue_processor(mut queue: mpsc::Receiver<Item>) {
 
     println!("Queue processor started. Flush interval: 500ms\n");
 
-    let mut total_processed = 0;
-
     while let Some(item) = queue.recv().await {
         let start = std::time::Instant::now();
         let result = process_item(&item).await;
         let processing_time = start.elapsed();
 
-        total_processed += 1;
-
         println!(
-            "Processed item #{}: type={}, priority={}, time={}ms, result={}",
-            total_processed,
+            "Processed item: type={}, priority={}, time={}ms, result={}",
             item.item_type,
             item.priority,
             processing_time.as_millis(),
