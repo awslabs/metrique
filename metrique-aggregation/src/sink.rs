@@ -170,12 +170,12 @@ where
 ///
 /// - You can chain more impls by nesting SplitSink.
 /// - You can write entries to an `EntrySink` (unaggregated) by wrapping an entry sink in [`NonAggregatedSink`]
-pub struct Tee<T, U> {
+pub struct TeeSink<T, U> {
     sink_by_ref: T,
     sink_owned: U,
 }
 
-impl<A, B> Tee<A, B> {
+impl<A, B> TeeSink<A, B> {
     /// Create a new split sink
     pub fn new(sink_a: A, sink_b: B) -> Self {
         Self {
@@ -185,7 +185,7 @@ impl<A, B> Tee<A, B> {
     }
 }
 
-impl<T, A, B> AggregateSink<T> for Tee<A, B>
+impl<T, A, B> AggregateSink<T> for TeeSink<A, B>
 where
     A: AggregateSinkRef<T>,
     B: AggregateSink<T>,
@@ -196,7 +196,7 @@ where
     }
 }
 
-impl<A, B> FlushableSink for Tee<A, B>
+impl<A, B> FlushableSink for TeeSink<A, B>
 where
     A: FlushableSink,
     B: FlushableSink,
@@ -212,7 +212,7 @@ pub fn non_aggregate<T>(value: T) -> NonAggregatedSink<T> {
     NonAggregatedSink::new(value)
 }
 
-/// NonAggregatedSink wraps an `EntrySink` (e.g. [`ServiceMetrics`] or another global entry sink) so it can be used
+/// NonAggregatedSink wraps an `EntrySink` (e.g. [`ServiceMetrics`](metrique::ServiceMetrics) or another global entry sink) so it can be used
 ///
 /// Note: `flush` does NOT call the underlying flush method and is a no-op.
 ///

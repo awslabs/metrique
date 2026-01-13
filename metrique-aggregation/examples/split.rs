@@ -10,7 +10,7 @@ use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::Entry;
 use metrique_aggregation::histogram::Histogram;
-use metrique_aggregation::sink::{Tee, non_aggregate};
+use metrique_aggregation::sink::{TeeSink, non_aggregate};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
@@ -111,10 +111,10 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
 
     // Create raw sink for individual events
 
-    // Combine them with SplitSink
-    let destination = Tee::new(
+    // Combine them with TeeSink
+    let destination = TeeSink::new(
         aggregate_by_endpoint,
-        Tee::new(
+        TeeSink::new(
             aggregate_by_endoint_errors,
             non_aggregate(SampledMetrics::sink()),
         ),

@@ -22,7 +22,7 @@ This crate includes several complete examples:
 
 - `embedded` - Distributed query with [`Aggregate<T>`]
 - `sink_level` - Queue processor with [`WorkerSink`] and [`KeyedAggregator`]
-- `split` - [`SplitSink`] pattern showing aggregation + raw events
+- `split` - [`TeeSink`] pattern showing aggregation + raw events
 - `histogram` - Histogram usage patterns and strategies
 
 Run examples with: `cargo run --example <name>`
@@ -194,7 +194,7 @@ The aggregation system is built on several traits that work together:
 
 - **[`AggregateValue<T>`]** - Defines how individual field values are merged (Sum, Histogram, KeepLast)
 - **[`Merge`]** - Defines how complete entries are merged together by consuming the source
-- **[`MergeRef`]** - Like [`Merge`], but merges by reference (enables [`SplitSink`] to send to multiple destinations)
+- **[`MergeRef`]** - Like [`Merge`], but merges by reference (enables [`TeeSink`] to send to multiple destinations)
 - **[`Key`]** - Extracts grouping keys from entries to determine which entries should be merged
 - **[`AggregateStrategy`]** - Ties together the source type, merge behavior, and key extraction
 - **[`AggregateSink<T>`]** - Destination that accepts and aggregates entries
@@ -211,11 +211,11 @@ For more detail, see the [`traits`] module.
 When you use `#[aggregate(ref)]`, it makes it possible to send the same record to multiple different sinks. This allows
 aggregation by different sets of keys as well as sending the individual, unaggregated record directly to a sink.
 
-You can use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled individual events. Split aggregation can also allow aggregating the same metric by multiple different sets of dimensions (see the `split` example).
+You can use [`TeeSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled individual events. Split aggregation can also allow aggregating the same metric by multiple different sets of dimensions (see the `split` example).
 
 ```rust
 use metrique_aggregation::aggregator::KeyedAggregator;
-use metrique_aggregation::sink::{SplitSink, NonAggregatedSink, WorkerSink};
+use metrique_aggregation::sink::{TeeSink, NonAggregatedSink, WorkerSink};
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::{aggregate, histogram::Histogram};
 # use std::time::Duration;
@@ -240,7 +240,7 @@ let aggregator = KeyedAggregator::<QueueItem>::new(aggregated_sink);
 let raw = NonAggregatedSink::new(raw_events_sink);
 
 // Combine them
-let split = SplitSink::new(aggregator, raw);
+let split = TeeSink::new(aggregator, raw);
 let sink = WorkerSink::new(split, Duration::from_secs(60));
 
 // Each entry goes to both sinks
@@ -342,7 +342,7 @@ See the `histogram` example for more usage patterns.
 [`MutexSink`]: crate::sink::MutexSink
 [`RootSink`]: crate::traits::RootSink
 [`KeyedAggregator`]: crate::aggregator::KeyedAggregator
-[`SplitSink`]: crate::sink::SplitSink
+[`TeeSink`]: crate::sink::TeeSink
 [`NonAggregatedSink`]: crate::sink::NonAggregatedSink
 [`Merge`]: crate::traits::Merge
 [`MergeRef`]: crate::traits::MergeRef

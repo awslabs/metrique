@@ -6,7 +6,7 @@ use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregator::KeyedAggregator;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::WorkerSink;
-use metrique_aggregation::sink::{Tee, non_aggregate};
+use metrique_aggregation::sink::{TeeSink, non_aggregate};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
@@ -82,9 +82,9 @@ async fn test_split_sink() {
     let aggregator_b = KeyedAggregator::<ByEndpointAndThreshold>::new(aggregated_sink_b.sink);
 
     // Combine them with SplitSink
-    let split = Tee::new(
+    let split = TeeSink::new(
         aggregator_a,
-        Tee::new(aggregator_b, non_aggregate(non_aggregated_sink.sink)),
+        TeeSink::new(aggregator_b, non_aggregate(non_aggregated_sink.sink)),
     );
     let sink = WorkerSink::new(split, Duration::from_secs(10));
 
