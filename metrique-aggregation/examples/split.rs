@@ -8,15 +8,16 @@ use metrique::ServiceMetrics;
 use metrique::emf::Emf;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
+use metrique::writer::Entry;
 use metrique_aggregation::histogram::Histogram;
-use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
+use metrique_aggregation::sink::{Tee, non_aggregate};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_writer::sample::SampledFormatExt;
-use metrique_writer::sink::FlushImmediatelyBuilder;
 use metrique_writer::value::ToString;
 use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use metrique_writer_core::global_entry_sink;
 use std::borrow::Cow;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -107,24 +108,18 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
 
     // Create a second sink with sampling for raw events
     // This demonstrates sending sampled raw events to a separate destination
-    let raw_stream = Emf::builder("RawRequestMetrics".to_string(), vec![vec![]])
-        .skip_all_validations(true)
-        .build()
-        .with_sampling()
-        .sample_by_fixed_fraction(0.5) // Sample 50% of raw events
-        .output_to_makewriter(|| std::io::stdout().lock());
-
-    let raw_sink = FlushImmediatelyBuilder::new().build_boxed(raw_stream);
 
     // Create raw sink for individual events
-    let raw = EntrySinkAsAggregateSink::new(raw_sink);
 
     // Combine them with SplitSink
-    let split = SplitSink::new(
+    let destination = Tee::new(
         aggregate_by_endpoint,
-        SplitSink::new(aggregate_by_endoint_errors, raw),
+        Tee::new(
+            aggregate_by_endoint_errors,
+            non_aggregate(SampledMetrics::sink()),
+        ),
     );
-    let sink = WorkerSink::new(split, Duration::from_millis(500));
+    let sink = WorkerSink::new(destination, Duration::from_millis(500));
 
     info!("API service started. Processing requests...\n");
 
@@ -148,18 +143,44 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
     sink.flush().await;
 }
 
+global_entry_sink! { SampledMetrics }
+
 #[tokio::main]
 async fn main() {
-    // Initialize tracing to see validation errors
     tracing_subscriber::fmt::init();
+
+    #[derive(Entry)]
+    struct Globals {
+        aggregated: &'static str,
+    }
 
     // Attach global EMF sink
     let _handle = ServiceMetrics::attach_to_stream(
-        Emf::builder("RequestMetrics".to_string(), vec![vec![]])
-            .skip_all_validations(true)
-            .build()
-            .output_to_makewriter(|| std::io::stdout().lock()),
+        Emf::builder(
+            "RequestMetrics".to_string(),
+            vec![vec!["aggregated".to_string()]],
+        )
+        .skip_all_validations(true)
+        .build()
+        .merge_globals(Globals { aggregated: "true" })
+        .output_to_makewriter(|| std::io::stdout().lock()),
     );
+
+    let sampled_stream = Emf::builder(
+        "SampledRequestMetrics".to_string(),
+        vec![vec!["aggregated".to_string()]],
+    )
+    .skip_all_validations(true)
+    .build()
+    .with_sampling()
+    .sample_by_fixed_fraction(0.01) // Sample 1% of raw events
+    .merge_globals(Globals {
+        aggregated: "false",
+    })
+    .output_to_makewriter(|| std::io::stdout().lock());
+
+    let _handle = SampledMetrics::attach_to_stream(sampled_stream);
+
     let (tx, rx) = mpsc::channel(100);
 
     // Spawn the API service
@@ -181,8 +202,10 @@ async fn main() {
         "DeleteUser",
     ];
 
-    for endpoint in requests {
-        tx.send(endpoint.to_string()).await.unwrap();
+    for i in 0..100 {
+        for endpoint in &requests {
+            tx.send(endpoint.to_string()).await.unwrap();
+        }
     }
 
     // Close the channel to signal completion

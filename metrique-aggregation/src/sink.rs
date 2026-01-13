@@ -106,8 +106,6 @@ where
 {
 }
 
-//pub type Guard<T: CloseValue> = CloseAndMergeOnDrop<T, impl RootSink<<T as CloseValue>::Closed>>;
-
 /// Handle for metric that will be closed and merged into the target when dropped (for entry mode)
 pub struct CloseAndMergeOnDrop<T, Sink>
 where
@@ -165,62 +163,70 @@ where
     }
 }
 
-/// Sends entries to two sinks by reference - useful for aggregating while also sending raw entries
+/// Duplicates entries to multiple sinks
 ///
-/// This requires sink A to implement `AggregateSinkRef<T>` which typically means
+/// This requires sink T to implement `AggregateSinkRef<T>` which typically means
 /// the source type must implement `MergeRef`.
 ///
 /// - You can chain more impls by nesting SplitSink.
-/// - You can write entries to an `EntrySink` (unaggregated) by wrapping an entry sink in [`EntrySinkAsAggregateSink`]
-pub struct SplitSink<A, B> {
-    sink_a: A,
-    sink_b: B,
+/// - You can write entries to an `EntrySink` (unaggregated) by wrapping an entry sink in [`NonAggregatedSink`]
+pub struct Tee<T, U> {
+    sink_by_ref: T,
+    sink_owned: U,
 }
 
-impl<A, B> SplitSink<A, B> {
+impl<A, B> Tee<A, B> {
     /// Create a new split sink
     pub fn new(sink_a: A, sink_b: B) -> Self {
-        Self { sink_a, sink_b }
+        Self {
+            sink_by_ref: sink_a,
+            sink_owned: sink_b,
+        }
     }
 }
 
-impl<T, A, B> AggregateSink<T> for SplitSink<A, B>
+impl<T, A, B> AggregateSink<T> for Tee<A, B>
 where
     A: AggregateSinkRef<T>,
     B: AggregateSink<T>,
 {
     fn merge(&mut self, entry: T) {
-        self.sink_a.merge_ref(&entry);
-        self.sink_b.merge(entry);
+        self.sink_by_ref.merge_ref(&entry);
+        self.sink_owned.merge(entry);
     }
 }
 
-impl<A, B> FlushableSink for SplitSink<A, B>
+impl<A, B> FlushableSink for Tee<A, B>
 where
     A: FlushableSink,
     B: FlushableSink,
 {
     fn flush(&mut self) {
-        self.sink_a.flush();
-        self.sink_b.flush();
+        self.sink_by_ref.flush();
+        self.sink_owned.flush();
     }
 }
 
-/// EntrySinkAsAggregateSink allows wraps an `EntrySink` so it can be used as an aggregate destination
+/// Converts an [`EntrySink`] like `ServiceMetrics` into something that implements `AggregateSink`
+pub fn non_aggregate<T>(value: T) -> NonAggregatedSink<T> {
+    NonAggregatedSink::new(value)
+}
+
+/// NonAggregatedSink wraps an `EntrySink` (e.g. [`ServiceMetrics`] or another global entry sink) so it can be used
 ///
 /// Note: `flush` does NOT call the underlying flush method and is a no-op.
 ///
 /// This is because, you typically _don't_ want to "flush" the raw sink whenever you want to flush out a new aggregate.
-pub struct EntrySinkAsAggregateSink<T>(T);
+pub struct NonAggregatedSink<T>(T);
 
-impl<T> EntrySinkAsAggregateSink<T> {
+impl<T> NonAggregatedSink<T> {
     /// Create a new wrapper from a given sink entry sink
     pub fn new(sink: T) -> Self {
         Self(sink)
     }
 }
 
-impl<E, T> AggregateSink<E> for EntrySinkAsAggregateSink<T>
+impl<E, T> AggregateSink<E> for NonAggregatedSink<T>
 where
     E: InflectableEntry,
     T: EntrySink<RootEntry<E>>,
@@ -230,7 +236,7 @@ where
     }
 }
 
-impl<T> FlushableSink for EntrySinkAsAggregateSink<T> {
+impl<T> FlushableSink for NonAggregatedSink<T> {
     fn flush(&mut self) {
         // flushing a raw sink doesn't do anything
     }

@@ -53,6 +53,7 @@ where
                         let _ = sender.send(());
                     }
                     Err(_) => {
+                        println!("flushing on timeout");
                         inner.flush();
                     }
                 }

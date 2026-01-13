@@ -490,7 +490,8 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// ## Built-in Strategies
 ///
 /// - **`Sum`** - Sums numeric values together
-/// - **`Histogram<T>`** - Collects values into a distribution
+/// - **`Histogram<T>`** - Collects values into a distribution.
+///      Histogram has a second generic that can control how values are stored. See the `Histogram` docs for more info.
 /// - **`KeepLast`** - Keeps the most recent value
 ///
 /// ```

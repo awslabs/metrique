@@ -209,13 +209,13 @@ For more detail, see the [`traits`] module.
 ## Split Aggregation
 
 When you use `#[aggregate(ref)]`, it makes it possible to send the same record to multiple different sinks. This allows
-aggregation by different sets of keys as well as sending the raw, unaggregated record directly to a sink.
+aggregation by different sets of keys as well as sending the individual, unaggregated record directly to a sink.
 
-You can use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled raw events. Split aggregation can also allow aggregating the same metric by multiple different sets of dimensions (see the `split` example).
+You can use [`SplitSink`] to aggregate the same data to multiple destinations - useful for combining precise aggregated metrics with sampled individual events. Split aggregation can also allow aggregating the same metric by multiple different sets of dimensions (see the `split` example).
 
 ```rust
 use metrique_aggregation::aggregator::KeyedAggregator;
-use metrique_aggregation::sink::{SplitSink, EntrySinkAsAggregateSink, WorkerSink};
+use metrique_aggregation::sink::{SplitSink, NonAggregatedSink, WorkerSink};
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::{aggregate, histogram::Histogram};
 # use std::time::Duration;
@@ -237,7 +237,7 @@ struct QueueItem {
 let aggregator = KeyedAggregator::<QueueItem>::new(aggregated_sink);
 
 // Raw sink for sampling individual events
-let raw = EntrySinkAsAggregateSink::new(raw_events_sink);
+let raw = NonAggregatedSink::new(raw_events_sink);
 
 // Combine them
 let split = SplitSink::new(aggregator, raw);
@@ -296,14 +296,14 @@ Histograms support different bucketing strategies:
 
 - **[`ExponentialAggregationStrategy`]** (default) - Exponential bucketing with ~6.25% error, memory efficient
 - **[`SortAndMerge`]** - Stores all observations exactly for perfect precision
-- **[`AtomicExponentialAggregationStrategy`]** - Thread-safe exponential bucketing for [`SharedHistogram`]
+- **[`AtomicExponentialAggregationStrategy`]** - Thread-safe exponential bucketing for [`SharedHistogram`]. This is the default strategy for [`SharedHistogram`].
 
 ```rust
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use std::time::Duration;
 
 # fn example() {
-// Use SortAndMerge for exact precision
+// Use SortAndMerge to preserve all observations precisely.
 let histogram: Histogram<Duration, SortAndMerge<64>> = Histogram::default();
 # }
 # fn main() {}
@@ -343,7 +343,7 @@ See the `histogram` example for more usage patterns.
 [`RootSink`]: crate::traits::RootSink
 [`KeyedAggregator`]: crate::aggregator::KeyedAggregator
 [`SplitSink`]: crate::sink::SplitSink
-[`EntrySinkAsAggregateSink`]: crate::sink::EntrySinkAsAggregateSink
+[`NonAggregatedSink`]: crate::sink::NonAggregatedSink
 [`Merge`]: crate::traits::Merge
 [`MergeRef`]: crate::traits::MergeRef
 [`Key`]: crate::traits::Key
