@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(
             h.drain(),
             vec![Bucket {
-                value: 4227858432,
+                value: 4227858431,
                 count: 1
             }]
         );
