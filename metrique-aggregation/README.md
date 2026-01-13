@@ -143,7 +143,12 @@ async fn setup_queue_processor() {
 
 **Output**: Multiple aggregated entries like `ItemType: "email", Priority: 1, ItemsProcessed: 1247, ProcessingTime: [histogram]`
 
-[`WorkerSink`] runs a background thread that flushes periodically. See the `sink_level` example for a complete working implementation.
+**Choosing between WorkerSink and MutexSink:**
+
+- **[`MutexSink`]** - Use when you have inputs from a smaller number of threads. Great for supporting `close_and_merge` with embedded metrics. Currently does not support automatic flushing.
+- **[`WorkerSink`]** - Use for sink-level aggregation from many producers across many threads. The channel-based design reduces contention and provides configurable flush timing.
+
+See the `sink_level` example for a complete working implementation.
 
 # Core Concepts
 
