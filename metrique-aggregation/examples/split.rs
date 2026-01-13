@@ -119,7 +119,7 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
             non_aggregate(SampledMetrics::sink()),
         ),
     );
-    let sink = WorkerSink::new(destination, Duration::from_millis(500));
+    let sink = WorkerSink::new(destination, Duration::from_millis(5000));
 
     info!("API service started. Processing requests...\n");
 
@@ -202,7 +202,7 @@ async fn main() {
         "DeleteUser",
     ];
 
-    for i in 0..100 {
+    for _i in 0..100 {
         for endpoint in &requests {
             tx.send(endpoint.to_string()).await.unwrap();
         }

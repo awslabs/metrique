@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
     sync::mpsc::{Sender, channel},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
 
@@ -43,18 +43,25 @@ where
         let (sender, receiver) = channel();
 
         let handle = thread::spawn(move || {
+            let mut last_flush = Instant::now();
             loop {
-                match receiver.recv_timeout(flush_interval) {
+                let time_until_flush = flush_interval.saturating_sub(last_flush.elapsed());
+                match receiver.recv_timeout(time_until_flush) {
                     Ok(QueueMessage::Entry(entry)) => {
                         inner.merge(entry);
+                        if last_flush.elapsed() >= flush_interval {
+                            inner.flush();
+                            last_flush = Instant::now();
+                        }
                     }
                     Ok(QueueMessage::Flush(sender)) => {
                         inner.flush();
+                        last_flush = Instant::now();
                         let _ = sender.send(());
                     }
                     Err(_) => {
-                        println!("flushing on timeout");
                         inner.flush();
+                        last_flush = Instant::now();
                     }
                 }
             }
