@@ -18,11 +18,11 @@ metrique supports both embedded aggregation (within a larger unit of work) as we
 
 Use the [`aggregate`] macro to define aggregatable metrics:
 
-```rust
-use metrique::unit_of_work::metrics;
+```rust,no_run
+use metrique::{unit_of_work::metrics, ServiceMetrics, unit::Millisecond};
+use metrique::writer::GlobalEntrySink;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
 use metrique_aggregation::Aggregate;
-use metrique_writer::unit::Millisecond;
 use std::time::Duration;
 
 #[aggregate]
@@ -47,7 +47,7 @@ struct RequestMetrics {
 let mut metrics = RequestMetrics {
     request_id: "query-123".to_string(),
     api_calls: Aggregate::default(),
-};
+}.append_on_drop(ServiceMetrics::sink());
 
 // Add multiple observations
 metrics.api_calls.insert(ApiCall {
@@ -194,7 +194,11 @@ struct QueueItem {
     processing_time: Timer,
 }
 
-async fn process_item(_item: &str, entry: impl DropGuard<QueueItem>) {}
+async fn process_item(_item: &str, mut entry: impl DropGuard<QueueItem>) {
+    // when `entry` is dropped, it will be added to the sink.
+    // the timer will stop when it is dropped.
+    entry.items_processed += 1;
+}
 # struct Item { type_name: String, priority: u8 }
 # async fn get_item() -> Option<Item> { None }
 async fn setup_queue_processor() {

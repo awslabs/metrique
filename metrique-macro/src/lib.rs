@@ -411,6 +411,8 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// - An `Aggregated{StructName}` struct with aggregated field types
 /// - An `AggregateEntry` trait implementation for merging observations
 ///
+/// For renaming fields and adding unit, `#[aggregate]` relies on the `#[metrics]` macro.
+///
 /// # Container Attributes
 ///
 /// | Attribute | Type | Description | Example |

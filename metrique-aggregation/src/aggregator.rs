@@ -1,6 +1,8 @@
 //! Aggregation structures for collecting and merging entries
 
+use hashbrown::hash_map::RawEntryMut;
 use metrique_core::CloseValue;
+use std::hash::BuildHasher;
 use std::marker::PhantomData;
 
 use metrique::writer::BoxEntrySink;
@@ -11,7 +13,9 @@ use crate::traits::{
 };
 use crate::value::NoKey;
 
-/// The Entry type you have when merging entries
+/// Entry type emitted by `KeyedAggregator`
+///
+/// It merges together the Key entry and the aggregated entry into a single row
 pub type AggregatedEntry<T> = crate::traits::AggregationResult<
     <<<T as AggregateStrategy>::Key as Key<<T as AggregateStrategy>::Source>>::Key<'static> as CloseValue>::Closed,
     <<<T as AggregateStrategy>::Source as Merge>::Merged as CloseValue>::Closed,
@@ -20,6 +24,9 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
 /// Keyed aggregator that uses a HashMap to aggregate entries by key
 ///
 /// This is the core aggregation logic without any threading or channel concerns.
+///
+/// Generally, this will be used with a [`RootSink`] that handles threading as unlike [`MutexAggregator`],
+/// this cannot currently be embedded into a parent `#[metrics]` entry.
 pub struct KeyedAggregator<T: AggregateStrategy, Sink = BoxEntrySink> {
     storage: hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>,
     sink: Sink,
@@ -41,9 +48,6 @@ where
         }
     }
 }
-
-use hashbrown::hash_map::RawEntryMut;
-use std::hash::BuildHasher;
 
 impl<T, Sink> KeyedAggregator<T, Sink>
 where
@@ -201,6 +205,17 @@ where
     }
 }
 
+impl<T: AggregateStrategy> Default for Aggregate<T>
+where
+    <T::Source as Merge>::Merged: Default,
+{
+    fn default() -> Self {
+        Self {
+            aggregated: <T::Source as Merge>::Merged::default(),
+        }
+    }
+}
+
 /// Aggregates values without closing them (for raw mode)
 pub struct AggregateRaw<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
@@ -240,16 +255,5 @@ impl<T: AggregateStrategy> AggregateRaw<T> {
     /// Creates an `AggregateRaw` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
         Self { aggregated: value }
-    }
-}
-
-impl<T: AggregateStrategy> Default for Aggregate<T>
-where
-    <T::Source as Merge>::Merged: Default,
-{
-    fn default() -> Self {
-        Self {
-            aggregated: <T::Source as Merge>::Merged::default(),
-        }
     }
 }
