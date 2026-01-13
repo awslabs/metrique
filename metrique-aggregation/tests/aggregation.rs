@@ -227,7 +227,7 @@ fn last_value_wins() {
     #[aggregate]
     #[metrics]
     pub struct MetricWithOwnedValue {
-        #[aggregate(strategy = MergeOptions<KeepLast>)]
+        #[aggregate(strategy = KeepLast)]
         value: Option<String>,
     }
 }
