@@ -112,7 +112,7 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
         .build()
         .with_sampling()
         .sample_by_fixed_fraction(0.5) // Sample 50% of raw events
-        .output_to_makewriter(|| std::io::stderr().lock());
+        .output_to_makewriter(|| std::io::stdout().lock());
 
     let raw_sink = FlushImmediatelyBuilder::new().build_boxed(raw_stream);
 
