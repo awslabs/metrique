@@ -276,7 +276,7 @@ See the `split` example for a complete working implementation.
 
 ## Histograms
 
-When aggregating data, a Histogram is often the best way to do it. Using fields like a `gauge` often lose critical information, but a histogram can capture a much richer picture. Histograms collect observations into distributions, allowing you to track percentiles, min, max, and other statistical properties. Histograms can be used with `#[aggregate]` or embedded directly in your metrics.
+When aggregating data, a Histogram is often the best way to do it. When you flatten state down into a "gauge" field, such as with `KeepLast`, you often lose critical information, but a histogram can capture a much richer picture. Histograms collect observations into distributions, allowing you to track percentiles, min, max, and other statistical properties. Histograms can be used with `#[aggregate]` or embedded directly in your metrics.
 
 ### Basic Usage
 
@@ -360,8 +360,7 @@ The [`aggregate`] macro generates implementations of these traits for your type.
 
 - **Request/response services**: Use sampling instead
 - **Low-frequency events**: Aggregation overhead isn't worth it
-- **Need individual event details**: Aggregation loses individual event context
-- **Simple counting**: Basic counters don't need aggregation complexity
+- **Need individual event details for EVERY event**: Aggregation loses individual event context (but you can combine aggregation with sampling)
 
 ## Examples
 

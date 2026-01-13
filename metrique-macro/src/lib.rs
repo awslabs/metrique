@@ -489,6 +489,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// - **`Sum`** - Sums numeric values together
 /// - **`Histogram<T>`** - Collects values into a distribution
+/// - **`KeepLast`** - Keeps the most recent value
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;
@@ -508,7 +509,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// # Generated Types
 ///
-/// For a struct named `MyMetrics`, the macro generates:
+/// For a struct with `#[aggregate]`, the macro generates:
 /// - `AggregatedMyMetrics`: The aggregated struct where each field is replaced with its aggregated type
 /// - `impl AggregateEntry for MyMetrics`: Trait implementation for merging observations
 ///
