@@ -85,7 +85,7 @@ metrics.api_calls.insert(ApiCall {
 
 Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric entries where the entire entry is aggregated. Both can be combined with [`KeyedAggregator`] to perform aggregation against a set of keys or [`Aggregate`] when there are no keys. These sinks will be backed by a traditional sink that emits to EMF or other destination.
 
-[`WokerSink`] performs aggregation in a background thread that periodically flushes aggregated data to a backing sink. [`MutexSink`] is alternative sink that manages concurrency with a mutex instead of a channel.
+[`WorkerSink`] performs aggregation in a background thread that periodically flushes aggregated data to a backing sink. [`MutexSink`] is alternative sink that manages concurrency with a mutex instead of a channel.
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -340,6 +340,7 @@ See the `histogram` example for more usage patterns.
 [`Aggregate<T>`]: crate::aggregator::Aggregate
 [`WorkerSink`]: crate::sink::WorkerSink
 [`MutexSink`]: crate::sink::MutexSink
+[`RootSink`]: crate::traits::RootSink
 [`KeyedAggregator`]: crate::aggregator::KeyedAggregator
 [`SplitSink`]: crate::sink::SplitSink
 [`EntrySinkAsAggregateSink`]: crate::sink::EntrySinkAsAggregateSink

@@ -27,6 +27,9 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
 ///
 /// Generally, this will be used with a [`RootSink`] that handles threading as unlike [`MutexSink`],
 /// this cannot currently be embedded into a parent `#[metrics]` entry.
+///
+/// [`RootSink`]: crate::traits::RootSink
+/// [`MutexSink`]: crate::sink::MutexSink
 pub struct KeyedAggregator<T: AggregateStrategy, Sink = BoxEntrySink> {
     storage: hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>,
     sink: Sink,
