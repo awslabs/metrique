@@ -98,8 +98,13 @@ async fn make_api_call(endpoint: &str) -> Result<(), String> {
 async fn api_service(mut requests: mpsc::Receiver<String>) {
     // Create aggregator for precise metrics
     let aggregate_by_endpoint = KeyedAggregator::<ApiCall>::new(ServiceMetrics::sink());
+    // also aggregate by errors
     let aggregate_by_endoint_errors =
         KeyedAggregator::<AggregateByErrorsEndpoint>::new(ServiceMetrics::sink());
+    // finally, we will also send the raw records to the sink as well
+    // in a more real use case, you might send this to another destiation
+    // (e.g. one that had a different set of dimensions atached), used sampling
+    // or was a compressed record for later inspection (perhaps it doesn't go to your metrics store)
     let raw_sink = ServiceMetrics::sink();
 
     // Create raw sink for individual events
@@ -114,22 +119,10 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
 
     println!("API service started. Processing requests...\n");
 
-    let mut total_requests = 0;
-
     while let Some(endpoint) = requests.recv().await {
         let start = std::time::Instant::now();
         let result = make_api_call(&endpoint).await;
         let latency = start.elapsed();
-
-        total_requests += 1;
-
-        println!(
-            "Request #{}: {} - {}ms - {}",
-            total_requests,
-            endpoint,
-            latency.as_millis(),
-            if result.is_ok() { "OK" } else { "ERROR" }
-        );
 
         // Send to both aggregated and raw sinks
         ApiCall {
