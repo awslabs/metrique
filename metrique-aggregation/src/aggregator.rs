@@ -3,7 +3,7 @@
 use metrique_core::CloseValue;
 use std::marker::PhantomData;
 
-use metrique_writer::BoxEntrySink;
+use metrique::writer::BoxEntrySink;
 
 use crate::traits::{
     AggregateSink, AggregateSinkRef, AggregateStrategy, AggregateTy, FlushableSink, Key, KeyTy,

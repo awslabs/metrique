@@ -12,8 +12,8 @@ use metrique_aggregation::aggregator::Aggregate;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, histogram::SortAndMerge};
-use metrique_writer::BoxEntrySink;
-use metrique_writer::unit::Millisecond;
+use metrique::writer::BoxEntrySink;
+use metrique::unit::Millisecond;
 use std::time::Duration;
 
 #[aggregate]

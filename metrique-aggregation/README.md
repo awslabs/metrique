@@ -267,6 +267,7 @@ QueueItem {
 # }
 ```
 
+
 This gives you:
 - **Precise aggregated metrics**: Exact counts and distributions
 - **Raw event samples**: Individual events for tracing and debugging

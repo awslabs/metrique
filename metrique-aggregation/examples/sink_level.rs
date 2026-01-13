@@ -12,7 +12,7 @@ use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::value::{MergeOptions, Sum};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
-use metrique_writer::unit::Millisecond;
+use metrique::unit::Millisecond;
 use std::time::Duration;
 use tokio::sync::mpsc;
 

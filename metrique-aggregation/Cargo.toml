@@ -11,11 +11,11 @@ metrique = { path = "../metrique", version = "0.1"}
 metrique-writer = { path = "../metrique-writer", version = "0.1.13" }
 metrique-core = { path = "../metrique-core", version = "0.1.11" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.8"}
-smallvec = "1.13"
+smallvec.workspace = true
 histogram.workspace = true
-ordered-float = "5"
+ordered-float.workspace = true
 metrique-writer-core = { version = "0.1.8", path = "../metrique-writer-core" }
-tokio = { version = "1", default-features = false, features = ["sync"] }
+tokio = { workspace = true, default-features = false, features = ["sync"] }
 metrique-timesource = { version = "0.1.6", path = "../metrique-timesource", features = ["test-util"] }
 hashbrown.workspace = true
 
@@ -24,13 +24,13 @@ metrique = { path = "../metrique", features = ["test-util", "emf"] }
 divan = "0.1"
 rand.workspace = true
 rand_chacha.workspace = true
-assert2 = "0.3"
-rstest = "0.23"
+assert2.workspace = true
+rstest.workspace = true
 trybuild.workspace = true
 rustversion.workspace = true
-tokio = { version = "1", features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bench]]
 name = "aggregation"
