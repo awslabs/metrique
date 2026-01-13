@@ -71,7 +71,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             return Err(Error::new(
                 name.span(),
                 format!(
-                    "field '{}' requires #[aggregate(strategy = ...)] attribute",
+                    "field '{}' requires #[aggregate(strategy = ...)] attribute or if it is a key, use #[aggregate(key)]",
                     name
                 ),
             ));
