@@ -3,11 +3,11 @@
 use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
+use metrique_aggregation::aggregator::KeyedAggregator;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use metrique_aggregation::sink::WorkerSink;
 use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
-use metrique_aggregation::aggregator::KeyedAggregator;
-use metrique_aggregation::sink::WorkerSink;
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
 use std::time::Duration;

@@ -2,14 +2,14 @@
 // Aggregate doesn't do keyed aggregation, so types with keys should use KeyedAggregator instead.
 
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::{aggregate, Aggregate, value::Sum};
+use metrique_aggregation::{aggregate, aggregator::Aggregate, value::Sum};
 
 #[aggregate]
 #[metrics]
 struct WithKeys {
     #[aggregate(key)]
     item_type: String,
-    
+
     #[aggregate(strategy = Sum)]
     count: u64,
 }
