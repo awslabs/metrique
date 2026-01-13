@@ -180,6 +180,16 @@ impl<T: AggregateStrategy> Aggregate<T> {
         T::Source::merge(&mut self.aggregated, entry.close());
     }
 
+    /// Add a new entry to this Aggregate without closing
+    ///
+    /// This method works when using `#[aggregate(direct)]
+    pub fn insert_direct(&mut self, entry: T::Source)
+    where
+        T::Source: Merge,
+    {
+        T::Source::merge(&mut self.aggregated, entry);
+    }
+
     /// Creates an `Aggregate` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
         Self { aggregated: value }
@@ -213,47 +223,5 @@ where
         Self {
             aggregated: <T::Source as Merge>::Merged::default(),
         }
-    }
-}
-
-/// Aggregates values without closing them (for direct mode)
-pub struct AggregateDirect<T: AggregateStrategy> {
-    aggregated: <T::Source as Merge>::Merged,
-}
-
-impl<T: AggregateStrategy> Default for AggregateDirect<T>
-where
-    <T::Source as Merge>::Merged: Default,
-{
-    fn default() -> Self {
-        Self {
-            aggregated: Default::default(),
-        }
-    }
-}
-
-impl<T: AggregateStrategy> CloseValue for AggregateDirect<T>
-where
-    <T::Source as Merge>::Merged: CloseValue,
-{
-    type Closed = <<T::Source as Merge>::Merged as CloseValue>::Closed;
-
-    fn close(self) -> <Self as CloseValue>::Closed {
-        self.aggregated.close()
-    }
-}
-
-impl<T: AggregateStrategy> AggregateDirect<T> {
-    /// Add a new entry into this aggregate without closing
-    pub fn insert(&mut self, entry: T::Source)
-    where
-        T::Source: Merge,
-    {
-        T::Source::merge(&mut self.aggregated, entry);
-    }
-
-    /// Creates an `AggregateDirect` initialized to a given value.
-    pub fn new(value: <T::Source as Merge>::Merged) -> Self {
-        Self { aggregated: value }
     }
 }

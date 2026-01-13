@@ -5,7 +5,7 @@ use metrique::timers::Timer;
 use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
-use metrique_aggregation::aggregator::{Aggregate, AggregateDirect};
+use metrique_aggregation::aggregator::Aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::MutexSink;
 use metrique_aggregation::value::{KeepLast, MergeOptions, Sum};
@@ -88,77 +88,31 @@ fn test_macro_aggregation() {
 #[aggregate(direct)]
 #[metrics]
 #[derive(Clone)]
-struct ApiCallWithEndpoint {
-    #[aggregate(key)]
-    endpoint: String,
+struct ApiCallDirect {
     #[aggregate(strategy = Histogram<Duration>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
 }
 
 #[metrics(rename_all = "PascalCase")]
-struct RequestMetricsWithEndpoint {
+struct RequestMetricsDirect {
     #[metrics(flatten)]
-    api_calls: AggregateDirect<ApiCallWithEndpoint>,
-    request_id: String,
-}
-
-#[test]
-fn test_macro_aggregation_with_key() {
-    let mut metrics = RequestMetricsWithEndpoint {
-        api_calls: AggregateDirect::default(),
-        request_id: "5678".to_string(),
-    };
-
-    metrics.api_calls.insert(ApiCallWithEndpoint {
-        endpoint: "GetItem".to_string(),
-        latency: Duration::from_millis(50),
-    });
-    metrics.api_calls.insert(ApiCallWithEndpoint {
-        endpoint: "GetItem".to_string(),
-        latency: Duration::from_millis(75),
-    });
-
-    let entry = test_metric(metrics);
-    check!(entry.values["RequestId"] == "5678");
-}
-
-#[aggregate(direct)]
-#[metrics]
-#[derive(Clone)]
-struct ApiCallWithMultipleKeys {
-    #[aggregate(key)]
-    endpoint: String,
-    #[aggregate(key)]
-    region: String,
-    #[aggregate(strategy = Histogram<Duration>)]
-    #[metrics(unit = Millisecond)]
-    latency: Duration,
-}
-
-#[metrics(rename_all = "PascalCase")]
-struct RequestMetricsWithMultipleKeys {
-    #[metrics(flatten)]
-    api_calls: AggregateDirect<ApiCallWithMultipleKeys>,
+    api_calls: Aggregate<ApiCallDirect>,
     request_id: String,
 }
 
 #[test]
 fn test_macro_aggregation_with_multiple_keys() {
-    let mut metrics = RequestMetricsWithMultipleKeys {
-        api_calls: AggregateDirect::default(),
+    let mut metrics = RequestMetricsDirect {
+        api_calls: Aggregate::default(),
         request_id: "9999".to_string(),
     };
 
-    metrics.api_calls.insert(ApiCallWithMultipleKeys {
-        endpoint: "GetItem".to_string(),
-        region: "us-east-1".to_string(),
+    metrics.api_calls.insert_direct(ApiCallDirect {
         latency: Duration::from_millis(30),
     });
 
-    metrics.api_calls.insert(ApiCallWithMultipleKeys {
-        endpoint: "GetItem".to_string(),
-        region: "us-east-1".to_string(),
+    metrics.api_calls.insert_direct(ApiCallDirect {
         latency: Duration::from_millis(45),
     });
 
