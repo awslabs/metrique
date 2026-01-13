@@ -10,18 +10,18 @@ pub struct AggregatedApiCall {
     latency: <Histogram<
         Duration,
         SortAndMerge,
-    > as metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
     #[metrics(unit = Byte)]
-    response_size: <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
+    response_size: <Counter as ::metrique_aggregation::__macro_plumbing::AggregateValue<
         usize,
     >>::Aggregated,
     response_value: <MergeOptions<
         KeepLast,
-    > as metrique_aggregation::__macro_plumbing::AggregateValue<
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
         Option<String>,
     >>::Aggregated,
 }
-impl metrique_aggregation::__macro_plumbing::Merge for ApiCall {
+impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCall {
     type Merged = AggregatedApiCall;
     type MergeConfig = ();
     fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
@@ -31,22 +31,22 @@ impl metrique_aggregation::__macro_plumbing::Merge for ApiCall {
         <Histogram<
             Duration,
             SortAndMerge,
-        > as metrique_aggregation::__macro_plumbing::AggregateValue<
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
             Duration,
         >>::insert(&mut accum.latency, input.latency);
-        <Counter as metrique_aggregation::__macro_plumbing::AggregateValue<
+        <Counter as ::metrique_aggregation::__macro_plumbing::AggregateValue<
             usize,
         >>::insert(&mut accum.response_size, input.response_size);
         <MergeOptions<
             KeepLast,
-        > as metrique_aggregation::__macro_plumbing::AggregateValue<
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
             Option<String>,
         >>::insert(&mut accum.response_value, input.response_value);
     }
 }
-impl metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
     type Source = ApiCall;
-    type Key = metrique_aggregation::__macro_plumbing::NoKey;
+    type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
 }
 #[metrics]
 pub struct ApiCall {

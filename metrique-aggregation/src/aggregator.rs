@@ -216,12 +216,12 @@ where
     }
 }
 
-/// Aggregates values without closing them (for raw mode)
-pub struct AggregateRaw<T: AggregateStrategy> {
+/// Aggregates values without closing them (for direct mode)
+pub struct AggregateDirect<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
 }
 
-impl<T: AggregateStrategy> Default for AggregateRaw<T>
+impl<T: AggregateStrategy> Default for AggregateDirect<T>
 where
     <T::Source as Merge>::Merged: Default,
 {
@@ -232,7 +232,7 @@ where
     }
 }
 
-impl<T: AggregateStrategy> CloseValue for AggregateRaw<T>
+impl<T: AggregateStrategy> CloseValue for AggregateDirect<T>
 where
     <T::Source as Merge>::Merged: CloseValue,
 {
@@ -243,7 +243,7 @@ where
     }
 }
 
-impl<T: AggregateStrategy> AggregateRaw<T> {
+impl<T: AggregateStrategy> AggregateDirect<T> {
     /// Add a new entry into this aggregate without closing
     pub fn insert(&mut self, entry: T::Source)
     where
@@ -252,7 +252,7 @@ impl<T: AggregateStrategy> AggregateRaw<T> {
         T::Source::merge(&mut self.aggregated, entry);
     }
 
-    /// Creates an `AggregateRaw` initialized to a given value.
+    /// Creates an `AggregateDirect` initialized to a given value.
     pub fn new(value: <T::Source as Merge>::Merged) -> Self {
         Self { aggregated: value }
     }

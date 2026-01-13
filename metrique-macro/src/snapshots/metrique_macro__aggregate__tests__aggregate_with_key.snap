@@ -9,9 +9,9 @@ pub struct AggregatedApiCallWithOperation {
     #[metrics(unit = Millisecond)]
     latency: <Histogram<
         Duration,
-    > as metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
 }
-impl metrique_aggregation::__macro_plumbing::Merge for ApiCallWithOperation {
+impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCallWithOperation {
     type Merged = AggregatedApiCallWithOperation;
     type MergeConfig = ();
     fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
@@ -20,7 +20,7 @@ impl metrique_aggregation::__macro_plumbing::Merge for ApiCallWithOperation {
     fn merge(accum: &mut Self::Merged, input: Self) {
         <Histogram<
             Duration,
-        > as metrique_aggregation::__macro_plumbing::AggregateValue<
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
             Duration,
         >>::insert(&mut accum.latency, input.latency);
     }
@@ -31,7 +31,7 @@ pub struct ApiCallWithOperationKey<'a> {
     endpoint: ::std::borrow::Cow<'a, String>,
 }
 struct ApiCallWithOperationKeyExtractor;
-impl metrique_aggregation::__macro_plumbing::Key<ApiCallWithOperation>
+impl ::metrique_aggregation::__macro_plumbing::Key<ApiCallWithOperation>
 for ApiCallWithOperationKeyExtractor {
     type Key<'a> = ApiCallWithOperationKey<'a>;
     fn from_source(source: &ApiCallWithOperation) -> Self::Key<'_> {
@@ -52,7 +52,8 @@ for ApiCallWithOperationKeyExtractor {
         owned == borrowed
     }
 }
-impl metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCallWithOperation {
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy
+for ApiCallWithOperation {
     type Source = ApiCallWithOperation;
     type Key = ApiCallWithOperationKeyExtractor;
 }

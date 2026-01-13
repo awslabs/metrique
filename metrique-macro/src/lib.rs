@@ -417,7 +417,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// | Attribute | Type | Description | Example |
 /// |-----------|------|-------------|---------|
-/// | `raw` | Flag | Aggregates on the raw struct instead of the closed entry (default: aggregates on closed entry) | `#[aggregate(raw)]` |
+/// | `direct` | Flag | Aggregates on the raw struct instead of the closed entry (default: aggregates on closed entry) | `#[aggregate(direct)]` |
 ///
 /// # Field Attributes
 ///
@@ -450,9 +450,9 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// }
 /// ```
 ///
-/// ## Raw Mode
+/// ## Direct Mode
 ///
-/// Use `#[aggregate(raw)]` to aggregate on the raw struct before closing. In raw mode:
+/// Use `#[aggregate(direct)]` to aggregate on the raw struct before closing. In direct mode:
 /// - Aggregation strategies receive the raw field type before `CloseValue` is applied
 /// - Use this if the base struct is not also a metric
 ///
@@ -519,7 +519,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;
-/// use metrique_aggregation::{aggregate, histogram::Histogram, traits::Aggregate};
+/// use metrique_aggregation::{aggregate, histogram::Histogram, Aggregate};
 /// use std::time::Duration;
 ///
 /// #[aggregate]
@@ -542,7 +542,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let attr_str = attr.to_string();
-    let entry_mode = attr.is_empty() || attr_str.trim() != "raw";
+    let entry_mode = attr.is_empty() || attr_str.trim() != "direct";
     let enable_merge_ref = attr_str.contains("ref");
 
     let mut output = Ts2::new();

@@ -5,7 +5,7 @@ use metrique::timers::Timer;
 use metrique::unit::{Byte, Microsecond, Millisecond};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
-use metrique_aggregation::aggregator::{Aggregate, AggregateRaw};
+use metrique_aggregation::aggregator::{Aggregate, AggregateDirect};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::MutexSink;
 use metrique_aggregation::value::{KeepLast, MergeOptions, Sum};
@@ -85,7 +85,7 @@ fn test_macro_aggregation() {
     check!(entry.values["RequestId"] == "1234");
 }
 
-#[aggregate(raw)]
+#[aggregate(direct)]
 #[metrics]
 #[derive(Clone)]
 struct ApiCallWithEndpoint {
@@ -99,14 +99,14 @@ struct ApiCallWithEndpoint {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithEndpoint {
     #[metrics(flatten)]
-    api_calls: AggregateRaw<ApiCallWithEndpoint>,
+    api_calls: AggregateDirect<ApiCallWithEndpoint>,
     request_id: String,
 }
 
 #[test]
 fn test_macro_aggregation_with_key() {
     let mut metrics = RequestMetricsWithEndpoint {
-        api_calls: AggregateRaw::default(),
+        api_calls: AggregateDirect::default(),
         request_id: "5678".to_string(),
     };
 
@@ -123,7 +123,7 @@ fn test_macro_aggregation_with_key() {
     check!(entry.values["RequestId"] == "5678");
 }
 
-#[aggregate(raw)]
+#[aggregate(direct)]
 #[metrics]
 #[derive(Clone)]
 struct ApiCallWithMultipleKeys {
@@ -139,14 +139,14 @@ struct ApiCallWithMultipleKeys {
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetricsWithMultipleKeys {
     #[metrics(flatten)]
-    api_calls: AggregateRaw<ApiCallWithMultipleKeys>,
+    api_calls: AggregateDirect<ApiCallWithMultipleKeys>,
     request_id: String,
 }
 
 #[test]
 fn test_macro_aggregation_with_multiple_keys() {
     let mut metrics = RequestMetricsWithMultipleKeys {
-        api_calls: AggregateRaw::default(),
+        api_calls: AggregateDirect::default(),
         request_id: "9999".to_string(),
     };
 
