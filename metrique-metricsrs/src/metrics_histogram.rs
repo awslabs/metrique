@@ -227,12 +227,10 @@ mod tests {
         let h = Histogram::new();
         (&h as &dyn HistogramFn).record(f64::MAX);
         // large values are truncated to u32::MAX
-        assert_eq!(
-            h.drain(),
-            vec![Bucket {
-                value: 4227858432,
-                count: 1
-            }]
+        let value = h.drain()[0].value;
+        assert!(
+            value == 4227858431 || value == 4227858432,
+            "upstream libraray changed. value should be one of 4227858431 or 4227858432, was {value}"
         );
     }
 }
