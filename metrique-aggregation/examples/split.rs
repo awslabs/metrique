@@ -5,11 +5,11 @@
 //! events for debugging and tracing.
 
 use metrique::test_util::test_entry_sink;
+use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::sink::{RawSink, SplitSink};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
-use metrique::unit::Millisecond;
 use std::time::Duration;
 use tokio::sync::mpsc;
 

@@ -6,14 +6,14 @@
 
 use metrique::DefaultSink;
 use metrique::emf::Emf;
+use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
+use metrique::writer::BoxEntrySink;
 use metrique::writer::{FormatExt, sink::FlushImmediatelyBuilder};
 use metrique_aggregation::aggregator::Aggregate;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, histogram::SortAndMerge};
-use metrique::writer::BoxEntrySink;
-use metrique::unit::Millisecond;
 use std::time::Duration;
 
 #[aggregate]
@@ -65,7 +65,8 @@ async fn execute_distributed_query(query: &str, sink: BoxEntrySink) {
     let mut metrics = DistributedQuery {
         query_id: uuid::Uuid::new_v4().to_string(),
         backend_calls: Aggregate::default(),
-    };
+    }
+    .append_on_drop(sink);
 
     println!("Executing query: {}", query);
     println!("Query ID: {}", metrics.query_id);
@@ -93,8 +94,7 @@ async fn execute_distributed_query(query: &str, sink: BoxEntrySink) {
     }
 
     println!("\nEmitting EMF metric to stdout:");
-    // Emit the aggregated metrics to EMF
-    metrics.append_on_drop(sink);
+    // Metrics automatically emitted when dropped
 }
 
 #[tokio::main]

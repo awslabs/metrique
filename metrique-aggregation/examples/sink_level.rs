@@ -6,15 +6,16 @@
 
 use metrique::ServiceMetrics;
 use metrique::emf::Emf;
+use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::value::ToString;
 use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
 use metrique_aggregation::value::{MergeOptions, Sum};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
-use metrique::unit::Millisecond;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tracing::info;
 
 #[aggregate]
 #[metrics(emf::dimension_sets = [["item_type", "priority"]])]
@@ -69,19 +70,19 @@ async fn queue_processor(mut queue: mpsc::Receiver<Item>) {
     let keyed_aggregator = KeyedAggregator::<QueueItem>::new(ServiceMetrics::sink());
     let worker_sink = WorkerSink::new(keyed_aggregator, Duration::from_millis(500));
 
-    println!("Queue processor started. Flush interval: 500ms\n");
+    info!("Queue processor started. Flush interval: 500ms");
 
     while let Some(item) = queue.recv().await {
         let start = std::time::Instant::now();
         let result = process_item(&item).await;
         let processing_time = start.elapsed();
 
-        println!(
-            "Processed item: type={}, priority={}, time={}ms, result={}",
-            item.item_type,
-            item.priority,
-            processing_time.as_millis(),
-            if result.is_ok() { "OK" } else { "ERROR" }
+        info!(
+            item_type = %item.item_type,
+            priority = item.priority,
+            time_ms = processing_time.as_millis(),
+            result = if result.is_ok() { "OK" } else { "ERROR" },
+            "Processed item"
         );
 
         // Send metrics to the aggregating sink
@@ -96,8 +97,8 @@ async fn queue_processor(mut queue: mpsc::Receiver<Item>) {
     }
 
     // Flush remaining aggregated metrics
-    println!("\nFlushing final metrics...");
-    println!("Emitting EMF metrics to stdout:");
+    info!("Flushing final metrics");
+    info!("Emitting EMF metrics to stdout");
     worker_sink.flush().await;
 }
 

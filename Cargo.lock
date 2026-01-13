@@ -760,6 +760,7 @@ dependencies = [
  "rustversion",
  "smallvec",
  "tokio",
+ "tracing",
  "tracing-subscriber",
  "trybuild",
  "uuid",

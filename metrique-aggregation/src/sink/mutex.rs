@@ -8,8 +8,26 @@ use crate::traits::{AggregateSink, RootSink};
 
 /// Sink that aggregates a single type of entry backed by a mutex
 ///
-/// Compared to [`crate::aggregator::Aggregate`], this type allows appending with `&T` so it supports
-/// using merge_on_drop
+/// Since this allows shared-insertion controlled by a mutex, unlike [`crate::aggregator::Aggregate`], this
+/// type supports using `merge_on_drop`.
+///
+/// # Example
+/// ```
+/// use metrique_aggregation::{aggregate, MutexSink, Aggregate, value::Sum};
+/// use metrique::unit_of_work::metrics;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct Counter {
+///     #[aggregate(strategy = Sum)]
+///     count: u64,
+/// }
+///
+/// let sink = MutexSink::new(Aggregate::<Counter>::default());
+/// // close_and_merge creates a guard you can pass around and drop when you are done
+/// Counter { count: 1 }.close_and_merge(sink.clone());
+/// Counter { count: 2 }.close_and_merge(sink.clone());
+/// ```
 pub struct MutexSink<Inner> {
     inner: Arc<Mutex<Inner>>,
 }

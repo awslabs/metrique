@@ -515,7 +515,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// - `AggregatedMyMetrics`: The aggregated struct where each field is replaced with its aggregated type
 /// - `impl AggregateEntry for MyMetrics`: Trait implementation for merging observations
 ///
-/// The aggregated struct can be used with `Aggregate<T>` or `MutexAggregator<T>`:
+/// The aggregated struct can be used with `Aggregate<T>` or `MutexSink<T>`:
 ///
 /// ```
 /// use metrique::unit_of_work::metrics;

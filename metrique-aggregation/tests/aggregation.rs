@@ -169,6 +169,7 @@ fn test_macro_aggregation_with_multiple_keys() {
 #[aggregate]
 #[metrics]
 pub struct ApiCallWithTimer {
+    // Using name = "latency_2" to avoid conflicts with other latency fields in this test file
     #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
     #[metrics(name = "latency_2", unit = Microsecond)]
     latency: Timer,
