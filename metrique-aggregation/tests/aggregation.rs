@@ -223,6 +223,48 @@ fn test_mutex_sink_close_with_outstanding_references() {
 }
 
 #[test]
+fn test_aggregate_with_prefix() {
+    #[aggregate]
+    #[metrics(prefix = "Api_")]
+    pub struct CallMetrics {
+        #[aggregate(strategy = Sum)]
+        count: u64,
+        
+        #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+        #[metrics(unit = Millisecond)]
+        duration: Duration,
+    }
+    
+    #[metrics]
+    struct TestMetrics {
+        #[metrics(flatten)]
+        calls: Aggregate<CallMetrics>,
+    }
+    
+    let mut metrics = TestMetrics {
+        calls: Aggregate::default(),
+    };
+    
+    metrics.calls.insert(CallMetrics {
+        count: 5,
+        duration: Duration::from_millis(100),
+    });
+    metrics.calls.insert(CallMetrics {
+        count: 3,
+        duration: Duration::from_millis(200),
+    });
+    
+    let entry = test_metric(metrics);
+    
+    // Verify prefix is applied
+    check!(entry.metrics["Api_count"].as_u64() == 8);
+    check!(
+        entry.metrics["Api_duration"].flatten_and_sort()
+            == vec![100.0, 200.0]
+    );
+}
+
+#[test]
 fn last_value_wins() {
     #[aggregate]
     #[metrics]
