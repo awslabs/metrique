@@ -172,12 +172,15 @@ where
     }
 }
 
+/// Hint for Aggregate to explain what the problem is
+pub type AggregateMustBeUsedOnStructsWithNoKeys = NoKey;
+
 impl<T: AggregateStrategy> Aggregate<T> {
     /// Add a new entry into this aggregate
     pub fn insert(&mut self, entry: T)
     where
         T: CloseValue<Closed = T::Source>,
-        T: AggregateStrategy<Key = NoKey>,
+        T: AggregateStrategy<Key = AggregateMustBeUsedOnStructsWithNoKeys>,
         T::Source: Merge,
     {
         T::Source::merge(&mut self.aggregated, entry.close());
