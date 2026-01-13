@@ -1,8 +1,8 @@
-//! Example: Split Aggregation Pattern
+//! Example: Split Aggregation Pattern with Sampling
 //!
 //! This example demonstrates using `SplitSink` to send the same data to multiple
-//! destinations. We aggregate metrics for precise counts while also emitting raw
-//! events for debugging and tracing.
+//! destinations. We aggregate metrics for precise counts while also emitting sampled
+//! raw events for debugging and tracing.
 
 use metrique::ServiceMetrics;
 use metrique::emf::Emf;
@@ -13,11 +13,14 @@ use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
+use metrique_writer::sample::SampledFormatExt;
+use metrique_writer::sink::FlushImmediatelyBuilder;
 use metrique_writer::value::ToString;
 use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use std::borrow::Cow;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tracing::info;
 
 #[aggregate(ref)]
 #[metrics(emf::dimension_sets = [["has_errors", "endpoint"], ["endpoint"]])]
@@ -101,11 +104,17 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
     // also aggregate by errors
     let aggregate_by_endoint_errors =
         KeyedAggregator::<AggregateByErrorsEndpoint>::new(ServiceMetrics::sink());
-    // finally, we will also send the raw records to the sink as well
-    // in a more real use case, you might send this to another destiation
-    // (e.g. one that had a different set of dimensions atached), used sampling
-    // or was a compressed record for later inspection (perhaps it doesn't go to your metrics store)
-    let raw_sink = ServiceMetrics::sink();
+
+    // Create a second sink with sampling for raw events
+    // This demonstrates sending sampled raw events to a separate destination
+    let raw_stream = Emf::builder("RawRequestMetrics".to_string(), vec![vec![]])
+        .skip_all_validations(true)
+        .build()
+        .with_sampling()
+        .sample_by_fixed_fraction(0.5) // Sample 50% of raw events
+        .output_to_makewriter(|| std::io::stderr().lock());
+
+    let raw_sink = FlushImmediatelyBuilder::new().build_boxed(raw_stream);
 
     // Create raw sink for individual events
     let raw = EntrySinkAsAggregateSink::new(raw_sink);
@@ -117,7 +126,7 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
     );
     let sink = WorkerSink::new(split, Duration::from_millis(500));
 
-    println!("API service started. Processing requests...\n");
+    info!("API service started. Processing requests...\n");
 
     while let Some(endpoint) = requests.recv().await {
         let start = std::time::Instant::now();
@@ -135,7 +144,7 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
     }
 
     // Flush both sinks
-    println!("\nFlushing metrics...");
+    info!("\nFlushing metrics...");
     sink.flush().await;
 }
 
