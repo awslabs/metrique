@@ -11,7 +11,7 @@ pub mod traits;
 pub mod value;
 
 pub use aggregator::{Aggregate, KeyedAggregator};
-pub use sink::{MutexSink, RawSink, SplitSink, WorkerSink};
+pub use sink::{EntrySinkAsAggregateSink, MutexSink, SplitSink, WorkerSink};
 
 #[doc(hidden)]
 pub mod __macro_plumbing {

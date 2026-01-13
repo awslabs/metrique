@@ -8,7 +8,7 @@ use metrique::test_util::test_entry_sink;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::{RawSink, SplitSink};
+use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
 use metrique_aggregation::{KeyedAggregator, WorkerSink, aggregate};
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -58,7 +58,7 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
     let aggregator = KeyedAggregator::<ApiCall>::new(aggregated_sink.sink);
 
     // Create raw sink for individual events
-    let raw = RawSink::new(raw_sink.sink);
+    let raw = EntrySinkAsAggregateSink::new(raw_sink.sink);
 
     // Combine them with SplitSink
     let split = SplitSink::new(aggregator, raw);

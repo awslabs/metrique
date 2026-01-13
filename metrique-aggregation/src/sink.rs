@@ -169,7 +169,7 @@ where
 /// the source type must implement `MergeRef`.
 ///
 /// - You can chain more impls by nesting SplitSink.
-/// - You can write raw entries to a Sink by wrapping an entry sink in [`RawSink`]
+/// - You can write entries to an `EntrySink` (unaggregated) by wrapping an entry sink in [`EntrySinkAsAggregatorSink`]
 pub struct SplitSink<A, B> {
     sink_a: A,
     sink_b: B,
@@ -204,21 +204,21 @@ where
     }
 }
 
-/// Raw sink allows using an Entry sink as an aggregate destination
+/// EntrySinkAsAggregateSink allows wraps an `EntrySink` so it can be used as an aggregate destination
 ///
-/// Note: `flush` in a RawSink does NOT call the underlying flush method and is a no-op.
+/// Note: `flush` does NOT call the underlying flush method and is a no-op.
 ///
 /// This is because, you typically _don't_ want to "flush" the raw sink whenever you want to flush out a new aggregate.
-pub struct RawSink<T>(T);
+pub struct EntrySinkAsAggregateSink<T>(T);
 
-impl<T> RawSink<T> {
-    /// Create a new RawSink wrapper from a given sink
+impl<T> EntrySinkAsAggregateSink<T> {
+    /// Create a new wrapper from a given sink entry sink
     pub fn new(sink: T) -> Self {
         Self(sink)
     }
 }
 
-impl<E, T> AggregateSink<E> for RawSink<T>
+impl<E, T> AggregateSink<E> for EntrySinkAsAggregateSink<T>
 where
     E: InflectableEntry,
     T: EntrySink<RootEntry<E>>,
@@ -228,7 +228,7 @@ where
     }
 }
 
-impl<T> FlushableSink for RawSink<T> {
+impl<T> FlushableSink for EntrySinkAsAggregateSink<T> {
     fn flush(&mut self) {
         // flushing a raw sink doesn't do anything
     }

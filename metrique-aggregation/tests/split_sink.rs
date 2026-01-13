@@ -4,7 +4,7 @@ use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_aggregation::sink::{RawSink, SplitSink};
+use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
 use metrique_aggregation::traits::{AggregateStrategy, Key};
 use metrique_aggregation::{KeyedAggregator, WorkerSink};
 use metrique_writer::test_util::test_entry_sink;
@@ -83,7 +83,7 @@ async fn test_split_sink() {
     // Combine them with SplitSink
     let split = SplitSink::new(
         aggregator_a,
-        SplitSink::new(aggregator_b, RawSink::new(raw_sink.sink)),
+        SplitSink::new(aggregator_b, EntrySinkAsAggregateSink::new(raw_sink.sink)),
     );
     let sink = WorkerSink::new(split, Duration::from_secs(10));
 

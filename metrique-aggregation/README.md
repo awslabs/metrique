@@ -233,7 +233,7 @@ Use [`SplitSink`] to aggregate the same data to multiple destinations - useful f
 
 ```rust
 use metrique_aggregation::{KeyedAggregator, WorkerSink};
-use metrique_aggregation::sink::{SplitSink, RawSink};
+use metrique_aggregation::sink::{SplitSink, EntrySinkAsAggregateSink};
 # use metrique::unit_of_work::metrics;
 # use metrique_aggregation::{aggregate, histogram::Histogram};
 # use std::time::Duration;
@@ -255,7 +255,7 @@ struct QueueItem {
 let aggregator = KeyedAggregator::<QueueItem>::new(aggregated_sink);
 
 // Raw sink for sampling individual events
-let raw = RawSink::new(raw_events_sink);
+let raw = EntrySinkAsAggregateSink::new(raw_events_sink);
 
 // Combine them
 let split = SplitSink::new(aggregator, raw);
@@ -386,7 +386,7 @@ Run examples with: `cargo run --example <name>`
 [`MutexSink`]: crate::sink::MutexSink
 [`KeyedAggregator`]: crate::aggregator::KeyedAggregator
 [`SplitSink`]: crate::sink::SplitSink
-[`RawSink`]: crate::sink::RawSink
+[`EntrySinkAsAggregateSink`]: crate::sink::EntrySinkAsAggregateSink
 [`Merge`]: crate::traits::Merge
 [`MergeRef`]: crate::traits::MergeRef
 [`Key`]: crate::traits::Key
