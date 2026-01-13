@@ -4,30 +4,75 @@
 //! destinations. We aggregate metrics for precise counts while also emitting raw
 //! events for debugging and tracing.
 
-use metrique::test_util::test_entry_sink;
+use metrique::ServiceMetrics;
+use metrique::emf::Emf;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::histogram::{Histogram, SortAndMerge};
+use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::sink::{EntrySinkAsAggregateSink, SplitSink};
+use metrique_aggregation::traits::{AggregateStrategy, Key};
+use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
+use metrique_writer::value::ToString;
+use metrique_writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use std::borrow::Cow;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
 #[aggregate(ref)]
-#[metrics]
+#[metrics(emf::dimension_sets = [["has_errors", "endpoint"], ["endpoint"]])]
 struct ApiCall {
     #[aggregate(key)]
     endpoint: String,
 
-    #[aggregate(strategy = metrique_aggregation::value::Sum)]
+    #[aggregate(strategy = Sum)]
     request_count: u64,
 
-    #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+    #[aggregate(strategy = Histogram<Duration>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,
 
-    #[aggregate(strategy = metrique_aggregation::value::Sum)]
+    #[aggregate(strategy = Sum)]
     errors: u64,
+}
+
+struct AggregateByErrorsEndpoint;
+
+impl AggregateStrategy for AggregateByErrorsEndpoint {
+    type Source = ApiCallEntry;
+
+    type Key = AggregateByErrorsEndpoint;
+}
+
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
+#[metrics]
+pub struct ByErrorsEndpoint<'a> {
+    #[metrics(format = ToString)]
+    has_errors: bool,
+    endpoint: Cow<'a, str>,
+}
+
+impl Key<ApiCallEntry> for AggregateByErrorsEndpoint {
+    type Key<'a> = ByErrorsEndpoint<'a>;
+
+    fn from_source(source: &ApiCallEntry) -> Self::Key<'_> {
+        #[expect(deprecated)]
+        ByErrorsEndpoint {
+            has_errors: source.errors > 0,
+            endpoint: Cow::Borrowed(&source.endpoint),
+        }
+    }
+
+    fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+        ByErrorsEndpoint {
+            has_errors: key.has_errors,
+            endpoint: Cow::Owned(key.endpoint.clone().into_owned()),
+        }
+    }
+
+    fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+        owned == borrowed
+    }
 }
 
 // Simulated API call
@@ -51,17 +96,20 @@ async fn make_api_call(endpoint: &str) -> Result<(), String> {
 }
 
 async fn api_service(mut requests: mpsc::Receiver<String>) {
-    let aggregated_sink = test_entry_sink();
-    let raw_sink = test_entry_sink();
-
     // Create aggregator for precise metrics
-    let aggregator = KeyedAggregator::<ApiCall>::new(aggregated_sink.sink);
+    let aggregate_by_endpoint = KeyedAggregator::<ApiCall>::new(ServiceMetrics::sink());
+    let aggregate_by_endoint_errors =
+        KeyedAggregator::<AggregateByErrorsEndpoint>::new(ServiceMetrics::sink());
+    let raw_sink = ServiceMetrics::sink();
 
     // Create raw sink for individual events
-    let raw = EntrySinkAsAggregateSink::new(raw_sink.sink);
+    let raw = EntrySinkAsAggregateSink::new(raw_sink);
 
     // Combine them with SplitSink
-    let split = SplitSink::new(aggregator, raw);
+    let split = SplitSink::new(
+        aggregate_by_endpoint,
+        SplitSink::new(aggregate_by_endoint_errors, raw),
+    );
     let sink = WorkerSink::new(split, Duration::from_millis(500));
 
     println!("API service started. Processing requests...\n");
@@ -96,50 +144,20 @@ async fn api_service(mut requests: mpsc::Receiver<String>) {
     // Flush both sinks
     println!("\nFlushing metrics...");
     sink.flush().await;
-
-    // Inspect aggregated metrics
-    let aggregated_entries = aggregated_sink.inspector.entries();
-    println!("\n=== Aggregated Metrics ===");
-    println!("Total aggregated entries: {}", aggregated_entries.len());
-
-    for entry in &aggregated_entries {
-        println!(
-            "  Endpoint: {}, Requests: {}, Errors: {}, Latency observations: {}",
-            entry.values["endpoint"],
-            entry.metrics["request_count"].as_u64(),
-            entry.metrics["errors"].as_u64(),
-            entry.metrics["latency"].distribution.len()
-        );
-    }
-
-    // Inspect raw events
-    let raw_entries = raw_sink.inspector.entries();
-    println!("\n=== Raw Events ===");
-    println!("Total raw events: {}", raw_entries.len());
-
-    for (i, entry) in raw_entries.iter().enumerate() {
-        println!(
-            "  Event #{}: {} - {}ms - {} errors",
-            i + 1,
-            entry.values["endpoint"],
-            entry.metrics["latency"].as_u64(),
-            entry.metrics["errors"].as_u64()
-        );
-    }
-
-    println!("\n=== Summary ===");
-    println!(
-        "Aggregated entries provide precise counts and distributions across {} unique endpoints",
-        aggregated_entries.len()
-    );
-    println!(
-        "Raw events provide individual request details for {} requests",
-        raw_entries.len()
-    );
 }
 
 #[tokio::main]
 async fn main() {
+    // Initialize tracing to see validation errors
+    tracing_subscriber::fmt::init();
+
+    // Attach global EMF sink
+    let _handle = ServiceMetrics::attach_to_stream(
+        Emf::builder("RequestMetrics".to_string(), vec![vec![]])
+            .skip_all_validations(true)
+            .build()
+            .output_to_makewriter(|| std::io::stdout().lock()),
+    );
     let (tx, rx) = mpsc::channel(100);
 
     // Spawn the API service
