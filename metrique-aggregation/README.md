@@ -167,10 +167,14 @@ Note that [`MutexSink`] can also be embedded directly, allowing fan-out / multit
 
 ### Sink-Level Aggregation
 
-Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric entries where the entire entry is aggregated. Both can be combined with [`KeyedAggregator`] to perform aggregation against a set of keys.
+Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric entries where the entire entry is aggregated. Both can be combined with [`KeyedAggregator`] to perform aggregation against a set of keys or [`Aggregate`] when there are no keys.
+
+[`WokerSink`] performs aggregation in a background thread that periodically flushes aggregated data to a backing sink. [`MutexSink`] is alternative sink that manages concurrency with a mutex instead of a channel.
 
 ```rust
 use metrique::unit_of_work::metrics;
+use metrique::timers::Timer;
+use metrique_aggregation::sink::DropGuard;
 use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum, KeyedAggregator, WorkerSink};
 use std::time::Duration;
 
@@ -187,10 +191,10 @@ struct QueueItem {
     items_processed: u64,
     
     #[aggregate(strategy = Histogram<Duration>)]
-    processing_time: Duration,
+    processing_time: Timer,
 }
 
-# async fn process_item(_item: &str) {}
+async fn process_item(_item: &str, entry: impl DropGuard<QueueItem>) {}
 # struct Item { type_name: String, priority: u8 }
 # async fn get_item() -> Option<Item> { None }
 async fn setup_queue_processor() {
@@ -201,16 +205,13 @@ async fn setup_queue_processor() {
     
     // Process queue items
     while let Some(item) = get_item().await {
-        let start = std::time::Instant::now();
-        process_item(&item.type_name).await;
-        
-        QueueItem {
-            item_type: item.type_name,
+        let metrics = QueueItem {
+            item_type: item.type_name.clone(),
             priority: item.priority,
             items_processed: 1,
-            processing_time: start.elapsed(),
-        }
-        .close_and_merge(sink.clone());
+            processing_time: Timer::start_now(),
+        }.close_and_merge(sink.clone());
+        process_item(&item.type_name, metrics).await;
     }
     
     // Periodically flushes aggregated results (every 60 seconds)
@@ -220,9 +221,7 @@ async fn setup_queue_processor() {
 
 **Output**: Multiple aggregated entries like `ItemType: "email", Priority: 1, ItemsProcessed: 1247, ProcessingTime: [histogram]`
 
-[`WorkerSink`] runs a background thread that flushes periodically. [`MutexSink`] is a synchronous alternative that flushes manually or when a threshold is reached.
-
-See the `sink_level` example for a complete working implementation.
+[`WorkerSink`] runs a background thread that flushes periodically. See the `sink_level` example for a complete working implementation.
 
 ### Split Aggregation
 

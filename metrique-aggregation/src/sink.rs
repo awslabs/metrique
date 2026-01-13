@@ -71,6 +71,41 @@ where
     }
 }
 
+/// Trait alias for drop guards to simplify code.
+///
+/// This trait is not intended to be implemented directly, instead it should be used as a method argument when you want to accept an
+/// aggregated metric you have used with `close_and_merge_on_drop`
+///
+/// ```
+/// use metrique::{unit_of_work::metrics, timers::Timer};
+/// use metrique_aggregation::{aggregate, sink::DropGuard, value::Sum, KeyedAggregator, MutexSink};
+/// # use metrique::test_util::test_entry_sink;
+/// #[aggregate]
+/// #[metrics]
+/// struct QueueItem {
+///     #[aggregate(strategy = Sum)]
+///     processing_time: Timer,
+/// }
+/// async fn process_item(item: &str, entry: impl DropGuard<QueueItem>) {}
+///
+/// # fn main() {
+/// # let base_sink = test_entry_sink().sink;
+/// let aggregator = KeyedAggregator::<QueueItem>::new(base_sink);
+/// let sink = MutexSink::new(aggregator);
+/// let queue_item = QueueItem { processing_time: Timer::start_now() }.close_and_merge(sink);
+/// # }
+/// ```
+pub trait DropGuard<T>: Deref<Target = T> + DerefMut {}
+
+impl<T, U> DropGuard<T> for CloseAndMergeOnDrop<T, U>
+where
+    T: CloseValue,
+    U: RootSink<T::Closed>,
+{
+}
+
+//pub type Guard<T: CloseValue> = CloseAndMergeOnDrop<T, impl RootSink<<T as CloseValue>::Closed>>;
+
 /// Handle for metric that will be closed and merged into the target when dropped (for entry mode)
 pub struct CloseAndMergeOnDrop<T, Sink>
 where
