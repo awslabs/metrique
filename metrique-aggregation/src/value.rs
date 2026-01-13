@@ -66,6 +66,22 @@ where
     }
 }
 
+/// Flatten strategy for fields that already implement Merge
+///
+/// Use this when you want to aggregate a field that is itself an aggregatable type.
+pub struct Flatten;
+
+impl<T> AggregateValue<T> for Flatten
+where
+    T: crate::traits::Merge,
+{
+    type Aggregated = T::Merged;
+
+    fn insert(accum: &mut Self::Aggregated, value: T) {
+        T::merge(accum, value);
+    }
+}
+
 /// Key type for aggregations with no key fields
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub struct NoKey;
