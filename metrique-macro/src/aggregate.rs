@@ -127,6 +127,13 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
 
     let derive_default = quote! { #[derive(Default)] };
 
+    // In direct mode, always add #[metrics] if not present
+    let metrics_attr = if !entry_mode && metrics_attr.is_none() {
+        quote! { #[metrics] }
+    } else {
+        quote! { #metrics_attr }
+    };
+
     Ok(quote! {
         #metrics_attr
         #derive_default
@@ -547,5 +554,24 @@ mod tests {
             Err(_) => output.to_string(),
         };
         insta::assert_snapshot!("aggregate_entry_mode", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_direct_mode() {
+        let input = quote! {
+            struct RawData {
+                #[aggregate(strategy = Histogram<Duration>)]
+                latency: Duration,
+                #[aggregate(strategy = Sum)]
+                count: u64,
+            }
+        };
+
+        let output = aggregate_impl(input, false);
+        let parsed_file = match parse2::<syn::File>(output.clone()) {
+            Ok(file) => prettyplease::unparse(&file),
+            Err(_) => output.to_string(),
+        };
+        insta::assert_snapshot!("aggregate_direct_mode", parsed_file);
     }
 }

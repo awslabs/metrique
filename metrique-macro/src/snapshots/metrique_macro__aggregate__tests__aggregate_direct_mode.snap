@@ -1,0 +1,40 @@
+---
+source: metrique-macro/src/aggregate.rs
+expression: parsed_file
+---
+#[metrics]
+#[derive(Default)]
+#[allow(clippy::type_complexity)]
+pub struct AggregatedRawData {
+    latency: <Histogram<
+        Duration,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+    count: <Sum as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+        u64,
+    >>::Aggregated,
+}
+impl ::metrique_aggregation::__macro_plumbing::Merge for RawData {
+    type Merged = AggregatedRawData;
+    type MergeConfig = ();
+    fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+        Self::Merged::default()
+    }
+    fn merge(accum: &mut Self::Merged, input: Self) {
+        <Histogram<
+            Duration,
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            Duration,
+        >>::insert(&mut accum.latency, input.latency);
+        <Sum as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            u64,
+        >>::insert(&mut accum.count, input.count);
+    }
+}
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for RawData {
+    type Source = RawData;
+    type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
+}
+struct RawData {
+    latency: Duration,
+    count: u64,
+}
