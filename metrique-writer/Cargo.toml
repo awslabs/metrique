@@ -29,6 +29,7 @@ metrics-util_020 = { workspace = true, optional = true }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.9" }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.6" }
 metrique-core = { path = "../metrique-core", version = "0.1.11" }
+ordered-float = { workspace = true, optional = true }
 
 [dev-dependencies]
 enum-map = { workspace = true }
@@ -57,7 +58,7 @@ default = [
     "tracing-subscriber-03",
     "metrics-rs-024",
 ]
-test-util = ["metrique-writer-core/test-util"]
+test-util = ["metrique-writer-core/test-util", "dep:ordered-float"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
 # dep:tracing-appender is for rustdoc
 private-test-util = ["dep:tracing-appender"]
@@ -75,6 +76,7 @@ background-queue = [
 # Deprecated name of tracing-subscriber-03 feature
 tracing_subscriber_03 = ["tracing-subscriber-03"]
 tracing-subscriber-03 = ["dep:tracing-subscriber"]
+ordered-float = ["dep:ordered-float"]
 
 [package.metadata.docs.rs]
 all-features = true

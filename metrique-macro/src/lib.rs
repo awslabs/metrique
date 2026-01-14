@@ -5,6 +5,7 @@
 #![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+mod aggregate;
 mod emf;
 mod entry_impl;
 mod enums;
@@ -401,6 +402,183 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
         }
     };
     base_token_stream.into()
+}
+
+/// Generates aggregation support for metrics structs.
+///
+/// This macro enables combining multiple observations of the same metric into a single aggregated
+/// entry. It must be placed before `#[metrics]` and generates:
+/// - An `Aggregated{StructName}` struct with aggregated field types
+/// - An `AggregateEntry` trait implementation for merging observations
+///
+/// For renaming fields and adding unit, `#[aggregate]` relies on the `#[metrics]` macro.
+///
+/// # Container Attributes
+///
+/// | Attribute | Type | Description | Example |
+/// |-----------|------|-------------|---------|
+/// | `direct` | Flag | Aggregates on the struct itself instead of the closed entry (default: aggregates on closed entry) | `#[aggregate(direct)]` |
+///
+/// # Field Attributes
+///
+/// | Attribute | Type | Description | Example |
+/// |-----------|------|-------------|---------|
+/// | `strategy` | Path | Specifies the aggregation strategy (required for non-key fields) | `#[aggregate(strategy = Histogram<Duration>)]` |
+/// | `key` | Flag | Marks a field as part of the aggregation key - observations with different keys are aggregated separately | `#[aggregate(key)]` |
+///
+/// # Aggregation Modes
+///
+/// ## Entry Mode (Default)
+///
+/// By default, `#[aggregate]` implements aggregation on the closed metric entry. This means
+/// aggregation happens after `CloseValue` has been applied to all fields:
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     #[metrics(unit = metrique::writer::unit::Millisecond)]
+///     latency: Duration,  // Aggregates Duration values
+///
+///     #[aggregate(strategy = Sum)]
+///     response_size: usize,
+/// }
+/// ```
+///
+/// ## Direct Mode
+///
+/// Use `#[aggregate(direct)]` to aggregate on the struct iteslf. In direct mode:
+/// - Aggregation strategies receive the raw field type before `CloseValue` is applied
+/// - Use this if the base struct is not also a metric
+///
+/// # Aggregation Keys
+///
+/// Fields marked with `#[aggregate(key)]` define the aggregation key. Observations with different
+/// keys are aggregated into separate entries:
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(key)]
+///     endpoint: String,  // Separate aggregation per endpoint
+///
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+/// }
+/// ```
+///
+/// Key behavior:
+/// - Key fields are cloned into the aggregated struct unchanged
+/// - Multiple key fields create a tuple key: `(Field1, Field2, ...)`
+/// - Without key fields, all observations aggregate into a single entry
+/// - Key fields must implement `Clone`
+///
+/// # Aggregation Strategies
+///
+/// Each non-key field must specify an aggregation strategy that implements `AggregateValue<T>`:
+///
+/// ## Built-in Strategies
+///
+/// - **`Sum`** - Sums numeric values together
+/// - **`Histogram<T>`** - Collects values into a distribution. Histogram has a second generic that can control how values are stored. See the `Histogram` docs for more info.
+/// - **`KeepLast`** - Keeps the most recent value
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, value::Sum};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+///
+///     #[aggregate(strategy = Sum)]
+///     bytes_sent: usize,
+/// }
+/// ```
+///
+/// # Generated Types
+///
+/// For a struct with `#[aggregate]`, the macro generates:
+/// - `AggregatedMyMetrics`: The aggregated struct where each field is replaced with its aggregated type
+/// - `impl AggregateEntry for MyMetrics`: Trait implementation for merging observations
+///
+/// For more details on the aggregation trait system, see the
+/// [traits module documentation](https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/index.html).
+///
+/// The aggregated struct can be used with `Aggregate<T>` or `MutexSink<T>`:
+///
+/// ```
+/// use metrique::unit_of_work::metrics;
+/// use metrique_aggregation::{aggregate, histogram::Histogram, aggregator::Aggregate};
+/// use std::time::Duration;
+///
+/// #[aggregate]
+/// #[metrics]
+/// struct ApiCall {
+///     #[aggregate(strategy = Histogram<Duration>)]
+///     latency: Duration,
+/// }
+///
+/// #[metrics]
+/// struct RequestMetrics {
+///     request_id: String,
+///     #[metrics(flatten)]
+///     api_calls: Aggregate<ApiCall>,
+/// }
+/// ```
+///
+/// For more examples, see the `examples` directory in `metrique-aggregation`
+#[proc_macro_attribute]
+pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let attr_str = attr.to_string();
+    let entry_mode = attr.is_empty() || attr_str.trim() != "direct";
+    let enable_merge_ref = attr_str.contains("ref");
+
+    let mut output = Ts2::new();
+
+    // Try to generate struct, impl, MergeRef, and merge methods
+    let struct_result = aggregate::generate_aggregated_struct(&input, entry_mode);
+    let impl_result = aggregate::generate_aggregate_strategy_impl(&input, entry_mode);
+    let merge_ref_result = aggregate::generate_merge_ref_impl(&input, entry_mode, enable_merge_ref);
+    let merge_methods_result = aggregate::generate_merge_on_drop_methods(&input, entry_mode);
+
+    match (
+        struct_result,
+        impl_result,
+        merge_ref_result,
+        merge_methods_result,
+    ) {
+        (Ok(aggregated_struct), Ok(aggregate_impl), Ok(merge_ref_impl), Ok(merge_methods)) => {
+            aggregated_struct.to_tokens(&mut output);
+            aggregate_impl.to_tokens(&mut output);
+            if let Some(merge_ref) = merge_ref_impl {
+                merge_ref.to_tokens(&mut output);
+            }
+            merge_methods.to_tokens(&mut output);
+            aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
+        }
+        (Err(e), _, _, _) | (_, Err(e), _, _) | (_, _, Err(e), _) | (_, _, _, Err(e)) => {
+            // On error, generate the base struct without aggregate attributes and include the error
+            aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
+            e.to_compile_error().to_tokens(&mut output);
+        }
+    }
+
+    output.into()
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -1157,6 +1335,18 @@ fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
 }
 
 fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
+    // Check if #[aggregate] attribute is present
+    if input
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("aggregate"))
+    {
+        return Err(Error::new_spanned(
+            &input,
+            "#[aggregate] must be placed before #[metrics], not after",
+        ));
+    }
+
     let output = match root_attributes.mode {
         MetricMode::RootEntry | MetricMode::Subfield | MetricMode::SubfieldOwned => {
             match &input.data {
@@ -1528,6 +1718,30 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("field_exact_prefix_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_after_metrics_error() {
+        let input = quote! {
+            #[metrics]
+            #[aggregate]
+            struct ApiCall {
+                latency: Duration,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let root_attrs = RawRootAttributes::from_meta(&parse_quote!(metrics()))
+            .unwrap()
+            .validate()
+            .unwrap();
+        let result = super::generate_metrics(root_attrs, input);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("#[aggregate] must be placed before #[metrics]")
+        );
     }
 
     #[test]

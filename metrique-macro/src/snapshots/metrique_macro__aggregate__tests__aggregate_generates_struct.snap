@@ -1,0 +1,58 @@
+---
+source: metrique-macro/src/aggregate.rs
+expression: parsed_file
+---
+#[metrics]
+#[derive(Default)]
+#[allow(clippy::type_complexity)]
+pub struct AggregatedApiCall {
+    #[metrics(unit = Millisecond, name = "latency_2")]
+    latency: <Histogram<
+        Duration,
+        SortAndMerge,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+    #[metrics(unit = Byte)]
+    response_size: <Counter as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+        usize,
+    >>::Aggregated,
+    response_value: <MergeOptions<
+        KeepLast,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+        Option<String>,
+    >>::Aggregated,
+}
+impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCall {
+    type Merged = AggregatedApiCall;
+    type MergeConfig = ();
+    fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+        Self::Merged::default()
+    }
+    fn merge(accum: &mut Self::Merged, input: Self) {
+        <Histogram<
+            Duration,
+            SortAndMerge,
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            Duration,
+        >>::insert(&mut accum.latency, input.latency);
+        <Counter as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            usize,
+        >>::insert(&mut accum.response_size, input.response_size);
+        <MergeOptions<
+            KeepLast,
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            Option<String>,
+        >>::insert(&mut accum.response_value, input.response_value);
+    }
+}
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
+    type Source = ApiCall;
+    type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
+}
+#[metrics]
+pub struct ApiCall {
+    #[metrics(unit = Millisecond, name = "latency_2")]
+    latency: Duration,
+    #[metrics(unit = Byte)]
+    response_size: usize,
+    response_value: Option<String>,
+}

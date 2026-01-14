@@ -1,0 +1,5 @@
+error: field 'a' requires #[aggregate(strategy = ...)] attribute or if it is a key, use #[aggregate(key)]
+ --> tests/ui/fail/aggregate_no_strategy.rs:7:5
+  |
+7 |     a: usize,
+  |     ^

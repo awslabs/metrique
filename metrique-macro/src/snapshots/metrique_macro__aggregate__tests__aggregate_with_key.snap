@@ -1,0 +1,65 @@
+---
+source: metrique-macro/src/aggregate.rs
+expression: parsed_file
+---
+#[metrics]
+#[derive(Default)]
+#[allow(clippy::type_complexity)]
+pub struct AggregatedApiCallWithOperation {
+    #[metrics(unit = Millisecond)]
+    latency: <Histogram<
+        Duration,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+}
+impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCallWithOperation {
+    type Merged = AggregatedApiCallWithOperation;
+    type MergeConfig = ();
+    fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+        Self::Merged::default()
+    }
+    fn merge(accum: &mut Self::Merged, input: Self) {
+        <Histogram<
+            Duration,
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            Duration,
+        >>::insert(&mut accum.latency, input.latency);
+    }
+}
+#[derive(Clone, Hash, PartialEq, Eq)]
+#[metrics]
+pub struct ApiCallWithOperationKey<'a> {
+    endpoint: ::std::borrow::Cow<'a, String>,
+}
+struct ApiCallWithOperationKeyExtractor;
+impl ::metrique_aggregation::__macro_plumbing::Key<ApiCallWithOperation>
+for ApiCallWithOperationKeyExtractor {
+    type Key<'a> = ApiCallWithOperationKey<'a>;
+    fn from_source(source: &ApiCallWithOperation) -> Self::Key<'_> {
+        #[allow(deprecated)]
+        ApiCallWithOperationKey {
+            endpoint: ::std::borrow::Cow::Borrowed(&source.endpoint),
+        }
+    }
+    fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+        ApiCallWithOperationKey {
+            endpoint: ::std::borrow::Cow::Owned(key.endpoint.clone().into_owned()),
+        }
+    }
+    fn static_key_matches<'a>(
+        owned: &Self::Key<'static>,
+        borrowed: &Self::Key<'a>,
+    ) -> bool {
+        owned == borrowed
+    }
+}
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy
+for ApiCallWithOperation {
+    type Source = ApiCallWithOperation;
+    type Key = ApiCallWithOperationKeyExtractor;
+}
+#[metrics]
+struct ApiCallWithOperation {
+    endpoint: String,
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+}

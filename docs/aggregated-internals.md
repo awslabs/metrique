@@ -7,7 +7,7 @@ This document explains the trait structure and implementation details of metriqu
 The aggregation system uses these core traits:
 
 **Field-level aggregation**:
-- `AggregateValue<T>` - Defines how individual field values combine (Counter, Histogram, etc.)
+- `AggregateValue<T>` - Defines how individual field values combine (Sum, Histogram, etc.)
 
 **Entry-level aggregation**:
 - `AggregatableEntry` - Marks entries as aggregatable, defines key extraction
@@ -63,7 +63,7 @@ pub trait AggregateValue<T> {
 }
 ```
 
-This trait operates at the field level, not the entry level. Each aggregation strategy (Counter, Histogram, etc.) implements this trait for the types it can aggregate.
+This trait operates at the field level, not the entry level. Each aggregation strategy (Sum, Histogram, etc.) implements this trait for the types it can aggregate.
 
 **Relationship to metrique core traits**:
 - `Self::Aggregated` types implement `Value` for metric output (e.g., `u64` implements `Value`, `HistogramValue<T>` implements `Value`)

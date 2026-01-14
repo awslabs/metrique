@@ -1,0 +1,19 @@
+error[E0271]: type mismatch resolving `<WithKeys as AggregateStrategy>::Key == NoKey`
+  --> tests/ui/fail/aggregate_with_keys.rs:19:9
+   |
+19 |     agg.insert(WithKeys {
+   |         ^^^^^^ type mismatch resolving `<WithKeys as AggregateStrategy>::Key == NoKey`
+   |
+note: expected this to be `NoKey`
+  --> tests/ui/fail/aggregate_with_keys.rs:9:8
+   |
+9  | struct WithKeys {
+   |        ^^^^^^^^
+note: required by a bound in `Aggregate::<T>::insert`
+  --> src/aggregator.rs
+   |
+   |     pub fn insert(&mut self, entry: T)
+   |            ------ required by a bound in this associated function
+...
+   |         T: AggregateStrategy<Key = AggregateMustBeUsedOnStructsWithNoKeys>,
+   |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `Aggregate::<T>::insert`
