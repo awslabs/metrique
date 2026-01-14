@@ -66,7 +66,13 @@ chrono = { workspace = true }
 toml = { workspace = true }
 rstest = { workspace = true }
 
+# We need to name one example so that our examples that use dev-dependencies get scraped
+[[example]]
+name = "unit-of-work-simple"
+doc-scrape-examples = true
+
 [package.metadata.docs.rs]
 all-features = true
 targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--cfg", "docsrs"]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
