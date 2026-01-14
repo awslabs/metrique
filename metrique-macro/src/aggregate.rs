@@ -10,6 +10,7 @@ struct AggregateField {
     ty: Type,
     strategy: Option<Type>,
     is_key: bool,
+    is_ignored: bool,
     use_clone: bool,
     metrics_attrs: Vec<Attribute>,
 }
@@ -45,6 +46,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
 
         let mut strategy = None;
         let mut is_key = false;
+        let mut is_ignored = false;
         let mut use_clone = false;
 
         for attr in &field.attrs {
@@ -57,6 +59,9 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
                     } else if meta.path.is_ident("key") {
                         is_key = true;
                         Ok(())
+                    } else if meta.path.is_ident("ignore") {
+                        is_ignored = true;
+                        Ok(())
                     } else if meta.path.is_ident("clone") {
                         use_clone = true;
                         Ok(())
@@ -67,11 +72,11 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             }
         }
 
-        if !is_key && strategy.is_none() {
+        if !is_key && !is_ignored && strategy.is_none() {
             return Err(Error::new(
                 name.span(),
                 format!(
-                    "field '{}' requires #[aggregate(strategy = ...)] attribute or if it is a key, use #[aggregate(key)]",
+                    "field '{}' requires #[aggregate(strategy = ...)] attribute or if it is a key, use #[aggregate(key)], or to skip aggregation, use #[aggregate(ignore)]",
                     name
                 ),
             ));
@@ -89,6 +94,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             ty: field.ty.clone(),
             strategy,
             is_key,
+            is_ignored,
             use_clone,
             metrics_attrs,
         });
@@ -104,7 +110,7 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
     let original_name = &input.ident;
     let aggregated_name = format_ident!("Aggregated{}", original_name);
 
-    let aggregated_fields = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
+    let aggregated_fields = parsed.fields.iter().filter(|f| !f.is_key && !f.is_ignored).map(|f| {
         let name = &f.name;
         let metrics_attrs = &f.metrics_attrs;
         let strategy = f.strategy.as_ref().unwrap();
@@ -166,7 +172,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
     };
 
     // Generate Merge impl
-    let merge_calls = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
+    let merge_calls = parsed.fields.iter().filter(|f| !f.is_key && !f.is_ignored).map(|f| {
         let name = &f.name;
         let strategy = f.strategy.as_ref().unwrap();
         let field_ty = &f.ty;
@@ -335,7 +341,7 @@ pub(crate) fn generate_merge_ref_impl(
     };
 
     // Generate merge_ref calls for non-key fields
-    let merge_ref_calls = parsed.fields.iter().filter(|f| !f.is_key).map(|f| {
+    let merge_ref_calls = parsed.fields.iter().filter(|f| !f.is_key && !f.is_ignored).map(|f| {
         let name = &f.name;
         let strategy = f.strategy.as_ref().unwrap();
         let field_ty = &f.ty;
@@ -573,5 +579,22 @@ mod tests {
             Err(_) => output.to_string(),
         };
         insta::assert_snapshot!("aggregate_direct_mode", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_with_ignore() {
+        let input = quote! {
+            #[metrics]
+            struct ApiCall {
+                #[aggregate(strategy = Histogram<Duration>)]
+                #[metrics(unit = Millisecond)]
+                latency: Duration,
+                #[aggregate(ignore)]
+                request_id: String,
+            }
+        };
+
+        let parsed_file = aggregate_impl_string(input);
+        insta::assert_snapshot!("aggregate_with_ignore", parsed_file);
     }
 }

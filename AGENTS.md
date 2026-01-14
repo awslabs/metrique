@@ -21,6 +21,8 @@
     let entries = inspector.take();
     assert!(entries.iter().any(|e| e.metrics["Field"] == expected));
     ```
+  
+- Both `metrique` and `metrique-aggregation` have their own set of UI tests in metrique/tests/ui and metrique-aggregation/tests/ui. This both only run on Rust 1.89 (or whatever the current pinned Rust version is for ui tests)
 
 # Metrique Trait System
 

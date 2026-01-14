@@ -1,7 +1,9 @@
 //! Aggregation structures for collecting and merging entries
 
 use hashbrown::hash_map::RawEntryMut;
+use metrique::{InflectableEntry, RootEntry, RootMetric};
 use metrique_core::CloseValue;
+use metrique_writer::EntrySink;
 use std::hash::BuildHasher;
 use std::marker::PhantomData;
 
@@ -184,6 +186,18 @@ impl<T: AggregateStrategy> Aggregate<T> {
         T::Source: Merge,
     {
         T::Source::merge(&mut self.aggregated, entry.close());
+    }
+
+    /// Inserts a record into the aggregator, then flushes the entry to another sink
+    pub fn insert_and_send_to(&mut self, entry: T, sink: &impl EntrySink<RootMetric<T>>)
+    where
+        T: CloseValue<Closed = T::Source>,
+        T: AggregateStrategy<Key = AggregateMustBeUsedOnStructsWithNoKeys>,
+        T::Source: MergeRef + InflectableEntry,
+    {
+        let entry = entry.close();
+        T::Source::merge_ref(&mut self.aggregated, &entry);
+        sink.append(RootEntry::new(entry));
     }
 
     /// Add a new entry to this Aggregate without closing
