@@ -1,0 +1,37 @@
+---
+source: metrique-macro/src/aggregate.rs
+expression: parsed_file
+---
+#[metrics]
+#[derive(Default)]
+#[allow(clippy::type_complexity)]
+pub struct AggregatedApiCall {
+    #[metrics(unit = Millisecond)]
+    latency: <Histogram<
+        Duration,
+    > as ::metrique_aggregation::__macro_plumbing::AggregateValue<Duration>>::Aggregated,
+}
+impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCall {
+    type Merged = AggregatedApiCall;
+    type MergeConfig = ();
+    fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+        Self::Merged::default()
+    }
+    fn merge(accum: &mut Self::Merged, input: Self) {
+        <Histogram<
+            Duration,
+        > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            Duration,
+        >>::insert(&mut accum.latency, input.latency);
+    }
+}
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
+    type Source = ApiCall;
+    type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
+}
+#[metrics]
+struct ApiCall {
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+    request_id: String,
+}

@@ -425,6 +425,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 /// |-----------|------|-------------|---------|
 /// | `strategy` | Path | Specifies the aggregation strategy (required for non-key fields) | `#[aggregate(strategy = Histogram<Duration>)]` |
 /// | `key` | Flag | Marks a field as part of the aggregation key - observations with different keys are aggregated separately | `#[aggregate(key)]` |
+/// | `ignore` | Flag | Ignore a field during aggregation. The field will still be part of the non-aggregated metric entry unless also marked `#[metrics(ignore)`] |
 ///
 /// # Aggregation Modes
 ///

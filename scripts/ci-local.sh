@@ -19,14 +19,14 @@ cargo audit || { echo "FAILED: cargo audit"; exit 1; }
 for toolchain in 1.89.0 stable nightly; do
     for flags in "--all-features" "--no-default-features"; do
         echo "→ Building with $toolchain $flags..."
-        
+
         if [ "$toolchain" != "stable" ]; then
             rm -fv Cargo.lock
         fi
-        
-        cargo +$toolchain build --quiet $flags || { echo "FAILED: cargo +$toolchain build --quiet $flags"; exit 1; }
-        cargo +$toolchain test --quiet $flags || { echo "FAILED: cargo +$toolchain test --quiet $flags"; exit 1; }
-        
+
+        cargo +$toolchain nextest run $flags || { echo "FAILED: cargo +$toolchain test --quiet $flags"; exit 1; }
+        cargo +$toolchain test --doc --quiet $flags || { echo "Doctests failed: cargo +$toolchain test --docs --quiet $flags"; exit 1; }
+
         if [ "$toolchain" == "nightly" ] && [ "$flags" == "--all-features" ]; then
             echo "→ Building docs with nightly..."
             RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo +$toolchain doc --quiet --no-deps $flags -Zunstable-options -Zrustdoc-scrape-examples || { echo "FAILED: doc build"; exit 1; }

@@ -75,6 +75,23 @@ impl<'a> CloseValue for &&'a str {
 }
 
 #[diagnostic::do_not_recommend]
+impl CloseValue for &Arc<String> {
+    type Closed = Arc<String>;
+
+    fn close(self) -> Self::Closed {
+        self.clone()
+    }
+}
+
+impl CloseValue for Arc<String> {
+    type Closed = Arc<String>;
+
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
+
+#[diagnostic::do_not_recommend]
 impl<'a, T: ToOwned + ?Sized> CloseValue for Cow<'a, T> {
     type Closed = Cow<'a, T>;
 
