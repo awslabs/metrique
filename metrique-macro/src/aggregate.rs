@@ -37,12 +37,21 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
     };
 
     let mut parsed_fields = Vec::new();
+    let mut seen_names = std::collections::HashSet::new();
 
     for field in fields {
         let name = field
             .ident
             .clone()
             .expect("unreachable: aggregate only supports named fields, checked above.");
+
+        // Check for duplicate field names
+        if !seen_names.insert(name.to_string()) {
+            return Err(Error::new(
+                name.span(),
+                format!("duplicate field name '{}'", name),
+            ));
+        }
 
         let mut strategy = None;
         let mut is_key = false;
@@ -53,23 +62,49 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             if attr.path().is_ident("aggregate") {
                 attr.parse_nested_meta(|meta| {
                     if meta.path.is_ident("strategy") {
+                        if strategy.is_some() {
+                            return Err(meta.error("duplicate 'strategy' attribute"));
+                        }
                         let value = meta.value()?;
                         strategy = Some(value.parse()?);
                         Ok(())
                     } else if meta.path.is_ident("key") {
+                        if is_key {
+                            return Err(meta.error("duplicate 'key' attribute"));
+                        }
                         is_key = true;
                         Ok(())
                     } else if meta.path.is_ident("ignore") {
                         is_ignored = true;
                         Ok(())
                     } else if meta.path.is_ident("clone") {
+                        if use_clone {
+                            return Err(meta.error("duplicate 'clone' attribute"));
+                        }
                         use_clone = true;
                         Ok(())
                     } else {
-                        Err(meta.error("unknown aggregate attribute"))
+                        let path_str = meta.path.get_ident()
+                            .map(|i| i.to_string())
+                            .unwrap_or_else(|| meta.path.to_token_stream().to_string());
+                        Err(meta.error(format!(
+                            "unknown aggregate attribute '{}'. Valid attributes are: strategy, key, clone",
+                            path_str
+                        )))
                     }
                 })?;
             }
+        }
+
+        // Check for conflicting attributes
+        if is_key && strategy.is_some() {
+            return Err(Error::new(
+                name.span(),
+                format!(
+                    "field '{}' cannot have both 'key' and 'strategy' attributes",
+                    name
+                ),
+            ));
         }
 
         if !is_key && !is_ignored && strategy.is_none() {
@@ -596,5 +631,112 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         insta::assert_snapshot!("aggregate_with_ignore", parsed_file);
+    }
+
+    #[test]
+    fn test_unknown_attribute() {
+        use assert2::check;
+
+        let input = quote! {
+            struct ApiCall {
+                #[aggregate(unknown_attr)]
+                latency: Duration,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let result = parse_aggregate_fields(&input);
+        check!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        check!(err.contains("unknown aggregate attribute 'unknown_attr'"));
+        check!(err.contains("Valid attributes are: strategy, key, clone"));
+    }
+
+    #[test]
+    fn test_duplicate_strategy() {
+        use assert2::check;
+
+        let input = quote! {
+            struct ApiCall {
+                #[aggregate(strategy = Counter, strategy = Sum)]
+                count: u64,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let result = parse_aggregate_fields(&input);
+        check!(result.is_err());
+        check!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate 'strategy' attribute")
+        );
+    }
+
+    #[test]
+    fn test_duplicate_key() {
+        use assert2::check;
+
+        let input = quote! {
+            struct ApiCall {
+                #[aggregate(key, key)]
+                endpoint: String,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let result = parse_aggregate_fields(&input);
+        check!(result.is_err());
+        check!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("duplicate 'key' attribute")
+        );
+    }
+
+    #[test]
+    fn test_conflicting_key_and_strategy() {
+        use assert2::check;
+
+        let input = quote! {
+            struct ApiCall {
+                #[aggregate(key, strategy = Counter)]
+                endpoint: String,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let result = parse_aggregate_fields(&input);
+        check!(result.is_err());
+        check!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("cannot have both 'key' and 'strategy' attributes")
+        );
+    }
+
+    #[test]
+    fn test_missing_strategy_or_key() {
+        use assert2::check;
+
+        let input = quote! {
+            struct ApiCall {
+                #[aggregate()]
+                latency: Duration,
+            }
+        };
+
+        let input = syn::parse2(input).unwrap();
+        let result = parse_aggregate_fields(&input);
+        check!(result.is_err());
+        check!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("requires #[aggregate(strategy = ...)]")
+        );
     }
 }

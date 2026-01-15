@@ -781,6 +781,7 @@ name = "metrique-macro"
 version = "0.1.10"
 dependencies = [
  "Inflector",
+ "assert2",
  "darling",
  "insta",
  "metrique",
