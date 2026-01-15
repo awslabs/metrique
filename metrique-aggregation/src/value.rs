@@ -1,6 +1,11 @@
 //! Strategies for aggregating values
 
-use crate::traits::AggregateValue;
+use metrique_writer::MetricValue;
+
+use crate::{
+    histogram::{Histogram, SortAndMerge},
+    traits::AggregateValue,
+};
 use std::{marker::PhantomData, ops::AddAssign};
 
 /// Sums values when aggregating
@@ -79,6 +84,19 @@ where
 
     fn insert(accum: &mut Self::Aggregated, value: T) {
         T::merge(accum, value);
+    }
+}
+
+/// Distribution preserves all values while compressing duplicates
+///
+/// This is effectively a type alias for `Histogram<T, SortAndMerge>`, however,
+/// when used as an aggregate strategy, it avoids the needs to name `T`.
+pub struct Distribution;
+impl<T: MetricValue> AggregateValue<T> for Distribution {
+    type Aggregated = Histogram<T, SortAndMerge>;
+
+    fn insert(accum: &mut Self::Aggregated, value: T) {
+        accum.add_value(value);
     }
 }
 

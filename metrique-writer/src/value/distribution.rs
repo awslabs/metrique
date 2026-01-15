@@ -17,6 +17,12 @@ use metrique_writer_core::value::MetricFlags;
 
 /// Collects a distribution of [`Value`]s that will be recorded individually under a single name.
 ///
+/// <div class="warning">
+///    This type is generally intended for internal use. If you want to record multiple values
+///    with duplicates merged use <code>metrique_aggregation::value::Distribution</code>
+///    or <code>metrique_aggregation::histogram::Histogram&lt;T, SortAndMerge&gt;</code>
+/// </div>
+///
 /// For example,
 /*
 /// ```

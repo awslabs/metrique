@@ -25,6 +25,7 @@ struct BackendCall {
     #[aggregate(strategy = Sum)]
     requests_made: usize,
 
+    // To preserve all values precisely, use `value::Distribution`
     #[aggregate(strategy = Histogram<Duration>)]
     #[metrics(unit = Millisecond)]
     latency: Duration,

@@ -146,6 +146,9 @@ pub trait SharedAggregationStrategy {
 /// Use this when you have many observations of the same metric within a single unit of work.
 /// The histogram aggregates values in memory and emits them as a single metric entry.
 ///
+/// If you want to preserve all values instead of bucketing them, use `Histogram<T, SortAndMerge>` as
+/// the strategy.
+///
 /// Requires `&mut self` to add values. For thread-safe access, use [`SharedHistogram`].
 pub struct Histogram<T, S = ExponentialAggregationStrategy> {
     strategy: S,
