@@ -14,8 +14,6 @@ use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregator::Aggregate;
 use metrique_aggregation::histogram::Histogram;
 use metrique_aggregation::value::{KeepLast, Sum};
-use metrique_writer::sample::SampledFormatExt;
-use metrique_writer::sink::DevNullSink;
 use metrique_writer::{AttachGlobalEntrySinkExt, GlobalEntrySink};
 use metrique_writer_core::global_entry_sink;
 use std::sync::Arc;
@@ -34,13 +32,16 @@ struct BackendCall {
     #[aggregate(strategy = Sum)]
     errors: u64,
 
+    // This field needs to be marked `clone` in order to use `aggregate(ref)`.
+    // This example require aggregate ref because we are using BackendCall both in aggregation
+    // and emitting the same record as a non-aggregated event
     #[aggregate(strategy = KeepLast, clone)]
     error_message: Option<String>,
 
     // this field is ignored for aggregation, but preserved when using BackendCall in unit-of-work
-    // metrics
+    // metrics. This means that when the raw events are emitted (in this example on slow reequests and errors)
+    // they will contain the query_id so it can be traced back to the main record
     #[aggregate(ignore)]
-    #[metrics(no_close)]
     query_id: Arc<String>,
 }
 
@@ -83,28 +84,28 @@ async fn execute_distributed_query(query: &str, sink: BoxEntrySink) {
 
     // Fan out to 100 backend shards
     let sampled_calls = SampledApiCalls::sink();
-    let dev_null = DevNullSink::boxed();
     for shard in 0..100 {
         let start = std::time::Instant::now();
         let result = call_backend(&format!("shard{shard}"), query).await;
         let latency = start.elapsed();
 
         // Insert each backend call into the aggregator
+        // If it was a slow call or was an error, log the non-aggregated event as well
         let should_sample = latency > Duration::from_millis(70) || result.is_err();
-        metrics.backend_calls.insert_and_send_to(
-            BackendCall {
-                requests_made: 1,
-                latency,
-                errors: if result.is_err() { 1 } else { 0 },
-                error_message: result.err().map(|err| format!("{err}")),
-                query_id: Arc::clone(&query_id),
-            },
-            if should_sample {
-                &sampled_calls
-            } else {
-                &dev_null
-            },
-        );
+        let backend_call = BackendCall {
+            requests_made: 1,
+            latency,
+            errors: if result.is_err() { 1 } else { 0 },
+            error_message: result.err().map(|err| format!("{err}")),
+            query_id: Arc::clone(&query_id),
+        };
+        if should_sample {
+            metrics
+                .backend_calls
+                .insert_and_send_to(backend_call, &sampled_calls);
+        } else {
+            metrics.backend_calls.insert(backend_call);
+        }
     }
 
     // Metrics automatically emitted when dropped

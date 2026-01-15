@@ -1,5 +1,0 @@
-error: field 'request_id' requires #[aggregate(strategy = ...)] attribute or if it is a key, use #[aggregate(key)], or to skip aggregation, use #[aggregate(ignore)]
- --> tests/ui/fail/aggregate_no_strategy_suggests_ignore.rs:9:5
-  |
-9 |     request_id: String,
-  |     ^^^^^^^^^^
