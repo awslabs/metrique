@@ -13,6 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add support for `#[aggregate]` and aggregation ([#158](https://github.com/awslabs/metrique/pull/158)). This is a major new feature—you can find lots of docs and examples in the `metrique-aggregation` package. `#[aggregate]` allows you to take your existing unit-of-work metrics and aggregate them, potentially across multiple different sets of dimensions.
 
+```rust
+#[aggregate]
+#[metrics]
+struct BackendCall {
+    #[aggregate(strategy = Sum)]
+    requests_made: usize,
+
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+
+    #[aggregate(strategy = Sum)]
+    errors: u64,
+}
+```
+
 ### Other
 
 - Enable rustdoc-scrape-examples for docs.rs ([#181](https://github.com/awslabs/metrique/pull/181))
