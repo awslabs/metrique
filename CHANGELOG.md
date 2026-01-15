@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.14](https://github.com/awslabs/metrique/compare/metrique-v0.1.13...metrique-v0.1.14) - 2026-01-15
+
+### Added
+
+- Add support for `#[aggregate]` and aggregation ([#158](https://github.com/awslabs/metrique/pull/158)). This is a major new feature—you can find lots of docs and examples in the `metrique-aggregation` package. `#[aggregate]` allows you to take your existing unit-of-work metrics and aggregate them, potentially across multiple different sets of dimensions.
+
+### Other
+
+- Enable rustdoc-scrape-examples for docs.rs ([#181](https://github.com/awslabs/metrique/pull/181))
+- remove vestigial test sink .as_u64() / add_f64() calls ([#171](https://github.com/awslabs/metrique/pull/171))
+
 ## [0.1.13](https://github.com/awslabs/metrique/compare/metrique-v0.1.12...metrique-v0.1.13) - 2026-01-10
 
 ### Added

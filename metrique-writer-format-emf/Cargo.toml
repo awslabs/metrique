@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer-format-emf"
-version = "0.1.12"
+version = "0.1.13"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
@@ -20,7 +20,7 @@ hashbrown = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tracing = { workspace = true }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.9" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.13" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.14" }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }
