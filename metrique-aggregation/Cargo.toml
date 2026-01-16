@@ -5,9 +5,11 @@ edition = "2024"
 rust-version = "1.89" # build.yml
 license = "Apache-2.0"
 description = "Library for working with unit of work metrics - aggregation"
+repository = "https://github.com/awslabs/metrique"
+readme = "README.md"
 
 [dependencies]
-metrique = { path = "../metrique", version = "0.1"}
+metrique = { path = "../metrique", version = "0.1" }
 metrique-writer = { path = "../metrique-writer", version = "0.1.14" }
 metrique-core = { path = "../metrique-core", version = "0.1.12" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.11" }
@@ -33,10 +35,21 @@ uuid = { version = "1", features = ["v4"] }
 tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
+[features]
+# There seems to be a rustdoc bug where when a dev dependency enables a new feature, its not picked up properly
+__build_examples_for_rustdoc = ["metrique/emf", "metrique/test-util"]
+
 # We need to name one example so that our examples that use dev-dependencies get scraped
 [[example]]
 name = "embedded"
 doc-scrape-examples = true
+requires_features = ["__build_examples_for_rustdoc"]
+
+[package.metadata.docs.rs]
+all-features = true
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--cfg", "docsrs"]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
 
 [[bench]]
 name = "aggregation"

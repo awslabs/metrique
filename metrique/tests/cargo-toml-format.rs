@@ -101,6 +101,57 @@ fn test_cargo_toml_format(
             msrv_major_minor()
         );
     }
+
+    // Check that each package has docs.rs metadata
+    if let Some(package) = package {
+        let metadata = toml
+            .get("package")
+            .and_then(|p| p.get("metadata"))
+            .and_then(|m| m.get("docs"))
+            .and_then(|d| d.get("rs"))
+            .and_then(|r| r.as_table())
+            .unwrap_or_else(|| {
+                panic!(
+                    "Missing [package.metadata.docs.rs] section in {}",
+                    toml_path.display()
+                )
+            });
+
+        assert!(
+            metadata.contains_key("all-features"),
+            "[package.metadata.docs.rs] in {} must have 'all-features' key",
+            toml_path.display()
+        );
+
+        assert!(
+            metadata.contains_key("rustdoc-args"),
+            "[package.metadata.docs.rs] in {} must have 'rustdoc-args' key",
+            toml_path.display()
+        );
+
+        // Check for -Zrustdoc-scrape-examples in cargo-args
+        let cargo_args = metadata
+            .get("cargo-args")
+            .and_then(|a| a.as_array())
+            .unwrap_or_else(|| {
+                panic!(
+                    "[package.metadata.docs.rs] in {} must have 'cargo-args' array with '-Zrustdoc-scrape-examples'",
+                    toml_path.display()
+                )
+            });
+
+        let has_scrape_examples = cargo_args.iter().any(|arg| {
+            arg.as_str()
+                .map(|s| s == "-Zrustdoc-scrape-examples")
+                .unwrap_or(false)
+        });
+
+        assert!(
+            has_scrape_examples,
+            "[package.metadata.docs.rs] cargo-args in {} must include '-Zrustdoc-scrape-examples'",
+            toml_path.display()
+        );
+    }
 }
 
 #[rstest]

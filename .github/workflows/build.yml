@@ -1,5 +1,7 @@
 name: Build
 on: [pull_request]
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -28,3 +30,13 @@ jobs:
         with:
           toolchain: ${{ matrix.toolchain }}
           flags: ${{ matrix.flags }}
+
+  docs-rs:
+    name: Docs.rs Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/install@cargo-docs-rs
+      - name: Check docs.rs build
+        run: ./scripts/check-docsrs.sh

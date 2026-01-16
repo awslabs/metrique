@@ -25,3 +25,4 @@ tokio = { workspace = true, features = ["test-util", "full"] }
 all-features = true
 targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--cfg", "docsrs"]
+cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
