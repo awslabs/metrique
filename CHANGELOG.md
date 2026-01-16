@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.15](https://github.com/awslabs/metrique/compare/metrique-v0.1.14...metrique-v0.1.15) - 2026-01-16
+
+### Fixes 
+
+- Fix docs.rs build, add docs.rs build check script and CI job ([#188](https://github.com/awslabs/metrique/pull/188))
+
 ## [0.1.14](https://github.com/awslabs/metrique/compare/metrique-v0.1.13...metrique-v0.1.14) - 2026-01-15
 
 ### Added

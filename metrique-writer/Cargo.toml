@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer"
-version = "0.1.14"
+version = "0.1.15"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
@@ -26,9 +26,9 @@ tokio = { workspace = true, optional = true, default-features = false, features 
 tracing = { workspace = true, optional = true }
 metrics_024 = { workspace = true, optional = true }
 metrics-util_020 = { workspace = true, optional = true }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.9" }
-metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.6" }
-metrique-core = { path = "../metrique-core", version = "0.1.12" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.10" }
+metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.7" }
+metrique-core = { path = "../metrique-core", version = "0.1.13" }
 ordered-float = { workspace = true, optional = true }
 
 [dev-dependencies]
