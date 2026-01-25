@@ -21,7 +21,7 @@
 //!     #[metrics(timestamp)]
 //!     timestamp: SystemTime,
 //!     operation: &'static str,
-//!     
+//!
 //!     // Dynamic field - key name determined at runtime
 //!     #[metrics(flatten)]
 //!     dynamic_count: Flex<usize>,
