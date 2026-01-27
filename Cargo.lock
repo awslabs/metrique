@@ -882,6 +882,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "tempfile",
+ "tokio",
  "tracing",
  "tracing-appender",
 ]

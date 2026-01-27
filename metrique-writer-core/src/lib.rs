@@ -27,6 +27,10 @@ pub mod unit;
 mod validate;
 pub mod value;
 
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub use tokio as __tokio;
+
 /// Private test module to make writing internal tests easier. This might change or
 /// be fully removed in any version.
 #[cfg(any(test, feature = "private-test-util"))]

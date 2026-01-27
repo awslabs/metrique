@@ -14,6 +14,7 @@ itertools = { workspace = true, default-features = false }
 serde = { workspace = true, optional = true }
 derive-where = { workspace = true }
 tracing = { workspace = true, optional = true }
+tokio = { workspace = true, optional = true, features = ["rt"] }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }
@@ -24,12 +25,13 @@ tracing-appender = { workspace = true }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = ["serde"]
 serde = ["dep:serde"]
 # Test utilities for testing metrics in applications
-test-util = []
+test-util = ["dep:tokio"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
 # dep:tracing-appender is for rustdoc
 private-test-util = ["dep:tracing"]

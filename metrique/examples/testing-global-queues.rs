@@ -114,4 +114,36 @@ mod test {
         assert_eq!(entry.metrics["DuckCounterTime"], 1234);
         assert_eq!(entry.metrics["Time"], 1468);
     }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn multithreaded_runtime_sink() {
+        let _mock_time = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+
+        // Use runtime-scoped guard for multi-threaded tests
+        let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
+        let _guard = crate::ServiceMetrics::set_test_sink_on_runtime(sink);
+
+        let app = std::sync::Arc::new(crate::ServerState {});
+
+        // Spawn multiple tasks across threads
+        let handles: Vec<_> = (0..3)
+            .map(|_| {
+                let app = app.clone();
+                tokio::spawn(async move {
+                    super::look_at_sky(app).await;
+                })
+            })
+            .collect();
+
+        for handle in handles {
+            handle.await.unwrap();
+        }
+
+        let entries = inspector.entries();
+        assert_eq!(entries.len(), 3);
+        for entry in entries {
+            assert_eq!(entry.values["Operation"], "LookAtSky");
+            assert_eq!(entry.metrics["NumberOfDucks"], 42);
+        }
+    }
 }
