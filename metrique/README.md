@@ -1123,8 +1123,7 @@ let metric = RequestMetrics {
 
 > Note: enable the `test-util` feature of `metrique` to enable test utility features.
 
-```rust
-# #[allow(clippy::test_attr_in_doctest)]
+```rust,no_run
 
 use metrique::unit_of_work::metrics;
 
@@ -1137,7 +1136,6 @@ struct RequestMetrics {
 }
 
 #[test]
-# fn test_in_doctests_is_a_lie() {}
 fn test_metrics () {
     let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
     let metrics = RequestMetrics {
