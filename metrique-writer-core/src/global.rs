@@ -607,6 +607,9 @@ macro_rules! global_entry_sink {
                         /// Returns a guard that will automatically remove the sink when dropped.
                         /// Only available when the `test-util` feature is enabled.
                         ///
+                        /// # Panics
+                        /// If this runtime already has a test sink installed.
+                        ///
                         /// # Example
                         #[doc = $crate::__macro_doctest!()]
                         /// # use metrique_writer::sink::global_entry_sink;
@@ -621,6 +624,7 @@ macro_rules! global_entry_sink {
                         ///     rt.block_on(async {
                         ///         // All appends on this runtime now go to the test sink
                         ///     });
+                        ///    // When the _guard is dropped, the sink is now detached and can be reattached again.
                         /// }
                         /// ```
                         #[track_caller]
@@ -654,7 +658,8 @@ macro_rules! global_entry_sink {
                         /// Only available when the `test-util` feature is enabled.
                         ///
                         /// # Panics
-                        /// Panics if called outside a tokio runtime context.
+                        /// - If called outside a tokio runtime context.
+                        /// - If a test sink is already installed on this runtime
                         ///
                         /// # Example
                         #[doc = $crate::__macro_doctest!()]
@@ -670,6 +675,8 @@ macro_rules! global_entry_sink {
                         ///     // `TestSink::sink()` will now always refer to the test sink on any thread on this runtime.
                         ///     // NOTE: that threads _outside_ this runtime (e.g. a background thread) will still NOT have this sink
                         ///     // installed.
+                        ///
+                        ///     // When _guard is dropped, the sink will be detached.
                         /// }
                         /// ```
                         #[track_caller]
