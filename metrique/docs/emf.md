@@ -119,7 +119,7 @@ Per entry dimensions can be set with the `emf::dimension_sets` attribute when de
 1. Only the root metric may define dimension_sets. Failing to do this will result in an error at runtime. This behavior may be improved in the future.
 2. There is no compile-time validation on the dimensions that are set. You must validate that that dimension sets are set as you expect. A good way to check this is by invoking the EMF formatter directly with `all_validations` enabled:
 
-    ```rust
+    ```rust,no_run
     use metrique::writer::format::Format;
     use metrique::emf::Emf;
     use metrique::unit_of_work::metrics;

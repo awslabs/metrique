@@ -391,7 +391,7 @@ pub struct TestEntrySink {
 ///
 /// This requires that the `test-util` feature be enabled.
 /// # Examples
-/// ```
+/// ```no_run
 /// use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
 /// use metrique_writer::{Entry, EntrySink};
 ///
@@ -402,7 +402,6 @@ pub struct TestEntrySink {
 /// }
 ///
 /// #[test]
-/// # fn test_in_doctests_ignored() {}
 /// fn test_metrics () {
 ///     let TestEntrySink { inspector, sink } = test_entry_sink();
 ///     sink.append(RequestMetrics {

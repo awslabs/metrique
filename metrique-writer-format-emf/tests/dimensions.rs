@@ -85,7 +85,7 @@ fn test_global_dimensions_denylist() {
     );
 
     let converted_global_dimensions_denylist = global_dimensions_entry.global_dimensions_denylist();
-    assert!(converted_global_dimensions_denylist.contains("NonDimMetric".into()));
+    assert!(converted_global_dimensions_denylist.contains(&Cow::Borrowed("NonDimMetric")));
 
     let empty_global_dimensions_denylist: HashSet<CowStr> = HashSet::new();
     global_dimensions_entry.clear_global_dimensions_denylist();
