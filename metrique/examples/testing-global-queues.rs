@@ -121,7 +121,7 @@ mod test {
 
         // Use runtime-scoped guard for multi-threaded tests
         let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
-        let _guard = crate::ServiceMetrics::set_test_sink_on_runtime(sink);
+        let _guard = crate::ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink);
 
         let app = std::sync::Arc::new(crate::ServerState {});
 

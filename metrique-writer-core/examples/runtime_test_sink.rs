@@ -3,7 +3,7 @@
 
 //! Example demonstrating the runtime-scoped test sink guard.
 //!
-//! This shows how to use `set_test_sink_on_runtime` which creates a Send + Sync
+//! This shows how to use `set_test_sink_on_current_tokio_runtime` which creates a Send + Sync
 //! guard that works across threads within a tokio runtime.
 
 use metrique_writer::GlobalEntrySink;
@@ -18,7 +18,7 @@ async fn main() {
     let TestEntrySink { inspector, sink } = test_entry_sink();
 
     // This guard is Send + Sync and works across all threads in the runtime
-    let _guard = TestMetrics::set_test_sink_on_runtime(sink);
+    let _guard = TestMetrics::set_test_sink_on_current_tokio_runtime(sink);
 
     // Spawn tasks on different threads
     let handles: Vec<_> = (0..4)

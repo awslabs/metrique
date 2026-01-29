@@ -530,8 +530,9 @@ macro_rules! global_entry_sink {
                         /// Returns a guard that will automatically restore the previous sink state when dropped.
                         /// Only available when the `test-util` feature is enabled.
                         ///
-                        /// **Note:** This guard is not Send/Sync. For multi-threaded tokio runtimes,
-                        /// use [`set_test_sink_on_runtime`](Self::set_test_sink_on_runtime) instead.
+                        /// **Note:** This guard is ONLY applies to the current thread meaning that it will
+                        /// not work across threads (e.g. on a multithreaded Tokio runtime). For multi-threaded
+                        /// tokio runtimes, use [`set_test_sink_on_current_tokio_runtime`](Self::set_test_sink_on_current_tokio_runtime) instead.
                         ///
                         /// # Example
                         #[doc = $crate::__macro_doctest!()]
@@ -600,7 +601,7 @@ macro_rules! global_entry_sink {
                         /// This allows installing a test sink on a runtime from outside that runtime's context.
                         /// The sink will be used by all tasks running on the specified runtime.
                         ///
-                        /// **Note:** Most users should use [`set_test_sink_on_runtime`](Self::set_test_sink_on_runtime)
+                        /// **Note:** Most users should use [`set_test_sink_on_current_tokio_runtime`](Self::set_test_sink_on_current_tokio_runtime)
                         /// instead, which automatically uses the current runtime.
                         ///
                         /// Returns a guard that will automatically remove the sink when dropped.
@@ -615,7 +616,7 @@ macro_rules! global_entry_sink {
                         /// fn test_metrics() {
                         ///     let rt = tokio::runtime::Runtime::new().unwrap();
                         ///     let TestEntrySink { inspector, sink } = test_entry_sink();
-                        ///     let _guard = TestSink::set_test_sink_for_runtime(&rt.handle(), sink);
+                        ///     let _guard = TestSink::set_test_sink_for_tokio_runtime(&rt.handle(), sink);
                         ///
                         ///     rt.block_on(async {
                         ///         // All appends on this runtime now go to the test sink
@@ -623,7 +624,7 @@ macro_rules! global_entry_sink {
                         /// }
                         /// ```
                         #[track_caller]
-                        pub fn set_test_sink_for_runtime(handle: &$crate::__tokio::runtime::Handle, sink: BoxEntrySink) -> $crate::global::TokioRuntimeTestSinkGuard {
+                        pub fn set_test_sink_for_tokio_runtime(handle: &$crate::__tokio::runtime::Handle, sink: BoxEntrySink) -> $crate::global::TokioRuntimeTestSinkGuard {
                             let runtime_id = handle.id();
                             let map = runtime_sinks();
 
@@ -646,9 +647,8 @@ macro_rules! global_entry_sink {
 
                         /// Install a runtime-scoped test sink for the current tokio runtime.
                         ///
-                        /// Unlike `set_test_sink`, this guard is Send + Sync and works across
-                        /// threads within the same tokio runtime. The sink will be used by all
-                        /// tasks running on the current runtime.
+                        /// Unlike `set_test_sink`, this guard is not a thread local override and
+                        /// instead overrides all usages of of the sink across the runtime.
                         ///
                         /// Returns a guard that will automatically remove the sink when dropped.
                         /// Only available when the `test-util` feature is enabled.
@@ -665,7 +665,7 @@ macro_rules! global_entry_sink {
                         /// #[tokio::test(flavor = "multi_thread")]
                         /// async fn test_metrics() {
                         ///     let TestEntrySink { inspector, sink } = test_entry_sink();
-                        ///     let _guard = TestSink::set_test_sink_on_runtime(sink);
+                        ///     let _guard = TestSink::set_test_sink_on_current_tokio_runtime(sink);
                         ///
                         ///     // `TestSink::sink()` will now always refer to the test sink on any thread on this runtime.
                         ///     // NOTE: that threads _outside_ this runtime (e.g. a background thread) will still NOT have this sink
@@ -673,9 +673,9 @@ macro_rules! global_entry_sink {
                         /// }
                         /// ```
                         #[track_caller]
-                        pub fn set_test_sink_on_runtime(sink: BoxEntrySink) -> $crate::global::TokioRuntimeTestSinkGuard {
+                        pub fn set_test_sink_on_current_tokio_runtime(sink: BoxEntrySink) -> $crate::global::TokioRuntimeTestSinkGuard {
                             let handle = $crate::__tokio::runtime::Handle::current();
-                            Self::set_test_sink_for_runtime(&handle, sink)
+                            Self::set_test_sink_for_tokio_runtime(&handle, sink)
                         }
                     }
                 };
@@ -799,7 +799,7 @@ mod tests {
         use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
         let TestEntrySink { inspector, sink } = test_entry_sink();
 
-        let _guard = ServiceMetrics::set_test_sink_on_runtime(sink);
+        let _guard = ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink);
 
         // Spawn tasks on different threads
         let handles: Vec<_> = (0..4)
@@ -826,7 +826,7 @@ mod tests {
         use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
         let TestEntrySink { inspector, sink } = test_entry_sink();
 
-        let guard = ServiceMetrics::set_test_sink_on_runtime(sink);
+        let guard = ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink);
 
         // Verify the guard can be sent across threads
         tokio::spawn(async move {
@@ -849,7 +849,7 @@ mod tests {
         } = test_entry_sink();
 
         {
-            let _guard = ServiceMetrics::set_test_sink_on_runtime(sink1);
+            let _guard = ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink1);
             ServiceMetrics::append(TestEntry);
         } // Guard dropped here
 
@@ -860,7 +860,7 @@ mod tests {
             inspector: inspector2,
             sink: sink2,
         } = test_entry_sink();
-        let _guard2 = ServiceMetrics::set_test_sink_on_runtime(sink2);
+        let _guard2 = ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink2);
         ServiceMetrics::append(TestEntry);
 
         // First inspector should still have 1 entry
@@ -875,7 +875,7 @@ mod tests {
         use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
 
         let TestEntrySink { inspector: _, sink } = test_entry_sink();
-        let _guard = ServiceMetrics::set_test_sink_on_runtime(sink);
+        let _guard = ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink);
     }
 
     #[test]
@@ -884,7 +884,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
         let TestEntrySink { inspector, sink } = test_entry_sink();
-        let _guard = ServiceMetrics::set_test_sink_for_runtime(&rt.handle(), sink);
+        let _guard = ServiceMetrics::set_test_sink_for_tokio_runtime(&rt.handle(), sink);
 
         rt.block_on(async {
             ServiceMetrics::append(TestEntry);
@@ -903,14 +903,14 @@ mod tests {
             inspector: _,
             sink: sink1,
         } = test_entry_sink();
-        let _guard1 = ServiceMetrics::set_test_sink_on_runtime(sink1);
+        let _guard1 = ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink1);
 
         let TestEntrySink {
             inspector: _,
             sink: sink2,
         } = test_entry_sink();
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            ServiceMetrics::set_test_sink_on_runtime(sink2)
+            ServiceMetrics::set_test_sink_on_current_tokio_runtime(sink2)
         }));
 
         assert!(result.is_err());
