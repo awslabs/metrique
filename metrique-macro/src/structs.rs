@@ -42,6 +42,7 @@ pub(crate) fn generate_metrics_for_struct(
         &input.generics,
         &parsed_fields,
         &root_attributes,
+        &input.attrs,
     )?;
 
     let inner_impl = match root_attributes.mode {
@@ -137,17 +138,46 @@ fn generate_entry_struct(
     generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
+    base_attrs: &[Attribute],
 ) -> Result<Ts2> {
     let has_named_fields = fields.iter().any(|f| f.name.is_some());
     let config = root_attrs.configuration_fields();
 
     let fields = fields.iter().flat_map(|f| f.entry_field(has_named_fields));
     let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
+
+    let allowed_derives = extract_allowed_derives(base_attrs);
+
     Ok(quote!(
         #[doc(hidden)]
         #[allow(clippy::type_complexity)]
+        #allowed_derives
         pub struct #name #generics #body
     ))
+}
+
+fn extract_allowed_derives(attrs: &[Attribute]) -> Ts2 {
+    let allowed = ["Debug", "Clone"];
+    let mut found = vec![];
+
+    for attr in attrs {
+        if attr.path().is_ident("derive")
+            && let syn::Meta::List(meta_list) = &attr.meta
+        {
+            let tokens = meta_list.tokens.to_string();
+            for derive in &allowed {
+                if tokens.contains(derive) {
+                    found.push(syn::Ident::new(derive, proc_macro2::Span::call_site()));
+                }
+            }
+        }
+    }
+
+    if found.is_empty() {
+        quote!()
+    } else {
+        quote!(#[derive(#(#found),*)])
+    }
 }
 
 fn generate_close_value_impls_for_struct(

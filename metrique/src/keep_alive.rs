@@ -15,13 +15,17 @@ use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut, Drop},
 };
-use std::sync::{Arc, Mutex, Weak};
+use std::{
+    fmt::Debug,
+    sync::{Arc, Mutex, Weak},
+};
 /// [`Parent`] owner
 ///
 /// The [`Parent`] provides exclusive mutable access to its inner value.
 ///
 /// You can delay the primary value being dropped by calling [`new_guard`](Parent::new_guard).
 /// As long as guards exist, the value backed by primary will not be dropped.
+#[derive(Debug)]
 pub(crate) struct Parent<T> {
     // SAFETY: `value` MUST only be mutated through `Parent`. This is safe because:
     // 1. `Parent` does NOT implement `Clone` or `Copy`, meaning only 1 `Parent` may exist.
@@ -49,6 +53,12 @@ type GuardInner = Mutex<Option<Box<dyn FnOnce() + Send + Sync>>>;
 /// Any guards that remain alive will prevent the `value` within `Parent` from being dropped
 pub(crate) struct Guard {
     _value: Arc<GuardInner>,
+}
+
+impl Debug for Guard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Guard").finish()
+    }
 }
 
 /// If a `DropAll` is created, dropping the `DropAll` will effectively ignore the existence of all `Guards`.

@@ -165,6 +165,7 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Parent<AppendAndCloseOnDropInner<E, S>>,
 }
@@ -322,6 +323,7 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     }
 }
 
+#[derive(Debug)]
 struct AppendAndCloseOnDropInner<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     entry: Option<E>,
     sink: S,

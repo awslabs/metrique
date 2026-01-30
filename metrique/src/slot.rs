@@ -4,6 +4,7 @@
 use crate::DropAll;
 use crate::Guard;
 use metrique_core::CloseValue;
+use std::fmt::Debug;
 use std::marker::PhantomPinned;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -88,6 +89,7 @@ fn make_slot<T: CloseValue>(initial_value: T) -> (SlotGuard<T>, Waiting<T::Close
 ///     metrics.field_1 += 1;
 /// }
 /// ```
+#[derive(Debug)]
 pub struct Slot<T: CloseValue> {
     tx: Option<SlotGuard<T>>,
     rx: Option<Waiting<T::Closed>>,
@@ -140,6 +142,7 @@ impl<T: CloseValue> LazySlot<T> {
 ///
 /// This enum determines what happens when a parent metric record containing a `Slot`
 /// is dropped before the `SlotGuard` for that slot is dropped.
+#[derive(Debug)]
 pub enum OnParentDrop {
     /// Delay flushing the parent record until this slot is closed
     ///
@@ -222,6 +225,7 @@ impl<T: CloseValue> CloseValue for Slot<T> {
 ///
 /// This struct is used internally by `Slot` to wait for a value to be sent back
 /// from a `SlotGuard` when it is dropped.
+#[derive(Debug)]
 struct Waiting<T> {
     rx: oneshot::Receiver<T>,
 }
@@ -257,6 +261,18 @@ pub struct SlotGuard<T: CloseValue> {
     parent_drop_mode: OnParentDrop,
 }
 
+impl<T: Debug + CloseValue> Debug for SlotGuard<T>
+where
+    T::Closed: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlotGuard")
+            .field("slot", &self.slot)
+            .field("parent_drop_mode", &self.parent_drop_mode)
+            .finish()
+    }
+}
+
 impl<T: CloseValue> SlotGuard<T> {
     /// Check if the `Slot` is still open
     ///
@@ -280,6 +296,12 @@ impl<T: CloseValue> SlotGuard<T> {
 /// A `FlushGuard` is obtained by calling `flush_guard` on `AppendAndCloseOnDrop`
 pub struct FlushGuard {
     pub(crate) _drop_guard: Guard,
+}
+
+impl Debug for FlushGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FlushGuard").finish()
+    }
 }
 
 /// The counterpart to `FlushGuard`:
@@ -333,6 +355,7 @@ impl<T: CloseValue> Drop for SlotGuard<T> {
     }
 }
 
+#[derive(Debug)]
 enum SlotI<T: CloseValue> {
     Writable {
         value: T,
