@@ -57,7 +57,8 @@ pub(crate) struct Guard {
 
 impl Debug for Guard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Guard").finish()
+        let is_open = self._value.lock().unwrap().is_some();
+        f.debug_struct("Guard").field("open", &is_open).finish()
     }
 }
 

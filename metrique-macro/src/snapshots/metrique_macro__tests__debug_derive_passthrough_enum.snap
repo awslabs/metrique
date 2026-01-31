@@ -1,0 +1,82 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+#[derive(Debug)]
+enum Operation {
+    Read,
+    Write,
+}
+#[doc(hidden)]
+#[derive(Debug)]
+pub enum OperationValue {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Read,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Write,
+}
+impl ::std::convert::From<&'_ OperationValue> for &'static str {
+    fn from(value: &OperationValue) -> Self {
+        #[allow(deprecated)]
+        match value {
+            OperationValue::Read => "Read",
+            OperationValue::Write => "Write",
+        }
+    }
+}
+impl ::std::convert::From<OperationValue> for &'static str {
+    fn from(value: OperationValue) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for OperationValue {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}
+impl ::metrique::writer::Value for OperationValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
+        writer.string(::std::convert::Into::<&str>::into(self));
+    }
+}
+impl metrique::CloseValue for &'_ Operation {
+    type Closed = OperationValue;
+    fn close(self) -> Self::Closed {
+        #[allow(deprecated)]
+        match self {
+            Operation::Read => OperationValue::Read,
+            Operation::Write => OperationValue::Write,
+        }
+    }
+}
+impl metrique::CloseValue for Operation {
+    type Closed = OperationValue;
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}
+impl ::std::convert::From<&'_ Operation> for &'static str {
+    fn from(value: &Operation) -> Self {
+        #[allow(deprecated)]
+        match value {
+            Operation::Read => "Read",
+            Operation::Write => "Write",
+        }
+    }
+}
+impl ::std::convert::From<Operation> for &'static str {
+    fn from(value: Operation) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for Operation {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}

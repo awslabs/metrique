@@ -355,7 +355,7 @@ fn generate_entry_enum(
 
     // pass through a subset of derives to the entry, currently just `Debug` and `Clone`
     // _generally_ the Closed version of types will also implement debug.
-    let passthrough_derives = extract_allowed_derives(base_attrs);
+    let passthrough_derives = crate::derive_utils::extract_allowed_derives(base_attrs);
 
     Ok(quote! {
         #[doc(hidden)]
@@ -364,30 +364,6 @@ fn generate_entry_enum(
             #data
         }
     })
-}
-
-fn extract_allowed_derives(attrs: &[Attribute]) -> Ts2 {
-    let allowed = ["Debug", "Clone"];
-    let mut found = vec![];
-
-    for attr in attrs {
-        if attr.path().is_ident("derive")
-            && let syn::Meta::List(meta_list) = &attr.meta
-        {
-            let tokens = meta_list.tokens.to_string();
-            for derive in &allowed {
-                if tokens.contains(derive) {
-                    found.push(syn::Ident::new(derive, meta_list.span()));
-                }
-            }
-        }
-    }
-
-    if found.is_empty() {
-        quote!()
-    } else {
-        quote!(#[derive(#(#found),*)])
-    }
 }
 
 fn generate_close_value_impl_for_enum(

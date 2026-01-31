@@ -89,11 +89,23 @@ fn make_slot<T: CloseValue>(initial_value: T) -> (SlotGuard<T>, Waiting<T::Close
 ///     metrics.field_1 += 1;
 /// }
 /// ```
-#[derive(Debug)]
 pub struct Slot<T: CloseValue> {
     tx: Option<SlotGuard<T>>,
     rx: Option<Waiting<T::Closed>>,
     data: Option<T::Closed>,
+}
+
+impl<T: CloseValue + Debug> Debug for Slot<T>
+where
+    T::Closed: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Slot")
+            .field("open", &self.tx.is_none())
+            .field("has_data", &self.has_data())
+            .field("data", &self.data)
+            .finish()
+    }
 }
 
 /// Counterpart to Slot that can be initialized without immediately providing data
@@ -170,6 +182,15 @@ impl<T: CloseValue> Slot<T> {
     #[deprecated(note = "Use Slot::open instead to explicitly chose the on drop behavior.")]
     pub fn open_slot(&mut self) -> Option<SlotGuard<T>> {
         self.tx.take()
+    }
+
+    fn has_data(&self) -> bool {
+        self.data.is_some()
+            || self
+                .rx
+                .as_ref()
+                .map(|waiting| !waiting.rx.is_empty())
+                .unwrap_or(false)
     }
 
     /// Open a slot, providing an owned [`SlotGuard`] that can be sent to a background task.
@@ -261,13 +282,11 @@ pub struct SlotGuard<T: CloseValue> {
     parent_drop_mode: OnParentDrop,
 }
 
-impl<T: Debug + CloseValue> Debug for SlotGuard<T>
-where
-    T::Closed: Debug,
-{
+impl<T: Debug + CloseValue> Debug for SlotGuard<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SlotGuard")
-            .field("slot", &self.slot)
+            .field("value", &self.deref())
+            .field("parent_is_closed", &self.parent_is_closed())
             .field("parent_drop_mode", &self.parent_drop_mode)
             .finish()
     }
@@ -355,7 +374,6 @@ impl<T: CloseValue> Drop for SlotGuard<T> {
     }
 }
 
-#[derive(Debug)]
 enum SlotI<T: CloseValue> {
     Writable {
         value: T,
