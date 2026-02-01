@@ -34,6 +34,7 @@ jobs:
   docs-rs:
     name: Docs.rs Build Check
     runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'release-') }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
