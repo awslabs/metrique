@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.16](https://github.com/awslabs/metrique/compare/metrique-v0.1.15...metrique-v0.1.16) - 2026-02-01
+
+### Added
+
+- impl Debug for Slot, SlotGuard, and AppendAndCloseOnDrop ([#194](https://github.com/awslabs/metrique/pull/194))
+
+- Add `set_test_sink_on_current_tokio_runtime` to simplify testing with Tokio ([#193](https://github.com/awslabs/metrique/pull/193))
+
+### Other
+
 ## [0.1.15](https://github.com/awslabs/metrique/compare/metrique-v0.1.14...metrique-v0.1.15) - 2026-01-16
 
 ### Fixes 

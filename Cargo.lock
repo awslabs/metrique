@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "metrique"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "anyhow",
  "assert2",
@@ -741,7 +741,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-aggregation"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "assert2",
  "divan",
@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-core"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "itertools",
  "metrique",
@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-macro"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "Inflector",
  "assert2",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-metricsrs"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "derive-where",
  "futures",
@@ -818,7 +818,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-service-metrics"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "metrique",
  "metrique-writer",
@@ -836,7 +836,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer"
-version = "0.1.15"
+version = "0.1.16"
 dependencies = [
  "ahash",
  "assert-json-diff",
@@ -869,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-core"
-version = "0.1.10"
+version = "0.1.11"
 dependencies = [
  "assert-json-diff",
  "derive-where",
@@ -889,7 +889,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-emf"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "assert-json-diff",
  "assert_approx_eq",
