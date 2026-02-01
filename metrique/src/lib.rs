@@ -59,6 +59,7 @@ use keep_alive::DropAll;
 use keep_alive::Guard;
 use keep_alive::Parent;
 use metrique_writer_core::EntrySink;
+use std::fmt::Debug;
 use std::sync::Arc;
 
 pub use metrique_core::{CloseValue, CloseValueRef, Counter, InflectableEntry, NameStyle};
@@ -167,6 +168,17 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// ```
 pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Parent<AppendAndCloseOnDropInner<E, S>>,
+}
+
+impl<E: CloseEntry + Debug, S: EntrySink<RootMetric<E>> + Debug> Debug
+    for AppendAndCloseOnDrop<E, S>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AppendAndCloseOnDrop")
+            .field("value", &self.deref())
+            .field("sink", &self.inner.sink)
+            .finish()
+    }
 }
 
 impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send + Sync + 'static>
@@ -322,6 +334,7 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     }
 }
 
+#[derive(Debug)]
 struct AppendAndCloseOnDropInner<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     entry: Option<E>,
     sink: S,

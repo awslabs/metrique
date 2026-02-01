@@ -246,7 +246,7 @@ pub(crate) fn generate_metrics_for_enum(
     );
     let warnings = root_attrs.warnings();
 
-    let entry_enum = generate_entry_enum(&entry_name, &input.generics, variants)?;
+    let entry_enum = generate_entry_enum(&entry_name, &input.generics, variants, &input.attrs)?;
 
     let inner_impl = match root_attrs.mode {
         MetricMode::ValueString => value_impl::generate_value_impl_for_enum(
@@ -346,13 +346,20 @@ fn generate_entry_enum(
     name: &Ident,
     generics: &Generics,
     variants: &[MetricsVariant],
+    base_attrs: &[Attribute],
 ) -> Result<Ts2> {
     let variants = variants.iter().map(|variant| variant.entry_variant());
     let data = quote! {
         #(#variants,)*
     };
+
+    // pass through a subset of derives to the entry, currently just `Debug` and `Clone`
+    // _generally_ the Closed version of types will also implement debug.
+    let passthrough_derives = crate::derive_utils::extract_allowed_derives(base_attrs);
+
     Ok(quote! {
         #[doc(hidden)]
+        #passthrough_derives
         pub enum #name #generics {
             #data
         }

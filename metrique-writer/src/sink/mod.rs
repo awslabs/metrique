@@ -120,7 +120,7 @@ impl<E> VecEntrySink<E> {
 /// An [EntrySink] that drops all entries.
 ///
 /// Useful for testing, or when you want to ignore entries.
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, Debug)]
 #[non_exhaustive]
 pub struct DevNullSink;
 

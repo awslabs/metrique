@@ -42,6 +42,7 @@ pub(crate) fn generate_metrics_for_struct(
         &input.generics,
         &parsed_fields,
         &root_attributes,
+        &input.attrs,
     )?;
 
     let inner_impl = match root_attributes.mode {
@@ -137,15 +138,20 @@ fn generate_entry_struct(
     generics: &Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
+    base_attrs: &[Attribute],
 ) -> Result<Ts2> {
     let has_named_fields = fields.iter().any(|f| f.name.is_some());
     let config = root_attrs.configuration_fields();
 
     let fields = fields.iter().flat_map(|f| f.entry_field(has_named_fields));
     let body = wrap_fields_into_struct_decl(has_named_fields, config.into_iter().chain(fields));
+
+    let allowed_derives = crate::derive_utils::extract_allowed_derives(base_attrs);
+
     Ok(quote!(
         #[doc(hidden)]
         #[allow(clippy::type_complexity)]
+        #allowed_derives
         pub struct #name #generics #body
     ))
 }

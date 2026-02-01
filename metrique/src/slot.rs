@@ -4,6 +4,7 @@
 use crate::DropAll;
 use crate::Guard;
 use metrique_core::CloseValue;
+use std::fmt::Debug;
 use std::marker::PhantomPinned;
 use std::ops::Deref;
 use std::ops::DerefMut;
@@ -94,6 +95,19 @@ pub struct Slot<T: CloseValue> {
     data: Option<T::Closed>,
 }
 
+impl<T: CloseValue + Debug> Debug for Slot<T>
+where
+    T::Closed: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Slot")
+            .field("open", &self.tx.is_none())
+            .field("has_data", &self.has_data())
+            .field("data", &self.data)
+            .finish()
+    }
+}
+
 /// Counterpart to Slot that can be initialized without immediately providing data
 ///
 /// [`LazySlot::open`] returns a [`SlotGuard`], the same type returned by [`Slot`].
@@ -140,6 +154,7 @@ impl<T: CloseValue> LazySlot<T> {
 ///
 /// This enum determines what happens when a parent metric record containing a `Slot`
 /// is dropped before the `SlotGuard` for that slot is dropped.
+#[derive(Debug)]
 pub enum OnParentDrop {
     /// Delay flushing the parent record until this slot is closed
     ///
@@ -167,6 +182,15 @@ impl<T: CloseValue> Slot<T> {
     #[deprecated(note = "Use Slot::open instead to explicitly chose the on drop behavior.")]
     pub fn open_slot(&mut self) -> Option<SlotGuard<T>> {
         self.tx.take()
+    }
+
+    fn has_data(&self) -> bool {
+        self.data.is_some()
+            || self
+                .rx
+                .as_ref()
+                .map(|waiting| !waiting.rx.is_empty())
+                .unwrap_or(false)
     }
 
     /// Open a slot, providing an owned [`SlotGuard`] that can be sent to a background task.
@@ -222,6 +246,7 @@ impl<T: CloseValue> CloseValue for Slot<T> {
 ///
 /// This struct is used internally by `Slot` to wait for a value to be sent back
 /// from a `SlotGuard` when it is dropped.
+#[derive(Debug)]
 struct Waiting<T> {
     rx: oneshot::Receiver<T>,
 }
@@ -257,6 +282,16 @@ pub struct SlotGuard<T: CloseValue> {
     parent_drop_mode: OnParentDrop,
 }
 
+impl<T: Debug + CloseValue> Debug for SlotGuard<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlotGuard")
+            .field("value", &self.deref())
+            .field("parent_is_closed", &self.parent_is_closed())
+            .field("parent_drop_mode", &self.parent_drop_mode)
+            .finish()
+    }
+}
+
 impl<T: CloseValue> SlotGuard<T> {
     /// Check if the `Slot` is still open
     ///
@@ -280,6 +315,12 @@ impl<T: CloseValue> SlotGuard<T> {
 /// A `FlushGuard` is obtained by calling `flush_guard` on `AppendAndCloseOnDrop`
 pub struct FlushGuard {
     pub(crate) _drop_guard: Guard,
+}
+
+impl Debug for FlushGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FlushGuard").finish()
+    }
 }
 
 /// The counterpart to `FlushGuard`:

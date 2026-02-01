@@ -6,6 +6,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 mod aggregate;
+mod derive_utils;
 mod emf;
 mod entry_impl;
 mod enums;
@@ -1930,5 +1931,32 @@ mod tests {
         );
 
         assert_snapshot!("entry_enum_tag_sample_group", root);
+    }
+
+    #[test]
+    fn test_debug_derive_passthrough_struct() {
+        let input = quote! {
+            #[derive(Debug, Clone)]
+            struct Metrics {
+                field: usize,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics()));
+        assert_snapshot!("debug_derive_passthrough_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_debug_derive_passthrough_enum() {
+        let input = quote! {
+            #[derive(Debug)]
+            enum Operation {
+                Read,
+                Write,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(value(string))));
+        assert_snapshot!("debug_derive_passthrough_enum", parsed_file);
     }
 }
