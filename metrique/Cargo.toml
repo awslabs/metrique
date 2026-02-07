@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.16"
+version = "0.1.17"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating unit of work metrics"
@@ -25,14 +25,14 @@ metrics_rs_024 = ["metrics-rs-024"]
 
 [dependencies]
 tokio = { workspace = true, features = ["sync"] }
-metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.11" }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.12" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.13" }
-metrique-core = { path = "../metrique-core", version = "0.1.14" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.16" }
-metrique-metricsrs = { path = "../metrique-metricsrs", version = "0.1.16", optional = true }
-metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.15", optional = true }
+metrique-core = { path = "../metrique-core", version = "0.1.15" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.17" }
+metrique-metricsrs = { path = "../metrique-metricsrs", version = "0.1.17", optional = true }
+metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.16", optional = true }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.7" }
-metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.15", optional = true }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.16", optional = true }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.7" }
 tracing-appender = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
