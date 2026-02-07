@@ -1,6 +1,12 @@
+use std::time::UNIX_EPOCH;
+
 use assert2::check;
-use metrique::{OnParentDrop, Slot};
+use metrique::{
+    OnParentDrop, Slot,
+    timers::{EpochMicros, Timestamp, TimestampOnClose},
+};
 use metrique_macro::metrics;
+use metrique_timesource::{TimeSource, set_time_source};
 use metrique_writer::sink::DevNullSink;
 
 #[metrics(rename_all = "PascalCase")]
@@ -13,10 +19,13 @@ struct Metrics {
     c: Slot<AnotherNested>,
 }
 
-#[metrics(subfield)]
-#[derive(Default, Clone, Debug)]
+#[metrics(subfield_owned)]
+#[derive(Default, Debug)]
 struct Nested {
     inner_value: usize,
+    timer: TimestampOnClose,
+    #[metrics(format = EpochMicros)]
+    formatted: Timestamp,
 }
 
 #[metrics(subfield)]
@@ -25,11 +34,16 @@ struct AnotherNested {
     another_value: usize,
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn debug_slot_closed() {
+    let _mock_time = set_time_source(TimeSource::tokio(UNIX_EPOCH));
     let mut metrics = Metrics {
         a: 42,
-        b: Slot::new(Nested { inner_value: 123 }),
+        b: Slot::new(Nested {
+            inner_value: 123,
+            timer: TimestampOnClose::default(),
+            formatted: Timestamp::default(),
+        }),
         c: Slot::new(AnotherNested { another_value: 456 }),
     };
 
@@ -42,15 +56,20 @@ async fn debug_slot_closed() {
     metrics.b.wait_for_data().await;
     check!(
         format!("{:?}", metrics.b)
-            == "Slot { open: true, has_data: true, data: Some(NestedEntry { inner_value: 1000 }) }"
+            == "Slot { open: true, has_data: true, data: Some(NestedEntry { inner_value: 1000, timer: TimestampValue { duration_since_epoch: 0ns }, formatted: TimestampValue { duration_since_epoch: 0ns } }) }"
     );
 }
 
 #[test]
 fn debug_slot_open() {
+    let _mock_time = set_time_source(TimeSource::tokio(UNIX_EPOCH));
     let mut metrics = Metrics {
         a: 99,
-        b: Slot::new(Nested { inner_value: 200 }),
+        b: Slot::new(Nested {
+            inner_value: 200,
+            timer: TimestampOnClose::default(),
+            formatted: Timestamp::default(),
+        }),
         c: Slot::new(AnotherNested { another_value: 300 }),
     };
 
@@ -71,11 +90,16 @@ fn debug_slot_open() {
     );
 }
 
-#[test]
-fn debug_slot_guard() {
+#[tokio::test(start_paused = true)]
+async fn debug_slot_guard() {
+    let _mock_time = set_time_source(TimeSource::tokio(UNIX_EPOCH));
     let mut metrics = Metrics {
         a: 1,
-        b: Slot::new(Nested { inner_value: 777 }),
+        b: Slot::new(Nested {
+            inner_value: 777,
+            timer: TimestampOnClose::default(),
+            formatted: Timestamp::default(),
+        }),
         c: Slot::new(AnotherNested { another_value: 888 }),
     };
 
@@ -83,11 +107,11 @@ fn debug_slot_guard() {
 
     check!(
         format!("{:?}", guard_b)
-            == "SlotGuard { value: Nested { inner_value: 777 }, parent_is_closed: false, parent_drop_mode: Discard }"
+            == "SlotGuard { value: Nested { inner_value: 777, timer: TimestampOnClose { time_source: TimeSource::Custom(...) }, formatted: Timestamp { time: SystemTime { tv_sec: 0, tv_nsec: 0 } } }, parent_is_closed: false, parent_drop_mode: Discard }"
     );
     drop(metrics);
     check!(
         format!("{:?}", guard_b)
-            == "SlotGuard { value: Nested { inner_value: 777 }, parent_is_closed: true, parent_drop_mode: Discard }"
+            == "SlotGuard { value: Nested { inner_value: 777, timer: TimestampOnClose { time_source: TimeSource::Custom(...) }, formatted: Timestamp { time: SystemTime { tv_sec: 0, tv_nsec: 0 } } }, parent_is_closed: true, parent_drop_mode: Discard }"
     );
 }

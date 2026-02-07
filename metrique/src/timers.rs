@@ -100,6 +100,7 @@ impl Default for Timestamp {
 ///     stop: TimestampOnClose
 /// }
 /// ```
+#[derive(Debug)]
 pub struct TimestampOnClose {
     time_source: TimeSource,
 }
@@ -130,7 +131,7 @@ pub type EpochMillis = TimestampFormat<Millisecond>;
 pub type EpochMicros = TimestampFormat<Microsecond>;
 
 /// The type returned when `Timestamp` types are closed
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct TimestampValue {
     duration_since_epoch: Duration,
 }
