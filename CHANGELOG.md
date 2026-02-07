@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.17](https://github.com/awslabs/metrique/compare/metrique-v0.1.16...metrique-v0.1.17) - 2026-02-07
+
+### Fixed
+
+- Fix issues with `#[derive(Debug)]` on metrics entries ([#200](https://github.com/awslabs/metrique/pull/200))
+
 ## [0.1.16](https://github.com/awslabs/metrique/compare/metrique-v0.1.15...metrique-v0.1.16) - 2026-02-01
 
 ### Added
