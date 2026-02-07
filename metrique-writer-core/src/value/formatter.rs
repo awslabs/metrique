@@ -149,6 +149,7 @@ where
 
 #[doc(hidden)]
 /// A wrapper for a value that formats using a [ValueFormatter]
+#[derive(Debug)]
 pub struct FormattedValue<'a, V, VF, L = Lifted>(PhantomData<(VF, L)>, &'a V);
 
 impl<'a, V, VF, L> FormattedValue<'a, V, VF, L> {

@@ -273,6 +273,7 @@ impl<V, const N: usize> WithDimensions<V, N> {
     }
 }
 
+#[derive(Debug)]
 struct Wrapper<'a, V> {
     value: V,
     dimensions: &'a [(CowStr, CowStr)],
