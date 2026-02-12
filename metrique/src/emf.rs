@@ -17,6 +17,7 @@ pub use metrique_writer_format_emf::{
 ///
 /// Generally, you will not use this directly. Instead, use the `#[metrics(emf::dimension_sets)]` attribute. See the
 /// [module documentation](crate::emf) for more information.
+#[derive(Debug)]
 pub struct SetEntryDimensions {
     /// The dimensions to add to the EMF entry.
     pub dimensions: EntryDimensions,
@@ -89,5 +90,28 @@ mod test {
         let output = String::from_utf8(output).expect("invalid UTF-8");
         let expected = "{\"_aws\":{\"CloudWatchMetrics\":[{\"Namespace\":\"test\",\"Dimensions\":[[\"field4\",\"field1\",\"field2\"],[\"field4\",\"field3\"]],\"Metrics\":[]}],\"Timestamp\":0},\"field1\":\"a\",\"field2\":\"2\",\"field3\":\"3\",\"field4\":\"4\"}\n";
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn derive_debug_after_metrics_macro() {
+        // Regression test: #[metrics] before #[derive(Debug)] should work
+        // because SetEntryDimensions implements Debug
+        use crate::unit_of_work::metrics;
+
+        #[metrics(emf::dimension_sets = [["operation"]])]
+        #[derive(Debug)]
+        struct TestMetrics {
+            operation: &'static str,
+            count: usize,
+        }
+
+        let metrics = TestMetrics {
+            operation: "test",
+            count: 42,
+        };
+
+        // Should compile and format successfully
+        let debug_str = format!("{:?}", metrics);
+        assert!(debug_str.contains("test"));
     }
 }
