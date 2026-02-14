@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/awslabs/metrique/compare/metrique-v0.1.17...metrique-v0.1.18) - 2026-02-14
+
+### Other
+
+- Add Debug derive to SetEntryDimensions ([#202](https://github.com/awslabs/metrique/pull/202))
+
 ## [0.1.17](https://github.com/awslabs/metrique/compare/metrique-v0.1.16...metrique-v0.1.17) - 2026-02-07
 
 ### Fixed
