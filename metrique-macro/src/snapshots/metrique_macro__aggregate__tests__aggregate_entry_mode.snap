@@ -28,7 +28,7 @@ for <ApiCall as metrique::CloseValue>::Closed {
             SortAndMerge,
         > as ::metrique_aggregation::__macro_plumbing::AggregateValue<
             <Timer as metrique::CloseValue>::Closed,
-        >>::insert(&mut accum.latency, *input.latency);
+        >>::insert(&mut accum.latency, input.latency.into_inner());
     }
 }
 impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {

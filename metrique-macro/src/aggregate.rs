@@ -232,9 +232,9 @@ pub(crate) fn generate_aggregate_strategy_impl(
         .and_then(|attrs| attrs.unit)
         .is_some();
 
-        // In entry mode with unit, need to dereference WithUnit wrapper
+        // In entry mode with unit, need to unwrap WithUnit wrapper
         let entry_value = if has_unit {
-            quote! { *input.#name }
+            quote! { input.#name.into_inner() }
         } else {
             quote! { input.#name }
         };

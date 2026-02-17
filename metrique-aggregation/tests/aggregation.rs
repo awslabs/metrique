@@ -262,6 +262,108 @@ fn test_aggregate_with_prefix() {
 }
 
 #[test]
+fn test_aggregate_histogram_fields() {
+    #[aggregate]
+    #[metrics]
+    pub struct ShardResult {
+        #[aggregate(strategy = Sum)]
+        rows_scanned: usize,
+
+        #[aggregate(strategy = Histogram<Duration, SortAndMerge>)]
+        #[metrics(unit = Microsecond)]
+        per_row_latency: Histogram<Duration, SortAndMerge>,
+    }
+
+    #[metrics(rename_all = "PascalCase")]
+    struct QueryMetrics {
+        #[metrics(flatten)]
+        shards: Aggregate<ShardResult>,
+    }
+
+    let mut query = QueryMetrics {
+        shards: Aggregate::default(),
+    };
+
+    // Shard 1: two observations
+    let mut shard1 = ShardResult {
+        rows_scanned: 10,
+        per_row_latency: Histogram::default(),
+    };
+    shard1.per_row_latency.add_value(Duration::from_millis(100));
+    shard1.per_row_latency.add_value(Duration::from_millis(200));
+    query.shards.insert(shard1);
+
+    // Shard 2: one observation
+    let mut shard2 = ShardResult {
+        rows_scanned: 5,
+        per_row_latency: Histogram::default(),
+    };
+    shard2.per_row_latency.add_value(Duration::from_millis(150));
+    query.shards.insert(shard2);
+
+    let entry = test_metric(query);
+
+    // Sum strategy: 10 + 5
+    check!(entry.metrics["RowsScanned"].as_u64() == 15);
+
+    // All 3 observations merged into one distribution
+    let dist = &entry.metrics["PerRowLatency"];
+    check!(dist.num_observations() == 3);
+    check!(dist.unit == Unit::Second(NegativeScale::Micro));
+    check!(dist.flatten_and_sort() == vec![100_000.0, 150_000.0, 200_000.0]);
+}
+
+#[test]
+fn test_aggregate_bucketed_histogram_fields() {
+    #[aggregate]
+    #[metrics]
+    pub struct ShardResult {
+        #[aggregate(strategy = Histogram<Duration>)]
+        #[metrics(unit = Microsecond)]
+        latency: Histogram<Duration>,
+    }
+
+    #[metrics(rename_all = "PascalCase")]
+    struct QueryMetrics {
+        #[metrics(flatten)]
+        shards: Aggregate<ShardResult>,
+    }
+
+    let mut query = QueryMetrics {
+        shards: Aggregate::default(),
+    };
+
+    // 10 shards, each with 10 observations (100 total)
+    for shard in 0..10 {
+        let mut result = ShardResult {
+            latency: Histogram::default(),
+        };
+        for i in 0..10 {
+            // Values from 1ms to 100ms, uniformly distributed
+            let ms = (shard * 10 + i + 1) as u64;
+            result.latency.add_value(Duration::from_millis(ms));
+        }
+        query.shards.insert(result);
+    }
+
+    let entry = test_metric(query);
+    let dist = &entry.metrics["Latency"];
+    check!(dist.num_observations() == 100);
+    check!(dist.unit == Unit::Second(NegativeScale::Micro));
+
+    // p50 of 1..=100ms in microseconds = 50_500us
+    // Exponential bucketing has ~6.25% error
+    let values = dist.flatten_and_sort();
+    let p50 = values[values.len() / 2];
+    let expected = 50_500.0;
+    let error_pct = ((p50 - expected) / expected).abs() * 100.0;
+    check!(
+        error_pct < 6.25,
+        "p50={p50}, expected ~{expected}, error={error_pct}%"
+    );
+}
+
+#[test]
 fn last_value_wins() {
     #[aggregate]
     #[metrics]

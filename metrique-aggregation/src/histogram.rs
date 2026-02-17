@@ -525,6 +525,36 @@ where
     }
 }
 
+/// AggregateValue implementation for merging closed histograms into a histogram.
+///
+/// This enables aggregating structs that already contain `Histogram` fields —
+/// when the source is closed, each `Histogram<T>` becomes a `HistogramClosed<T>`,
+/// and this impl replays those observations into the accumulator histogram.
+impl<T, S> AggregateValue<HistogramClosed<T>> for Histogram<T, S>
+where
+    T: MetricValue,
+    S: AggregationStrategy + Default,
+{
+    type Aggregated = Histogram<T, S>;
+
+    fn insert(accum: &mut Self::Aggregated, value: HistogramClosed<T>) {
+        for obs in value.observations {
+            match obs {
+                Observation::Repeated { total, occurrences } => {
+                    if occurrences > 0 {
+                        accum
+                            .strategy
+                            .record_many(total / occurrences as f64, occurrences);
+                    }
+                }
+                Observation::Unsigned(v) => accum.strategy.record(v as f64),
+                Observation::Floating(v) => accum.strategy.record(v),
+                _ => {}
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use assert2::check;
