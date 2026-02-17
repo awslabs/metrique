@@ -25,7 +25,7 @@ struct RequestMetrics {
 ```
 
 This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
-More formats might be supported in future versions. You can also implement custom formats.
+More formats might be supported in future versions and custom formats can be implemented as well.
 
 ## Why Metrique?
 
