@@ -159,6 +159,102 @@ pub mod tokio {
         }
     }
 
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    type RuntimeTimeSourceMap = std::sync::Arc<Mutex<HashMap<::tokio::runtime::Id, TimeSource>>>;
+
+    fn runtime_time_sources() -> &'static RuntimeTimeSourceMap {
+        static MAP: OnceLock<RuntimeTimeSourceMap> = OnceLock::new();
+        MAP.get_or_init(|| std::sync::Arc::new(Mutex::new(HashMap::new())))
+    }
+
+    /// Guard for a runtime-scoped time source override.
+    ///
+    /// When dropped, it removes the time source override for the runtime.
+    #[must_use = "if unused the runtime time source will be immediately removed"]
+    pub struct RuntimeTimeSourceGuard {
+        runtime_id: ::tokio::runtime::Id,
+        map: RuntimeTimeSourceMap,
+    }
+
+    impl Drop for RuntimeTimeSourceGuard {
+        fn drop(&mut self) {
+            if let Ok(mut map) = self.map.lock() {
+                map.remove(&self.runtime_id);
+            }
+        }
+    }
+
+    /// Set a time source override for the current tokio runtime.
+    ///
+    /// Unlike [`set_time_source`](crate::set_time_source) which is thread-local, this
+    /// override applies to all tasks on the runtime.
+    ///
+    /// # Panics
+    /// - If not called from within a tokio runtime.
+    /// - If a runtime time source is already installed for this runtime.
+    ///
+    /// # Examples
+    /// ```
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() {
+    /// use std::time::{Duration, UNIX_EPOCH};
+    /// use metrique_timesource::{TimeSource, time_source};
+    /// use metrique_timesource::tokio::set_time_source_for_current_runtime;
+    ///
+    /// tokio::time::pause();
+    /// let _guard = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+    /// assert_eq!(time_source().system_time(), UNIX_EPOCH);
+    /// # }
+    /// ```
+    #[track_caller]
+    pub fn set_time_source_for_current_runtime(time_source: TimeSource) -> RuntimeTimeSourceGuard {
+        let handle = ::tokio::runtime::Handle::current();
+        set_time_source_for_runtime(&handle, time_source)
+    }
+
+    /// Set a time source override for a specific tokio runtime.
+    ///
+    /// This allows installing a time source on a runtime from outside that runtime's context.
+    ///
+    /// # Panics
+    /// If a runtime time source is already installed for this runtime.
+    #[track_caller]
+    pub fn set_time_source_for_runtime(
+        handle: &::tokio::runtime::Handle,
+        time_source: TimeSource,
+    ) -> RuntimeTimeSourceGuard {
+        let runtime_id = handle.id();
+        let map = runtime_time_sources();
+        let already_installed = {
+            let mut guard = map.lock().unwrap();
+            if let std::collections::hash_map::Entry::Vacant(e) = guard.entry(runtime_id) {
+                e.insert(time_source);
+                false
+            } else {
+                true
+            }
+        };
+        assert!(
+            !already_installed,
+            "A time source was already installed for this runtime."
+        );
+        RuntimeTimeSourceGuard {
+            runtime_id,
+            map: map.clone(),
+        }
+    }
+
+    pub(crate) fn try_get_runtime_time_source() -> Option<TimeSource> {
+        let handle = ::tokio::runtime::Handle::try_current().ok()?;
+        runtime_time_sources()
+            .lock()
+            .unwrap()
+            .get(&handle.id())
+            .cloned()
+    }
+
     #[cfg(test)]
     mod test {
         use std::time::{Duration, UNIX_EPOCH};
@@ -207,6 +303,82 @@ pub mod tokio {
                 metric.end.unwrap().duration_since(metric.start).unwrap(),
                 Duration::from_secs(5)
             );
+        }
+
+        #[tokio::test]
+        async fn runtime_time_source_basic() {
+            use crate::tokio::set_time_source_for_current_runtime;
+            tokio::time::pause();
+            let _guard = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+            assert_eq!(get_time_source(None).system_time(), UNIX_EPOCH);
+            tokio::time::advance(Duration::from_secs(3)).await;
+            assert_eq!(
+                get_time_source(None).system_time(),
+                UNIX_EPOCH + Duration::from_secs(3)
+            );
+        }
+
+        #[tokio::test]
+        async fn runtime_time_source_works_across_spawn() {
+            use crate::tokio::set_time_source_for_current_runtime;
+            tokio::time::pause();
+            let _guard = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+            let handle = tokio::spawn(async {
+                assert_eq!(get_time_source(None).system_time(), UNIX_EPOCH);
+            });
+            handle.await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn thread_local_takes_priority_over_runtime() {
+            use crate::fakes::StaticTimeSource;
+            use crate::tokio::set_time_source_for_current_runtime;
+            tokio::time::pause();
+            let _guard = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+            let thread_local_time = UNIX_EPOCH + Duration::from_secs(9999);
+            let _tl_guard = set_time_source(TimeSource::custom(StaticTimeSource::at_time(
+                thread_local_time,
+            )));
+            assert_eq!(get_time_source(None).system_time(), thread_local_time);
+        }
+
+        #[tokio::test]
+        async fn runtime_time_source_cleanup_on_drop() {
+            use crate::tokio::set_time_source_for_current_runtime;
+            tokio::time::pause();
+            {
+                let _guard = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+                assert_eq!(get_time_source(None).system_time(), UNIX_EPOCH);
+            }
+            // After guard is dropped, should fall back to system time
+            assert_ne!(get_time_source(None).system_time(), UNIX_EPOCH);
+        }
+
+        #[tokio::test]
+        #[should_panic(expected = "already installed")]
+        async fn runtime_time_source_panics_on_double_install() {
+            use crate::tokio::set_time_source_for_current_runtime;
+            tokio::time::pause();
+            let _guard1 = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+            let _guard2 = set_time_source_for_current_runtime(TimeSource::tokio(UNIX_EPOCH));
+        }
+
+        #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+        async fn runtime_time_source_works_on_multithreaded_runtime() {
+            use crate::fakes::StaticTimeSource;
+            use crate::tokio::set_time_source_for_current_runtime;
+            let _guard = set_time_source_for_current_runtime(TimeSource::custom(
+                StaticTimeSource::at_time(UNIX_EPOCH),
+            ));
+            let mut handles = Vec::new();
+            for _ in 0..10 {
+                handles.push(tokio::spawn(async {
+                    assert_eq!(get_time_source(None).system_time(), UNIX_EPOCH);
+                }));
+            }
+            for h in handles {
+                h.await.unwrap();
+            }
         }
     }
 }
@@ -367,7 +539,8 @@ where
 /// Get the current time source, following the priority order:
 /// 1. Explicitly provided time source
 /// 2. Thread-local override
-/// 3. System default
+/// 3. Tokio task-local override (if `tokio` feature is enabled)
+/// 4. System default
 #[inline]
 pub fn get_time_source(ts: Option<TimeSource>) -> TimeSource {
     // 1. Explicitly provided time source
@@ -384,7 +557,15 @@ pub fn get_time_source(ts: Option<TimeSource>) -> TimeSource {
         }
     }
 
-    // 3. System default
+    // 3. Tokio runtime-wide override
+    #[cfg(feature = "tokio")]
+    {
+        if let Some(ts) = tokio::try_get_runtime_time_source() {
+            return ts;
+        }
+    }
+
+    // 4. System default
     TimeSource::System
 }
 

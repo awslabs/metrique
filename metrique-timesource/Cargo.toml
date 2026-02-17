@@ -15,7 +15,7 @@ test-util = ["custom-timesource"]
 default = []
 
 [dependencies]
-tokio = { workspace = true, features = ["time"], optional = true }
+tokio = { workspace = true, features = ["time", "rt"], optional = true }
 
 [dev-dependencies]
 metrique-timesource = { path = ".", features = ["custom-timesource", "tokio", "test-util"] }
