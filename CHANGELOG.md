@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.19](https://github.com/awslabs/metrique/compare/metrique-v0.1.18...metrique-v0.1.19) - 2026-02-18
+
+### Added
+
+- Add runtime-wide time source override for tokio ([#206](https://github.com/awslabs/metrique/pull/206))
+
+- Histogram fields can now be aggregated across structs using `#[aggregate(strategy = Histogram<T>)]`. This enables merging latency distributions from multiple sources (e.g. fan-out shards) into a single combined distribution. ([#204](https://github.com/awslabs/metrique/pull/204))
+
 ## [0.1.18](https://github.com/awslabs/metrique/compare/metrique-v0.1.17...metrique-v0.1.18) - 2026-02-14
 
 ### Other
