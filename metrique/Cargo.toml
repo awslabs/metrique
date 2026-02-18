@@ -38,6 +38,7 @@ tracing-appender = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 ryu = { workspace = true }
 itoa = { workspace = true }
+smartstring = "1"
 
 [dev-dependencies]
 assert2 = { workspace = true }

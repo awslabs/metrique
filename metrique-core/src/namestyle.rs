@@ -5,7 +5,10 @@
 
 use std::marker::PhantomData;
 
-use crate::concat::{Concatenated, EmptyConstStr, MaybeConstStr};
+use crate::{
+    concat::{Concatenated, EmptyConstStr, MaybeConstStr},
+    namestyle::private::NameStyleInternal,
+};
 
 pub(crate) mod private {
     /// Helper trait to make `NameStyle` sealed
@@ -37,6 +40,34 @@ pub trait NameStyle: private::NameStyleInternal {
     /// Inflect an affix (just inflect, without adding prefixes)
     #[doc(hidden)]
     type InflectAffix<ID: MaybeConstStr, PASCAL: MaybeConstStr, SNAKE: MaybeConstStr, KEBAB: MaybeConstStr>: MaybeConstStr;
+}
+
+/// docs
+pub struct NoPrefix<Ns>(PhantomData<Ns>);
+impl<Ns> NameStyleInternal for NoPrefix<Ns> {}
+
+impl<Ns: NameStyle> NameStyle for NoPrefix<Ns> {
+    type KebabCase = Ns::KebabCase;
+
+    type PascalCase = Ns::PascalCase;
+
+    type SnakeCase = Ns::SnakeCase;
+
+    type AppendPrefix<T: MaybeConstStr> = Identity<T>;
+
+    type Inflect<
+        ID: MaybeConstStr,
+        PASCAL: MaybeConstStr,
+        SNAKE: MaybeConstStr,
+        KEBAB: MaybeConstStr,
+    > = Ns::InflectAffix<ID, PASCAL, SNAKE, KEBAB>;
+
+    type InflectAffix<
+        ID: MaybeConstStr,
+        PASCAL: MaybeConstStr,
+        SNAKE: MaybeConstStr,
+        KEBAB: MaybeConstStr,
+    > = Ns::InflectAffix<ID, PASCAL, SNAKE, KEBAB>;
 }
 
 /// Inflects names to the identity case
