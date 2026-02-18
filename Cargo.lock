@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "metrique"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "anyhow",
  "assert2",
@@ -741,7 +741,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-aggregation"
-version = "0.1.6"
+version = "0.1.7"
 dependencies = [
  "assert2",
  "divan",
@@ -778,7 +778,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-macro"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "Inflector",
  "assert2",
@@ -794,7 +794,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-metricsrs"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "derive-where",
  "futures",
@@ -828,7 +828,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-timesource"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "metrique-timesource",
  "tokio",

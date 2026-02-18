@@ -1,6 +1,6 @@
 [package]
 name = "metrique-metricsrs"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
@@ -23,7 +23,7 @@ metrics_024 = { workspace = true, optional = true }
 metrics-util_020 = { workspace = true, optional = true }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.12", default-features = false }
 metrique-writer = { path = "../metrique-writer", version = "0.1.17", default-features = false }
-metrique-timesource = { path = "../metrique-timesource", version = "0.1.7" }
+metrique-timesource = { path = "../metrique-timesource", version = "0.1.8" }
 futures = { workspace = true, default-features = false, features = ["executor"] }
 tokio = { workspace = true, default-features = false, features = [
     "sync", "time"
