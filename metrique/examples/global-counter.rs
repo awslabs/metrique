@@ -1,10 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! This shows global metrics using in-flight requests as an example
+//! A global static counter, using in-flight requests as an example.
+//!
+//! See `scoped-counter.rs` for an alternative with better testing interactibility.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use metrique::emf::Emf;
@@ -15,14 +16,18 @@ use metrique::writer::{
 global_entry_sink! { ServiceMetrics }
 
 /// Global counter to keep track of in-flight requests for the service's uptime
-static GLOBAL_REQUEST_COUNTER: LazyLock<GlobalCounter> = LazyLock::new(|| GlobalCounter::default());
+static GLOBAL_REQUEST_COUNTER: GlobalCounter = GlobalCounter::new();
 
-#[derive(Default)]
 struct GlobalCounter {
-    count: Arc<AtomicU64>,
+    count: AtomicU64,
 }
 impl GlobalCounter {
-    /// Increments the global count by 1, returning a guard that
+    const fn new() -> Self {
+        Self {
+            count: AtomicU64::new(0),
+        }
+    }
+    /// Increments the count by 1, returning a guard that
     /// decrements the count on drop, and the new value
     fn increment(&'static self) -> (GlobalCounterGuard, u64) {
         let count = self.count.fetch_add(1, Ordering::Relaxed) + 1;
