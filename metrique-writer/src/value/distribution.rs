@@ -61,6 +61,7 @@ pub struct Distribution<V, const N: usize = 0> {
 /// Always records observations on the heap.
 pub type VecDistribution<V> = Distribution<V, 0>;
 
+#[diagnostic::do_not_recommend]
 impl<V: MetricValue, const N: usize> Value for Distribution<V, N> {
     fn write(&self, writer: impl ValueWriter) {
         if self.values.is_empty() {

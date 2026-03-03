@@ -97,7 +97,7 @@
 
 use histogram::Config;
 use metrique_core::CloseValue;
-use metrique_writer::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
+use metrique_writer::{Distribution, MetricFlags, MetricValue, Observation, Value, ValueWriter};
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
 use std::{borrow::Borrow, marker::PhantomData};
@@ -318,7 +318,7 @@ where
             self.observations.iter().copied(),
             T::Unit::UNIT,
             [],
-            MetricFlags::empty(),
+            MetricFlags::upcast(&Distribution),
         )
     }
 }

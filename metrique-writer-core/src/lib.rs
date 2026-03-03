@@ -12,7 +12,7 @@ pub use crate::sink::{AnyEntrySink, BoxEntrySink, EntrySink};
 pub use crate::stream::{EntryIoStream, IoStreamError};
 pub use crate::unit::{Convert, Unit};
 pub use crate::validate::{ValidationError, ValidationErrorBuilder};
-pub use crate::value::{MetricFlags, MetricValue, Observation, Value, ValueWriter};
+pub use crate::value::{Distribution, MetricFlags, MetricValue, Observation, Value, ValueWriter};
 
 pub(crate) type CowStr = std::borrow::Cow<'static, str>;
 

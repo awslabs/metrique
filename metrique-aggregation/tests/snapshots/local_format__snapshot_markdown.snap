@@ -1,0 +1,14 @@
+---
+source: metrique-aggregation/tests/local_format.rs
+expression: output
+---
+| Name          | Value     |
+| ------------- | --------- |
+| Operation     | GetUser   |
+| Latency.min   | 5.124ms   |
+| Latency.p50   | 12.249ms  |
+| Latency.p99   | 101.999ms |
+| Latency.p99.9 | 101.999ms |
+| Latency.max   | 101.999ms |
+| Latency.count | 4         |
+| RequestCount  | 42        |

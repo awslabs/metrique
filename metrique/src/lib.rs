@@ -11,6 +11,8 @@ pub mod emf;
 pub mod flex;
 pub mod instrument;
 mod keep_alive;
+#[cfg(feature = "local-format")]
+pub mod local;
 
 /// Provides timing utilities for metrics, including timestamps and duration measurements.
 ///

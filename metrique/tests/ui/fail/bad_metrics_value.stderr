@@ -126,8 +126,8 @@ error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
              Baz3Value
              Box<T>
              Cow<'_, T>
-             Distribution<V, N>
              Duration
+             ForceFlag<T, FLAGS>
            and $N others
 
 error[E0277]: CloseValue is not implemented for &String

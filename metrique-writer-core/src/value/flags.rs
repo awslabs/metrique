@@ -18,6 +18,14 @@ pub trait MetricOptions: Any + Debug {
     }
 }
 
+/// A flag indicating that this metric represents a distribution (histogram).
+///
+/// Formatters can use this to always display percentiles, even when there is
+/// only a single observation in the current batch.
+#[derive(Debug)]
+pub struct Distribution;
+impl MetricOptions for Distribution {}
+
 /// Contains a set of options that describe the implementation of a metric
 ///
 /// This is a "semi-opaque" struct. The idea is that code that just uses `fn metric`
