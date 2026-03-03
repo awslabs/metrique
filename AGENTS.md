@@ -1,5 +1,9 @@
 # Metrique Workspace Guidelines
 
+## Public API Surface
+- Enums and enum variants should be `#[non_exhaustive]` so new fields/variants can be added without breaking changes.
+- Prefer constructor methods over exposing enum variant fields directly. For example, use `LocalFormat::json()` and `LocalFormat::compact_json()` instead of requiring users to write `OutputStyle::Json { compact: true }`. This allows adding new settings to variants in the future without breaking callers.
+
 ## Testing
 - Use `cargo +1.89 nextest run` to run all tests in this workspace
 - To run the full suite of tests CI will run, see `scripts/ci-local.sh`.

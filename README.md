@@ -133,6 +133,8 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future.
 
+For local development, [`metrique::local::LocalFormat`] provides human-readable output (pretty-printed key-value pairs, JSON, or markdown tables) with automatic histogram percentile computation. See the [module docs](https://docs.rs/metrique/latest/metrique/local/index.html) for a guide on implementing your own custom format.
+
 You can also implement a custom format using the [`Format`] trait.
 If you do, you can optionally implement a custom [`EntrySink`] if you need flush
 functionality beyond writing bytes to an arbitrary I/O destination.

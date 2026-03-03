@@ -1,0 +1,5 @@
+---
+source: metrique-aggregation/tests/local_format.rs
+expression: output
+---
+{"Latency":{"count":4,"max":101.9990234375,"min":5.1240234375,"p50":12.2490234375,"p99":101.9990234375,"p99.9":101.9990234375},"Latency_unit":"Milliseconds","Operation":"GetUser","RequestCount":42}

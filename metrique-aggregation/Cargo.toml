@@ -22,8 +22,10 @@ metrique-timesource = { version = "0.1.8", path = "../metrique-timesource", feat
 hashbrown.workspace = true
 
 [dev-dependencies]
-metrique = { path = "../metrique", features = ["test-util", "emf"] }
+metrique = { path = "../metrique", features = ["test-util", "emf", "local-format"] }
 divan = "0.1"
+insta = { workspace = true }
+serde_json = { workspace = true }
 rand.workspace = true
 rand_chacha.workspace = true
 assert2.workspace = true
@@ -44,6 +46,10 @@ __build_examples_for_rustdoc = ["metrique/emf", "metrique/test-util"]
 name = "embedded"
 doc-scrape-examples = true
 requires_features = ["__build_examples_for_rustdoc"]
+
+[[example]]
+name = "local-webserver"
+doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true

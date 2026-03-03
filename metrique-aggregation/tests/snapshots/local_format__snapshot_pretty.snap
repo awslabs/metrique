@@ -1,0 +1,13 @@
+---
+source: metrique-aggregation/tests/local_format.rs
+expression: output
+---
+---
+  Operation: GetUser
+  Latency (4 samples):
+    min: 5.124ms
+    p50: 12.249ms
+    p99: 101.999ms
+    p99.9: 101.999ms
+    max: 101.999ms
+  RequestCount: 42

@@ -12,6 +12,8 @@ rust-version = "1.89" # See build.yml for why this MSRV
 default = ["service-metrics"]
 # re-exports metrique-writer-format-emf as metrique::emf
 emf = ["dep:metrique-writer-format-emf"]
+# Human-readable local development format (pretty, JSON, markdown table)
+local-format = ["dep:serde_json", "dep:jiff"]
 # utilities for tests
 test-util = ["metrique-writer/test-util", "metrique-writer-core/test-util", "metrique-metricsrs/test-util"]
 # Private utilities for testing the formatter crates. 100% unstable, do not use outside of this workspace
@@ -38,6 +40,8 @@ tracing-appender = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
 ryu = { workspace = true }
 itoa = { workspace = true }
+serde_json = { workspace = true, optional = true }
+jiff = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
@@ -59,7 +63,7 @@ tracing = { workspace = true }
 tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
-metrique = { path = ".", features = ["emf", "test-util"] }
+metrique = { path = ".", features = ["emf", "test-util", "local-format"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }

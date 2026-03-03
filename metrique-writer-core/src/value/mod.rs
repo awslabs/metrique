@@ -17,7 +17,7 @@ pub use force::{FlagConstructor, ForceFlag};
 pub use formatter::{FormattedValue, Lifted, NotLifted, ToString, ValueFormatter};
 use std::{borrow::Cow, sync::Arc};
 
-pub use flags::{MetricFlags, MetricOptions};
+pub use flags::{Distribution, MetricFlags, MetricOptions};
 
 use crate::{
     CowStr, Unit, ValidationError,

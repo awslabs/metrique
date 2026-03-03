@@ -23,6 +23,7 @@ Inflector = "0.11.4"
 insta = "1.36"
 itertools = { version = "0.14", default-features = false }
 itoa = "1.0.15"
+jiff = "0.2"
 metrics_024 = { package = "metrics", version = "0.24" }
 metrics-util_020 = { package = "metrics-util", version = "0.20" }
 ordered-float = "5.1.0"
