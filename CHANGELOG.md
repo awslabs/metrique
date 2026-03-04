@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.20](https://github.com/awslabs/metrique/compare/metrique-v0.1.19...metrique-v0.1.20) - 2026-03-04
+
+### Added
+
+- add LocalFormat for human-readable local development metrics ([#213](https://github.com/awslabs/metrique/pull/213))
+
+### Other
+
+- Add example for global up/down counter ([#207](https://github.com/awslabs/metrique/pull/207))
+
 ## [0.1.19](https://github.com/awslabs/metrique/compare/metrique-v0.1.18...metrique-v0.1.19) - 2026-02-18
 
 ### Added
