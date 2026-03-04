@@ -24,8 +24,8 @@ struct RequestMetrics {
 }
 ```
 
-This currently supports exporting metrics in [Amazon EMF] format to CloudWatch.
-More formats might be supported in future versions and custom formats can be implemented as well.
+This currently supports exporting metrics in [Amazon EMF] format to CloudWatch and printing them locally with [`metrique::local::LocalFormat`.
+Formats can be implemented outside of this crate via the `Format` trait.
 
 ## Why Metrique?
 
@@ -131,7 +131,9 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 > See [`metrique-writer`](metrique-writer) for more information about queues and destinations.
 
-You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. Currently, only formatters for [Amazon EMF] are provided, but more may be added in the future.
+You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. 
+
+For production, only formatters for [Amazon EMF] are provided, but more may be added in the future.
 
 For local development, [`metrique::local::LocalFormat`] provides human-readable output (pretty-printed key-value pairs, JSON, or markdown tables) with automatic histogram percentile computation. See the [module docs](https://docs.rs/metrique/latest/metrique/local/index.html) for a guide on implementing your own custom format.
 
