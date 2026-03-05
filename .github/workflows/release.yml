@@ -6,6 +6,7 @@ permissions:
   id-token: write     # Required for OIDC token exchange / trusted publishing
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
