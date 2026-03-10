@@ -299,7 +299,7 @@ impl<'a, 'b> EntryWriter<'a> for JsonEntryWriter<'b> {
     }
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
-        let name: Cow<'a, str> = name.into();
+        let name = name.into();
         if name.is_empty() {
             self.error
                 .extend_mut(ValidationError::invalid("name can't be empty").for_field(""));
