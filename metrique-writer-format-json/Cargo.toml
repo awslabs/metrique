@@ -1,0 +1,23 @@
+[package]
+name = "metrique-writer-format-json"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "Apache-2.0"
+description = "Library for working with unit of work metrics - Pure JSON formatter"
+repository = "https://github.com/awslabs/metrique"
+readme = "README.md"
+
+[dependencies]
+itoa = { workspace = true }
+ryu = { workspace = true }
+rand = { workspace = true }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.12" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.17" }
+
+[dev-dependencies]
+assert-json-diff = { workspace = true }
+metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
+metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
+rand_chacha = { workspace = true }
+serde_json = { workspace = true }
