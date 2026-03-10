@@ -61,7 +61,7 @@ struct Validation {
 /// This formatter creates a single EMF directive, which only has a single dimension-set. Therefore, if metrics are passed with metric-specific dimensions,
 /// for example via [WithDimension](metrique_writer::value::WithDimension), there are currently 3 options:
 /// 1. An error will occur (this is the default).
-/// 2. If `allow_ignored_dimensions` is used, the metric will be emitted without the extra dimensions,
+/// 2. If [`allow_ignored_dimensions`](EmfBuilder::allow_ignored_dimensions) is used, the metric will be emitted without the extra dimensions,
 ///    with just the `default_dimensions`.
 /// 3. If the `AllowSplitEntries` config is enabled, there will be a separate entry
 ///    generated for each set of dimension values. This is generally the right thing to
@@ -73,6 +73,10 @@ struct Validation {
 /// If you want to emit metrics with specific dimensions, you can add additional directives using the [`directive`](EmfBuilder::directive)
 /// function. EMF ignores missing metrics and missing dimensions in dimension-sets, so if you emit a metric only
 /// under specific conditions there is no problem with having the directive.
+///
+/// If you want to declare dimension sets where some dimensions may not be present in every
+/// entry, use [`skip_validate_dimensions_exist`](EmfBuilder::skip_validate_dimensions_exist) to suppress the missing-dimension
+/// error.
 ///
 /// ## Metric emission format - scalar vs. histogram
 ///
@@ -709,17 +713,54 @@ impl EmfBuilder {
         self
     }
 
-    /// Enable ignored dimensions mode, in which per-metric dimensions are skipped
+    /// Controls whether per-metric (field-level) dimensions from [`WithDimension`] are silently
+    /// dropped.
+    ///
+    /// When a metric field is wrapped in `WithDimension<>`, it carries extra dimensions that
+    /// apply only to that metric. By default, emitting such a metric **without**
+    /// [`AllowSplitEntries`] enabled causes a validation error.
+    ///
+    /// When this is set to `true`, those per-metric dimensions are silently ignored and the
+    /// metric is emitted under only the default/entry-level dimension sets.
+    ///
+    /// **This does not affect validation of dimension sets.** If a dimension set references a
+    /// dimension name that is never written to the entry, that is controlled by
+    /// [`skip_validate_dimensions_exist`](Self::skip_validate_dimensions_exist) (or
+    /// [`skip_all_validations`](Self::skip_all_validations)).
+    ///
+    /// [`WithDimension`]: metrique_writer::value::WithDimension
+    /// [`AllowSplitEntries`]: metrique_writer_core::config::AllowSplitEntries
     pub fn allow_ignored_dimensions(mut self, allow: bool) -> Self {
         self.allow_ignored_dimensions = allow;
         self
     }
+
+    /// If `skip` is true, dimensions referenced in dimension sets that are not present in the
+    /// entry will not cause a validation error.
+    ///
+    /// This is useful when you want to declare multiple dimension sets upfront and only emit the
+    /// dimensions that are actually relevant to a given entry.
+    ///
+    /// By default, this validation is enabled (not skipped) in debug builds and disabled in
+    /// release builds.
+    ///
+    /// **This does not affect per-metric (field-level) dimensions.** To control whether
+    /// `WithDimension<>` dimensions are silently dropped, see
+    /// [`allow_ignored_dimensions`](Self::allow_ignored_dimensions).
     pub fn skip_validate_dimensions_exist(mut self, skip: bool) -> Self {
         self.validation.skip_validate_dimensions_exist = skip;
         self
     }
 
     /// If `skip` is true, turns skipping validations on.
+    ///
+    /// This is a shorthand that enables all of:
+    /// - [`skip_validate_dimensions_exist`](Self::skip_validate_dimensions_exist)
+    /// - skipping duplicate-field validation
+    /// - skipping metric-name validation
+    ///
+    /// To skip only dimension-existence checks, use
+    /// [`skip_validate_dimensions_exist`](Self::skip_validate_dimensions_exist) instead.
     ///
     /// Note that skipping validations is **only intended to be used to improve performance for code
     /// that has tests that demonstrate that it is only creating valid metrics**, NOT to intentionally
