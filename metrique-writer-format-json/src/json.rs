@@ -205,13 +205,7 @@ impl Json {
         output: &mut impl io::Write,
         multiplicity: Option<u64>,
     ) -> Result<(), IoStreamError> {
-        // Clear buffers but keep allocated capacity
-        self.metrics_buf.truncate(0);
-        self.metrics_buf.shrink_to(MAX_BUF_RETAIN);
-        self.properties_buf.truncate(0);
-        self.properties_buf.shrink_to(MAX_BUF_RETAIN);
-        self.counts_buf.truncate(0);
-        self.counts_buf.shrink_to(MAX_BUF_RETAIN);
+        self.clear_buffers();
 
         let mut writer = JsonEntryWriter {
             timestamp: None,
@@ -256,6 +250,17 @@ impl Json {
 
         output.write_all(b"}\n")?;
         Ok(())
+    }
+
+    /// Clear the buffers keeping the allocated capacity
+    #[inline(always)]
+    fn clear_buffers(&mut self) {
+        self.metrics_buf.truncate(0);
+        self.metrics_buf.shrink_to(MAX_BUF_RETAIN);
+        self.properties_buf.truncate(0);
+        self.properties_buf.shrink_to(MAX_BUF_RETAIN);
+        self.counts_buf.truncate(0);
+        self.counts_buf.shrink_to(MAX_BUF_RETAIN);
     }
 }
 
