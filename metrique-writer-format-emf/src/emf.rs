@@ -714,6 +714,10 @@ impl EmfBuilder {
         self.allow_ignored_dimensions = allow;
         self
     }
+    pub fn skip_validate_dimensions_exist(mut self, skip: bool) -> Self {
+        self.validation.skip_validate_dimensions_exist = skip;
+        self
+    }
 
     /// If `skip` is true, turns skipping validations on.
     ///
@@ -1868,6 +1872,47 @@ mod tests {
             "entry dimensions must be configured before emitting a metric with custom dimensions"
         ));
         assert!(errors.contains("multiple timestamps written"));
+    }
+
+    #[test]
+    fn test_skip_validate_dimensions_exist() {
+        struct SuccessEntry;
+        impl Entry for SuccessEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH);
+                writer.value("Region", "us-east-1");
+                writer.value("MyMetric", &42u64);
+            }
+        }
+
+        // "AZ" is declared in the dimension set but never written by the entry.
+        // With skip_validate_dimensions_exist, this should succeed.
+        let mut emf = Emf::builder(
+            "TestNS".to_string(),
+            vec![vec!["Region".to_string(), "AZ".to_string()]],
+        )
+        .skip_all_validations(false)
+        .skip_validate_dimensions_exist(true)
+        .build();
+        emf.format(&SuccessEntry, &mut vec![]).unwrap();
+
+        // Other validations are still active: duplicate fields should still error.
+        struct OtherValidationsEntry;
+        impl Entry for OtherValidationsEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH);
+                writer.value("Region", "us-east-1");
+                writer.value("MyMetric", &1u64);
+                writer.value("MyMetric", &2u64);
+                writer.value("_aws", "bad");
+            }
+        }
+        let errors = format!(
+            "{}",
+            emf.format(&OtherValidationsEntry, &mut vec![]).unwrap_err()
+        );
+        assert!(errors.contains("for `MyMetric`: duplicate field"));
+        assert!(errors.contains("for `_aws`: name can't be `_aws`"));
     }
 
     #[test]
