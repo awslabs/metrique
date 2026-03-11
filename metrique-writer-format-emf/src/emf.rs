@@ -18,6 +18,7 @@ use rand::rngs::ThreadRng;
 use rand::{Rng, RngCore};
 use std::any::Any;
 use std::fmt::{Display, Write};
+use std::iter;
 use std::mem;
 use std::num::NonZero;
 use std::ops::Deref;
@@ -1355,17 +1356,22 @@ impl ValueWriter<'_, '_> {
                 buf.push_raw_str(r#"{"Values":["#);
                 let mut wrote_anything = false;
                 counts.clear(); // clear before to make sure there is no risk
-                let mut wrote =
-                    Self::write_observation(buf, counts, first, multiplicity, name).is_ok();
-                wrote_anything |= wrote;
-                for observation in second.into_iter().chain(distribution) {
-                    if wrote {
+                for observation in iter::once(first).chain(second).chain(distribution) {
+                    let prev_buf_len = buf.as_str().len();
+                    let prev_counts_len = counts.as_str().len();
+                    if wrote_anything {
                         buf.push(',');
                         counts.push(',');
                     }
-                    wrote = Self::write_observation(buf, counts, observation, multiplicity, name)
-                        .is_ok();
-                    wrote_anything |= wrote;
+                    if Self::write_observation(buf, counts, observation, multiplicity, name).is_ok()
+                    {
+                        wrote_anything = true;
+                    } else {
+                        // Restore state if this observation was skipped (e.g. NaN) so we
+                        // never leave trailing separators behind.
+                        buf.truncate(prev_buf_len);
+                        counts.truncate(prev_counts_len);
+                    }
                 }
                 // injection-safe because this is a comma-separated list of numbers
                 buf.push_raw_str(counts.as_str());
@@ -2211,6 +2217,7 @@ mod tests {
                         -f64::INFINITY,
                         f64::NAN,
                         1.0,
+                        f64::NAN,
                     ]),
                 );
                 writer.value("OtherNaN", &f64::NAN);
@@ -3486,5 +3493,41 @@ mod tests {
             "MetriqueValidationError": "basic error"
         });
         assert_json_eq!(expected, actual);
+    }
+
+    /// A distribution ending with NaN should not produce trailing commas in the Values/Counts arrays
+    #[test]
+    fn trailing_nan_in_distribution_produces_valid_json() {
+        struct TestEntry;
+        impl Entry for TestEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH + Duration::from_secs(1700000000));
+                writer.value(
+                    "MetricWithTrailingNaN",
+                    &Distribution::<f64>::from_iter([1.0, 2.0, f64::NAN]),
+                );
+            }
+        }
+
+        let mut emf = Emf::builder("TestNS".to_string(), vec![vec![]]).build();
+        let mut output = Vec::new();
+        emf.format(&TestEntry, &mut output).unwrap();
+
+        // Serde will fail validation if there's trailing commas
+        let json: serde_json::Value = serde_json::from_slice(&output).unwrap_or_else(|e| {
+            panic!(
+                "EMF produced invalid JSON: {e}\nOutput: {}",
+                String::from_utf8_lossy(&output)
+            );
+        });
+
+        // Verify the NaN was dropped and distribution shape is preserved.
+        assert_json_eq!(
+            json["MetricWithTrailingNaN"],
+            serde_json::json!({
+                "Values": [1, 2],
+                "Counts": [1, 1],
+            })
+        );
     }
 }
