@@ -145,7 +145,7 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 /// ## Handling of non-finite floating-point values
 ///
 /// Infinities are clamped to `f64::MAX` / `-f64::MAX`. NaN observations are
-/// skipped entirely.
+/// serialized as JSON `null`.
 #[derive(Debug)]
 pub struct Json {
     observation_format: ObservationFormat,
@@ -252,7 +252,7 @@ impl Json {
         Ok(())
     }
 
-    /// Clear the buffers keeping the allocated capacity
+    /// Clear buffers and shrink overly large retained capacity.
     #[inline(always)]
     fn clear_buffers(&mut self) {
         self.metrics_buf.truncate(0);
