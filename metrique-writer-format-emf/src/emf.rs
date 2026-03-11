@@ -1937,7 +1937,7 @@ mod tests {
         .build();
         emf.format(&SuccessEntry, &mut vec![]).unwrap();
 
-        // Other validations are still active: duplicate fields should still error.
+        // Other validations are still active: duplicate fields & naming conventions should still error.
         struct OtherValidationsEntry;
         impl Entry for OtherValidationsEntry {
             fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
