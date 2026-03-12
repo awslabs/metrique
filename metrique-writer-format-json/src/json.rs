@@ -127,7 +127,7 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 ///
 /// Outputs one JSON object per entry as a single line, followed by a newline.
 ///
-/// The output structure is:
+/// The output structure is (timestamp is milliseconds since Unix epoch):
 /// ```json
 /// {
 ///   "timestamp": 1705312800000,
@@ -140,6 +140,19 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 ///     "Region": "us-east-1"
 ///   }
 /// }
+/// ```
+///
+/// The shape of metric observations can be customized via [`ObservationFormat`].
+/// By default, [`ObservationFormat::Scalar`] is used with [`RepeatedFormat::TotalAndCount`].
+///
+/// ```
+/// use metrique_writer_format_json::{Json, ObservationFormat};
+///
+/// // Default scalar output
+/// let format = Json::new();
+///
+/// // Histogram output with parallel values/counts arrays
+/// let format = Json::new().with_observation_format(ObservationFormat::Histogram);
 /// ```
 ///
 /// ## Handling of non-finite floating-point values
