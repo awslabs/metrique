@@ -144,8 +144,12 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 ///
 /// ## Handling of non-finite floating-point values
 ///
-/// Infinities are clamped to `f64::MAX` / `-f64::MAX`. NaN observations are
-/// serialized as JSON `null`.
+/// JSON has no representation for infinity or NaN, so these are handled as follows:
+///
+/// - **Infinities** are clamped to `f64::MAX` / `-f64::MAX`. This preserves the
+///   data point for debugging while staying within valid JSON. Note that this means the output value
+///   is technically different from the input.
+/// - **NaN** observations are serialized as JSON `null`.
 #[derive(Debug)]
 pub struct Json {
     observation_format: ObservationFormat,
