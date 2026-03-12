@@ -1090,6 +1090,30 @@ mod tests {
     }
 
     #[test]
+    fn test_sampled_rate_1_0() {
+        let mut format =
+            Json::new().with_sampling_and_rng(rand_chacha::ChaChaRng::seed_from_u64(0));
+        let mut output = Vec::new();
+        format
+            .format_with_sample_rate(&RepeatedEntry, &mut output, 1.0)
+            .unwrap();
+
+        // At rate 1.0 (no sampling), multiplicity should be 1,
+        // so count == occurrences (3), not scaled up.
+        assert_eq!(
+            parse_output(&output),
+            expected(
+                r#"{
+                "timestamp": 1705312800000,
+                "metrics": {
+                    "AvgLatency": { "value": { "total": 150, "count": 3 } }
+                }
+            }"#
+            ),
+        );
+    }
+
+    #[test]
     fn test_sampled_invalid_rate() {
         let mut format =
             Json::new().with_sampling_and_rng(rand_chacha::ChaChaRng::seed_from_u64(0));
