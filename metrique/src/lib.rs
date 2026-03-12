@@ -47,6 +47,20 @@ pub mod timers;
 /// handle that work in the background.
 pub mod slot;
 
+/// Longer form documentation for metrique.
+pub mod _guide {
+    #[doc = include_str!("../docs/cookbook.md")]
+    pub mod cookbook {}
+    #[doc = include_str!("../docs/concurrency.md")]
+    pub mod concurrency {}
+    #[doc = include_str!("../docs/sinks.md")]
+    pub mod sinks {}
+    #[doc = include_str!("../docs/sampling.md")]
+    pub mod sampling {}
+    #[doc = include_str!("../docs/testing.md")]
+    pub mod testing {}
+}
+
 use metrique_core::CloseEntry;
 use metrique_writer_core::Entry;
 use metrique_writer_core::EntryWriter;
