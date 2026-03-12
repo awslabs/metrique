@@ -36,14 +36,14 @@ use rand::{Rng, RngCore};
 ///
 /// Given one entry with sampled multiplicity = `5`:
 /// - property: `Operation = "GetItem"`
-/// - metric `Latency = Observation::Repeated { total: 150.0, occurrences: 3 }`
-/// - metric `PayloadSize = [10, 20]` (two floating-point observations)
+/// - metric `Latency = Observation::Repeated { total: 150.0, occurrences: 3 }` (unit: Milliseconds)
+/// - metric `PayloadSize = [10, 20]` (two floating-point observations, no unit)
 ///
 /// #### `Scalar(RepeatedFormat::TotalAndCount)` (default):
 /// ```json
 /// {
 ///   "metrics": {
-///     "Latency": { "value": { "total": 150, "count": 15 } },
+///     "Latency": { "value": { "total": 150, "count": 15 }, "unit": "Milliseconds" },
 ///     "PayloadSize": { "values": [10, 20] }
 ///   },
 ///   "properties": { "Operation": "GetItem" }
@@ -54,7 +54,7 @@ use rand::{Rng, RngCore};
 /// ```json
 /// {
 ///   "metrics": {
-///     "Latency": { "value": 50 },
+///     "Latency": { "value": 50, "unit": "Milliseconds" },
 ///     "PayloadSize": { "values": [10, 20] }
 ///   },
 ///   "properties": { "Operation": "GetItem" }
@@ -65,7 +65,7 @@ use rand::{Rng, RngCore};
 /// ```json
 /// {
 ///   "metrics": {
-///     "Latency": { "values": [50], "counts": [15] },
+///     "Latency": { "values": [50], "counts": [15], "unit": "Milliseconds" },
 ///     "PayloadSize": { "values": [10, 20], "counts": [5, 5] }
 ///   },
 ///   "properties": { "Operation": "GetItem" }
