@@ -71,6 +71,7 @@ use rand::{Rng, RngCore};
 ///   "properties": { "Operation": "GetItem" }
 /// }
 /// ```
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy)]
 pub enum ObservationFormat {
     /// Emit single observations as `"value": X`, multiple as `"values": [...]`.
@@ -104,6 +105,7 @@ pub enum ObservationFormat {
 ///   `{"total": 150, "count": 3}`
 /// - [`Mean`](RepeatedFormat::Mean):
 ///   `50`
+#[non_exhaustive]
 #[derive(Debug, Clone, Copy, Default)]
 pub enum RepeatedFormat {
     /// Emit as `{"total": f64, "count": u64}`.
