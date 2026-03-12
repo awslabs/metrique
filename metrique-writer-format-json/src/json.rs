@@ -495,7 +495,7 @@ fn push_float(buf: &mut String, v: f64) {
     if v.is_nan() {
         buf.push_str("null");
     } else {
-        let mut buffer = ryu::Buffer::new();
+        let mut buffer = dtoa::Buffer::new();
         let s = buffer.format_finite(v);
         // Strip trailing ".0" for cleaner integer-like output
         buf.push_str(s.strip_suffix(".0").unwrap_or(s));
@@ -536,6 +536,7 @@ fn push_json_string(buf: &mut String, s: &str) {
 /// statistics are unbiased.
 ///
 /// See [`Json::with_sampling`].
+#[derive(Debug)]
 pub struct SampledJson<R = DefaultRng<ThreadRng>> {
     json: Json,
     rng: R,

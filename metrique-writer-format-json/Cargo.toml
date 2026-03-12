@@ -10,7 +10,7 @@ readme = "README.md"
 
 [dependencies]
 itoa = { workspace = true }
-ryu = { workspace = true }
+dtoa = { workspace = true }
 rand = { workspace = true }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.12" }
 metrique-writer = { path = "../metrique-writer", version = "0.1.17" }

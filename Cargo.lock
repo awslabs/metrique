@@ -962,12 +962,12 @@ name = "metrique-writer-format-json"
 version = "0.1.0"
 dependencies = [
  "assert-json-diff",
+ "dtoa",
  "itoa",
  "metrique-writer",
  "metrique-writer-core",
  "rand",
  "rand_chacha",
- "ryu",
  "serde_json",
 ]
 
