@@ -180,52 +180,15 @@ fn handle_request(queue: &BackgroundQueue<MyRootEntry>) {
 [`global_entry_sink`]: crate::writer::sink::global_entry_sink
 [`BackgroundQueue::new`]: crate::writer::sink::BackgroundQueue::new
 [`BoxEntrySink`]: crate::writer::BoxEntrySink
-
-### Creating a boxing non-global sink
-
-[`BoxEntrySink`] can be used without the global sink API, to create a non-global
-sink that accepts arbitrary entry types using the same amount of boxing and dynamic
-dispatch as a global sink.
-
-Example:
-
-```rust
-use metrique::{CloseValue, RootEntry};
-use metrique::emf::Emf;
-use metrique::writer::{AnyEntrySink, BoxEntrySink, EntrySink, FormatExt};
-use metrique::writer::sink::BackgroundQueueBuilder;
-use metrique::unit_of_work::metrics;
-
-#[metrics]
-#[derive(Default)]
-struct MyEntry {
-    value: u32
-}
-
-let (queue, handle) = BackgroundQueueBuilder::new().build_boxed(
-    Emf::builder("Ns".to_string(), vec![vec![]])
-        .build()
-        .output_to(std::io::stdout())
-);
-
-handle_request(&queue);
-
-fn handle_request(queue: &BoxEntrySink) {
-    let mut metric = MyEntry::default();
-    metric.value += 1;
-    // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
-    // which has slightly negative performance impact
-    queue.append(RootEntry::new(metric.close()));
-}
-```
+[`BACKGROUND_QUEUE_METRICS`]: crate::writer::sink::BACKGROUND_QUEUE_METRICS
 
 ## Metrics being dropped
 
 The `metrique` library is intended to be used for operational metrics, and therefore it is intentionally designed to drop metrics under high-load conditions rather than having the application grind to a halt.
 
-There are 2 *main* places where this can happen:
+There are 2 places where this can happen:
 
-1. [`BackgroundQueue`] will drop the earliest metric in the queue under load.
+1. [`BackgroundQueue`] will drop the oldest entry in the queue under load (see [`BACKGROUND_QUEUE_METRICS`] for the overflow counter and other queue diagnostics).
 2. It is possible to explicitly enable sampling (by using
    [`sample_by_fixed_fraction`](crate::writer::sample::SampledFormatExt::sample_by_fixed_fraction) or [`sample_by_congress_at_fixed_entries_per_second`](crate::writer::sample::SampledFormatExt::sample_by_congress_at_fixed_entries_per_second)).
    If sampling is being used, metrics will be dropped at random.

@@ -2,7 +2,22 @@
 
 ## Testing emitted metrics
 
-`metrique` provides `test_entry` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the [`TestEntrySink`](crate::test_util::TestEntrySink) to test that you are emitting the metrics that you expect:
+### Quick assertions with `test_metric`
+
+For simple tests where you just want to verify field values without setting up a sink, [`test_metric`](crate::test_util::test_metric) closes a metric struct and returns a [`TestEntry`](crate::test_util::TestEntry) you can assert against directly:
+
+```rust,no_run
+use metrique::test_util::test_metric;
+
+let entry = test_metric(RequestMetrics { operation: "SayHello", number_of_ducks: 10 });
+assert_eq!(entry.metrics["NumberOfDucks"], 10);
+```
+
+For tests that need to verify the full emit pipeline, use `test_entry_sink` below.
+
+### Testing with `test_entry_sink`
+
+`metrique` provides `test_entry_sink` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the [`TestEntrySink`](crate::test_util::TestEntrySink) to test that you are emitting the metrics that you expect:
 
 > Note: enable the `test-util` feature of `metrique` to enable test utility features.
 
@@ -65,6 +80,25 @@ let _handle = ServiceMetrics::attach_to_stream(
     LocalFormat::new(OutputStyle::Pretty)
         .output_to(std::io::stderr()),
 );
+```
+
+Example output:
+
+```text
+---
+  TotalTime: 302.457ms
+  Success: 1
+  Failure: 0
+  SegmentIndex: 180
+  UncompressedSize: 20.97MB
+  CompressedSize: 7.97MB
+  InvalidFileHeader: 1
+  Gzip.Time: 113.549ms
+  Gzip.Success: 1
+  Gzip.Failure: 0
+  S3Upload.Time: 188.904ms
+  S3Upload.Success: 1
+  S3Upload.Failure: 0
 ```
 
 ### No entries in the log
