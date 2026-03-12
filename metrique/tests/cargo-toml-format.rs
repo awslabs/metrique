@@ -16,7 +16,7 @@ fn test_cargo_toml_format(
     // Use targeted globs instead of ../** to avoid walking into target/,
     // where transient rustc files cause flaky compile errors.
     #[files("../Cargo.toml")]
-    #[files("../metrique*/Cargo.toml")]
+    #[files("../metrique*/**/Cargo.toml")]
     toml_path: PathBuf,
 ) {
     let content = fs::read_to_string(&toml_path)
@@ -196,4 +196,27 @@ fn test_build_yml(
         file.contains(&msrv_string),
         "build.yml must run at the msrv"
     );
+}
+
+/// Verify that the globs in test_cargo_toml_format cover every workspace member.
+/// Catches drift if a crate is added that doesn't match the `metrique*` pattern.
+#[test]
+fn test_cargo_toml_glob_covers_all_members() {
+    let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
+    let workspace_toml = fs::read_to_string(workspace_root.join("Cargo.toml")).unwrap();
+    let workspace: toml::Value = toml::from_str(&workspace_toml).unwrap();
+
+    let members = workspace["workspace"]["members"]
+        .as_array()
+        .expect("workspace.members must be an array");
+
+    for member in members {
+        let name = member.as_str().unwrap();
+        assert!(
+            name.starts_with("metrique"),
+            "workspace member '{}' does not match the metrique* glob in test_cargo_toml_format; \
+             update the #[files] pattern to cover it",
+            name
+        );
+    }
 }
