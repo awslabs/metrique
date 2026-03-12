@@ -1266,6 +1266,9 @@ struct ValueWriter<'a, 'e> {
 impl ValueWriter<'_, '_> {
     fn write_float(buf: &mut PrefixedStringBuf, v: FiniteFloat) {
         assert!(v.0.is_finite(), "should be checked by the caller");
+        // We use `dtoa` over `ryu` because `dtoa` always emits decimal notation
+        // (no scientific notation), which is easier to script against and more portable
+        // across downstream metric consumers.
         let mut dtoa_buf = dtoa::Buffer::new();
         let as_str = dtoa_buf.format_finite(v.0);
         // injection-safe since this is a number

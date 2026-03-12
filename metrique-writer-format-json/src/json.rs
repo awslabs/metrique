@@ -495,6 +495,9 @@ fn push_float(buf: &mut String, v: f64) {
     if v.is_nan() {
         buf.push_str("null");
     } else {
+        // We use `dtoa` over `ryu` because `dtoa` always emits decimal notation
+        // (no scientific notation), which is easier to script against and more portable
+        // across downstream metric consumers.
         let mut buffer = dtoa::Buffer::new();
         let s = buffer.format_finite(v);
         // Strip trailing ".0" for cleaner integer-like output
