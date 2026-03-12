@@ -7,8 +7,11 @@ helps you choose the right pattern for your use case.
 
 ### Principle 1: Unit-of-work metrics provide more value when debugging
 
-Do not aggregate client-side unless necessary. Record metrics directly associated
-with a unit of work and let your metrics backend perform aggregation.
+Do not aggregate client-side unless necessary. When metrics are aggregated client
+side, critical debugging information is lost. For example, you cannot tell whether
+two fields spiked concurrently or whether they were both high at unrelated points
+during your aggregation window. Record metrics directly associated with a unit of
+work and let your metrics backend perform aggregation.
 
 **Unit-of-work metrics** (API response time, request size, request ID) let you
 correlate individual records to debug *why* something happened. **Time-based
@@ -149,7 +152,7 @@ for debugging.
 structured record that can serve both purposes:
 
 - **Metrics as metrics**: numeric observations (latency, count, size) published to
-  a metrics backend (CloudWatch, MonitorPortal) for dashboards and alarms.
+  a metrics backend like CloudWatch for dashboards and alarms.
 - **Metrics as logs**: the same records, with full context (request ID, operation,
   status code), archived for offline querying and debugging.
 

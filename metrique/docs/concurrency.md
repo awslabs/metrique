@@ -196,8 +196,9 @@ fn count_concurrent_ducks() {
     }
     // Each handle is keeping the metric entry alive!
     // The metric will not be flushed until all handles are dropped!
-    // TODO: add an API to spawn a task that will force-flush the entry after a timeout.
 }
 ```
+
+<!-- TODO: add an API to spawn a task that will force-flush the entry after a timeout. -->
 
 [unit-of-work-fanout]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-fanout.rs

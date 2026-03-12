@@ -8,7 +8,7 @@ section in the cookbook.
 ## Overview
 
 High-volume services may want to trade lower accuracy for lower CPU time spent on metric emission. Offloading metrics to
-CloudWatch can become bottlenecked if the agent isn't able to keep up with the rate of written metric entries.
+CloudWatch can become bottlenecked if the CloudWatch Agent or other log forwarder isn't able to keep up with the rate of written metric entries.
 
 It is common to tee the metric into 2 destinations:
 

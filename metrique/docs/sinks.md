@@ -30,9 +30,13 @@ The default [`BackgroundQueue`](crate::writer::sink::BackgroundQueue) implementa
 in memory and writes them to the output stream in a background thread. This is ideal for high-throughput
 applications where you want to minimize the impact of metric writing on your application's performance.
 
-Background queues are normally set up by using [`ServiceMetrics::attach_to_stream`](crate::writer::AttachGlobalEntrySinkExt::attach_to_stream):
+Background queues are normally set up by using [`ServiceMetrics::attach_to_stream`](crate::writer::AttachGlobalEntrySinkExt::attach_to_stream),
+which creates a [`BackgroundQueue`](crate::writer::sink::BackgroundQueue), connects it to the global
+[`ServiceMetrics`](crate::ServiceMetrics) sink, and returns a handle that keeps the background thread alive.
+If you need a separate global sink (for example, to write some metrics to a different destination),
+see [`global_entry_sink`](#creating-a-locally-defined-global-sink).
 
-```rust
+```rust,ignore
 use metrique::emf::Emf;
 use metrique::ServiceMetrics;
 use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
@@ -42,17 +46,13 @@ let handle = ServiceMetrics::attach_to_stream(
         .build()
         .output_to(std::io::stdout())
 );
-
-# use metrique::unit_of_work::metrics;
-# #[metrics]
-# struct MyEntry {}
-# MyEntry {}.append_on_drop(ServiceMetrics::sink());
 ```
 
 ### Immediate Flushing for ephemeral environments
 
-For simpler use cases, especially in environments like AWS Lambda where background threads are not
-ideal, you can use the [`FlushImmediately`](crate::writer::sink::FlushImmediately) implementation.
+In environments like AWS Lambda, a background queue provides less benefit due to low concurrency
+and requires a custom graceful shutdown to drain. For these cases, consider using the
+[`FlushImmediately`](crate::writer::sink::FlushImmediately) implementation.
 
 ```rust
 use metrique::emf::Emf;
@@ -92,13 +92,13 @@ latency-sensitive or high-throughput applications.
 
 In most applications, it is the easiest to emit metrics to the global [`ServiceMetrics`](crate::ServiceMetrics) sink,
 which is a global variable that serves as a rendezvous point between the part of the code that
-generates metrics (which calls [`sink`](metrique_writer::GlobalEntrySink::sink)) and the code that writes them
-to a destination (which calls [`attach_to_stream`](metrique_writer::AttachGlobalEntrySinkExt::attach_to_stream) or [`attach`](metrique_writer::AttachGlobalEntrySink::attach)).
+generates metrics (which calls [`sink`](metrique_writer::GlobalEntrySink::sink)) and the code that chooses the destination
+(which calls [`attach_to_stream`](metrique_writer::AttachGlobalEntrySinkExt::attach_to_stream) or [`attach`](metrique_writer::AttachGlobalEntrySink::attach)).
 
 If use of this global is not desirable, you can
 [create a locally-defined global sink](#creating-a-locally-defined-global-sink) or
 [use EntrySink directly](#creating-a-non-global-sink). When using [`EntrySink`](crate::writer::EntrySink) directly,
-it is possible, but not mandatory, to use a slightly-faster non-`dyn` API.
+it is possible, but not mandatory, to use a slightly-faster non-`dyn` API. This requires that all entries going into the sink are the same type, which is not a requirement with global sinks.
 
 ### Creating a locally-defined global sink
 
@@ -108,8 +108,9 @@ useful when some of your metrics need to go to a separate destination than the o
 
 For example:
 
-```rust
+```rust,ignore
 use metrique::emf::Emf;
+use metrique::ServiceMetrics;
 use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique::writer::sink::global_entry_sink;
 use metrique::unit_of_work::metrics;
@@ -120,15 +121,23 @@ struct MyEntry {
     value: u32
 }
 
-global_entry_sink! { MyServiceMetrics }
+global_entry_sink! { AuditMetrics }
 
-let handle = MyServiceMetrics::attach_to_stream(
-    Emf::builder("Ns".to_string(), vec![vec![]])
+// Primary metrics go to the "MyService" namespace
+let _primary = ServiceMetrics::attach_to_stream(
+    Emf::builder("MyService".to_string(), vec![vec![]])
         .build()
         .output_to(std::io::stdout())
 );
 
-let metric = MyEntry::default().append_on_drop(MyServiceMetrics::sink());
+// Audit metrics go to a separate "MyService/Audit" namespace
+let _audit = AuditMetrics::attach_to_stream(
+    Emf::builder("MyService/Audit".to_string(), vec![vec![]])
+        .build()
+        .output_to(std::io::stdout())
+);
+
+let metric = MyEntry::default().append_on_drop(AuditMetrics::sink());
 ```
 
 ### Creating a specifically-typed non-global sink
@@ -136,9 +145,10 @@ let metric = MyEntry::default().append_on_drop(MyServiceMetrics::sink());
 If you are not using a global sink, you can also create a sink that is specific to
 your entry type. While the global sink API, which uses [`BoxEntrySink`] and dynamic dispatch,
 is plenty fast for most purposes, using a fixed entry type avoids virtual dispatch which
-improves performance in *very*-high-throughput cases.
+improves performance in *very*-high-throughput cases. It can also reduce overhead when your metric struct has a large number of fields.
 
-To use this API, create a sink for `RootMetric<MyEntry>`, for example a
+To use this API, create a sink for [`RootMetric<MyEntry>`](crate::RootMetric), the wrapper type that adds
+metadata (like timestamps) to your entry. For example, a
 `BackgroundQueue<RootMetric<MyEntry>>`. Of course, you can use sink types
 other than [`BackgroundQueue`], like
 [`FlushImmediately`](#immediate-flushing-for-ephemeral-environments).

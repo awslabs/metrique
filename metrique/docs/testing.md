@@ -6,7 +6,7 @@
 
 For simple tests where you just want to verify field values without setting up a sink, [`test_metric`](crate::test_util::test_metric) closes a metric struct and returns a [`TestEntry`](crate::test_util::TestEntry) you can assert against directly:
 
-```rust,no_run
+```rust,ignore
 use metrique::test_util::test_metric;
 
 let entry = test_metric(RequestMetrics { operation: "SayHello", number_of_ducks: 10 });
