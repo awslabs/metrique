@@ -13,8 +13,10 @@ fn msrv_major_minor() -> String {
 /// Test that the Cargo.tomls do not have issues that make `cargo publish` hard
 fn test_cargo_toml_format(
     // .. since workspace root is parent of package root
-    #[files("../**/Cargo.toml")]
-    #[exclude("/target/")]
+    // Use targeted globs instead of ../** to avoid walking into target/,
+    // where transient rustc files cause flaky compile errors.
+    #[files("../Cargo.toml")]
+    #[files("../metrique*/Cargo.toml")]
     toml_path: PathBuf,
 ) {
     let content = fs::read_to_string(&toml_path)
