@@ -28,7 +28,7 @@ async fn handle_request_fanout(metrics: &mut RequestMetrics) {
 }
 ```
 
-The `metrique` crate provides some tools to help more complex situations
+The `metrique` crate provides some tools to help more complex situations.
 
 ### Controlling the point of metric emission
 
@@ -40,19 +40,37 @@ You don't want to wrap your parent metric in an `Arc`, as that will prevent you 
 to metric fields, but you still want to delay metric emission.
 
 To allow for that, the [`AppendAndCloseOnDrop`](crate::AppendAndCloseOnDrop) guard (which is what the `<MetricName>Guard` aliases point to)
-has `flush_guard` and `force_flush_guard` functions. The flush guards are type-erased (they have
-types `FlushGuard` and `ForceFlushGuard`, which don't mention the type of the metric entry).
+has [`flush_guard`](crate::AppendAndCloseOnDrop::flush_guard) and [`force_flush_guard`](crate::AppendAndCloseOnDrop::force_flush_guard) functions. The flush guards are type-erased (they have
+types [`FlushGuard`](crate::FlushGuard) and [`ForceFlushGuard`](crate::ForceFlushGuard), which don't mention the type of the metric entry).
+
+```rust,ignore
+let mut metrics = RequestMetrics::init("DoSomething");
+
+// FlushGuard: metric waits for ALL guards to drop
+let guard = metrics.flush_guard();
+tokio::task::spawn(async move { do_work(guard).await });
+
+// ForceFlushGuard: metric emits when ANY force guard drops (e.g. a timeout)
+let force_guard = metrics.force_flush_guard();
+tokio::task::spawn(async move {
+    tokio::time::sleep(Duration::from_secs(30)).await;
+    drop(force_guard); // forces emission even if other work is pending
+});
+
+// Slot with OnParentDrop::Wait: holds a FlushGuard internally
+let slot = metrics.child.open(OnParentDrop::Wait(metrics.flush_guard()));
+```
 
 The metric will then be emitted when either:
 
-1. The owner handle of the metric and *all* the `FlushGuard`s have been dropped
-2. The owner handle of the metric and *any* of the `ForceFlushGuard`s have been dropped.
+1. The owner handle of the metric and *all* the [`FlushGuard`](crate::FlushGuard)s have been dropped
+2. The owner handle of the metric and *any* of the [`ForceFlushGuard`](crate::ForceFlushGuard)s have been dropped.
 
-This makes `force_flush_guard` useful to emit a metric via a timeout even if some
+This makes [`force_flush_guard`](crate::AppendAndCloseOnDrop::force_flush_guard) useful to emit a metric via a timeout even if some
 of the downstream tasks have not completed, which is useful since you normally
 want metrics even (maybe *especially*) when things are stuck (the downstream tasks
 presumably have access to the metric struct via an [`Arc`](#using-atomics)
-or [`Slot`](#using-slots-to-send-values), which if they eventually finish,
+or [`Slot`](#using-slots-to-collect-values-from-tasks), which if they eventually finish,
 will let them safely write a value to the now-dead metric).
 
 See the examples below to see how the flush guards are used.
@@ -62,14 +80,14 @@ See the examples below to see how the flush guards are used.
 In some cases, you might want a sub-task (potentially a Tokio task, but maybe just a sub-component of your code)
 to be able to add some metric fields to your metric entry, but without forcing an ownership relationship.
 
-In that case, you can use `Slot`, which creates a oneshot channel, over which the value of the metric can be sent.
+In that case, you can use [`Slot`](crate::Slot), which creates a oneshot channel, over which the value of the metric can be sent.
 
-Note that `Slot` by itself does not delay the parent metric entry's emission in any way. If your metric entry
+Note that [`Slot`](crate::Slot) by itself does not delay the parent metric entry's emission in any way. If your metric entry
 is emitted (for example, when your request is finished) before the slot is filled, the metric entry will just
-skip the metrics behind the `Slot`. One option is to make your request wait for the slot
-to be filled - either by waiting for your subtask to complete or by using `Slot::wait_for_data`.
+skip the metrics behind the [`Slot`](crate::Slot). One option is to make your request wait for the slot
+to be filled, either by waiting for your subtask to complete or by using [`Slot::wait_for_data`](crate::Slot::wait_for_data).
 
-Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission) - to make that easy, `Slot::open` has a `OnParentDrop::Wait` mode, that holds on to a `FlushGuard` until the slot is closed.
+Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission), to make that easy, [`Slot::open`](crate::Slot::open) has a [`OnParentDrop::Wait`](crate::OnParentDrop::Wait) mode, that holds on to a [`FlushGuard`](crate::FlushGuard) until the slot is closed.
 
 ```rust
 use metrique::writer::GlobalEntrySink;
@@ -142,7 +160,7 @@ async fn call_downstream_service(mut metrics: SlotGuard<DownstreamMetrics>) {
 You might want to "fan out" work to multiple scopes that are in the background or otherwise operating in parallel. You can
 accomplish this by using atomic field types to store the metrics, and fanout-friendly wrapper APIs on your metrics entry.
 
-Anything that implements `CloseValue` can be used as a field. `metrique` provides a number of basic primitives such as `Counter`, a thin wrapper around `AtomicU64`. Most `std::sync::atomic` types also implement `CloseValueRef` directly. If you need to build your own primitives, simply ensure they implement `CloseValueRef`. By using primitives that can be mutated through shared references, you make it possible to use `Handle` or your own `Arc` to share the metrics entry around multiple owners or tasks.
+Anything that implements [`CloseValue`](crate::CloseValue) can be used as a field. `metrique` provides a number of basic primitives such as [`Counter`](crate::Counter), a thin wrapper around `AtomicU64`. Most `std::sync::atomic` types also implement [`CloseValueRef`](crate::CloseValueRef) directly. If you need to build your own primitives, simply ensure they implement [`CloseValueRef`](crate::CloseValueRef). By using primitives that can be mutated through shared references, you make it possible to use [`Handle`](crate::AppendAndCloseOnDrop::handle) or your own `Arc` to share the metrics entry around multiple owners or tasks.
 
 For further usage of atomics for concurrent metric updates, see [the fanout example][unit-of-work-fanout].
 

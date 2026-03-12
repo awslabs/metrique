@@ -11,11 +11,13 @@ following destinations:
    to a rotating file with a rotation period.
 2. Via [`output_to`] to a [`std::io::Write`], for example to standard output or a
    network socket, often used for sending EMF logs to a local metric agent process.
-3. To an in-memory [`TestEntrySink`] for tests (see [`testing`](crate::_documentation::testing)).
+3. To an in-memory [`TestEntrySink`] for tests (see [`testing`](crate::_guide::testing)).
+4. To [`DevNullSink`] to suppress all output (for instance, to conditionally disable metrics at runtime via an environment variable).
 
 You can find examples setting up EMF uploading in the [EMF docs](crate::emf).
 
 [`BackgroundQueue`]: crate::writer::sink::BackgroundQueue
+[`DevNullSink`]: crate::writer::sink::DevNullSink
 [`TestEntrySink`]: crate::writer::test_util::TestEntrySink
 [`output_to_makewriter`]: crate::writer::FormatExt::output_to_makewriter
 [`output_to`]: crate::writer::FormatExt::output_to
@@ -28,7 +30,7 @@ The default [`BackgroundQueue`](crate::writer::sink::BackgroundQueue) implementa
 in memory and writes them to the output stream in a background thread. This is ideal for high-throughput
 applications where you want to minimize the impact of metric writing on your application's performance.
 
-Background queues are normally set up by using `ServiceMetrics::attach_to_stream`:
+Background queues are normally set up by using [`ServiceMetrics::attach_to_stream`](crate::writer::AttachGlobalEntrySinkExt::attach_to_stream):
 
 ```rust
 use metrique::emf::Emf;
@@ -83,7 +85,7 @@ fn handle_request() {
 }
 ```
 
-Note that `FlushImmediately` will block while writing each entry, so it's not suitable for
+Note that [`FlushImmediately`](crate::writer::sink::FlushImmediately) will block while writing each entry, so it's not suitable for
 latency-sensitive or high-throughput applications.
 
 ## Sinks other than `ServiceMetrics`
@@ -95,7 +97,7 @@ to a destination (which calls [`attach_to_stream`](metrique_writer::AttachGlobal
 
 If use of this global is not desirable, you can
 [create a locally-defined global sink](#creating-a-locally-defined-global-sink) or
-[use EntrySink directly](#creating-a-non-global-sink). When using `EntrySink` directly,
+[use EntrySink directly](#creating-a-non-global-sink). When using [`EntrySink`](crate::writer::EntrySink) directly,
 it is possible, but not mandatory, to use a slightly-faster non-`dyn` API.
 
 ### Creating a locally-defined global sink
@@ -138,7 +140,7 @@ improves performance in *very*-high-throughput cases.
 
 To use this API, create a sink for `RootMetric<MyEntry>`, for example a
 `BackgroundQueue<RootMetric<MyEntry>>`. Of course, you can use sink types
-other than `BackgroundQueue`, like
+other than [`BackgroundQueue`], like
 [`FlushImmediately`](#immediate-flushing-for-ephemeral-environments).
 
 For example:
@@ -223,15 +225,15 @@ The `metrique` library is intended to be used for operational metrics, and there
 
 There are 2 *main* places where this can happen:
 
-1. `BackgroundQueue` will drop the earliest metric in the queue under load.
+1. [`BackgroundQueue`] will drop the earliest metric in the queue under load.
 2. It is possible to explicitly enable sampling (by using
-   `sample_by_fixed_fraction` or `sample_by_congress_at_fixed_entries_per_second`).
+   [`sample_by_fixed_fraction`](crate::writer::sample::SampledFormatExt::sample_by_fixed_fraction) or [`sample_by_congress_at_fixed_entries_per_second`](crate::writer::sample::SampledFormatExt::sample_by_congress_at_fixed_entries_per_second)).
    If sampling is being used, metrics will be dropped at random.
 
 If your application's security relies on metric entries not being dropped (for example,
 if you use metric entries to track user log-in operations, and your application relies on log-in operations not being dropped), it is your responsibility to engineer your application to avoid the metrics being dropped.
 
-In that case, you should not be using `BackgroundQueue` or sampling. It is probably fine to use the `Format` implementations in that case, but it is recommended to test and audit your use-case to make sure nothing is being missed.
+In that case, you should not be using [`BackgroundQueue`] or sampling. It is probably fine to use the [`Format`](crate::writer::format::Format) implementations in that case, but it is recommended to test and audit your use-case to make sure nothing is being missed.
 
 ## Use of exporters
 

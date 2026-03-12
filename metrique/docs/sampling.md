@@ -18,7 +18,7 @@ It is common to tee the metric into 2 destinations:
 The sampling can be done naively at some [fixed fraction](`crate::writer::sample::FixedFractionSample`), but at low rates can
 cause low-frequency events to be missed. This includes service errors or validation errors, especially when the service is
 designed to have an availability much higher than the chosen sample rate. Instead, we recommend the use of the
-[congressional sampler](`crate::writer::sample::CongressSample`). It uses a fixed metric emisssion target rate and
+[congressional sampler](`crate::writer::sample::CongressSample`). It uses a fixed metric emission target rate and
 gives lower-frequency events a higher sampling rate to boost their accuracy.
 
 The example below uses the congressional sampler keyed by the request operation and the status code to
