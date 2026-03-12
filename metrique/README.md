@@ -8,6 +8,20 @@ The log entries being structured means that you can easily use problem-specific 
 
 [Amazon CloudWatch]: https://docs.aws.amazon.com/AmazonCloudWatch
 
+## Further reading
+
+- [`_guide::cookbook`] - principles for effective instrumentation and choosing the right pattern
+- [`_guide::concurrency`] - flush guards, slots, atomics, and shared handles for concurrent metrics
+- [`_guide::sinks`] - destinations, sink types, and alternatives to `ServiceMetrics`
+- [`_guide::sampling`] - congressional sampling and the tee pattern for high-volume services
+- [`_guide::testing`] - test utilities and debugging common issues
+
+[`_guide::cookbook`]: crate::_guide::cookbook
+[`_guide::concurrency`]: crate::_guide::concurrency
+[`_guide::sinks`]: crate::_guide::sinks
+[`_guide::sampling`]: crate::_guide::sampling
+[`_guide::testing`]: crate::_guide::testing
+
 ## Getting Started (Applications)
 
 Most metrics your application records will be "unit of work" metrics. In a classic HTTP server, these are typically tied to the request/response scope.
@@ -20,9 +34,9 @@ by using the [`sink`] method (you must attach a destination before calling [`sin
 a panic!).
 
 If the global sink is not suitable, see
-[sinks other than `ServiceMetrics`](#sinks-other-than-servicemetrics).
+[sinks other than `ServiceMetrics`](crate::_guide::sinks#sinks-other-than-servicemetrics).
 
-The example below will write the metrics to an [`tracing_appender::rolling::RollingFileAppender`]
+The example below will write the metrics to a `tracing_appender::rolling::RollingFileAppender`
 in EMF format.
 
 [`sink`]: metrique_writer::GlobalEntrySink::sink
@@ -313,169 +327,15 @@ This is the recommended approach. It has minimal performance overhead and makes 
 
 ### Metrics with complex lifetimes
 
-Sometimes, managing metrics with a simple ownership and mutable reference pattern does not work well. The
-`metrique` crate provides some tools to help more complex situations
+Sometimes, managing metrics with a simple ownership and mutable reference pattern does not work well -
+for example when spawning background tasks or fanning out work in parallel. `metrique` provides flush
+guards, [`Slot`]s, atomics, and shared handles to cover these cases.
 
-#### Controlling the point of metric emission
-
-Sometimes, your code does not have a single exit point at which you want to report your metrics = maybe
-your operation spawns some post-processing tasks, and you want your metric entry to include information
-from all of them.
-
-You don't want to wrap your parent metric in an `Arc`, as that will prevent you from having mutable access
-to metric fields, but you still want to delay metric emission.
-
-To allow for that, the [`AppendAndCloseOnDrop`] guard (which is what the `<MetricName>Guard` aliases point to)
-has `flush_guard` and `force_flush_guard` functions. The flush guards are type-erased (they have
-types `FlushGuard` and `ForceFlushGuard`, which don't mention the type of the metric entry).
-
-The metric will then be emitted when either:
-
-1. The owner handle of the metric and *all* the `FlushGuard`s have been dropped
-2. The owner handle of the metric and *any* of the `ForceFlushGuard`s have been dropped.
-
-This makes `force_flush_guard` useful to emit a metric via a timeout even if some
-of the downstream tasks have not completed, which is useful since you normally
-want metrics even (maybe *especially*) when things are stuck (the downstream tasks
-presumably have access to the metric struct via an [`Arc`](#using-atomics)
-or [`Slot`](#using-slots-to-send-values), which if they eventually finish,
-will let them safely write a value to the now-dead metric).
-
-See the examples below to see how the flush guards are used.
-
-#### Using `Slot`s to send values
-
-In some cases, you might want a sub-task (potentially a Tokio task, but maybe just a sub-component of your code)
-to be able to add some metric fields to your metric entry, but without forcing an ownership relationship.
-
-In that case, you can use `Slot`, which creates a oneshot channel, over which the value of the metric can be sent.
-
-Note that `Slot` by itself does not delay the parent metric entry's emission in any way. If your metric entry
-is emitted (for example, when your request is finished) before the slot is filled, the metric entry will just
-skip the metrics behind the `Slot`. One option is to make your request wait for the slot
-to be filled - either by waiting for your subtask to complete or by using `Slot::wait_for_data`.
-
-Another option is to use techniques for [controlling the point of metric emission](#controlling-the-point-of-metric-emission) - to make that easy, `Slot::open` has a `OnParentDrop::Wait` mode, that holds on to a `FlushGuard` until the slot is closed.
-
-```rust
-use metrique::writer::GlobalEntrySink;
-use metrique::unit_of_work::metrics;
-use metrique::{ServiceMetrics, SlotGuard, Slot, OnParentDrop};
-
-#[metrics(rename_all = "PascalCase")]
-struct RequestMetrics {
-    operation: &'static str,
-
-    // When using a nested field, you must explicitly flatten the fields into the root
-    // metric and explicitly `close` it to collect results.
-    #[metrics(flatten)]
-    downstream_operation: Slot<DownstreamMetrics>
-}
-
-impl RequestMetrics {
-    fn init(operation: &'static str) -> RequestMetricsGuard {
-        RequestMetrics {
-            operation,
-            downstream_operation: Default::default()
-        }.append_on_drop(ServiceMetrics::sink())
-    }
-}
-
-// sub-fields can also be declared with `#[metrics]`
-#[metrics(subfield)]
-#[derive(Default)]
-struct DownstreamMetrics {
-    number_of_ducks: usize
-}
-
-async fn handle_request_discard() {
-    let mut metrics = RequestMetrics::init("DoSomething");
-    let downstream_metrics = metrics.downstream_operation.open(OnParentDrop::Discard).unwrap();
-
-    // NOTE: if `downstream_metrics` is not dropped before `metrics` (the parent object),
-    // no data associated with `downstream_metrics` will be emitted
-    tokio::task::spawn(async move {
-        call_downstream_service(downstream_metrics)
-    });
-
-    // If you want to ensure you don't drop data from a slot if background is still in-flight, you can wait explicitly:
-    metrics.downstream_operation.wait_for_data().await;
-}
-
-async fn handle_request_on_parent_wait() {
-    let mut metrics = RequestMetrics::init("DoSomething");
-    let guard = metrics.flush_guard();
-    let downstream_metrics = metrics.downstream_operation.open(OnParentDrop::Wait(guard)).unwrap();
-
-    // NOTE: if `downstream_metrics` is not dropped before `metrics` (the parent object),
-    // no data associated with `downstream_metrics` will be emitted
-    tokio::task::spawn(async move {
-        call_downstream_service(downstream_metrics)
-    });
-
-    // The metric will be emitted when the downstream service finishes
-}
-
-
-async fn call_downstream_service(mut metrics: SlotGuard<DownstreamMetrics>) {
-    // can mutate the struct directly w/o using atomics.
-    metrics.number_of_ducks += 1
-}
-```
-
-#### Using Atomics
-
-You might want to "fan out" work to multiple scopes that are in the background or otherwise operating in parallel. You can
-accomplish this by using atomic field types to store the metrics, and fanout-friendly wrapper APIs on your metrics entry.
-
-Anything that implements `CloseValue` can be used as a field. `metrique` provides a number of basic primitives such as `Counter`, a thin wrapper around `AtomicU64`. Most `std::sync::atomic` types also implement `CloseValueRef` directly. If you need to build your own primitives, simply ensure they implement `CloseValueRef`. By using primitives that can be mutated through shared references, you make it possible to use `Handle` or your own `Arc` to share the metrics entry around multiple owners or tasks.
-
-For further usage of atomics for concurrent metric updates, see [the fanout example][unit-of-work-fanout].
-
-```rust
-use metrique::writer::GlobalEntrySink;
-use metrique::unit_of_work::metrics;
-use metrique::{Counter, ServiceMetrics};
-
-use std::sync::Arc;
-
-#[metrics(rename_all = "PascalCase")]
-struct RequestMetrics {
-    operation: &'static str,
-    number_of_concurrent_ducks: Counter
-}
-
-impl RequestMetrics {
-    fn init(operation: &'static str) -> RequestMetricsGuard {
-        RequestMetrics {
-            operation,
-            number_of_concurrent_ducks: Default::default()
-        }.append_on_drop(ServiceMetrics::sink())
-    }
-}
-
-fn count_concurrent_ducks() {
-    let mut metrics = RequestMetrics::init("CountDucks");
-
-    // convenience function to wrap `entry` in an `Arc`. This makes a cloneable metrics handle.
-    let handle = metrics.handle();
-    for i in 0..10 {
-        let handle = handle.clone();
-        std::thread::spawn(move || {
-            handle.number_of_concurrent_ducks.add(i);
-        });
-    }
-    // Each handle is keeping the metric entry alive!
-    // The metric will not be flushed until all handles are dropped!
-    // TODO: add an API to spawn a task that will force-flush the entry after a timeout.
-}
-```
-
-[unit-of-work-fanout]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-fanout.rs
+See [`_guide::concurrency`](crate::_guide::concurrency) for details and examples.
 
 ### Using sampling to deal with too-many-metrics
 
-Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider sampling: You can use the built in support for [sampling](https://docs.rs/metrique/0.1.5/metrique/emf/struct.Emf.html#method.with_sampling)
+Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider [sampling](crate::_guide::sampling).
 
 ## Controlling metric output
 
@@ -499,7 +359,7 @@ struct RequestMetrics {
 ### Renaming metric fields
 
 > the complex interaction between naming, prefixing, and inflection is deterministic, but sometimes might
-> not do what you expect. It is critical that you add [tests](#testing-emitted-metrics) that validate that
+> not do what you expect. It is critical that you add [tests](crate::_guide::testing) that validate that
 > the keys being produced match your expectations
 
 You can customize how metric field names appear in the output using several approaches:
@@ -818,365 +678,28 @@ struct MyMetric {
 
 ## Destinations
 
-`metrique` metrics are normally written via a [`BackgroundQueue`], which performs
-the formatting and I/O in a background thread. `metrique` supports writing to the
-following destinations:
+`metrique` metrics are normally written via a background queue to a file, stdout, or a network socket.
+The global [`ServiceMetrics`] sink is the easiest way to get started, but you can also create
+locally-defined global sinks or use `EntrySink` directly for non-global or specifically-typed sinks.
 
-1. Via [`output_to_makewriter`] to a [`tracing_subscriber::fmt::MakeWriter`], for example a
-   [`tracing_appender::rolling::RollingFileAppender`] that writes the metric
-   to a rotating file with a rotation period.
-2. Via [`output_to`] to a [`std::io::Write`], for example to standard output or a
-   network socket, often used for sending EMF logs to a local metric agent process.
-3. To an in-memory [`TestEntrySink`] for tests (see [Testing](#testing)).
-
-You can find examples setting up EMF uploading in the [EMF docs](crate::emf).
-
-[`BackgroundQueue`]: crate::writer::sink::BackgroundQueue
-[`TestEntrySink`]: crate::writer::test_util::TestEntrySink
-[`output_to_makewriter`]: crate::writer::FormatExt::output_to_makewriter
-[`output_to`]: crate::writer::FormatExt::output_to
-
-### Sink types
-
-#### Background Queue
-
-The default [`BackgroundQueue`](crate::writer::sink::BackgroundQueue) implementation buffers entries
-in memory and writes them to the output stream in a background thread. This is ideal for high-throughput
-applications where you want to minimize the impact of metric writing on your application's performance.
-
-Background queues are normally set up by using `ServiceMetrics::attach_to_stream`:
-
-```rust
-use metrique::emf::Emf;
-use metrique::ServiceMetrics;
-use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
-
-let handle = ServiceMetrics::attach_to_stream(
-    Emf::builder("Ns".to_string(), vec![vec![]])
-        .build()
-        .output_to(std::io::stdout())
-);
-
-# use metrique::unit_of_work::metrics;
-# #[metrics]
-# struct MyEntry {}
-# MyEntry {}.append_on_drop(ServiceMetrics::sink());
-```
-
-#### Immediate Flushing for ephemeral environments
-
-For simpler use cases, especially in environments like AWS Lambda where background threads are not
-ideal, you can use the [`FlushImmediately`](crate::writer::sink::FlushImmediately) implementation.
-
-```rust
-use metrique::emf::Emf;
-use metrique::ServiceMetrics;
-use metrique::writer::{AttachGlobalEntrySink, FormatExt, GlobalEntrySink};
-use metrique::writer::sink::FlushImmediately;
-use metrique::unit_of_work::metrics;
-
-#[metrics]
-struct MyMetrics {
-    value: u64,
-}
-
-fn main() {
-    let sink = FlushImmediately::new_boxed(
-        Emf::no_validations(
-            "MyNS".to_string(),
-            vec![vec![/*your dimensions here */]],
-        )
-        .output_to(std::io::stdout()),
-    );
-    let _handle = ServiceMetrics::attach((sink, ()));
-    handle_request();
-}
-
-fn handle_request() {
-    let mut metrics = MyMetrics { value: 0 }.append_on_drop(ServiceMetrics::sink());
-    metrics.value += 1;
-    // request will be flushed immediately here, as the request is dropped
-}
-```
-
-Note that `FlushImmediately` will block while writing each entry, so it's not suitable for
-latency-sensitive or high-throughput applications.
-
-### Sinks other than `ServiceMetrics`
-
-In most applications, it is the easiest to emit metrics to the global [`ServiceMetrics`] sink,
-which is a global variable that serves as a rendezvous point between the part of the code that
-generates metrics (which calls [`sink`]) and the code that writes them
-to a destination (which calls [`attach_to_stream`] or [`attach`]).
-
-If use of this global is not desirable, you can
-[create a locally-defined global sink](#creating-a-locally-defined-global-sink) or
-[use EntrySink directly](#creating-a-non-global-sink). When using `EntrySink` directly,
-it is possible, but not mandatory, to use a slightly-faster non-`dyn` API.
-
-#### Creating a locally-defined global sink
-
-You can create a different global sink by using the [`global_entry_sink`] macro. That will create a new
-global sink that behaves exactly like, but is distinct from, [`ServiceMetrics`]. This is normally
-useful when some of your metrics need to go to a separate destination than the others.
-
-For example:
-
-```rust
-use metrique::emf::Emf;
-use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
-use metrique::writer::sink::global_entry_sink;
-use metrique::unit_of_work::metrics;
-
-#[metrics]
-#[derive(Default)]
-struct MyEntry {
-    value: u32
-}
-
-global_entry_sink! { MyServiceMetrics }
-
-let handle = MyServiceMetrics::attach_to_stream(
-    Emf::builder("Ns".to_string(), vec![vec![]])
-        .build()
-        .output_to(std::io::stdout())
-);
-
-let metric = MyEntry::default().append_on_drop(MyServiceMetrics::sink());
-```
-
-#### Creating a specifically-typed non-global sink
-
-If you are not using a global sink, you can also create a sink that is specific to
-your entry type. While the global sink API, which uses [`BoxEntrySink`] and dynamic dispatch,
-is plenty fast for most purposes, using a fixed entry type avoids virtual dispatch which
-improves performance in *very*-high-throughput cases.
-
-To use this API, create a sink for `RootMetric<MyEntry>`, for example a
-`BackgroundQueue<RootMetric<MyEntry>>`. Of course, you can use sink types
-other than `BackgroundQueue`, like
-[`FlushImmediately`](#immediate-flushing-for-ephemeral-environments).
-
-For example:
-
-```rust
-use metrique::{CloseValue, RootMetric};
-use metrique::emf::Emf;
-use metrique::writer::{EntrySink, FormatExt};
-use metrique::writer::sink::BackgroundQueue;
-use metrique::unit_of_work::metrics;
-
-#[metrics]
-#[derive(Default)]
-struct MyEntry {
-    value: u32
-}
-
-type MyRootEntry = RootMetric<MyEntry>;
-
-let (queue, handle) = BackgroundQueue::<MyRootEntry>::new(
-    Emf::builder("Ns".to_string(), vec![vec![]])
-        .build()
-        .output_to(std::io::stdout())
-);
-
-handle_request(&queue);
-
-fn handle_request(queue: &BackgroundQueue<MyRootEntry>) {
-    let mut metric = MyEntry::default();
-    metric.value += 1;
-    // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
-    // which has slightly negative performance impact
-    queue.append(MyRootEntry::new(metric.close()));
-}
-```
-
-[`global_entry_sink`]: crate::writer::sink::global_entry_sink
-[`BackgroundQueue::new`]: crate::writer::sink::BackgroundQueue::new
-[`BoxEntrySink`]: crate::writer::BoxEntrySink
-
-#### Creating a boxing non-global sink
-
-[`BoxEntrySink`] can be used without the global sink API, to create a non-global
-sink that accepts arbitrary entry types using the same amount of boxing and dynamic
-dispatch as a global sink.
-
-Example:
-
-```rust
-use metrique::{CloseValue, RootEntry};
-use metrique::emf::Emf;
-use metrique::writer::{AnyEntrySink, BoxEntrySink, EntrySink, FormatExt};
-use metrique::writer::sink::BackgroundQueueBuilder;
-use metrique::unit_of_work::metrics;
-
-#[metrics]
-#[derive(Default)]
-struct MyEntry {
-    value: u32
-}
-
-let (queue, handle) = BackgroundQueueBuilder::new().build_boxed(
-    Emf::builder("Ns".to_string(), vec![vec![]])
-        .build()
-        .output_to(std::io::stdout())
-);
-
-handle_request(&queue);
-
-fn handle_request(queue: &BoxEntrySink) {
-    let mut metric = MyEntry::default();
-    metric.value += 1;
-    // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
-    // which has slightly negative performance impact
-    queue.append(RootEntry::new(metric.close()));
-}
-```
+See [`_guide::sinks`](crate::_guide::sinks) for details on sink types, destinations,
+and alternatives to `ServiceMetrics`.
 
 ## Sampling
 
-High-volume services may want to trade lower accuracy for lower CPU time spent on metric emission. Offloading metrics to
-CloudWatch can become bottlenecked if the agent isn't able to keep up with the rate of written metric entries.
+High-volume services may want to sample metrics to reduce CPU and agent load. `metrique` supports
+fixed-fraction sampling and a congressional sampler that preserves rare events. A common pattern is
+to tee metrics into an archived log of record and a sampled stream for CloudWatch.
 
-It is common to tee the metric into 2 destinations:
-
- 1. A highly-compressed "log of record" that contains all entries and is eventually persisted to S3 or other long-term storage.
- 1. An uncompressed, but sampled, metrics log that is published to CloudWatch.
-
-The sampling can be done naively at some [fixed fraction](`writer::sample::FixedFractionSample`), but at low rates can
-cause low-frequency events to be missed. This includes service errors or validation errors, especially when the service is
-designed to have an availability much higher than the chosen sample rate. Instead, we recommend the use of the
-[congressional sampler](`writer::sample::CongressSample`). It uses a fixed metric emisssion target rate and
-gives lower-frequency events a higher sampling rate to boost their accuracy.
-
-The example below uses the congressional sampler keyed by the request operation and the status code to
-ensure lower-frequency APIs and status codes have enough samples.
-
-When using EMF, you need to call [`with_sampling`] before calling a sampler, for example:
-
-```rust,no_run
-use metrique::unit_of_work::metrics;
-use metrique::emf::Emf;
-use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
-use metrique::writer::sample::SampledFormatExt;
-use metrique::writer::stream::tee;
-use metrique::ServiceMetrics;
-use tracing_appender::rolling::{RollingFileAppender, Rotation};
-
-# let service_log_dir = "./service_log";
-# let metrics_log_dir = "./metrics_log";
-
-#[metrics(value(string))]
-enum Operation {
-    CountDucks,
-    // ...
-}
-
-#[metrics(rename_all="PascalCase")]
-struct RequestMetrics {
-    #[metrics(sample_group)]
-    operation: Operation,
-    #[metrics(sample_group)]
-    status_code: &'static str,
-    number_of_ducks: u32,
-    exception: Option<String>,
-}
-
-let _join_service_metrics = ServiceMetrics::attach_to_stream(
-    tee(
-        // non-uploaded, archived log of record
-        Emf::all_validations("MyNS".to_string(), /* dimensions */ vec![vec![], vec!["Operation".to_string()]])
-            .output_to_makewriter(RollingFileAppender::new(
-                Rotation::MINUTELY,
-                service_log_dir,
-                "service_log.log",
-            )),
-        // sampled log, will be uploaded to CloudWatch
-        Emf::all_validations("MyNS".to_string(), /* dimensions */ vec![vec![], vec!["Operation".to_string()]])
-            .with_sampling()
-            .sample_by_congress_at_fixed_entries_per_second(100)
-            .output_to_makewriter(RollingFileAppender::new(
-                Rotation::MINUTELY,
-                metrics_log_dir,
-                "metric_log.log",
-            )),
-    )
-);
-
-let metric = RequestMetrics {
-    operation: Operation::CountDucks,
-    status_code: "OK",
-    number_of_ducks: 2,
-    exception: None,
-}.append_on_drop(ServiceMetrics::sink());
-
-// _join_service_metrics drop (e.g. during service shutdown) blocks until the queue is drained
-```
-
-[`with_sampling`]: emf::Emf::with_sampling
+See [`_guide::sampling`](crate::_guide::sampling) for details and a full example.
 
 ## Testing
 
-### Testing emitted metrics
+`metrique` provides test utilities for introspecting emitted entries without reading EMF directly.
+Use `TestEntrySink` to capture entries and assert on their values and metrics.
 
-`metrique` provides `test_entry` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the `TestEntrySink` to test that you are emitting the metrics that you expect:
-
-> Note: enable the `test-util` feature of `metrique` to enable test utility features.
-
-```rust,no_run
-
-use metrique::unit_of_work::metrics;
-
-use metrique::test_util::{self, TestEntrySink};
-
-#[metrics(rename_all = "PascalCase")]
-struct RequestMetrics {
-    operation: &'static str,
-    number_of_ducks: usize
-}
-
-#[test]
-fn test_metrics () {
-    let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
-    let metrics = RequestMetrics {
-        operation: "SayHello",
-        number_of_ducks: 10
-    }.append_on_drop(sink);
-
-    // In a real application, you would run some API calls, etc.
-
-    let entries = inspector.entries();
-    assert_eq!(entries[0].values["Operation"], "SayHello");
-    assert_eq!(entries[0].metrics["NumberOfDucks"], 10);
-}
-```
-
-There are two ways to control the queue:
-1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
-2. Use the test-queue functionality provided out-of-the-box by global entry queues:
-```rust
-use metrique::writer::GlobalEntrySink;
-use metrique::ServiceMetrics;
-use metrique::test_util::{self, TestEntrySink};
-
-let TestEntrySink { inspector, sink } = test_util::test_entry_sink();
-let _guard = ServiceMetrics::set_test_sink(sink);
-```
-
-See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detailed examples.
-
-## Debugging common issues
-
-### No entries in the log
-
-If you see empty files e.g. "service_log.{date}.log", this is could be because your entries are invalid and being dropped by `metrique-writer`. This will occur if your entry is invalid (e.g. if you have two fields with the same name). Enable tracing logs to see the errors.
-
-```rust
-# #[allow(clippy::needless_doctest_main)]
-fn main() {
-    tracing_subscriber::fmt::init();
-}
-```
+See [`_guide::testing`](crate::_guide::testing) for details, examples, and
+debugging tips.
 
 ## Security Concerns
 
