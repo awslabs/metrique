@@ -2,7 +2,7 @@
 
 If your service's TPS is too high for full metric emission, sampling lets you
 reduce volume while preserving visibility into rare events. See also the
-["My TPS is too high"](crate::_documentation::cookbook#my-tps-is-too-high)
+["My TPS is too high"](crate::_guide::cookbook#my-tps-is-too-high)
 section in the cookbook.
 
 ## Overview

@@ -48,7 +48,7 @@ pub mod timers;
 pub mod slot;
 
 /// Longer form documentation for metrique.
-pub mod _documentation {
+pub mod _guide {
     #[doc = include_str!("../docs/cookbook.md")]
     pub mod cookbook {}
     #[doc = include_str!("../docs/concurrency.md")]

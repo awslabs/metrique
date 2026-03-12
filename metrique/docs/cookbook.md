@@ -5,7 +5,7 @@ helps you choose the right pattern for your use case.
 
 ## Principles
 
-### Principle 1: Prefer unit-of-work metrics over time-aggregated metrics
+### Principle 1: Unit-of-work metrics provide more value when debugging
 
 Do not aggregate client-side unless necessary. Record metrics directly associated
 with a unit of work and let your metrics backend perform aggregation.
@@ -19,7 +19,7 @@ A production application typically needs both. Unit-of-work metrics are the prim
 focus of `metrique`; see [periodic metrics](#periodic-metrics) for the time-based
 case.
 
-### Principle 2: Define metrics explicitly
+### Principle 2: Treat metrics as a critical component of your application
 
 Having every metric defined in a single struct (or a small set of structs) rather
 than scattered throughout the codebase yields significant benefits:
@@ -38,7 +38,7 @@ defined up front, with compile-time enforcement.
 |---------|-------------|-----------|
 | [Unit-of-work](#unit-of-work) | Clear unit of work (request, job, event) | Full context per record |
 | [Sampled unit-of-work](#sampled-unit-of-work) | Unit-of-work metrics at high volume where full emission is too expensive | Loses some records; rare events preserved by congressional sampler |
-| [Aggregated](#aggregated) | >1000 events/sec where individual records are too expensive | Loses per-record context; consider combining with sampling |
+| [Aggregated](#aggregated) | High-frequency events where individual records are too expensive | Loses per-record context; consider combining with sampling |
 | [Periodic (gauges)](#periodic-metrics-gauges) | System resources with no natural unit of work | Point-in-time only |
 | [Global counters](#global-counters) | Deeply nested code where threading context is impractical | Loses request correlation |
 
@@ -59,14 +59,16 @@ gives rare events (errors, unusual operations) a higher sampling rate so they
 aren't lost. A common setup is to tee into an archived log of record (all entries)
 and a sampled stream for CloudWatch.
 
-See [`_documentation::sampling`](crate::_documentation::sampling) for details and
+See [`_guide::sampling`](crate::_guide::sampling) for details and
 a full example.
 
 ### Aggregated
 
-When individual records are too expensive (roughly >1000/sec per source), aggregate
-while preserving distributions via histograms. Consider combining with
-[sampling](crate::_documentation::sampling) to keep some raw records for debugging.
+When individual records are too expensive for your throughput, aggregate
+while preserving distributions via histograms. The threshold depends on your
+infrastructure and metric backend; profile to find the right balance. Consider
+combining with [sampling](crate::_guide::sampling) to keep some raw
+records for debugging.
 
 Two flavors:
 
@@ -112,8 +114,14 @@ fn start_periodic_metrics() {
 }
 ```
 
-Unlike unit-of-work metrics, periodic metrics cannot explain *what* caused a change.
-Prefer unit-of-work or embedded aggregation when possible.
+Some metrics like CPU usage are *only* connected to a unit of time and not a unit of
+work, and this is a hard constraint. However, any metrics that *can* be tied to a unit
+of work will improve debuggability. With periodic metrics it's important to consider
+emission time and emission time bias: for example, if you are running a metric that
+records queue lengths on a tokio task, this metric won't be reported if the runtime is
+stuck. Consider ways to have the data reported by periodic metrics be
+time-of-report invariant (e.g. track high water marks or histograms for the full range
+of values).
 
 ### Global counters
 
@@ -126,7 +134,7 @@ See the
 ## "My TPS is too high"
 
 Before dismissing unit-of-work metrics, consider
-[sampling](crate::_documentation::sampling). The
+[sampling](crate::_guide::sampling). The
 [congressional sampler](`crate::writer::sample::CongressSample`) preserves rare
 events while reducing volume.
 
@@ -134,3 +142,18 @@ For truly high-frequency events, [`metrique-aggregation`](https://docs.rs/metriq
 provides efficient aggregation with histograms. The best approach is often both:
 aggregated metrics for dashboards and alarms, plus a sampled stream of raw events
 for debugging.
+
+## Metrics as logs vs. metrics as metrics
+
+`metrique` blurs the line between "logs" and "metrics." Each metric entry is a
+structured record that can serve both purposes:
+
+- **Metrics as metrics**: numeric observations (latency, count, size) published to
+  a metrics backend (CloudWatch, MonitorPortal) for dashboards and alarms.
+- **Metrics as logs**: the same records, with full context (request ID, operation,
+  status code), archived for offline querying and debugging.
+
+A common pattern is to [tee](crate::_guide::sampling) the output into
+both destinations: a sampled stream for the metrics backend and an unsampled
+archive for log analysis. This gives you aggregated dashboards *and* the ability
+to drill into individual records when debugging.

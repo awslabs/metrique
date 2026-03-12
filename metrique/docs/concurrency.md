@@ -1,16 +1,38 @@
 # Concurrency
 
 This module covers patterns for recording metrics across concurrent and
-asynchronous operations - flush guards, slots, atomics, and shared handles.
+asynchronous operations: flush guards, slots, atomics, and shared handles.
+
+| Primitive | Use case | Works with `Arc`? | Zero-cost? | Example |
+|-----------|----------|-------------------|------------|---------|
+| [`FlushGuard`](crate::FlushGuard) / [`ForceFlushGuard`](crate::ForceFlushGuard) | Delay emission until background work completes | N/A (type-erased) | Yes | [unit-of-work-fanout] |
+| [`Slot`](crate::Slot) | Collect a value from exactly one sub-task | No (oneshot channel) | No (channel overhead) | [Slot example below](#using-slots-to-collect-values-from-tasks) |
+| [`Counter`](crate::Counter) / atomics | Fan out to many tasks that increment shared counters | Yes | Yes (atomic ops) | [unit-of-work-fanout] |
+| [`Handle`](crate::AppendAndCloseOnDrop::handle) | Share the full metric entry across tasks via `Arc` | Yes (is an `Arc`) | No (Arc overhead) | [Atomics example below](#using-atomics) |
 
 ## Metrics with complex lifetimes
 
-Sometimes, managing metrics with a simple ownership and mutable reference pattern does not work well. The
-`metrique` crate provides some tools to help more complex situations
+Sometimes, managing metrics with a simple ownership and mutable reference pattern does not work well:
+
+```rust,ignore
+// Simple case: one owner, one scope, works fine.
+async fn handle_request(metrics: &mut RequestMetrics) {
+    metrics.duck_count = count_ducks().await;
+    // metrics emitted when caller drops the guard
+}
+
+// Complex case: multiple tasks need to contribute to the same metric entry.
+async fn handle_request_fanout(metrics: &mut RequestMetrics) {
+    // Can't move `metrics` into multiple spawned tasks...
+    // See the patterns below for solutions.
+}
+```
+
+The `metrique` crate provides some tools to help more complex situations
 
 ### Controlling the point of metric emission
 
-Sometimes, your code does not have a single exit point at which you want to report your metrics = maybe
+Sometimes, your code does not have a single exit point at which you want to report your metrics. Maybe
 your operation spawns some post-processing tasks, and you want your metric entry to include information
 from all of them.
 
@@ -35,7 +57,7 @@ will let them safely write a value to the now-dead metric).
 
 See the examples below to see how the flush guards are used.
 
-### Using `Slot`s to send values
+### Using `Slot`s to collect values from tasks
 
 In some cases, you might want a sub-task (potentially a Tokio task, but maybe just a sub-component of your code)
 to be able to add some metric fields to your metric entry, but without forcing an ownership relationship.
