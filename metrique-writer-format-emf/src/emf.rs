@@ -714,10 +714,10 @@ impl EmfBuilder {
         self
     }
 
-    /// Controls whether per-metric (field-level) dimensions from [`WithDimension`] are silently
+    /// Controls whether per-metric (field-level) dimensions from [`WithDimensions`] are silently
     /// dropped.
     ///
-    /// When a metric field is wrapped in `WithDimension<>`, it carries extra dimensions that
+    /// When a metric field is wrapped in [`WithDimensions`], it carries extra dimensions that
     /// apply only to that metric. By default, emitting such a metric **without**
     /// [`AllowSplitEntries`] enabled causes a validation error.
     ///
@@ -729,7 +729,7 @@ impl EmfBuilder {
     /// [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data) (or
     /// [`skip_all_validations`](Self::skip_all_validations)).
     ///
-    /// [`WithDimension`]: metrique_writer::value::WithDimension
+    /// [`WithDimensions`]: metrique_writer_core::value::WithDimensions
     /// [`AllowSplitEntries`]: metrique_writer_core::config::AllowSplitEntries
     pub fn allow_ignored_dimensions(mut self, allow: bool) -> Self {
         self.allow_ignored_dimensions = allow;
