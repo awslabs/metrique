@@ -958,6 +958,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "metrique-writer-format-json"
+version = "0.1.0"
+dependencies = [
+ "assert-json-diff",
+ "dtoa",
+ "itoa",
+ "metrique-writer",
+ "metrique-writer-core",
+ "rand",
+ "rand_chacha",
+ "serde_json",
+]
+
+[[package]]
 name = "metrique-writer-macro"
 version = "0.1.7"
 dependencies = [
