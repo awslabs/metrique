@@ -720,6 +720,8 @@ impl EmfBuilder {
     /// When a metric field is wrapped in [`WithDimensions`], it carries extra dimensions that
     /// apply only to that metric. By default, emitting such a metric **without**
     /// [`AllowSplitEntries`] enabled causes a validation error.
+    /// Note that EMF does not support per-metric dimensions, all metrics in a single entry share the
+    /// same dimension sets.
     ///
     /// When this is set to `true`, those per-metric dimensions are silently ignored and the
     /// metric is emitted under only the default/entry-level dimension sets.
