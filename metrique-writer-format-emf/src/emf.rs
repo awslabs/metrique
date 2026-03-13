@@ -62,7 +62,7 @@ struct Validation {
 /// This formatter creates a single EMF directive, which only has a single dimension-set. Therefore, if metrics are passed with metric-specific dimensions,
 /// for example via [WithDimension](metrique_writer::value::WithDimension), there are currently 3 options:
 /// 1. An error will occur (this is the default).
-/// 2. If `allow_ignored_dimensions` is used, the metric will be emitted without the extra dimensions,
+/// 2. If [`allow_ignored_dimensions`](EmfBuilder::allow_ignored_dimensions) is used, the metric will be emitted without the extra dimensions,
 ///    with just the `default_dimensions`.
 /// 3. If the `AllowSplitEntries` config is enabled, there will be a separate entry
 ///    generated for each set of dimension values. This is generally the right thing to
@@ -74,6 +74,10 @@ struct Validation {
 /// If you want to emit metrics with specific dimensions, you can add additional directives using the [`directive`](EmfBuilder::directive)
 /// function. EMF ignores missing metrics and missing dimensions in dimension-sets, so if you emit a metric only
 /// under specific conditions there is no problem with having the directive.
+///
+/// If you want to declare dimension sets where some dimensions may not be present in every
+/// entry, use [`allow_dimensions_with_no_data`](EmfBuilder::allow_dimensions_with_no_data) to suppress the missing-dimension
+/// error.
 ///
 /// ## Metric emission format - scalar vs. histogram
 ///
@@ -710,13 +714,187 @@ impl EmfBuilder {
         self
     }
 
-    /// Enable ignored dimensions mode, in which per-metric dimensions are skipped
+    /// Controls whether per-metric (field-level) dimensions from [`WithDimensions`] are silently
+    /// dropped.
+    ///
+    /// When a metric field is wrapped in [`WithDimensions`], it carries extra dimensions that
+    /// apply only to that metric. By default, emitting such a metric **without**
+    /// [`AllowSplitEntries`] enabled causes a validation error.
+    /// Note that EMF does not support per-metric dimensions, all metrics in a single entry share the
+    /// same dimension sets.
+    ///
+    /// When this is set to `true`, those per-metric dimensions are silently ignored and the
+    /// metric is emitted under only the default/entry-level dimension sets.
+    ///
+    /// **This does not affect validation of dimension sets.** If a dimension set references a
+    /// dimension name that is never written to the entry, that is controlled by
+    /// [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data) (or
+    /// [`skip_all_validations`](Self::skip_all_validations)).
+    ///
+    /// [`WithDimensions`]: metrique_writer_core::value::WithDimensions
+    /// [`AllowSplitEntries`]: metrique_writer_core::config::AllowSplitEntries
     pub fn allow_ignored_dimensions(mut self, allow: bool) -> Self {
         self.allow_ignored_dimensions = allow;
         self
     }
 
-    /// If `skip` is true, turns skipping validations on.
+    /// Skips validation that all dimensions referenced in dimension sets exist in the entry.
+    ///
+    /// When `skip` is true, dimensions referenced in dimension sets that are not present in the
+    /// entry will not cause a validation error.
+    ///
+    /// This is useful when you want to declare multiple dimension sets upfront and only emit the
+    /// dimensions that are actually relevant to a given entry.
+    ///
+    /// By default, this validation is enabled (not skipped) in debug builds and disabled in
+    /// release builds.
+    ///
+    /// **This does not affect per-metric (field-level) dimensions.** To control whether
+    /// `WithDimension<>` dimensions are silently dropped, see
+    /// [`allow_ignored_dimensions`](Self::allow_ignored_dimensions).
+    ///
+    /// ## Examples
+    ///
+    /// Here, the builder declares a dimension set `["Endpoint"]` that `HttpMetrics` does not
+    /// write. With `allow_dimensions_with_no_data(true)`, formatting succeeds despite the
+    /// missing dimension:
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::time::SystemTime;
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct HttpMetrics {
+    ///     #[entry(timestamp)]
+    ///     timestamp: SystemTime,
+    ///     method: &'static str,
+    ///     status: &'static str,
+    /// }
+    ///
+    /// let mut emf = Emf::builder("TestNS".to_string(), vec![vec!["Endpoint".to_string()]])
+    ///     .allow_dimensions_with_no_data(true)
+    ///     .build();
+    ///
+    /// let mut output = Vec::new();
+    /// emf.format(&HttpMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
+    ///     method: "POST",
+    ///     status: "201",
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(
+    ///     serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [{
+    ///                 "Namespace": "TestNS",
+    ///                 "Dimensions": [["Endpoint"]],
+    ///                 "Metrics": [],
+    ///             }],
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "Method": "POST",
+    ///         "Status": "201",
+    ///     })
+    /// );
+    /// ```
+    ///
+    /// This also covers `Option` dimension fields that resolve to `None`. Here, `InfraMetrics`
+    /// has an optional `environment` field. The builder declares
+    /// `["Region", "Environment"]` as a dimension set, but when the field is `None` the
+    /// dimension is absent from the entry:
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::time::SystemTime;
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct InfraMetrics {
+    ///     #[entry(timestamp)]
+    ///     timestamp: SystemTime,
+    ///     region: &'static str,
+    ///     environment: Option<&'static str>,
+    ///     cpu_percent: f64,
+    /// }
+    ///
+    /// let dims = vec![
+    ///     vec!["Region".into()],
+    ///     vec!["Region".into(), "Environment".into()],
+    /// ];
+    ///
+    /// // Strict: formatting with environment: None returns an error.
+    /// let mut emf_strict = Emf::builder("Infra".to_string(), dims.clone())
+    ///     .build();
+    ///
+    /// assert!(emf_strict.format(&InfraMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH,
+    ///     region: "us-east-1",
+    ///     environment: Some("production"),
+    ///     cpu_percent: 85.5,
+    /// }, &mut Vec::new()).is_ok());
+    ///
+    /// assert!(emf_strict.format(&InfraMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH,
+    ///     region: "us-east-1",
+    ///     environment: None,
+    ///     cpu_percent: 85.5,
+    /// }, &mut Vec::new()).is_err()); // fails: "Environment" has no value
+    ///
+    /// // Relaxed: both succeed.
+    /// let mut emf_relaxed = Emf::builder("Infra".to_string(), dims)
+    ///     .allow_dimensions_with_no_data(true)
+    ///     .build();
+    ///
+    /// let mut output = Vec::new();
+    /// emf_relaxed.format(&InfraMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH,
+    ///     region: "us-east-1",
+    ///     environment: None,
+    ///     cpu_percent: 85.5,
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(
+    ///     serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [{
+    ///                 "Namespace": "Infra",
+    ///                 "Dimensions": [["Region"], ["Region", "Environment"]],
+    ///                 "Metrics": [{"Name": "CpuPercent"}],
+    ///             }],
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "Region": "us-east-1",
+    ///         "CpuPercent": 85.5,
+    ///     })
+    /// );
+    /// ```
+    pub fn allow_dimensions_with_no_data(mut self, allow: bool) -> Self {
+        self.validation.skip_validate_dimensions_exist = allow;
+        self
+    }
+
+    /// Skips all entry validations
+    ///
+    /// When `skip` is true, this is a shorthand that enables all of:
+    /// - [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data)
+    /// - skipping duplicate-field validation
+    /// - skipping metric-name validation
+    ///
+    /// To skip only dimension-existence checks, use
+    /// [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data) instead.
     ///
     /// Note that skipping validations is **only intended to be used to improve performance for code
     /// that has tests that demonstrate that it is only creating valid metrics**, NOT to intentionally
@@ -1874,6 +2052,48 @@ mod tests {
             "entry dimensions must be configured before emitting a metric with custom dimensions"
         ));
         assert!(errors.contains("multiple timestamps written"));
+    }
+
+    #[test]
+    fn test_allow_dimensions_with_no_data() {
+        struct SuccessEntry;
+        impl Entry for SuccessEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH);
+                writer.value("Region", "us-east-1");
+                writer.value("MyMetric", &42u64);
+            }
+        }
+
+        // "AZ" is declared in the dimension set but never written by the entry.
+        // With allow_dimensions_with_no_data, this should succeed.
+        let mut emf = Emf::builder(
+            "TestNS".to_string(),
+            vec![vec!["Region".to_string(), "AZ".to_string()]],
+        )
+        .skip_all_validations(false)
+        .allow_dimensions_with_no_data(true)
+        .build();
+        emf.format(&SuccessEntry, &mut vec![]).unwrap();
+
+        // Other validations are still active:
+        // duplicate fields & naming conventions should still error.
+        struct OtherValidationsEntry;
+        impl Entry for OtherValidationsEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH);
+                writer.value("Region", "us-east-1");
+                writer.value("MyMetric", &1u64);
+                writer.value("MyMetric", &2u64);
+                writer.value("_aws", "bad");
+            }
+        }
+        let errors = format!(
+            "{}",
+            emf.format(&OtherValidationsEntry, &mut vec![]).unwrap_err()
+        );
+        assert!(errors.contains("for `MyMetric`: duplicate field"));
+        assert!(errors.contains("for `_aws`: name can't be `_aws`"));
     }
 
     #[test]
