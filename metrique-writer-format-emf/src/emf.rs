@@ -748,8 +748,135 @@ impl EmfBuilder {
     /// **This does not affect per-metric (field-level) dimensions.** To control whether
     /// `WithDimension<>` dimensions are silently dropped, see
     /// [`allow_ignored_dimensions`](Self::allow_ignored_dimensions).
-    pub fn skip_validate_dimensions_exist(mut self, skip: bool) -> Self {
-        self.validation.skip_validate_dimensions_exist = skip;
+    ///
+    /// ## Examples
+    ///
+    /// Here, the builder declares a dimension set `["Endpoint"]` that `HttpMetrics` does not
+    /// write. With `allow_dimensions_with_no_data(true)`, formatting succeeds despite the
+    /// missing dimension:
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::time::SystemTime;
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct HttpMetrics {
+    ///     #[entry(timestamp)]
+    ///     timestamp: SystemTime,
+    ///     method: &'static str,
+    ///     status: &'static str,
+    /// }
+    ///
+    /// let mut emf = Emf::builder("TestNS".to_string(), vec![vec!["Endpoint".to_string()]])
+    ///     .allow_dimensions_with_no_data(true)
+    ///     .build();
+    ///
+    /// let mut output = Vec::new();
+    /// emf.format(&HttpMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH, // use SystemTime::now() in the real world
+    ///     method: "POST",
+    ///     status: "201",
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(
+    ///     serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [{
+    ///                 "Namespace": "TestNS",
+    ///                 "Dimensions": [["Endpoint"]],
+    ///                 "Metrics": [],
+    ///             }],
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "Method": "POST",
+    ///         "Status": "201",
+    ///     })
+    /// );
+    /// ```
+    ///
+    /// This also covers `Option` dimension fields that resolve to `None`. Here, `InfraMetrics`
+    /// has an optional `environment` field. The builder declares
+    /// `["Region", "Environment"]` as a dimension set, but when the field is `None` the
+    /// dimension is absent from the entry:
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryWriter,
+    /// #    format::{Format as _},
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::time::SystemTime;
+    ///
+    /// #[derive(Entry)]
+    /// #[entry(rename_all = "PascalCase")]
+    /// struct InfraMetrics {
+    ///     #[entry(timestamp)]
+    ///     timestamp: SystemTime,
+    ///     region: &'static str,
+    ///     environment: Option<&'static str>,
+    ///     cpu_percent: f64,
+    /// }
+    ///
+    /// let dims = vec![
+    ///     vec!["Region".into()],
+    ///     vec!["Region".into(), "Environment".into()],
+    /// ];
+    ///
+    /// // Strict: formatting with environment: None returns an error.
+    /// let mut emf_strict = Emf::builder("Infra".to_string(), dims.clone())
+    ///     .build();
+    ///
+    /// assert!(emf_strict.format(&InfraMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH,
+    ///     region: "us-east-1",
+    ///     environment: Some("production"),
+    ///     cpu_percent: 85.5,
+    /// }, &mut Vec::new()).is_ok());
+    ///
+    /// assert!(emf_strict.format(&InfraMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH,
+    ///     region: "us-east-1",
+    ///     environment: None,
+    ///     cpu_percent: 85.5,
+    /// }, &mut Vec::new()).is_err()); // fails: "Environment" has no value
+    ///
+    /// // Relaxed: both succeed.
+    /// let mut emf_relaxed = Emf::builder("Infra".to_string(), dims)
+    ///     .allow_dimensions_with_no_data(true)
+    ///     .build();
+    ///
+    /// let mut output = Vec::new();
+    /// emf_relaxed.format(&InfraMetrics {
+    ///     timestamp: SystemTime::UNIX_EPOCH,
+    ///     region: "us-east-1",
+    ///     environment: None,
+    ///     cpu_percent: 85.5,
+    /// }, &mut output).unwrap();
+    ///
+    /// let output = String::from_utf8(output).unwrap();
+    /// assert_json_diff::assert_json_eq!(
+    ///     serde_json::from_str::<serde_json::Value>(&output).unwrap(),
+    ///     serde_json::json!({
+    ///         "_aws": {
+    ///             "CloudWatchMetrics": [{
+    ///                 "Namespace": "Infra",
+    ///                 "Dimensions": [["Region"], ["Region", "Environment"]],
+    ///                 "Metrics": [{"Name": "CpuPercent"}],
+    ///             }],
+    ///             "Timestamp": 0,
+    ///         },
+    ///         "Region": "us-east-1",
+    ///         "CpuPercent": 85.5,
+    ///     })
+    /// );
+    /// ```
         self
     }
 
