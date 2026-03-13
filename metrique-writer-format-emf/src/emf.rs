@@ -738,7 +738,9 @@ impl EmfBuilder {
         self
     }
 
-    /// If `skip` is true, dimensions referenced in dimension sets that are not present in the
+    /// Skips validation that all dimensions referenced in dimension sets exist in the entry.
+    ///
+    /// When `skip` is true, dimensions referenced in dimension sets that are not present in the
     /// entry will not cause a validation error.
     ///
     /// This is useful when you want to declare multiple dimension sets upfront and only emit the
@@ -884,9 +886,9 @@ impl EmfBuilder {
         self
     }
 
-    /// If `skip` is true, turns skipping validations on.
+    /// Skips all entry validations
     ///
-    /// This is a shorthand that enables all of:
+    /// When `skip` is true, this is a shorthand that enables all of:
     /// - [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data)
     /// - skipping duplicate-field validation
     /// - skipping metric-name validation
