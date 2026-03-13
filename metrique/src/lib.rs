@@ -48,6 +48,18 @@ pub mod timers;
 pub mod slot;
 
 /// Longer form documentation for metrique.
+///
+/// - [`cookbook`] : principles for effective instrumentation and choosing the right pattern
+/// - [`concurrency`] : flush guards, slots, atomics, and shared handles for concurrent metrics
+/// - [`sinks`] : destinations, sink types, and alternatives to `ServiceMetrics`
+/// - [`sampling`] : congressional sampling and the tee pattern for high-volume services
+/// - [`testing`] : test utilities and debugging common issues
+///
+/// [`cookbook`]: crate::_guide::cookbook
+/// [`concurrency`]: crate::_guide::concurrency
+/// [`sinks`]: crate::_guide::sinks
+/// [`sampling`]: crate::_guide::sampling
+/// [`testing`]: crate::_guide::testing
 pub mod _guide {
     #[doc = include_str!("../docs/cookbook.md")]
     pub mod cookbook {}
