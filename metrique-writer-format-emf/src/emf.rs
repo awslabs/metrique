@@ -76,7 +76,7 @@ struct Validation {
 /// under specific conditions there is no problem with having the directive.
 ///
 /// If you want to declare dimension sets where some dimensions may not be present in every
-/// entry, use [`skip_validate_dimensions_exist`](EmfBuilder::skip_validate_dimensions_exist) to suppress the missing-dimension
+/// entry, use [`allow_dimensions_with_no_data`](EmfBuilder::allow_dimensions_with_no_data) to suppress the missing-dimension
 /// error.
 ///
 /// ## Metric emission format - scalar vs. histogram
@@ -726,7 +726,7 @@ impl EmfBuilder {
     ///
     /// **This does not affect validation of dimension sets.** If a dimension set references a
     /// dimension name that is never written to the entry, that is controlled by
-    /// [`skip_validate_dimensions_exist`](Self::skip_validate_dimensions_exist) (or
+    /// [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data) (or
     /// [`skip_all_validations`](Self::skip_all_validations)).
     ///
     /// [`WithDimension`]: metrique_writer::value::WithDimension
@@ -877,18 +877,20 @@ impl EmfBuilder {
     ///     })
     /// );
     /// ```
+    pub fn allow_dimensions_with_no_data(mut self, allow: bool) -> Self {
+        self.validation.skip_validate_dimensions_exist = allow;
         self
     }
 
     /// If `skip` is true, turns skipping validations on.
     ///
     /// This is a shorthand that enables all of:
-    /// - [`skip_validate_dimensions_exist`](Self::skip_validate_dimensions_exist)
+    /// - [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data)
     /// - skipping duplicate-field validation
     /// - skipping metric-name validation
     ///
     /// To skip only dimension-existence checks, use
-    /// [`skip_validate_dimensions_exist`](Self::skip_validate_dimensions_exist) instead.
+    /// [`allow_dimensions_with_no_data`](Self::allow_dimensions_with_no_data) instead.
     ///
     /// Note that skipping validations is **only intended to be used to improve performance for code
     /// that has tests that demonstrate that it is only creating valid metrics**, NOT to intentionally
@@ -2049,7 +2051,7 @@ mod tests {
     }
 
     #[test]
-    fn test_skip_validate_dimensions_exist() {
+    fn test_allow_dimensions_with_no_data() {
         struct SuccessEntry;
         impl Entry for SuccessEntry {
             fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
@@ -2060,13 +2062,13 @@ mod tests {
         }
 
         // "AZ" is declared in the dimension set but never written by the entry.
-        // With skip_validate_dimensions_exist, this should succeed.
+        // With allow_dimensions_with_no_data, this should succeed.
         let mut emf = Emf::builder(
             "TestNS".to_string(),
             vec![vec!["Region".to_string(), "AZ".to_string()]],
         )
         .skip_all_validations(false)
-        .skip_validate_dimensions_exist(true)
+        .allow_dimensions_with_no_data(true)
         .build();
         emf.format(&SuccessEntry, &mut vec![]).unwrap();
 
