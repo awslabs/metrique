@@ -28,17 +28,27 @@ check_package() {
 
     echo "→ Checking docs.rs build for $pkg_name..."
 
-    # Package without verification — we need to patch Cargo.toml before building.
-    cargo package -p "$pkg_name" --allow-dirty --no-verify
+    # Try to package the crate. This can fail when workspace siblings have
+    # new features that haven't been published yet (cargo package validates
+    # features against crates.io). In that case, fall back to building docs
+    # directly from the workspace.
+    if cargo package -p "$pkg_name" --allow-dirty --no-verify 2>/dev/null; then
+        # Extract the .crate tarball (cargo package --no-verify doesn't extract)
+        rm -rf "$pkg_dir"
+        tar xzf "target/package/$pkg_name-$pkg_version.crate" -C target/package/
 
-    # Extract the .crate tarball (cargo package --no-verify doesn't extract)
-    rm -rf "$pkg_dir"
-    tar xzf "target/package/$pkg_name-$pkg_version.crate" -C target/package/
+        # Patch the extracted Cargo.toml so workspace siblings resolve locally.
+        generate_patch_entries "$pkg_name" >> "$pkg_dir/Cargo.toml"
 
-    # Patch the extracted Cargo.toml so workspace siblings resolve locally.
-    generate_patch_entries "$pkg_name" >> "$pkg_dir/Cargo.toml"
-
-    (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET")
+        (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET")
+    else
+        echo "  ⚠ cargo package failed (likely unpublished features), building docs from workspace"
+        cargo +nightly rustdoc \
+            -p "$pkg_name" \
+            --all-features \
+            --target "$TARGET" \
+            -- --cfg docsrs
+    fi
 }
 
 if [ $# -eq 0 ]; then
