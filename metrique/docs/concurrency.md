@@ -201,4 +201,47 @@ fn count_concurrent_ducks() {
 
 <!-- TODO: add an API to spawn a task that will force-flush the entry after a timeout. -->
 
+### Using `ArcSwap` for shared, swappable snapshots
+
+*Requires the `arc-swap` feature:*
+
+```toml
+[dependencies]
+metrique = { version = "0.1", features = ["arc-swap"] }
+```
+
+When you have a `#[metrics(subfield_owned)]` snapshot that is read by many tasks but
+updated infrequently (server dimensions read from environment variables, a
+config reload, etc.), [`ArcSwap`](https://docs.rs/arc-swap) is a good fit.
+With the `arc-swap` feature enabled, `&ArcSwap<T>` implements
+[`CloseValue`](crate::CloseValue) whenever `T: Clone + CloseValue`, so you can
+store it directly in a metrics struct:
+
+```rust,ignore
+use arc_swap::ArcSwap;
+
+#[metrics(subfield_owned, rename_all = "PascalCase")]
+#[derive(Clone)]
+struct ServerState {
+    region: String,
+    cell: String,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetrics {
+    operation: &'static str,
+    #[metrics(flatten)]
+    server_state: &'static ArcSwap<ServerState>,
+}
+```
+
+At close time, the current `Arc` snapshot is loaded atomically, cloned out,
+and closed by value. If another thread swaps the value between metric creation
+and close, the metric picks up whichever snapshot is current at close time.
+
+See the [global-counter example][global-counter] for a complete working
+example that reads dimensions from `std::env` and swaps them mid-flight.
+
+[global-counter]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-counter.rs
+
 [unit-of-work-fanout]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-fanout.rs

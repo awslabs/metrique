@@ -1,25 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! A global counter, using in-flight requests as an example.
+//! Global state patterns for metrics: counters and swappable dimensions.
 //!
 //! [`GlobalCounter`] is an example of what you can do if you have want to initialize a global
 //! static counter or if you are already passing around an `Arc`-wrapped struct.
 //!
 //! For other most other non-static usage, doing something like [`RequestCounter`] will be more ergonomic
 //! and better for testing interactibility.
+//!
+//! The `ArcSwap` section demonstrates storing server dimensions that can be
+//! atomically swapped at runtime (e.g. after a config reload). Requires the
+//! `arc-swap` feature on `metrique`.
 
 use std::ops::Deref;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use arc_swap::ArcSwap;
 use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink, sink::global_entry_sink,
 };
 global_entry_sink! { ServiceMetrics }
+
+// ---------------------------------------------------------------------------
+// Global counter
+// ---------------------------------------------------------------------------
 
 /// Global static counter to keep track of in-flight requests
 static GLOBAL_REQUEST_COUNTER: GlobalCounter = GlobalCounter::new();
@@ -80,16 +90,48 @@ impl Drop for RequestCounterGuard {
     }
 }
 
-#[derive(Default)]
+// ---------------------------------------------------------------------------
+// ArcSwap: swappable server dimensions
+// ---------------------------------------------------------------------------
+
+/// Process-lifetime server state, readable from any task.
+static SERVER_STATE: LazyLock<ArcSwap<ServerStateDimensions>> =
+    LazyLock::new(|| ArcSwap::from_pointee(read_server_state()));
+
+#[metrics(subfield_owned, rename_all = "PascalCase")]
+#[derive(Clone)]
+struct ServerStateDimensions {
+    region: String,
+    cell: String,
+}
+
+fn read_server_state() -> ServerStateDimensions {
+    ServerStateDimensions {
+        region: std::env::var("AWS_REGION").unwrap_or_else(|_| "us-west-2".into()),
+        cell: std::env::var("CELL").unwrap_or_else(|_| "1".into()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Metrics struct combining both patterns
+// ---------------------------------------------------------------------------
+
 #[metrics(rename_all = "PascalCase")]
 struct MyMetrics {
+    #[metrics(flatten)]
+    server_state: &'static ArcSwap<ServerStateDimensions>,
     in_flight_requests_at_request_start_from_static: Option<u64>,
     in_flight_requests_at_request_start_from_scoped: Option<u64>,
 }
 
 impl MyMetrics {
     fn init() -> MyMetricsGuard {
-        MyMetrics::default().append_on_drop(ServiceMetrics::sink())
+        MyMetrics {
+            server_state: &SERVER_STATE,
+            in_flight_requests_at_request_start_from_static: None,
+            in_flight_requests_at_request_start_from_scoped: None,
+        }
+        .append_on_drop(ServiceMetrics::sink())
     }
 }
 
@@ -107,14 +149,15 @@ async fn main() {
 
     handle_request(scoped_request_counter.clone()).await;
     handle.await.unwrap();
-    handle_request(scoped_request_counter).await;
 
-    // EXAMPLE OUTPUT
-    /*
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884572621},"InFlightRequestsAtRequestStartFromStatic":1,"InFlightRequestsAtRequestStartFromScoped":1}
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884573122},"InFlightRequestsAtRequestStartFromStatic":2,"InFlightRequestsAtRequestStartFromScoped":2}
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884575124},"InFlightRequestsAtRequestStartFromStatic":1,"InFlightRequestsAtRequestStartFromScoped":1}
-    */
+    // Simulate a config reload: swap the server state dimensions.
+    SERVER_STATE.store(Arc::new(ServerStateDimensions {
+        region: "eu-west-1".into(),
+        cell: "2".into(),
+    }));
+
+    // This request will pick up the new dimensions.
+    handle_request(scoped_request_counter).await;
 }
 
 async fn handle_request(scoped_request_counter: RequestCounter) {
