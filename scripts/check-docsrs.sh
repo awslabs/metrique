@@ -32,7 +32,8 @@ check_package() {
     # new features that haven't been published yet (cargo package validates
     # features against crates.io). In that case, fall back to building docs
     # directly from the workspace.
-    if cargo package -p "$pkg_name" --allow-dirty --no-verify 2>/dev/null; then
+    local pkg_output
+    if pkg_output=$(cargo package -p "$pkg_name" --allow-dirty --no-verify 2>&1); then
         # Extract the .crate tarball (cargo package --no-verify doesn't extract)
         rm -rf "$pkg_dir"
         tar xzf "target/package/$pkg_name-$pkg_version.crate" -C target/package/
@@ -42,12 +43,18 @@ check_package() {
 
         (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET")
     else
-        echo "  ⚠ cargo package failed (likely unpublished features), building docs from workspace"
-        cargo +nightly rustdoc \
-            -p "$pkg_name" \
-            --all-features \
-            --target "$TARGET" \
-            -- --cfg docsrs
+        # Only fall back for unpublished feature errors. Fail on anything else.
+        if echo "$pkg_output" | grep -q "does not have that feature"; then
+            echo "  ⚠ cargo package failed (unpublished feature), building docs from workspace"
+            cargo +nightly rustdoc \
+                -p "$pkg_name" \
+                --all-features \
+                --target "$TARGET" \
+                -- --cfg docsrs
+        else
+            echo "$pkg_output" >&2
+            return 1
+        fi
     fi
 }
 

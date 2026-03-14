@@ -324,6 +324,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "arc-swap")]
     fn close_arc_swap() {
         let x = arc_swap::ArcSwap::from_pointee(Closeable);
         assert_eq!((&x).close(), 42);
