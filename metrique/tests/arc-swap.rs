@@ -13,7 +13,7 @@ use metrique::writer::test_util;
 #[metrics(subfield_owned, rename_all = "PascalCase")]
 #[derive(Clone)]
 struct FeatureFlags {
-    dark_mode_enabled: bool,
+    feature_xyz_enabled: bool,
 }
 
 // Borrowed: for global statics shared across tasks.
@@ -39,7 +39,7 @@ fn arc_swap_borrowed_subfield_flattened() {
     let vec_sink = VecEntrySink::new();
     let flags: &'static ArcSwap<FeatureFlags> =
         Box::leak(Box::new(ArcSwap::from_pointee(FeatureFlags {
-            dark_mode_enabled: true,
+            feature_xyz_enabled: true,
         })));
 
     let mut metrics = BorrowedMetrics {
@@ -55,7 +55,7 @@ fn arc_swap_borrowed_subfield_flattened() {
     assert_eq!(entries.len(), 1);
     let entry = test_util::to_test_entry(&entries[0]);
     assert_eq!(entry.values["Operation"], "GetItem");
-    assert_eq!(entry.metrics["DarkModeEnabled"], 1);
+    assert_eq!(entry.metrics["FeatureXyzEnabled"], 1);
     assert_eq!(entry.metrics["DuckCount"], 42);
 }
 
@@ -66,7 +66,7 @@ fn arc_swap_owned_subfield_flattened() {
     let mut metrics = OwnedMetrics {
         operation: "PutItem",
         flags: ArcSwap::from_pointee(FeatureFlags {
-            dark_mode_enabled: false,
+            feature_xyz_enabled: false,
         }),
         duck_count: 0,
     }
@@ -78,7 +78,7 @@ fn arc_swap_owned_subfield_flattened() {
     assert_eq!(entries.len(), 1);
     let entry = test_util::to_test_entry(&entries[0]);
     assert_eq!(entry.values["Operation"], "PutItem");
-    assert_eq!(entry.metrics["DarkModeEnabled"], 0);
+    assert_eq!(entry.metrics["FeatureXyzEnabled"], 0);
     assert_eq!(entry.metrics["DuckCount"], 7);
 }
 
@@ -92,7 +92,7 @@ fn arc_swap_concurrent_requests_across_config_reload() {
     let vec_sink = VecEntrySink::new();
     let flags: &'static ArcSwap<FeatureFlags> =
         Box::leak(Box::new(ArcSwap::from_pointee(FeatureFlags {
-            dark_mode_enabled: false,
+            feature_xyz_enabled: false,
         })));
 
     // req1: in-flight during the swap, closed after
@@ -114,7 +114,7 @@ fn arc_swap_concurrent_requests_across_config_reload() {
 
     // Config reload: toggle the feature flag
     flags.store(Arc::new(FeatureFlags {
-        dark_mode_enabled: true,
+        feature_xyz_enabled: true,
     }));
 
     // req3: created and closed after the swap
@@ -135,17 +135,17 @@ fn arc_swap_concurrent_requests_across_config_reload() {
     // req2 closed before swap: old state
     let e2 = test_util::to_test_entry(&entries[0]);
     assert_eq!(e2.values["Operation"], "PutItem");
-    assert_eq!(e2.metrics["DarkModeEnabled"], 0);
+    assert_eq!(e2.metrics["FeatureXyzEnabled"], 0);
 
     // req3 closed after swap: new state
     let e3 = test_util::to_test_entry(&entries[1]);
     assert_eq!(e3.values["Operation"], "DeleteItem");
-    assert_eq!(e3.metrics["DarkModeEnabled"], 1);
+    assert_eq!(e3.metrics["FeatureXyzEnabled"], 1);
 
     // req1 was in-flight, closed after swap: new state
     let e1 = test_util::to_test_entry(&entries[2]);
     assert_eq!(e1.values["Operation"], "GetItem");
-    assert_eq!(e1.metrics["DarkModeEnabled"], 1);
+    assert_eq!(e1.metrics["FeatureXyzEnabled"], 1);
 }
 
 /// Spawns tasks that hold metric guards across a config swap.
@@ -155,7 +155,7 @@ async fn arc_swap_spawned_tasks_across_config_reload() {
     let vec_sink = VecEntrySink::new();
     let flags: &'static ArcSwap<FeatureFlags> =
         Box::leak(Box::new(ArcSwap::from_pointee(FeatureFlags {
-            dark_mode_enabled: false,
+            feature_xyz_enabled: false,
         })));
 
     let (pre_swap_tx, pre_swap_rx) = tokio::sync::oneshot::channel::<()>();
@@ -197,7 +197,7 @@ async fn arc_swap_spawned_tasks_across_config_reload() {
 
     // Config reload while task1 is still in-flight.
     flags.store(Arc::new(FeatureFlags {
-        dark_mode_enabled: true,
+        feature_xyz_enabled: true,
     }));
     swap_done_tx.send(()).unwrap();
 
@@ -222,15 +222,15 @@ async fn arc_swap_spawned_tasks_across_config_reload() {
     // task2 closed before swap: old state
     let e2 = test_util::to_test_entry(&entries[0]);
     assert_eq!(e2.values["Operation"], "PutItem");
-    assert_eq!(e2.metrics["DarkModeEnabled"], 0);
+    assert_eq!(e2.metrics["FeatureXyzEnabled"], 0);
 
     // task1 closed after swap: new state
     let e1 = test_util::to_test_entry(&entries[1]);
     assert_eq!(e1.values["Operation"], "GetItem");
-    assert_eq!(e1.metrics["DarkModeEnabled"], 1);
+    assert_eq!(e1.metrics["FeatureXyzEnabled"], 1);
 
     // task3 created and closed after swap: new state
     let e3 = test_util::to_test_entry(&entries[2]);
     assert_eq!(e3.values["Operation"], "DeleteItem");
-    assert_eq!(e3.metrics["DarkModeEnabled"], 1);
+    assert_eq!(e3.metrics["FeatureXyzEnabled"], 1);
 }

@@ -1,17 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Global state patterns for metrics: counters and swappable feature flags.
-//!
-//! [`GlobalCounter`] is an example of what you can do if you have want to initialize a global
-//! static counter or if you are already passing around an `Arc`-wrapped struct.
-//!
-//! For other most other non-static usage, doing something like [`RequestCounter`] will be more ergonomic
-//! and better for testing interactibility.
-//!
-//! The `ArcSwap` section demonstrates storing a feature flag dimension that can
-//! be atomically swapped at runtime (e.g. after a config reload). Requires the
-//! `arc-swap` feature on `metrique`.
+//! Examples of global metrics state: per-request counters and occasionally
+//! updated, read-heavy dimensions via [`ArcSwap`](arc_swap::ArcSwap)
+//! (requires the `arc-swap` feature).
 
 use std::ops::Deref;
 use std::sync::Arc;
@@ -27,9 +19,7 @@ use metrique::writer::{
 };
 global_entry_sink! { ServiceMetrics }
 
-// ---------------------------------------------------------------------------
 // Global counter
-// ---------------------------------------------------------------------------
 
 /// Global static counter to keep track of in-flight requests
 static GLOBAL_REQUEST_COUNTER: GlobalCounter = GlobalCounter::new();
@@ -90,31 +80,27 @@ impl Drop for RequestCounterGuard {
     }
 }
 
-// ---------------------------------------------------------------------------
 // ArcSwap: swappable feature flag dimension
-// ---------------------------------------------------------------------------
 
 /// A feature flag that can be toggled at runtime via config reload.
-static DARK_MODE_ENABLED: LazyLock<ArcSwap<FeatureFlags>> =
+static FEATURE_XYZ_ENABLED: LazyLock<ArcSwap<FeatureFlags>> =
     LazyLock::new(|| ArcSwap::from_pointee(read_feature_flags()));
 
 #[metrics(subfield_owned, rename_all = "PascalCase")]
 #[derive(Clone)]
 struct FeatureFlags {
-    dark_mode_enabled: bool,
+    feature_xyz_enabled: bool,
 }
 
 fn read_feature_flags() -> FeatureFlags {
     FeatureFlags {
-        dark_mode_enabled: std::env::var("DARK_MODE_ENABLED")
+        feature_xyz_enabled: std::env::var("FEATURE_XYZ_ENABLED")
             .map(|v| v == "true")
             .unwrap_or(false),
     }
 }
 
-// ---------------------------------------------------------------------------
 // Metrics struct combining both patterns
-// ---------------------------------------------------------------------------
 
 #[metrics(rename_all = "PascalCase")]
 struct MyMetrics {
@@ -127,7 +113,7 @@ struct MyMetrics {
 impl MyMetrics {
     fn init() -> MyMetricsGuard {
         MyMetrics {
-            feature_flags: &DARK_MODE_ENABLED,
+            feature_flags: &FEATURE_XYZ_ENABLED,
             in_flight_requests_at_request_start_from_static: None,
             in_flight_requests_at_request_start_from_scoped: None,
         }
@@ -144,25 +130,33 @@ async fn main() {
         Emf::all_validations("Ns".to_string(), vec![vec![]]).output_to_makewriter(std::io::stdout),
     );
 
+    // These requests see the initial env value.
     let handle = tokio::task::spawn(handle_request(scoped_request_counter.clone()));
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     handle_request(scoped_request_counter.clone()).await;
     handle.await.unwrap();
 
-    // Simulate a config reload: toggle the feature flag.
-    DARK_MODE_ENABLED.store(Arc::new(FeatureFlags {
-        dark_mode_enabled: true,
-    }));
+    // Simulate an external config change.
+    // SAFETY: single-threaded at this point; the reload loop starts below.
+    unsafe { std::env::set_var("FEATURE_XYZ_ENABLED", "true") };
 
-    // This request will pick up the new feature flag value.
+    // Background task: periodically reload feature flags from the environment.
+    tokio::task::spawn(async {
+        let mut interval = tokio::time::interval(Duration::from_secs(180));
+        loop {
+            interval.tick().await;
+            FEATURE_XYZ_ENABLED.store(Arc::new(read_feature_flags()));
+        }
+    });
+
     handle_request(scoped_request_counter).await;
 
     // EXAMPLE OUTPUT
     /*
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884572621},"DarkModeEnabled":0,"InFlightRequestsAtRequestStartFromStatic":1,"InFlightRequestsAtRequestStartFromScoped":1}
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884573122},"DarkModeEnabled":0,"InFlightRequestsAtRequestStartFromStatic":2,"InFlightRequestsAtRequestStartFromScoped":2}
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884575124},"DarkModeEnabled":1,"InFlightRequestsAtRequestStartFromStatic":1,"InFlightRequestsAtRequestStartFromScoped":1}
+    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884572621},"FeatureXyzEnabled":0,"InFlightRequestsAtRequestStartFromStatic":1,"InFlightRequestsAtRequestStartFromScoped":1}
+    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884573122},"FeatureXyzEnabled":0,"InFlightRequestsAtRequestStartFromStatic":2,"InFlightRequestsAtRequestStartFromScoped":2}
+    {"_aws":{"CloudWatchMetrics":[{"Namespace":"Ns","Dimensions":[[]],"Metrics":[{"Name":"InFlightRequestsAtRequestStartFromStatic"},{"Name":"InFlightRequestsAtRequestStartFromScoped"}]}],"Timestamp":1771884575124},"FeatureXyzEnabled":1,"InFlightRequestsAtRequestStartFromStatic":1,"InFlightRequestsAtRequestStartFromScoped":1}
     */
 }
 

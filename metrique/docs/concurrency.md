@@ -223,7 +223,7 @@ use arc_swap::ArcSwap;
 #[metrics(subfield_owned, rename_all = "PascalCase")]
 #[derive(Clone)]
 struct FeatureFlags {
-    dark_mode_enabled: bool,
+    feature_xyz_enabled: bool,
 }
 
 // Owned ArcSwap: useful when the metrics struct owns the swap.
