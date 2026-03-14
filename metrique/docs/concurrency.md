@@ -211,27 +211,35 @@ metrique = { version = "0.1", features = ["arc-swap"] }
 ```
 
 When you have a `#[metrics(subfield_owned)]` snapshot that is read by many tasks but
-updated infrequently (server dimensions read from environment variables, a
-config reload, etc.), [`ArcSwap`](https://docs.rs/arc-swap) is a good fit.
-With the `arc-swap` feature enabled, `&ArcSwap<T>` implements
-[`CloseValue`](crate::CloseValue) whenever `T: Clone + CloseValue`, so you can
-store it directly in a metrics struct:
+swapped at runtime (a feature flag toggle, a config reload, etc.),
+[`ArcSwap`](https://docs.rs/arc-swap) is a good fit.
+With the `arc-swap` feature enabled, both `ArcSwap<T>` (owned) and
+`&ArcSwap<T>` implement [`CloseValue`](crate::CloseValue) whenever
+`T: Clone + CloseValue`, so you can store it directly in a metrics struct:
 
 ```rust,ignore
 use arc_swap::ArcSwap;
 
 #[metrics(subfield_owned, rename_all = "PascalCase")]
 #[derive(Clone)]
-struct ServerState {
-    region: String,
-    cell: String,
+struct FeatureFlags {
+    dark_mode_enabled: bool,
 }
 
+// Owned ArcSwap: useful when the metrics struct owns the swap.
 #[metrics(rename_all = "PascalCase")]
-struct RequestMetrics {
+struct OwnedMetrics {
     operation: &'static str,
     #[metrics(flatten)]
-    server_state: &'static ArcSwap<ServerState>,
+    flags: ArcSwap<FeatureFlags>,
+}
+
+// Borrowed ArcSwap: useful for global statics shared across tasks.
+#[metrics(rename_all = "PascalCase")]
+struct BorrowedMetrics {
+    operation: &'static str,
+    #[metrics(flatten)]
+    flags: &'static ArcSwap<FeatureFlags>,
 }
 ```
 
@@ -240,7 +248,7 @@ and closed by value. If another thread swaps the value between metric creation
 and close, the metric picks up whichever snapshot is current at close time.
 
 See the [global-counter example][global-counter] for a complete working
-example that reads dimensions from `std::env` and swaps them mid-flight.
+example that toggles a feature flag mid-flight.
 
 [global-counter]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-counter.rs
 

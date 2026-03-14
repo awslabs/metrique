@@ -125,7 +125,19 @@ where
 }
 
 #[cfg(feature = "arc-swap")]
-#[cfg_attr(docsrs, doc(cfg(feature = "arc-swap")))]
+#[diagnostic::do_not_recommend]
+impl<T> CloseValue for arc_swap::ArcSwap<T>
+where
+    T: Clone + CloseValue,
+{
+    type Closed = T::Closed;
+
+    fn close(self) -> Self::Closed {
+        std::sync::Arc::unwrap_or_clone(self.into_inner()).close()
+    }
+}
+
+#[cfg(feature = "arc-swap")]
 #[diagnostic::do_not_recommend]
 impl<T> CloseValue for &'_ arc_swap::ArcSwap<T>
 where
@@ -325,9 +337,16 @@ mod tests {
 
     #[test]
     #[cfg(feature = "arc-swap")]
-    fn close_arc_swap() {
+    fn close_arc_swap_ref() {
         let x = arc_swap::ArcSwap::from_pointee(Closeable);
         assert_eq!((&x).close(), 42);
+    }
+
+    #[test]
+    #[cfg(feature = "arc-swap")]
+    fn close_arc_swap_owned() {
+        let x = arc_swap::ArcSwap::from_pointee(Closeable);
+        assert_eq!(x.close(), 42);
     }
 
     #[test]
