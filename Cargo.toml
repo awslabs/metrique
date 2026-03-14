@@ -4,6 +4,7 @@ members = [ "metrique", "metrique-metricsrs", "metrique-service-metrics", "metri
 
 [workspace.dependencies]
 ahash = "0.8.6"
+arc-swap = "1"
 anyhow = "1.0.98"
 assert-json-diff = "2"
 assert2 = "0.3"

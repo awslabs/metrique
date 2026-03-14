@@ -124,6 +124,20 @@ where
     }
 }
 
+#[cfg(feature = "arc-swap")]
+#[cfg_attr(docsrs, doc(cfg(feature = "arc-swap")))]
+#[diagnostic::do_not_recommend]
+impl<T> CloseValue for &'_ arc_swap::ArcSwap<T>
+where
+    T: Clone + CloseValue,
+{
+    type Closed = T::Closed;
+
+    fn close(self) -> Self::Closed {
+        std::sync::Arc::unwrap_or_clone(self.load_full()).close()
+    }
+}
+
 #[diagnostic::do_not_recommend]
 impl<T, C> CloseValue for &'_ MutexGuard<'_, T>
 where
@@ -279,6 +293,7 @@ mod tests {
 
     use crate::CloseValue;
 
+    #[derive(Clone)]
     struct Closeable;
     impl CloseValue for Closeable {
         type Closed = usize;
@@ -306,6 +321,12 @@ mod tests {
     fn close_arc() {
         let x = Arc::new(Closeable);
         assert_eq!(x.close(), 42);
+    }
+
+    #[test]
+    fn close_arc_swap() {
+        let x = arc_swap::ArcSwap::from_pointee(Closeable);
+        assert_eq!((&x).close(), 42);
     }
 
     #[test]
