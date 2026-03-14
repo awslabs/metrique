@@ -48,7 +48,7 @@ impl GlobalCounter {
     /// decrements the count on drop, and the new value
     fn increment(&'static self) -> (GlobalCounterGuard, u64) {
         let count = self.count.fetch_add(1, Ordering::Relaxed) + 1;
-        (GlobalCounterGuard(&self), count)
+        (GlobalCounterGuard(self), count)
     }
 }
 

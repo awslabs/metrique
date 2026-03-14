@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#![cfg(feature = "arc-swap")]
+
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
