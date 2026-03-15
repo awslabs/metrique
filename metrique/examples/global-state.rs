@@ -29,7 +29,7 @@ use metrique::{
     Counter, ServiceMetrics, Witness,
     emf::Emf,
     unit_of_work::metrics,
-    writer::{FormatExt, GlobalEntrySink, AttachGlobalEntrySinkExt},
+    writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
 
 // Static / borrowed state: useful when you don't need to inject test values.

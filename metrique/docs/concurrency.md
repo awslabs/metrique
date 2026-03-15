@@ -229,7 +229,7 @@ struct ServerState {
     app_config: Witness<AppConfig>,
 }
 
-#[metrics(subfield_owned, rename_all = "PascalCase")]
+#[metrics(subfield_owned)]
 #[derive(Clone, Default)]
 struct AppConfig {
     feature_xyz_enabled: bool,
