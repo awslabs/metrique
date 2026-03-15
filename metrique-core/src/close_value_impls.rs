@@ -125,6 +125,27 @@ where
 }
 
 #[diagnostic::do_not_recommend]
+impl<T, C> CloseValue for &'_ std::sync::OnceLock<T>
+where
+    T: CloseValueRef<Closed = C>,
+{
+    type Closed = Option<C>;
+
+    fn close(self) -> Self::Closed {
+        self.get().map(T::close_ref)
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl<T: CloseValue> CloseValue for std::sync::OnceLock<T> {
+    type Closed = Option<T::Closed>;
+
+    fn close(self) -> Self::Closed {
+        self.into_inner().map(T::close)
+    }
+}
+
+#[diagnostic::do_not_recommend]
 impl<T, C> CloseValue for &'_ MutexGuard<'_, T>
 where
     T: CloseValueRef<Closed = C>,
@@ -275,10 +296,10 @@ impl<NS: crate::NameStyle, T: InflectableEntry<NS>, const N: usize> InflectableE
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    use crate::CloseValue;
     use metrique_writer_core::value::WithDimensions;
 
-    use crate::CloseValue;
-
+    #[derive(Clone, Debug)]
     struct Closeable;
     impl CloseValue for Closeable {
         type Closed = usize;
@@ -331,5 +352,18 @@ mod tests {
         let v: WithDimensions<Closeable, 1> = WithDimensions::new(Closeable, "foo", "bar");
         let closed = v.close();
         assert_eq!(*closed, 42);
+    }
+
+    #[test]
+    fn close_once_lock_initialized() {
+        let lock = std::sync::OnceLock::new();
+        lock.set(Closeable).unwrap();
+        assert_eq!((&lock).close(), Some(42));
+    }
+
+    #[test]
+    fn close_once_lock_uninitialized() {
+        let lock = std::sync::OnceLock::<Closeable>::new();
+        assert_eq!((&lock).close(), None);
     }
 }
