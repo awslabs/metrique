@@ -14,6 +14,8 @@ default = ["service-metrics"]
 emf = ["dep:metrique-writer-format-emf"]
 # re-exports metrique-writer-format-json as metrique::json
 json = ["dep:metrique-writer-format-json"]
+# Enables `Witness<T>` for atomically swappable values with snapshot semantics
+witness = ["metrique-core/witness"]
 # Human-readable local development format (pretty, JSON, markdown table)
 local-format = ["dep:serde_json", "dep:jiff"]
 # utilities for tests

@@ -92,7 +92,11 @@ use metrique_writer_core::EntrySink;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-pub use metrique_core::{CloseValue, CloseValueRef, Counter, InflectableEntry, NameStyle};
+pub use metrique_core::{
+    CloseValue, CloseValueRef, Counter, CounterGuard, InflectableEntry, NameStyle,
+};
+#[cfg(feature = "witness")]
+pub use metrique_core::{SharedRef, Witness};
 
 /// Unit types and utilities for metrics.
 ///
