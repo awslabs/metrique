@@ -13,13 +13,20 @@ use crate::CloseValue;
 pub struct Counter(pub AtomicU64);
 impl Counter {
     /// Create a new [`Counter`], initialized a specific value
-    pub fn new(starting_count: u64) -> Self {
+    pub const fn new(starting_count: u64) -> Self {
         Self(AtomicU64::new(starting_count))
     }
 
     /// Add 1 to this counter
     pub fn increment(&self) {
         self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Increments the count by 1, returning a guard that decrements the count
+    /// on drop, and the new value. Useful for tracking in-flight operations.
+    pub fn increment_scoped(&self) -> (CounterGuard<'_>, u64) {
+        let count = self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        (CounterGuard(&self.0), count)
     }
 
     /// Increase the value of this counter by `i`
@@ -30,6 +37,23 @@ impl Counter {
     /// Set this counter to `i`, discarding the previous value
     pub fn set(&self, i: u64) {
         self.0.store(i, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// A guard that decrements a [`Counter`] when dropped.
+///
+/// Returned by [`Counter::increment_scoped`].
+pub struct CounterGuard<'a>(&'a AtomicU64);
+
+impl Drop for CounterGuard<'_> {
+    fn drop(&mut self) {
+        self.0
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |v| Some(v.saturating_sub(1)),
+            )
+            .ok();
     }
 }
 
@@ -76,3 +100,26 @@ close_value_atomic!(atomic: AtomicU8, inner: u8);
 close_value_atomic!(atomic: AtomicUsize, inner: usize);
 
 close_value_atomic!(atomic: AtomicBool, inner: bool);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn increment_scoped() {
+        let counter = Counter::new(0);
+        let (guard, count) = counter.increment_scoped();
+        assert_eq!(count, 1);
+        drop(guard);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn increment_scoped_static() {
+        static COUNTER: Counter = Counter::new(0);
+        let (guard, count) = COUNTER.increment_scoped();
+        assert_eq!(count, 1);
+        drop(guard);
+        assert_eq!(COUNTER.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+}
