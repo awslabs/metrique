@@ -29,7 +29,22 @@ check_package() {
     echo "→ Checking docs.rs build for $pkg_name..."
 
     # Package without verification — we need to patch Cargo.toml before building.
-    cargo package -p "$pkg_name" --allow-dirty --no-verify
+    # cargo package validates features against crates.io, which fails when
+    # workspace siblings introduce new features that haven't been published
+    # yet. Fall back to building docs directly from the workspace in that case.
+    local pkg_err
+    if ! pkg_err=$(cargo package -p "$pkg_name" --allow-dirty --no-verify 2>&1); then
+        if echo "$pkg_err" | grep -q "does not have that feature"; then
+            echo "  ⚠ cargo package failed (unpublished feature), falling back to workspace build"
+            local manifest_dir
+            manifest_dir=$(cargo metadata --no-deps --format-version 1 | \
+                jq -r ".packages[] | select(.name == \"$pkg_name\") | .manifest_path | rtrimstr(\"/Cargo.toml\")")
+            (cd "$manifest_dir" && cargo +nightly docs-rs --target "$TARGET")
+            return
+        fi
+        echo "$pkg_err" >&2
+        return 1
+    fi
 
     # Extract the .crate tarball (cargo package --no-verify doesn't extract)
     rm -rf "$pkg_dir"
