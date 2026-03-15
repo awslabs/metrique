@@ -19,7 +19,7 @@ metrics** (CPU usage, tokio task count, disk usage) show behavior over time but
 cannot explain causation.
 
 A production application typically needs both. Unit-of-work metrics are the primary
-focus of `metrique`; see [periodic metrics](#periodic-metrics) for the time-based
+focus of `metrique`; see [periodic metrics](#periodic-metrics-gauges-counters-metadata) for the time-based
 case.
 
 ### Principle 2: Treat metrics as a critical component of your application
@@ -42,8 +42,8 @@ defined up front, with compile-time enforcement.
 | [Unit-of-work](#unit-of-work) | Clear unit of work (request, job, event) | Full context per record |
 | [Sampled unit-of-work](#sampled-unit-of-work) | Unit-of-work metrics at high volume where full emission is too expensive | Loses some records; rare events preserved by congressional sampler |
 | [Aggregated](#aggregated) | High-frequency events where individual records are too expensive | Loses per-record context; consider combining with sampling |
-| [Periodic (gauges)](#periodic-metrics-gauges) | System resources with no natural unit of work | Point-in-time only |
-| [Global counters](#global-counters) | Deeply nested code where threading context is impractical | Loses request correlation |
+| [Shared state in unit-of-work](#shared-state-in-unit-of-work) | Global counters, config, or gauges that benefit from request correlation | Richer metadata per record; prefer over standalone periodic metrics |
+| [Periodic (gauges, counters, metadata)](#periodic-metrics-gauges-counters-metadata) | Dedicated time series, or lightweight standalone emission | Point-in-time only; loses request correlation |
 
 ### Unit-of-work
 
@@ -69,9 +69,10 @@ a full example.
 
 When individual records are too expensive for your throughput, aggregate
 while preserving distributions via histograms. The threshold depends on your
-infrastructure and metric backend; profile to find the right balance. Consider
-combining with [sampling](crate::_guide::sampling) to keep some raw
-records for debugging.
+infrastructure and metric backend; profile to find the right balance.
+Consider using [`tee()`](crate::writer::stream::tee) to combine an
+aggregated stream for dashboards with a
+[sampled](crate::_guide::sampling) stream of raw records for debugging.
 
 Two flavors:
 
@@ -82,10 +83,45 @@ Two flavors:
 
 See [`metrique-aggregation`](https://docs.rs/metrique-aggregation) for full details.
 
-### Periodic metrics (gauges)
+### Shared state in unit-of-work
 
-Emit a metric struct on a timer for resources with no natural unit of work (CPU,
-memory, open file descriptors). These are point-in-time snapshots.
+Global state (in-flight counters, feature flags, config, node group) is most
+valuable when emitted alongside per-request metrics. Attaching it to each
+unit-of-work record lets you correlate: "this request was throttled because
+`ThrottlePolicy` was `Throttle` and there were 47 requests in flight."
+
+Several primitives support this:
+
+- [`Witness<T>`](crate::Witness) (requires the `witness` feature): an
+  atomically swappable value. The first read captures a snapshot, so the
+  emitted metric matches the state seen during processing.
+- [`Counter`](crate::Counter): a lock-free counter with
+  `increment_scoped()` for tracking in-flight work.
+- [`OnceLock<T>`](std::sync::OnceLock): for values initialized once at
+  startup (node group, build version).
+
+These can be `&'static` references or fields inside an `Arc<SharedState>`.
+Either way, flatten them into your per-request metrics struct so they appear
+in every record.
+
+See the [global-state example](https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs)
+and the [concurrency guide](crate::_guide::concurrency) for details.
+
+### Periodic metrics (gauges, counters, metadata)
+
+Applications often have state that exists outside any single request: system
+gauges (CPU, memory), global counters (total requests served, cache hits),
+and metadata (node group, config version, feature flags).
+
+**Prefer attaching this data to unit-of-work metrics** using the primitives
+described in [shared state in unit-of-work](#shared-state-in-unit-of-work).
+When a gauge or counter appears on every request record, you can correlate:
+"latency spiked while memory was at 85% and there were 200 requests in
+flight." Even data like CPU or memory usage benefits from appearing on
+request records as context.
+
+That said: For a dedicated time series or lightweight
+standalone emission, you can also emit a metric struct on a timer:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -117,22 +153,11 @@ fn start_periodic_metrics() {
 }
 ```
 
-Some metrics like CPU usage are *only* connected to a unit of time and not a unit of
-work, and this is a hard constraint. However, any metrics that *can* be tied to a unit
-of work will improve debuggability. With periodic metrics it's important to consider
-emission time and emission time bias: for example, if you are running a metric that
-records queue lengths on a tokio task, this metric won't be reported if the runtime is
-stuck. Consider ways to have the data reported by periodic metrics be
-time-of-report invariant (e.g. track high water marks or histograms for the full range
-of values).
-
-### Global counters
-
-Use only when threading a metrics context is impractical - code 10+ layers deep,
-or across many trait boundaries. Global counters lose request correlation.
-
-See the
-[global-counter example](https://github.com/awslabs/metrique/blob/main/metrique/examples/global-counter.rs).
+With periodic metrics it's important to consider emission time bias: for
+example, if you are running a metric that records queue lengths on a tokio
+task, this metric won't be reported if the runtime is stuck. Consider ways
+to have the data reported by periodic metrics be time-of-report invariant
+(e.g. track high water marks or histograms for the full range of values).
 
 ## "My TPS is too high"
 
