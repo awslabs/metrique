@@ -12,6 +12,8 @@ rust-version = "1.89" # See build.yml for why this MSRV
 default = ["service-metrics"]
 # re-exports metrique-writer-format-emf as metrique::emf
 emf = ["dep:metrique-writer-format-emf"]
+# Enables `Witness<T>` for atomically swappable values with snapshot semantics
+witness = ["metrique-core/witness"]
 # Human-readable local development format (pretty, JSON, markdown table)
 local-format = ["dep:serde_json", "dep:jiff"]
 # utilities for tests
