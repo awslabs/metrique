@@ -10,7 +10,7 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::sink::VecEntrySink;
 use metrique::writer::test_util;
 
-#[metrics(subfield_owned, rename_all = "PascalCase")]
+#[metrics(subfield_owned)]
 #[derive(Clone, Debug, Default)]
 struct AppConfig {
     feature_xyz_enabled: bool,
