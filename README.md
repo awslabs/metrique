@@ -24,7 +24,8 @@ struct RequestMetrics {
 }
 ```
 
-This currently supports exporting metrics in [Amazon EMF] format to CloudWatch and printing them locally with [`metrique::local::LocalFormat`.
+This currently supports exporting metrics in [Amazon EMF] format to CloudWatch and as plain JSON for non-AWS systems. 
+Metrics can be printed locally with [`metrique::local::LocalFormat`].
 Formats can be implemented outside of this crate via the `Format` trait.
 
 ## Why Metrique?
@@ -133,7 +134,7 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 
 You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. 
 
-For production, only formatters for [Amazon EMF] are provided, but more may be added in the future.
+For production, only formatters for [Amazon EMF] and plain JSON ([`metrique-writer-format-json`](metrique-writer-format-json)) are provided, but more may be added in the future.
 
 For local development, [`metrique::local::LocalFormat`] provides human-readable output (pretty-printed key-value pairs, JSON, or markdown tables) with automatic histogram percentile computation. See the [module docs](https://docs.rs/metrique/latest/metrique/local/index.html) for a guide on implementing your own custom format.
 
@@ -187,8 +188,8 @@ For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/
  - **metric**: A *metric* is a `(name, dimensions)` key that can have values associated with
    it. Generally, a metric contains **metric datapoint**s.
  - **metric backend**: The backend being used to aggregate metrics. `metrique` currently
-   comes with support for the [Amazon EMF] backend, but support can be added to other
-   backends.
+   comes with support for [Amazon EMF] and plain JSON backends, and support can be added for
+   other backends.
  - **metric datapoint**: A single point of `(name, dimensions, multiplicity, time, value)`,
    generally not represented explicitly but rather being emitted from fields in a
    *metric entry*. Metric datapoints have a value that is an integer or floating point, and can
