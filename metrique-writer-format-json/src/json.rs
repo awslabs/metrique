@@ -15,112 +15,6 @@ use metrique_writer_core::{Entry, EntryWriter, Unit, ValidationError, Validation
 use rand::rngs::ThreadRng;
 use rand::{Rng, RngCore};
 
-/// How to format metric observations in JSON output.
-///
-/// There are two fundamentally different output shapes:
-///
-/// - [`Scalar`](ObservationFormat::Scalar): Human-friendly output using `"value"` / `"values"`
-///   fields. A [`RepeatedFormat`] controls how aggregated observations are rendered.
-/// - [`Histogram`](ObservationFormat::Histogram): Statistical output using parallel
-///   `"values"` / `"counts"` arrays, preserving per-observation multiplicity.
-///
-/// Histogram contract:
-/// - `values` and `counts` are parallel arrays.
-/// - For each index `i`, `counts[i]` is the frequency/weight of `values[i]`.
-/// - Expanded representation is equivalent to repeating each `values[i]`
-///   `counts[i]` times.
-/// - Non-finite floating-point observations are encoded as `null` in `values`.
-///   Their corresponding `counts` entry is still emitted.
-///
-/// ## Example
-///
-/// Given one entry with sampled multiplicity = `5`:
-/// - property: `Operation = "GetItem"`
-/// - metric `Latency = Observation::Repeated { total: 150.0, occurrences: 3 }` (unit: Milliseconds)
-/// - metric `PayloadSize = [10, 20]` (two floating-point observations, no unit)
-///
-/// #### `Scalar(RepeatedFormat::TotalAndCount)` (default):
-/// ```json
-/// {
-///   "metrics": {
-///     "Latency": { "value": { "total": 150, "count": 15 }, "unit": "Milliseconds" },
-///     "PayloadSize": { "values": [10, 20] }
-///   },
-///   "properties": { "Operation": "GetItem" }
-/// }
-/// ```
-///
-/// #### `Scalar(RepeatedFormat::Mean)`:
-/// ```json
-/// {
-///   "metrics": {
-///     "Latency": { "value": 50, "unit": "Milliseconds" },
-///     "PayloadSize": { "values": [10, 20] }
-///   },
-///   "properties": { "Operation": "GetItem" }
-/// }
-/// ```
-///
-/// #### `Histogram`:
-/// ```json
-/// {
-///   "metrics": {
-///     "Latency": { "values": [50], "counts": [15], "unit": "Milliseconds" },
-///     "PayloadSize": { "values": [10, 20], "counts": [5, 5] }
-///   },
-///   "properties": { "Operation": "GetItem" }
-/// }
-/// ```
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy)]
-pub enum ObservationFormat {
-    /// Emit single observations as `"value": X`, multiple as `"values": [...]`.
-    ///
-    /// The inner [`RepeatedFormat`] controls how `Observation::Repeated` values
-    /// are rendered (see its docs for details).
-    ///
-    /// Note: when sampling is used, scalar non-repeated observations do not
-    /// include an explicit multiplicity field. If sampled JSON output is consumed
-    /// directly for weighted aggregation, prefer [`ObservationFormat::Histogram`].
-    Scalar(RepeatedFormat),
-    /// Emit all metrics as `{"values": [...], "counts": [...]}`.
-    ///
-    /// Each observation gets a corresponding count entry, i.e. `values` and `counts` are parallel arrays
-    /// where `counts[i]` is the frequency/weight of `values[i]`.
-    ///
-    /// For simple observations, each count is the sampling multiplicity (or `1`).
-    /// For repeated observations, the value is the mean and the count is
-    /// `occurrences * multiplicity`.
-    Histogram,
-}
-
-/// How to render `Observation::Repeated` in [`ObservationFormat::Scalar`] mode.
-///
-/// A repeated observation aggregates multiple measurements into a single
-/// `{ total, occurrences }` pair (e.g. from a histogram bucket or timer).
-///
-/// Given `Observation::Repeated { total: 150.0, occurrences: 3 }`:
-///
-/// - [`TotalAndCount`](RepeatedFormat::TotalAndCount):
-///   `{"total": 150, "count": 3}`
-/// - [`Mean`](RepeatedFormat::Mean):
-///   `50`
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, Default)]
-pub enum RepeatedFormat {
-    /// Emit as `{"total": f64, "count": u64}`.
-    #[default]
-    TotalAndCount,
-    /// Emit the mean (`total / occurrences`) as a scalar.
-    Mean,
-}
-
-impl Default for ObservationFormat {
-    fn default() -> Self {
-        Self::Scalar(RepeatedFormat::default())
-    }
-}
-
 // Maximum buffer size before shrinking on clear. Prevents one large entry from
 // permanently bloating memory.
 const MAX_BUF_RETAIN: usize = 1024 * 1024;
@@ -135,7 +29,9 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 ///   "timestamp": 1705312800000,
 ///   "metrics": {
 ///     "Latency": { "value": 42.5, "unit": "Milliseconds" },
-///     "Count": { "value": 10 }
+///     "Count": { "value": 10 },
+///     "BackendLatency": { "value": { "total": 150, "count": 3 }, "unit": "Milliseconds" },
+///     "ResponseTimes": { "values": [1, 2, 3], "unit": "Milliseconds" }
 ///   },
 ///   "properties": {
 ///     "Operation": "GetItem",
@@ -144,17 +40,14 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 /// }
 /// ```
 ///
-/// The shape of metric observations can be customized via [`ObservationFormat`].
-/// By default, [`ObservationFormat::Scalar`] is used with [`RepeatedFormat::TotalAndCount`].
+/// Single observations are emitted as `"value": X`, multiple observations as
+/// `"values": [...]`. Repeated observations (e.g. from histogram buckets) are
+/// emitted as `{"total": f64, "count": u64}`.
 ///
 /// ```
-/// use metrique_writer_format_json::{Json, ObservationFormat};
+/// use metrique_writer_format_json::Json;
 ///
-/// // Default scalar output
 /// let format = Json::new();
-///
-/// // Histogram output with parallel values/counts arrays
-/// let format = Json::new().with_observation_format(ObservationFormat::Histogram);
 /// ```
 ///
 /// ## Handling of non-finite floating-point values
@@ -167,41 +60,26 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 /// - **NaN** observations are serialized as JSON `null`.
 #[derive(Debug)]
 pub struct Json {
-    observation_format: ObservationFormat,
     // Reusable string buffers, cleared between entries, capacity stays warm.
     // Each entry writes ,"key":value fragments into these. The leading comma is
     // stripped when assembling the final output.
     metrics_buf: String,
     properties_buf: String,
-    // Used for histogram counts
-    counts_buf: String,
 }
 
 impl Json {
     /// Create a new JSON formatter with default settings.
     pub fn new() -> Self {
         Self {
-            observation_format: ObservationFormat::default(),
             metrics_buf: String::with_capacity(2048),
             properties_buf: String::with_capacity(2048),
-            counts_buf: String::with_capacity(256),
         }
-    }
-
-    /// Set how metric observations are formatted.
-    pub fn with_observation_format(mut self, format: ObservationFormat) -> Self {
-        self.observation_format = format;
-        self
     }
 
     /// Wrap this formatter with support for sampling using the default RNG.
     ///
     /// When sampling is active, metrics are emitted with a multiplicity that
     /// compensates for dropped entries, keeping aggregate statistics unbiased.
-    ///
-    /// For sampled output that will be consumed directly from JSON, prefer
-    /// [`ObservationFormat::Histogram`] so multiplicity is represented explicitly
-    /// in `counts`.
     pub fn with_sampling(self) -> SampledJson {
         SampledJson {
             json: self,
@@ -210,10 +88,6 @@ impl Json {
     }
 
     /// Wrap this formatter with support for sampling using an explicit RNG.
-    ///
-    /// For sampled output that will be consumed directly from JSON, prefer
-    /// [`ObservationFormat::Histogram`] so multiplicity is represented explicitly
-    /// in `counts`.
     pub fn with_sampling_and_rng<R>(self, rng: R) -> SampledJson<R> {
         SampledJson { json: self, rng }
     }
@@ -230,8 +104,6 @@ impl Json {
             timestamp: None,
             metrics_buf: &mut self.metrics_buf,
             properties_buf: &mut self.properties_buf,
-            counts_buf: &mut self.counts_buf,
-            observation_format: self.observation_format,
             multiplicity,
             error: ValidationErrorBuilder::default(),
         };
@@ -278,8 +150,6 @@ impl Json {
         self.metrics_buf.shrink_to(MAX_BUF_RETAIN);
         self.properties_buf.truncate(0);
         self.properties_buf.shrink_to(MAX_BUF_RETAIN);
-        self.counts_buf.truncate(0);
-        self.counts_buf.shrink_to(MAX_BUF_RETAIN);
     }
 }
 
@@ -303,8 +173,6 @@ struct JsonEntryWriter<'b> {
     timestamp: Option<SystemTime>,
     metrics_buf: &'b mut String,
     properties_buf: &'b mut String,
-    counts_buf: &'b mut String,
-    observation_format: ObservationFormat,
     multiplicity: Option<u64>,
     error: ValidationErrorBuilder,
 }
@@ -328,8 +196,6 @@ impl<'a, 'b> EntryWriter<'a> for JsonEntryWriter<'b> {
             name: name.as_ref(),
             metrics_buf: self.metrics_buf,
             properties_buf: self.properties_buf,
-            counts_buf: self.counts_buf,
-            observation_format: self.observation_format,
             multiplicity: self.multiplicity,
             error: &mut self.error,
         };
@@ -345,8 +211,6 @@ struct JsonValueWriter<'b, 'c> {
     name: &'c str,
     metrics_buf: &'b mut String,
     properties_buf: &'b mut String,
-    counts_buf: &'b mut String,
-    observation_format: ObservationFormat,
     multiplicity: Option<u64>,
     error: &'b mut ValidationErrorBuilder,
 }
@@ -382,35 +246,17 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
         push_json_string(buf, self.name);
         buf.push_str(":{");
 
-        match self.observation_format {
-            ObservationFormat::Histogram => {
-                buf.push_str("\"values\":[");
-                let counts = self.counts_buf;
-                counts.truncate(0);
-                push_histogram_observation(buf, counts, first, self.multiplicity);
-                for ob in obs {
-                    buf.push(',');
-                    counts.push(',');
-                    push_histogram_observation(buf, counts, ob, self.multiplicity);
-                }
-                buf.push_str("],\"counts\":[");
-                buf.push_str(counts);
-                buf.push(']');
+        if let Some(second) = obs.next() {
+            buf.push_str("\"values\":[");
+            push_observation(buf, first, self.multiplicity);
+            push_observation_comma(buf, second, self.multiplicity);
+            for ob in obs {
+                push_observation_comma(buf, ob, self.multiplicity);
             }
-            ObservationFormat::Scalar(repeated) => {
-                if let Some(second) = obs.next() {
-                    buf.push_str("\"values\":[");
-                    push_observation(buf, first, repeated, self.multiplicity);
-                    push_observation_comma(buf, second, repeated, self.multiplicity);
-                    for ob in obs {
-                        push_observation_comma(buf, ob, repeated, self.multiplicity);
-                    }
-                    buf.push(']');
-                } else {
-                    buf.push_str("\"value\":");
-                    push_observation(buf, first, repeated, self.multiplicity);
-                }
-            }
+            buf.push(']');
+        } else {
+            buf.push_str("\"value\":");
+            push_observation(buf, first, self.multiplicity);
         }
 
         if unit != Unit::None {
@@ -427,23 +273,13 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
 }
 
 /// Push a comma followed by an observation (for array items after the first).
-fn push_observation_comma(
-    buf: &mut String,
-    obs: Observation,
-    repeated: RepeatedFormat,
-    multiplicity: Option<u64>,
-) {
+fn push_observation_comma(buf: &mut String, obs: Observation, multiplicity: Option<u64>) {
     buf.push(',');
-    push_observation(buf, obs, repeated, multiplicity);
+    push_observation(buf, obs, multiplicity);
 }
 
 /// Push a scalar observation value into the buffer.
-fn push_observation(
-    buf: &mut String,
-    obs: Observation,
-    repeated: RepeatedFormat,
-    multiplicity: Option<u64>,
-) {
+fn push_observation(buf: &mut String, obs: Observation, multiplicity: Option<u64>) {
     match obs {
         Observation::Unsigned(v) => {
             buf.push_str(itoa::Buffer::new().format(v));
@@ -453,58 +289,15 @@ fn push_observation(
         }
         Observation::Repeated { total, occurrences } => {
             let mult = multiplicity.unwrap_or(1);
-            match repeated {
-                RepeatedFormat::TotalAndCount => {
-                    buf.push_str("{\"total\":");
-                    push_float(buf, total);
-                    buf.push_str(",\"count\":");
-                    buf.push_str(itoa::Buffer::new().format(occurrences.saturating_mul(mult)));
-                    buf.push('}');
-                }
-                RepeatedFormat::Mean => {
-                    push_float(buf, repeated_mean(total, occurrences));
-                }
-            }
+            buf.push_str("{\"total\":");
+            push_float(buf, total);
+            buf.push_str(",\"count\":");
+            buf.push_str(itoa::Buffer::new().format(occurrences.saturating_mul(mult)));
+            buf.push('}');
         }
         _ => {
             buf.push_str("null");
         }
-    }
-}
-
-/// Push a histogram observation value and append its matching count.
-fn push_histogram_observation(
-    values_buf: &mut String,
-    counts_buf: &mut String,
-    obs: Observation,
-    multiplicity: Option<u64>,
-) {
-    let mult = multiplicity.unwrap_or(1);
-    match obs {
-        Observation::Unsigned(v) => {
-            values_buf.push_str(itoa::Buffer::new().format(v));
-            counts_buf.push_str(itoa::Buffer::new().format(mult));
-        }
-        Observation::Floating(v) => {
-            push_float(values_buf, v);
-            counts_buf.push_str(itoa::Buffer::new().format(mult));
-        }
-        Observation::Repeated { total, occurrences } => {
-            push_float(values_buf, repeated_mean(total, occurrences));
-            counts_buf.push_str(itoa::Buffer::new().format(occurrences.saturating_mul(mult)));
-        }
-        _ => {
-            values_buf.push_str("null");
-            counts_buf.push_str(itoa::Buffer::new().format(mult));
-        }
-    }
-}
-
-fn repeated_mean(total: f64, occurrences: u64) -> f64 {
-    if occurrences == 0 {
-        0.0
-    } else {
-        total / occurrences as f64
     }
 }
 
@@ -692,26 +485,6 @@ mod tests {
     }
 
     #[test]
-    fn test_repeated_mean_mode() {
-        let mut format =
-            Json::new().with_observation_format(ObservationFormat::Scalar(RepeatedFormat::Mean));
-        let mut output = Vec::new();
-        format.format(&RepeatedEntry, &mut output).unwrap();
-
-        assert_eq!(
-            parse_output(&output),
-            expected(
-                r#"{
-                "timestamp": 1705312800000,
-                "metrics": {
-                    "AvgLatency": { "value": 50 }
-                }
-            }"#
-            ),
-        );
-    }
-
-    #[test]
     fn test_repeated_with_multiplicity() {
         let mut format = Json::new();
         let mut output = Vec::new();
@@ -842,116 +615,6 @@ mod tests {
     }
 
     #[test]
-    fn test_histogram_encoding() {
-        let mut format = Json::new().with_observation_format(ObservationFormat::Histogram);
-        let mut output = Vec::new();
-        format.format(&DistributionEntry, &mut output).unwrap();
-
-        assert_eq!(
-            parse_output(&output),
-            expected(
-                r#"{
-                "timestamp": 0,
-                "metrics": {
-                    "ResponseTimes": {
-                        "values": [1, 2, 3],
-                        "counts": [1, 1, 1],
-                        "unit": "Milliseconds"
-                    }
-                }
-            }"#
-            ),
-        );
-    }
-
-    #[test]
-    fn test_histogram_repeated_with_multiplicity() {
-        let mut format = Json::new().with_observation_format(ObservationFormat::Histogram);
-        let mut output = Vec::new();
-        format
-            .format_with_multiplicity(&RepeatedEntry, &mut output, Some(5))
-            .unwrap();
-
-        assert_eq!(
-            parse_output(&output),
-            expected(
-                r#"{
-                "timestamp": 1705312800000,
-                "metrics": {
-                    "AvgLatency": { "values": [50], "counts": [15] }
-                }
-            }"#
-            ),
-        );
-    }
-
-    #[test]
-    fn test_histogram_distribution_with_multiplicity() {
-        let mut format = Json::new().with_observation_format(ObservationFormat::Histogram);
-        let mut output = Vec::new();
-        format
-            .format_with_multiplicity(&DistributionEntry, &mut output, Some(5))
-            .unwrap();
-
-        assert_eq!(
-            parse_output(&output),
-            expected(
-                r#"{
-                "timestamp": 0,
-                "metrics": {
-                    "ResponseTimes": {
-                        "values": [1, 2, 3],
-                        "counts": [5, 5, 5],
-                        "unit": "Milliseconds"
-                    }
-                }
-            }"#
-            ),
-        );
-    }
-
-    #[test]
-    fn test_histogram_nan_emits_null_with_count() {
-        struct NanDistributionEntry;
-        impl Entry for NanDistributionEntry {
-            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-                writer.timestamp(SystemTime::UNIX_EPOCH);
-                struct DistWithNan;
-                impl Value for DistWithNan {
-                    fn write(&self, writer: impl ValueWriter) {
-                        writer.metric(
-                            [Observation::Floating(f64::NAN), Observation::Floating(1.0)],
-                            Unit::None,
-                            [],
-                            MetricFlags::empty(),
-                        );
-                    }
-                }
-                writer.value("Mixed", &DistWithNan);
-            }
-        }
-
-        let mut format = Json::new().with_observation_format(ObservationFormat::Histogram);
-        let mut output = Vec::new();
-        format.format(&NanDistributionEntry, &mut output).unwrap();
-
-        assert_eq!(
-            parse_output(&output),
-            expected(
-                r#"{
-                "timestamp": 0,
-                "metrics": {
-                    "Mixed": {
-                        "values": [null, 1],
-                        "counts": [1, 1]
-                    }
-                }
-            }"#
-            ),
-        );
-    }
-
-    #[test]
     fn test_empty_entry() {
         struct EmptyEntry;
         impl Entry for EmptyEntry {
@@ -1067,25 +730,6 @@ mod tests {
         let count = json["metrics"]["AvgLatency"]["value"]["count"]
             .as_u64()
             .unwrap();
-        assert!(count >= 30, "expected count >= 30, got {count}");
-    }
-
-    #[test]
-    fn test_sampled_histogram_format_trait() {
-        let mut format = Json::new()
-            .with_observation_format(ObservationFormat::Histogram)
-            .with_sampling_and_rng(rand_chacha::ChaChaRng::seed_from_u64(0));
-        let mut output = Vec::new();
-        format
-            .format_with_sample_rate(&RepeatedEntry, &mut output, 0.1)
-            .unwrap();
-
-        let json = parse_output(&output);
-        assert_eq!(
-            json["metrics"]["AvgLatency"]["values"],
-            serde_json::json!([50])
-        );
-        let count = json["metrics"]["AvgLatency"]["counts"][0].as_u64().unwrap();
         assert!(count >= 30, "expected count >= 30, got {count}");
     }
 

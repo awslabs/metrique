@@ -2,18 +2,21 @@ A `metrique` [Format] for formatting `metrique` metrics as plain JSON objects.
 
 ## Usage
 
-With default settings:
 ```no_run
 use metrique_writer_format_json::Json;
 
 let format = Json::new();
 ```
+
+Each entry is serialized as a single JSON line:
 ```json
 {
   "timestamp": 1705312800000,
   "metrics": {
     "Latency": { "value": 42.5, "unit": "Milliseconds" },
-    "Count": { "value": 10 }
+    "Count": { "value": 10 },
+    "BackendLatency": { "value": { "total": 150, "count": 3 }, "unit": "Milliseconds" },
+    "ResponseTimes": { "values": [1, 2, 3], "unit": "Milliseconds" }
   },
   "properties": {
     "Operation": "GetItem"
@@ -21,28 +24,8 @@ let format = Json::new();
 }
 ```
 
-The observation format can be customized. For example, [`Histogram`](ObservationFormat::Histogram)
-mode emits parallel `values`/`counts` arrays, preserving per-observation multiplicity:
-```no_run
-use metrique_writer_format_json::{Json, ObservationFormat};
+Single observations are emitted as `"value": X`, multiple as `"values": [...]`.
+Repeated observations (e.g. from histogram buckets) are emitted as
+`{"total": ..., "count": ...}`.
 
-let format = Json::new().with_observation_format(ObservationFormat::Histogram);
-```
-```json
-{
-  "timestamp": 1705312800000,
-  "metrics": {
-    "Latency": { "values": [42.5], "counts": [1], "unit": "Milliseconds" },
-    "Count": { "values": [10], "counts": [1] }
-  },
-  "properties": {
-    "Operation": "GetItem"
-  }
-}
-```
-
-For more details on observation output shapes, see [ObservationFormat].
-
-[Format]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
-[ObservationFormat]: crate::ObservationFormat
-
+[Format]: https://docs.rs/metrique-writer/latest/metrique_writer/format/trait.Format.html
