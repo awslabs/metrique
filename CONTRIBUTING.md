@@ -93,12 +93,8 @@ trusted publishing is unable to publish new crates. If you want to add a new cra
 
 1. create a branch that contains the crate you are publishing (it should
    be in the root `Cargo.toml`'s `workspace.members`, and in a publishable state).
-2. add an entry to `release-plz.toml` of the form
-   ```
-   [[package]]
-   name = "<package>"
-   changelog_path = "CHANGELOG.md"
-   ```
+2. add the package name to the `changelog_include` list in the `[[package]] name = "metrique"`
+   entry in `release-plz.toml`.
 3. run `cargo publish -p <package> --dry-run`
 4. get a temporary crates.io token just for the publishing
 5. run `cargo login` with that token
