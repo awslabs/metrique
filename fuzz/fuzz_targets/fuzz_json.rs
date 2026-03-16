@@ -51,49 +51,41 @@ fn assert_valid_json_line(output: &[u8], context: &str) {
 
 fuzz_target!(|data: &[u8]| {
     let mut u = Unstructured::new(data);
-    let Ok((entry_a, entry_b)) =
-        u.arbitrary::<(FuzzEntry, FuzzEntry)>()
-    else {
-        return;
+    // 1–4 entries to format through the same formatter instance.
+    let entry_count = match u.arbitrary::<u8>() {
+        Ok(n) => (n % 4) as usize + 1,
+        Err(_) => return,
     };
+    let mut entries = Vec::with_capacity(entry_count);
+    for _ in 0..entry_count {
+        let Ok(entry) = u.arbitrary::<FuzzEntry>() else {
+            return;
+        };
+        entries.push(entry);
+    }
 
-    // Regular (non-sampled) path
+    // Regular (non-sampled) path — format all entries through the same formatter.
+    // We don't care if formatting returns a validation error, but it must never panic.
     let mut format = Json::new();
     let mut output = Vec::new();
-
-    // Format the entry, we don't care if it returns a validation error,
-    // but it must never panic.
-    let result = format.format(&entry_a, &mut output);
-
-    if let Ok(()) = result {
-        assert_valid_json_line(&output, "first call");
+    for (i, entry) in entries.iter().enumerate() {
+        output.clear();
+        let result = format.format(entry, &mut output);
+        if let Ok(()) = result {
+            assert_valid_json_line(&output, &format!("entry {i}"));
+        }
     }
 
-    // Format a different entry through the same formatter to test state reuse.
-    output.clear();
-    let result = format.format(&entry_b, &mut output);
-    if let Ok(()) = result {
-        assert_valid_json_line(&output, "state reuse call");
-    }
-
-    // Sampled path
-    let Ok(rate_a) = arbitrary_sample_rate(&mut u) else {
-        return;
-    };
-    let Ok(rate_b) = arbitrary_sample_rate(&mut u) else {
-        return;
-    };
-
+    // Sampled path, same entries, fresh formatter.
     let mut sampled = Json::new().with_sampling();
-    output.clear();
-    let result = sampled.format_with_sample_rate(&entry_a, &mut output, rate_a);
-    if let Ok(()) = result {
-        assert_valid_json_line(&output, "sampled first call");
-    }
-
-    output.clear();
-    let result = sampled.format_with_sample_rate(&entry_b, &mut output, rate_b);
-    if let Ok(()) = result {
-        assert_valid_json_line(&output, "sampled state reuse call");
+    for (i, entry) in entries.iter().enumerate() {
+        let Ok(rate) = arbitrary_sample_rate(&mut u) else {
+            return;
+        };
+        output.clear();
+        let result = sampled.format_with_sample_rate(entry, &mut output, rate);
+        if let Ok(()) = result {
+            assert_valid_json_line(&output, &format!("sampled entry {i}"));
+        }
     }
 });

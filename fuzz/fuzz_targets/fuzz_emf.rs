@@ -147,8 +147,6 @@ struct FuzzEmfConfig {
     extra_namespace: Option<String>,
     log_group_name: Option<String>,
     allow_ignored_dimensions: bool,
-    sample_rate_a: f32,
-    sample_rate_b: f32,
 }
 
 impl<'a> arbitrary::Arbitrary<'a> for FuzzEmfConfig {
@@ -183,8 +181,6 @@ impl<'a> arbitrary::Arbitrary<'a> for FuzzEmfConfig {
             extra_namespace,
             log_group_name,
             allow_ignored_dimensions: u.arbitrary()?,
-            sample_rate_a: arbitrary_sample_rate(u)?,
-            sample_rate_b: arbitrary_sample_rate(u)?,
         })
     }
 }
@@ -203,55 +199,49 @@ fn build_emf(config: &FuzzEmfConfig) -> Emf {
 
 fuzz_target!(|data: &[u8]| {
     let mut u = Unstructured::new(data);
-    let Ok((entry_a, entry_b, config)) = u.arbitrary::<(FuzzEntry, FuzzEntry, FuzzEmfConfig)>()
-    else {
+    let Ok(config) = u.arbitrary::<FuzzEmfConfig>() else {
         return;
     };
-
-    // Generate flag modes for each entry's fields.
-    let flags_a: Vec<FuzzMetricFlagMode> = (0..entry_a.fields.len())
-        .map(|_| u.arbitrary().unwrap_or(FuzzMetricFlagMode::None))
-        .collect();
-    let flags_b: Vec<FuzzMetricFlagMode> = (0..entry_b.fields.len())
-        .map(|_| u.arbitrary().unwrap_or(FuzzMetricFlagMode::None))
-        .collect();
-
-    let emf_entry_a = EmfFuzzEntry {
-        inner: entry_a,
-        flag_modes: flags_a,
+    // 1–4 entries to format through the same formatter instance.
+    let entry_count = match u.arbitrary::<u8>() {
+        Ok(n) => (n % 4) as usize + 1,
+        Err(_) => return,
     };
-    let emf_entry_b = EmfFuzzEntry {
-        inner: entry_b,
-        flag_modes: flags_b,
-    };
+    let mut entries = Vec::with_capacity(entry_count);
+    for _ in 0..entry_count {
+        let Ok(entry) = u.arbitrary::<FuzzEntry>() else {
+            return;
+        };
+        let flags: Vec<FuzzMetricFlagMode> = (0..entry.fields.len())
+            .map(|_| u.arbitrary().unwrap_or(FuzzMetricFlagMode::None))
+            .collect();
+        entries.push(EmfFuzzEntry {
+            inner: entry,
+            flag_modes: flags,
+        });
+    }
 
-    // Regular EMF path.
+    // Regular EMF path, format all entries through the same formatter.
     let mut format = build_emf(&config);
     let mut output = Vec::new();
-
-    let result = format.format(&emf_entry_a, &mut output);
-
-    if let Ok(()) = result {
-        assert_valid_json_lines(&output, "first call");
+    for (i, entry) in entries.iter().enumerate() {
+        output.clear();
+        let result = format.format(entry, &mut output);
+        if let Ok(()) = result {
+            assert_valid_json_lines(&output, &format!("entry {i}"));
+        }
     }
 
-    // Test formatter state reuse with a different entry.
-    output.clear();
-    let result = format.format(&emf_entry_b, &mut output);
-    if let Ok(()) = result {
-        assert_valid_json_lines(&output, "state reuse call");
-    }
-
-    // Sampled EMF path.
+    // Sampled EMF path, same entries, fresh formatter.
     let mut sampled = build_emf(&config).with_sampling();
-    output.clear();
-    let result = sampled.format_with_sample_rate(&emf_entry_a, &mut output, config.sample_rate_a);
-    if let Ok(()) = result {
-        assert_valid_json_lines(&output, "sampled first call");
-    }
-    output.clear();
-    let result = sampled.format_with_sample_rate(&emf_entry_b, &mut output, config.sample_rate_b);
-    if let Ok(()) = result {
-        assert_valid_json_lines(&output, "sampled state reuse call");
+    for (i, entry) in entries.iter().enumerate() {
+        let Ok(rate) = arbitrary_sample_rate(&mut u) else {
+            return;
+        };
+        output.clear();
+        let result = sampled.format_with_sample_rate(entry, &mut output, rate);
+        if let Ok(()) = result {
+            assert_valid_json_lines(&output, &format!("sampled entry {i}"));
+        }
     }
 });
