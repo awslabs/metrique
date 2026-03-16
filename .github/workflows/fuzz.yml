@@ -1,6 +1,7 @@
 name: Fuzz
 on:
-  workflow_dispatch: # Allow manual triggers
+  pull_request:
+  workflow_dispatch:
   schedule:
     - cron: "0 6 * * *" # Every day at 06:00 UTC
 
@@ -8,8 +9,39 @@ permissions:
   contents: read
 
 jobs:
-  fuzz:
+  # Quick smoke test on PRs, should catch obvious regressions.
+  fuzz-pr:
+    name: Fuzz Smoke Test
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fuzz-pr-${{ runner.os }}
+          workspaces: |
+            . -> target
+            fuzz -> fuzz/target
+      - name: Install cargo-fuzz
+        uses: dtolnay/install@cargo-fuzz
+      - name: Run fuzz_json
+        run: cargo +nightly fuzz run fuzz_json -- -max_total_time=60
+      - name: Run fuzz_emf
+        run: cargo +nightly fuzz run fuzz_emf -- -max_total_time=60
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-pr
+          path: fuzz/artifacts/
+
+  # Longer nightly run with corpus caching.
+  fuzz-nightly:
     name: Nightly Fuzz
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
       RUST_BACKTRACE: 1
