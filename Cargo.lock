@@ -961,7 +961,6 @@ dependencies = [
 name = "metrique-writer-format-json"
 version = "0.1.0"
 dependencies = [
- "assert-json-diff",
  "dtoa",
  "itoa",
  "metrique-writer",

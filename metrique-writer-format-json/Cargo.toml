@@ -16,7 +16,6 @@ metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.12" }
 metrique-writer = { path = "../metrique-writer", version = "0.1.17" }
 
 [dev-dependencies]
-assert-json-diff = { workspace = true }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 rand_chacha = { workspace = true }
