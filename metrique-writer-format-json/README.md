@@ -24,8 +24,4 @@ Each entry is serialized as a single JSON line:
 }
 ```
 
-Single observations are emitted as `"value": X`, multiple as `"values": [...]`.
-Repeated observations (e.g. from histogram buckets) are emitted as
-`{"total": ..., "count": ...}`.
-
 [Format]: https://docs.rs/metrique-writer/latest/metrique_writer/format/trait.Format.html
