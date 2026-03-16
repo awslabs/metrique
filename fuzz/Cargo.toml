@@ -1,0 +1,30 @@
+[package]
+name = "metrique-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+arbitrary = { version = "1", features = ["derive"] }
+libfuzzer-sys = "0.4"
+metrique-writer-core = { path = "../metrique-writer-core" }
+metrique-writer-format-json = { path = "../metrique-writer-format-json" }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
+serde_json = "1"
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_json"
+path = "fuzz_targets/fuzz_json.rs"
+doc = false
+
+[[bin]]
+name = "fuzz_emf"
+path = "fuzz_targets/fuzz_emf.rs"
+doc = false

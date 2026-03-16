@@ -1,0 +1,81 @@
+name: Fuzz
+on:
+  workflow_dispatch: # Allow manual triggers
+  schedule:
+    - cron: "0 6 * * *" # Every day at 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Nightly Fuzz
+    runs-on: ubuntu-latest
+    env:
+      RUST_BACKTRACE: 1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Restore Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fuzz-nightly-${{ runner.os }}
+          workspaces: |
+            . -> target
+            fuzz -> fuzz/target
+      - name: Compute corpus cache bucket
+        id: corpus_bucket
+        run: |
+          echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+          echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore fuzz corpus cache
+        id: corpus_restore
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus
+          # Policy:
+          # - one evolving cache lineage per branch per day
+          # - restore from same-day first, then same week, then branch, then OS-wide fallback
+          # - keep corpus in cache (not committed) to avoid repository bloat
+          key: fuzz-corpus-${{ runner.os }}-${{ github.ref_name }}-${{ steps.corpus_bucket.outputs.day }}-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-${{ runner.os }}-${{ github.ref_name }}-${{ steps.corpus_bucket.outputs.day }}-
+            fuzz-corpus-${{ runner.os }}-${{ github.ref_name }}-${{ steps.corpus_bucket.outputs.week }}-
+            fuzz-corpus-${{ runner.os }}-${{ github.ref_name }}-
+            fuzz-corpus-${{ runner.os }}-
+      - name: Ensure corpus directories exist
+        run: mkdir -p fuzz/corpus/fuzz_json fuzz/corpus/fuzz_emf
+      - name: Install cargo-fuzz
+        uses: dtolnay/install@cargo-fuzz
+      - name: Run fuzz_json
+        run: cargo +nightly fuzz run fuzz_json -- -max_total_time=300
+      - name: Run fuzz_emf
+        run: cargo +nightly fuzz run fuzz_emf -- -max_total_time=300
+      - name: Minimize corpus
+        if: always()
+        run: |
+          set -euo pipefail
+          for target in fuzz_json fuzz_emf; do
+            corpus_dir="fuzz/corpus/${target}"
+            if [ -d "$corpus_dir" ] && [ "$(ls -A "$corpus_dir" 2>/dev/null)" ]; then
+              echo "Minimizing corpus for ${target}..."
+              before=$(find "$corpus_dir" -type f | wc -l)
+              cargo +nightly fuzz cmin "$target" || true
+              after=$(find "$corpus_dir" -type f | wc -l)
+              echo "${target}: ${before} -> ${after} corpus entries"
+            else
+              echo "No corpus to minimize for ${target}"
+            fi
+          done
+      - name: Save fuzz corpus cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus
+          key: ${{ steps.corpus_restore.outputs.cache-primary-key }}
+      - name: Upload crash artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts/
