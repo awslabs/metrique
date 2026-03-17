@@ -10,6 +10,8 @@
 pub mod emf;
 pub mod flex;
 pub mod instrument;
+#[cfg(feature = "json")]
+pub mod json;
 mod keep_alive;
 #[cfg(feature = "local-format")]
 pub mod local;
