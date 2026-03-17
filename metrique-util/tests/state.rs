@@ -10,11 +10,19 @@ use metrique::writer::sink::VecEntrySink;
 use metrique::writer::test_util;
 use metrique_util::State;
 
-#[metrics(subfield_owned)]
 #[derive(Clone, Debug, Default)]
+#[metrics(subfield)]
 struct AppConfig {
     feature_xyz_enabled: bool,
-    traffic_policy: String,
+    traffic_policy: TrafficPolicy,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+#[metrics(value(string))]
+enum TrafficPolicy {
+    #[default]
+    Default,
+    Canary,
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -33,7 +41,7 @@ fn state_flattened() {
         operation: "PutItem",
         config: State::new(AppConfig {
             feature_xyz_enabled: false,
-            traffic_policy: "default".into(),
+            traffic_policy: TrafficPolicy::Default,
         }),
         duck_count: 0,
     }
@@ -55,7 +63,7 @@ fn state_snapshot_on_first_load() {
     let vec_sink = VecEntrySink::new();
     let state = State::new(AppConfig {
         feature_xyz_enabled: false,
-        traffic_policy: "default".into(),
+        traffic_policy: TrafficPolicy::Default,
     });
 
     let metrics = MyMetrics {
@@ -71,7 +79,7 @@ fn state_snapshot_on_first_load() {
     // Update after the snapshot was captured.
     state.store(Arc::new(AppConfig {
         feature_xyz_enabled: true,
-        traffic_policy: "canary".into(),
+        traffic_policy: TrafficPolicy::Canary,
     }));
 
     drop(metrics);
@@ -89,7 +97,7 @@ fn state_across_config_reload() {
     let vec_sink = VecEntrySink::new();
     let state = State::new(AppConfig {
         feature_xyz_enabled: false,
-        traffic_policy: "default".into(),
+        traffic_policy: TrafficPolicy::Default,
     });
 
     // req1: clone and load before the swap, closed after
@@ -114,7 +122,7 @@ fn state_across_config_reload() {
     // Config reload
     state.store(Arc::new(AppConfig {
         feature_xyz_enabled: true,
-        traffic_policy: "canary".into(),
+        traffic_policy: TrafficPolicy::Canary,
     }));
 
     // req3: clone and load after the swap
@@ -155,7 +163,7 @@ async fn state_spawned_tasks_across_config_reload() {
     let vec_sink = VecEntrySink::new();
     let state: &'static State<AppConfig> = Box::leak(Box::new(State::new(AppConfig {
         feature_xyz_enabled: false,
-        traffic_policy: "default".into(),
+        traffic_policy: TrafficPolicy::Default,
     })));
 
     let (pre_swap_tx, pre_swap_rx) = tokio::sync::oneshot::channel::<()>();
@@ -196,7 +204,7 @@ async fn state_spawned_tasks_across_config_reload() {
     // Config reload while task1 is still in-flight.
     state.store(Arc::new(AppConfig {
         feature_xyz_enabled: true,
-        traffic_policy: "canary".into(),
+        traffic_policy: TrafficPolicy::Canary,
     }));
 
     swap_done_tx.send(()).unwrap();
