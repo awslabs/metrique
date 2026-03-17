@@ -14,12 +14,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use metrique::ServiceMetrics;
 use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
-use metrique::writer::{
-    AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink, sink::global_entry_sink,
-};
-global_entry_sink! { ServiceMetrics }
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 
 /// Global static counter to keep track of in-flight requests
 static GLOBAL_REQUEST_COUNTER: GlobalCounter = GlobalCounter::new();

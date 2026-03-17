@@ -8,14 +8,13 @@ use std::{sync::Arc, time::Duration};
 use metrique::emf::Emf;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, BoxEntrySink, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
-    sink::global_entry_sink,
 };
 use metrique::{
+    ServiceMetrics,
     timers::{Stopwatch, Timer, Timestamp},
     unit::Millisecond,
     unit_of_work::metrics,
 };
-global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]
 #[derive(Default)]
