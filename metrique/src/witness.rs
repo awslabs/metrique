@@ -1,21 +1,63 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! An atomically swappable value with snapshot-on-first-read semantics.
+//! An atomically swappable shared value where each cloned handle captures a
+//! snapshot on first read.
 
 use std::sync::{Arc, OnceLock};
 
 use crate::CloseValue;
 
-/// An atomically swappable value. The first call to [`load`](Witness::load)
-/// captures the current value; all subsequent loads return that same
-/// `Arc<T>`, even if the underlying value is updated.
+/// An atomically swappable shared value where each cloned handle captures a
+/// snapshot on first read.
 ///
-/// This makes `Witness` suitable to use in metrics structs: the emitted
-/// metric always reflects the state that was seen during processing.
+/// In services with shared state that changes at runtime (feature flags,
+/// config reloads, routing tables), request handlers need to both read the
+/// current value and emit metrics reflecting what they saw. `Witness`
+/// ensures the value captured for metrics matches the value used during
+/// processing, even if a background task swaps in a new value mid-request.
 ///
-/// For hot paths that need to see the latest value and avoid overhead,
-/// (bypassing the snapshot, Arc clone, etc), use [`.shared_ref()`](Witness::shared_ref).
+/// # Usage
+///
+/// Put a `Witness<T>` in your metrics struct. Background tasks call
+/// [`store`](Witness::store) to swap in new values; each request
+/// [`clone`](Clone::clone)s a handle, and the snapshot is captured
+/// automatically when the metric is closed for emission. You only
+/// need to call [`load`](Witness::load) explicitly if your request
+/// handler needs the value for its own logic (e.g. branching on a
+/// feature flag); calling `load` early also pins the snapshot to
+/// that point rather than emission time.
+///
+/// ```rust,ignore
+/// // Background task refreshes config on a loop.
+/// // Each request clones the handle; emitted metrics reflect the
+/// // config that was current when the request first read it.
+/// #[metrics(rename_all = "PascalCase")]
+/// struct RequestMetrics {
+///     operation: &'static str,
+///     #[metrics(flatten)]
+///     app_config: Witness<AppConfig>,
+/// }
+/// ```
+///
+/// See the [global-state example] for a complete working version.
+///
+/// [global-state example]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs
+///
+/// # How it works
+///
+/// All clones of a `Witness` share the same underlying value. Each clone
+/// has its own snapshot slot: the first call to [`load`](Witness::load)
+/// captures the current value, and all subsequent loads on that handle
+/// return the same `Arc<T>`. Calling [`clone`](Clone::clone) produces a
+/// fresh handle with an empty snapshot slot.
+///
+/// The typical pattern is: keep one long-lived `Witness` for background
+/// writers to [`store`](Witness::store) into, and [`clone`](Clone::clone)
+/// a handle per request so each request gets its own snapshot.
+///
+/// For hot paths that need the latest value (bypassing the snapshot and
+/// `Arc` clone), use [`shared_ref`](Witness::shared_ref).
 ///
 /// ```
 /// use std::sync::Arc;
@@ -29,14 +71,18 @@ use crate::CloseValue;
 /// // First load captures "v1".
 /// assert_eq!(*request.load(), "v1");
 ///
-/// // Update the shared state.
-/// shared.store(Arc::new(String::from("v2"))).unwrap();
+/// // Background task updates the shared state.
+/// shared.store(Arc::new(String::from("v2")));
 ///
 /// // The request handle still sees "v1".
 /// assert_eq!(*request.load(), "v1");
 ///
 /// // shared_ref always sees the latest.
 /// assert_eq!(*request.shared_ref(), "v2");
+///
+/// // A new clone captures the updated value.
+/// let next_request = shared.clone();
+/// assert_eq!(*next_request.load(), "v2");
 /// ```
 pub struct Witness<T> {
     swap: Arc<arc_swap::ArcSwap<T>>,
@@ -69,14 +115,14 @@ impl<T> Witness<T> {
         }
     }
 
-    /// Atomically replace the value. Returns `Err(val)` if this handle
-    /// has already captured a snapshot via [`load`](Witness::load).
-    pub fn store(&self, val: Arc<T>) -> Result<(), Arc<T>> {
-        if self.snapshot.get().is_some() {
-            return Err(val);
-        }
+    /// Atomically replace the shared value.
+    ///
+    /// All handles (including this one) will see the new value on their
+    /// next [`load`](Witness::load), unless they have already captured a
+    /// snapshot. A handle that has already called `load` is unaffected;
+    /// its snapshot is immutable.
+    pub fn store(&self, val: Arc<T>) {
         self.swap.store(val);
-        Ok(())
     }
 
     /// Load the value. The first call captures a snapshot; subsequent
@@ -85,10 +131,12 @@ impl<T> Witness<T> {
         self.snapshot.get_or_init(|| self.swap.load_full()).clone()
     }
 
-    /// Get a cheap guard for the underlying value, bypassing the snapshot.
-    /// This might be different from emitted metrics for the value on close.
+    /// Get a cheap guard for the latest shared value, bypassing the snapshot.
+    /// The returned value may differ from what [`load`](Witness::load) returns
+    /// (and from what metrics will emit on close).
     ///
-    /// Use [`Self::load`] for a `Send` handle or if you need snapshot properties.
+    /// Use [`load`](Witness::load) for a `Send` handle or when you need
+    /// snapshot consistency.
     ///
     /// Returns a [`SharedRef`] that derefs to `T`.
     pub fn shared_ref(&self) -> SharedRef<T> {
@@ -97,7 +145,7 @@ impl<T> Witness<T> {
 }
 
 impl<T> Clone for Witness<T> {
-    /// Clone produces a fresh handle to the same swap, without a
+    /// Clone produces a fresh handle to the same shared value, without a
     /// captured snapshot.
     fn clone(&self) -> Self {
         Self {
@@ -175,7 +223,7 @@ mod tests {
     fn first_load_captures() {
         let x = Witness::new(42u64);
         assert_eq!(*x.load(), 42);
-        x.store(Arc::new(100)).unwrap_err();
+        x.store(Arc::new(100));
         // Still returns the captured value.
         assert_eq!(*x.load(), 42);
     }
@@ -183,21 +231,25 @@ mod tests {
     #[test]
     fn store_before_load() {
         let x = Witness::new(42u64);
-        x.store(Arc::new(100)).unwrap();
+        x.store(Arc::new(100));
         assert_eq!(*x.load(), 100);
     }
 
     #[test]
-    fn store_after_load_returns_err() {
+    fn store_after_load_updates_shared() {
         let x = Witness::new(42u64);
         x.load();
-        assert!(x.store(Arc::new(100)).is_err());
+        x.store(Arc::new(100));
+        // Snapshot is unchanged.
+        assert_eq!(*x.load(), 42);
+        // But a fresh clone sees the new value.
+        assert_eq!(*x.clone().load(), 100);
     }
 
     #[test]
     fn shared_ref_sees_latest() {
         let x = Witness::new(42u64);
-        x.store(Arc::new(100)).unwrap();
+        x.store(Arc::new(100));
         assert_eq!(*x.shared_ref(), 100);
     }
 
@@ -206,9 +258,8 @@ mod tests {
         let x = Witness::new(42u64);
         x.load(); // capture 42
 
-        // Store through a fresh clone (no snapshot yet).
         let writer = x.clone();
-        writer.store(Arc::new(100)).unwrap();
+        writer.store(Arc::new(100));
 
         let reader = x.clone();
         assert_eq!(*reader.load(), 100);
@@ -220,7 +271,7 @@ mod tests {
     fn clone_shares_swap() {
         let x = Witness::new(42u64);
         let cloned = x.clone();
-        x.store(Arc::new(100)).unwrap();
+        x.store(Arc::new(100));
         assert_eq!(*x.shared_ref(), 100);
         assert_eq!(*cloned.shared_ref(), 100);
     }

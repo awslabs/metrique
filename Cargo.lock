@@ -763,6 +763,7 @@ name = "metrique"
 version = "0.1.20"
 dependencies = [
  "anyhow",
+ "arc-swap",
  "assert2",
  "chrono",
  "itoa",
@@ -824,7 +825,6 @@ dependencies = [
 name = "metrique-core"
 version = "0.1.16"
 dependencies = [
- "arc-swap",
  "itertools",
  "metrique",
  "metrique-writer",

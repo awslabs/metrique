@@ -1,26 +1,35 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Most applications have some amount of dynamic cross-request state
-//! that they would like to attach to their per-request metrics.
+//! Shared state in per-request metrics.
 //!
-//! Native to metrique:
-//! - [`metrique::Counter::increment_scoped`]: Increment a shared counter,
-//!   but only while a guard is held. Useful for tracking how much
-//!   work is in flight.
+//! Most applications have dynamic cross-request state (feature flags,
+//! routing config, in-flight counters) that should appear on every
+//! metric record for correlation during debugging.
 //!
-//! - [`metrique::Witness`]: An atomically swappable value that snapshots
-//!   on first access, ensuring flushed metrics match what was seen
-//!   during processing.
+//! This example shows two approaches:
 //!
-//! Blanket implementations for `CloseValue`:
-//! - [`std::sync::OnceLock`]: Allows const initialization both
-//!   for unchanging values and dynamic (with interior mutability).
-//!   Closes as `None` if uninitialized.
+//! 1. **Borrowed (`&'static`)**: `Counter` and `OnceLock<Witness<T>>`
+//!    live in statics. Cheap, no `Arc` overhead, but not injectable
+//!    for tests. The `OnceLock` here is purely for lazy initialization
+//!    of the `Witness`; the snapshot behavior comes from `Witness` itself.
 //!
-//! - [`std::sync::Mutex`]: Allows interior mutability with
-//!   strongly consistent reads. Handles panicked locks as `None`
-//!   on emission.
+//! 2. **Owned (clone-per-request)**: state lives in an `AppState` struct
+//!    that is cloned into each request's metrics. Cloning shares the
+//!    underlying `Counter` (via `Arc`) and gives each request a fresh
+//!    `Witness` snapshot slot. More flexible, easy to inject in tests.
+//!
+//! Both patterns flatten shared state into the per-request metric, so
+//! every emitted record includes the current counter value, config
+//! snapshot, etc.
+//!
+//! Key primitives used:
+//! - [`Witness<T>`](metrique::Witness): atomically swappable value with
+//!   snapshot-on-first-read semantics.
+//! - [`Counter::increment_scoped`](metrique::Counter::increment_scoped):
+//!   in-flight tracking with automatic decrement on drop.
+//! - [`OnceLock<T>`](std::sync::OnceLock): lazy one-time initialization
+//!   with `CloseValue` support (closes as `None` if uninitialized).
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -32,7 +41,10 @@ use metrique::{
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
 
-// Static / borrowed state: useful when you don't need to inject test values.
+// ---------------------------------------------------------------------------
+// Borrowed (static) state
+// ---------------------------------------------------------------------------
+
 static IN_FLIGHT: Counter = Counter::new(0);
 static NODE_GROUP: OnceLock<Witness<String>> = OnceLock::new();
 
@@ -60,10 +72,15 @@ impl BorrowedState {
     }
 }
 
-// Owned state: more flexible, often with Arc + interior mutability.
-#[metrics(subfield)]
-struct OwnedState {
-    active_requests: Counter,
+// ---------------------------------------------------------------------------
+// Owned (clone-per-request) state
+// ---------------------------------------------------------------------------
+
+// Cloning shares the Counter (via Arc) and gives a fresh Witness snapshot slot.
+#[derive(Clone)]
+#[metrics(subfield_owned)]
+struct AppState {
+    active_requests: Arc<Counter>,
     #[metrics(flatten)]
     app_config: Witness<AppConfig>,
 }
@@ -83,19 +100,22 @@ enum ThrottlePolicy {
     NoThrottle,
 }
 
-impl OwnedState {
-    fn initialize() -> Arc<Self> {
-        let state = Arc::new(Self {
-            active_requests: Counter::default(),
+impl AppState {
+    fn initialize() -> Self {
+        let state = Self {
+            active_requests: Arc::new(Counter::default()),
             app_config: Witness::new(AppConfig::default()),
-        });
+        };
 
-        let handle = state.clone();
-        tokio::task::spawn(refresh_app_config_forever(handle));
+        tokio::task::spawn(refresh_app_config_forever(state.clone()));
 
         state
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-request metrics
+// ---------------------------------------------------------------------------
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
@@ -103,19 +123,23 @@ struct RequestMetrics {
     #[metrics(flatten)]
     static_state: BorrowedState,
     #[metrics(flatten)]
-    owned_state: Arc<OwnedState>,
+    app_state: AppState,
 }
 
 impl RequestMetrics {
-    fn init(state: &Arc<OwnedState>) -> RequestMetricsGuard {
+    fn init(state: &AppState) -> RequestMetricsGuard {
         RequestMetrics {
             throttled: false,
             static_state: BorrowedState::new(),
-            owned_state: state.clone(),
+            app_state: state.clone(),
         }
         .append_on_drop(ServiceMetrics::sink())
     }
 }
+
+// ---------------------------------------------------------------------------
+// Application
+// ---------------------------------------------------------------------------
 
 #[tokio::main]
 async fn main() {
@@ -124,20 +148,30 @@ async fn main() {
     );
 
     init_statics();
-    let state = OwnedState::initialize();
+    let state = AppState::initialize();
 
     // Two concurrent requests, both using config from before the first refresh.
     tokio::join!(handle_request(&state), handle_request(&state));
 
     // Third request, on its own, after the config has refreshed.
     handle_request(&state).await;
+
+    // Example output (timestamps will vary):
+    //
+    // Requests 1 and 2 see the default config (NoThrottle, feature off).
+    // Request 3 starts after the 1s refresh, sees the new config (Throttle, feature on).
+    //
+    // {"Throttled":0,"InFlight":1,"ActiveRequests":0,"FeatureXyzEnabled":0,"NodeGroup":"us-east-1a","ThrottlePolicy":"NoThrottle", ...}
+    // {"Throttled":0,"InFlight":0,"ActiveRequests":0,"FeatureXyzEnabled":0,"NodeGroup":"us-east-1a","ThrottlePolicy":"NoThrottle", ...}
+    // {"Throttled":1,"InFlight":0,"ActiveRequests":0,"FeatureXyzEnabled":1,"NodeGroup":"us-east-1a","ThrottlePolicy":"Throttle", ...}
 }
 
-async fn handle_request(state: &Arc<OwnedState>) {
+async fn handle_request(state: &AppState) {
     let mut metrics = RequestMetrics::init(state);
 
-    // By loading this config, we guarantee the metric will also use the same snapshot.
-    let config = metrics.owned_state.app_config.load();
+    // Loading here to branch on the config; this also pins the metric
+    // snapshot to this point rather than emission time.
+    let config = metrics.app_state.app_config.load();
     if matches!(config.throttle_policy, ThrottlePolicy::Throttle) {
         metrics.throttled = true;
     }
@@ -147,20 +181,25 @@ async fn handle_request(state: &Arc<OwnedState>) {
 }
 
 async fn do_some_work() {
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
 }
+
+// ---------------------------------------------------------------------------
+// Background refresh tasks
+// ---------------------------------------------------------------------------
 
 async fn refresh_node_group_forever(witness: Witness<String>) {
     let mut interval = tokio::time::interval(Duration::from_secs(30));
     loop {
         interval.tick().await;
         // load from disk, remote, etc
-        let _ = witness.store(Arc::new("us-east-1a".to_string()));
+        witness.store(Arc::new("us-east-1a".to_string()));
     }
 }
 
-async fn refresh_app_config_forever(state: Arc<OwnedState>) {
+async fn refresh_app_config_forever(state: AppState) {
     let mut interval = tokio::time::interval(Duration::from_secs(1));
+    interval.tick().await; // skip the immediate first tick
     let mut i = 0;
     loop {
         interval.tick().await;
@@ -178,6 +217,6 @@ async fn refresh_app_config_forever(state: Arc<OwnedState>) {
             }
         };
 
-        let _ = state.app_config.store(Arc::new(new_config));
+        state.app_config.store(Arc::new(new_config));
     }
 }

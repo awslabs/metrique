@@ -16,7 +16,7 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
             &AtomicU8
             &AtomicUsize
             &Counter
-            &Duration
+            &CounterGuard<'_>
           and $N others
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
@@ -37,7 +37,7 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
             &AtomicU8
             &AtomicUsize
             &Counter
-            &Duration
+            &CounterGuard<'_>
           and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8
@@ -68,7 +68,7 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
             &AtomicU8
             &AtomicUsize
             &Counter
-            &Duration
+            &CounterGuard<'_>
           and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8
@@ -96,7 +96,7 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
             &AtomicU8
             &AtomicUsize
             &Counter
-            &Duration
+            &CounterGuard<'_>
           and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8
@@ -129,7 +129,7 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
             &AtomicU8
             &AtomicUsize
             &Counter
-            &Duration
+            &CounterGuard<'_>
           and $N others
   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
@@ -151,7 +151,7 @@ error[E0277]: CloseValue is not implemented for ChildMetrics
             &AtomicU8
             &AtomicUsize
             &Counter
-            &Duration
+            &CounterGuard<'_>
           and $N others
 note: required because it appears within the type `RootMetricsEntry`
  --> tests/ui/fail/subfield_no_metric.rs:7:8

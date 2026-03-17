@@ -69,12 +69,10 @@ fn witness_snapshot_on_first_load() {
     let _config = metrics.config.load();
 
     // Update after the snapshot was captured.
-    state
-        .store(Arc::new(AppConfig {
-            feature_xyz_enabled: true,
-            traffic_policy: "canary".into(),
-        }))
-        .unwrap();
+    state.store(Arc::new(AppConfig {
+        feature_xyz_enabled: true,
+        traffic_policy: "canary".into(),
+    }));
 
     drop(metrics);
 
@@ -114,12 +112,10 @@ fn witness_across_config_reload() {
     drop(req2);
 
     // Config reload
-    state
-        .store(Arc::new(AppConfig {
-            feature_xyz_enabled: true,
-            traffic_policy: "canary".into(),
-        }))
-        .unwrap();
+    state.store(Arc::new(AppConfig {
+        feature_xyz_enabled: true,
+        traffic_policy: "canary".into(),
+    }));
 
     // req3: clone and load after the swap
     let req3 = MyMetrics {
@@ -198,12 +194,10 @@ async fn witness_spawned_tasks_across_config_reload() {
     task2.await.unwrap();
 
     // Config reload while task1 is still in-flight.
-    state
-        .store(Arc::new(AppConfig {
-            feature_xyz_enabled: true,
-            traffic_policy: "canary".into(),
-        }))
-        .unwrap();
+    state.store(Arc::new(AppConfig {
+        feature_xyz_enabled: true,
+        traffic_policy: "canary".into(),
+    }));
 
     swap_done_tx.send(()).unwrap();
 
