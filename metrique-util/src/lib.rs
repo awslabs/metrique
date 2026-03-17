@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #![deny(missing_docs)]
-#![doc = "Additional utilities for metrique."]
+#![doc = include_str!("../README.md")]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 #[cfg(feature = "state")]
