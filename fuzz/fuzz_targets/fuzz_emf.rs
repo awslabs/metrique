@@ -10,7 +10,7 @@
 
 mod fuzz_entry;
 
-use arbitrary::Unstructured;
+use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
 
 use metrique_writer_core::format::Format;
@@ -18,12 +18,10 @@ use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_core::{Entry, EntryWriter};
 use metrique_writer_format_emf::{Emf, HighStorageResolution, NoMetric};
 
-use fuzz_entry::{
-    FuzzEntry, FuzzField, FuzzMetricValue, arbitrary_sample_rate, arbitrary_string,
-};
+use fuzz_entry::{FuzzEntry, FuzzField, FuzzMetricValue};
 
 /// EMF-specific flag mode applied on top of base fuzz entries.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Arbitrary)]
 enum FuzzMetricFlagMode {
     None,
     HighStorageResolution,
@@ -32,38 +30,24 @@ enum FuzzMetricFlagMode {
     NoMetricThenHigh,
 }
 
-impl<'a> arbitrary::Arbitrary<'a> for FuzzMetricFlagMode {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let tag: u8 = u.arbitrary()?;
-        Ok(match tag % 5 {
-            0 => FuzzMetricFlagMode::None,
-            1 => FuzzMetricFlagMode::HighStorageResolution,
-            2 => FuzzMetricFlagMode::NoMetric,
-            3 => FuzzMetricFlagMode::HighThenNoMetric,
-            _ => FuzzMetricFlagMode::NoMetricThenHigh,
-        })
-    }
-}
-
 /// Wrapper around `FuzzEntry` that applies EMF-specific flag modes to metrics.
-#[derive(Debug)]
+#[derive(Debug, Arbitrary)]
 struct EmfFuzzEntry {
     inner: FuzzEntry,
-    /// One flag mode per metric field. Non-metric fields use index but ignore the flag.
     flag_modes: Vec<FuzzMetricFlagMode>,
 }
 
 impl Entry for EmfFuzzEntry {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         // Delegate config and timestamps to the base entry's logic,
-        // but handle fields ourselves to apply EMF flags.
+        // but handle fields here to apply EMF-specific flag modes.
         if self.inner.allow_split_entries {
             writer.config(&const { metrique_writer_core::config::AllowSplitEntries::new() });
         }
-        if let Some(entry_dimensions) = &self.inner.entry_dimensions {
-            writer.config(entry_dimensions);
+        if let Some(dims) = &self.inner.entry_dimensions {
+            writer.config(&dims.0);
         }
-        for timestamp in &self.inner.timestamps {
+        if let Some(timestamp) = &self.inner.timestamp {
             writer.timestamp(timestamp.to_system_time());
         }
         for (i, field) in self.inner.fields.iter().enumerate() {
@@ -74,7 +58,7 @@ impl Entry for EmfFuzzEntry {
                 .unwrap_or(FuzzMetricFlagMode::None);
             match field {
                 FuzzField::StringProperty { name, value } => {
-                    writer.value(name.as_str(), &value.as_str());
+                    writer.value(name.0.as_str(), &value.as_str());
                 }
                 FuzzField::Metric {
                     name,
@@ -85,25 +69,25 @@ impl Entry for EmfFuzzEntry {
                     let metric = FuzzMetricValue {
                         observations,
                         dimensions,
-                        unit: *unit,
+                        unit: unit.0,
                     };
                     match flag_mode {
-                        FuzzMetricFlagMode::None => writer.value(name.as_str(), &metric),
+                        FuzzMetricFlagMode::None => writer.value(name.0.as_str(), &metric),
                         FuzzMetricFlagMode::HighStorageResolution => {
-                            writer.value(name.as_str(), &HighStorageResolution::from(metric));
+                            writer.value(name.0.as_str(), &HighStorageResolution::from(metric));
                         }
                         FuzzMetricFlagMode::NoMetric => {
-                            writer.value(name.as_str(), &NoMetric::from(metric));
+                            writer.value(name.0.as_str(), &NoMetric::from(metric));
                         }
                         FuzzMetricFlagMode::HighThenNoMetric => {
                             writer.value(
-                                name.as_str(),
+                                name.0.as_str(),
                                 &NoMetric::from(HighStorageResolution::from(metric)),
                             );
                         }
                         FuzzMetricFlagMode::NoMetricThenHigh => {
                             writer.value(
-                                name.as_str(),
+                                name.0.as_str(),
                                 &HighStorageResolution::from(NoMetric::from(metric)),
                             );
                         }
@@ -140,7 +124,7 @@ fn assert_valid_json_lines(output: &[u8], context: &str) {
     );
 }
 
-#[derive(Debug)]
+#[derive(Debug, Arbitrary)]
 struct FuzzEmfConfig {
     namespace: String,
     default_dimensions: Vec<Vec<String>>,
@@ -149,44 +133,15 @@ struct FuzzEmfConfig {
     allow_ignored_dimensions: bool,
 }
 
-impl<'a> arbitrary::Arbitrary<'a> for FuzzEmfConfig {
-    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
-        let namespace = arbitrary_string(u, 48)?;
-        let extra_namespace = if u.arbitrary::<bool>()? {
-            Some(arbitrary_string(u, 48)?)
-        } else {
-            None
-        };
-        let log_group_name = if u.arbitrary::<bool>()? {
-            Some(arbitrary_string(u, 64)?)
-        } else {
-            None
-        };
-
-        // Keep at least one default dimension set to match common EMF setup.
-        let set_count = (u.arbitrary::<u8>()? % 4) + 1;
-        let mut default_dimensions = Vec::with_capacity(set_count as usize);
-        for _ in 0..set_count {
-            let dim_count = u.arbitrary::<u8>()? % 5;
-            let mut dims = Vec::with_capacity(dim_count as usize);
-            for _ in 0..dim_count {
-                dims.push(arbitrary_string(u, 32)?);
-            }
-            default_dimensions.push(dims);
-        }
-
-        Ok(Self {
-            namespace,
-            default_dimensions,
-            extra_namespace,
-            log_group_name,
-            allow_ignored_dimensions: u.arbitrary()?,
-        })
-    }
-}
-
 fn build_emf(config: &FuzzEmfConfig) -> Emf {
-    let mut builder = Emf::builder(config.namespace.clone(), config.default_dimensions.clone())
+    // Keep generation broad while normalizing invalid empty input
+    // into "publish without dimensions".
+    let default_dimensions = if config.default_dimensions.is_empty() {
+        vec![vec![]]
+    } else {
+        config.default_dimensions.clone()
+    };
+    let mut builder = Emf::builder(config.namespace.clone(), default_dimensions)
         .allow_ignored_dimensions(config.allow_ignored_dimensions);
     if let Some(extra) = &config.extra_namespace {
         builder = builder.add_namespace(extra.clone());
@@ -202,23 +157,11 @@ fuzz_target!(|data: &[u8]| {
     let Ok(config) = u.arbitrary::<FuzzEmfConfig>() else {
         return;
     };
-    // 1–4 entries to format through the same formatter instance.
-    let entry_count = match u.arbitrary::<u8>() {
-        Ok(n) => (n % 4) as usize + 1,
-        Err(_) => return,
+    let Ok(entries) = u.arbitrary::<Vec<EmfFuzzEntry>>() else {
+        return;
     };
-    let mut entries = Vec::with_capacity(entry_count);
-    for _ in 0..entry_count {
-        let Ok(entry) = u.arbitrary::<FuzzEntry>() else {
-            return;
-        };
-        let flags: Vec<FuzzMetricFlagMode> = (0..entry.fields.len())
-            .map(|_| u.arbitrary().unwrap_or(FuzzMetricFlagMode::None))
-            .collect();
-        entries.push(EmfFuzzEntry {
-            inner: entry,
-            flag_modes: flags,
-        });
+    if entries.is_empty() {
+        return;
     }
 
     // Regular EMF path, format all entries through the same formatter.
@@ -235,7 +178,7 @@ fuzz_target!(|data: &[u8]| {
     // Sampled EMF path, same entries, fresh formatter.
     let mut sampled = build_emf(&config).with_sampling();
     for (i, entry) in entries.iter().enumerate() {
-        let Ok(rate) = arbitrary_sample_rate(&mut u) else {
+        let Ok(rate) = u.arbitrary::<f32>() else {
             return;
         };
         output.clear();

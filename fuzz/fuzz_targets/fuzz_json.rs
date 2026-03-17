@@ -9,14 +9,13 @@
 
 mod fuzz_entry;
 
-use arbitrary::Unstructured;
 use libfuzzer_sys::fuzz_target;
 
 use metrique_writer_core::format::Format;
 use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_format_json::Json;
 
-use fuzz_entry::{FuzzEntry, arbitrary_sample_rate};
+use fuzz_entry::FuzzEntry;
 
 /// Assert that output is exactly one newline-terminated JSON object.
 ///
@@ -28,7 +27,7 @@ fn assert_valid_json_line(output: &[u8], context: &str) {
         String::from_utf8_lossy(output),
     );
 
-    // Strip the trailing newline; the remainder must contain no newlines.
+    // Strip the trailing newline, the remainder must contain no newlines.
     let body = &output[..output.len() - 1];
     assert!(
         !body.contains(&b'\n'),
@@ -50,22 +49,15 @@ fn assert_valid_json_line(output: &[u8], context: &str) {
 }
 
 fuzz_target!(|data: &[u8]| {
-    let mut u = Unstructured::new(data);
-    // 1–4 entries to format through the same formatter instance.
-    let entry_count = match u.arbitrary::<u8>() {
-        Ok(n) => (n % 4) as usize + 1,
-        Err(_) => return,
+    let mut u = arbitrary::Unstructured::new(data);
+    let Ok(entries) = u.arbitrary::<Vec<FuzzEntry>>() else {
+        return;
     };
-    let mut entries = Vec::with_capacity(entry_count);
-    for _ in 0..entry_count {
-        let Ok(entry) = u.arbitrary::<FuzzEntry>() else {
-            return;
-        };
-        entries.push(entry);
+    if entries.is_empty() {
+        return;
     }
 
-    // Regular (non-sampled) path — format all entries through the same formatter.
-    // We don't care if formatting returns a validation error, but it must never panic.
+    // Regular (non-sampled) path, all entries through the same formatter.
     let mut format = Json::new();
     let mut output = Vec::new();
     for (i, entry) in entries.iter().enumerate() {
@@ -79,7 +71,7 @@ fuzz_target!(|data: &[u8]| {
     // Sampled path, same entries, fresh formatter.
     let mut sampled = Json::new().with_sampling();
     for (i, entry) in entries.iter().enumerate() {
-        let Ok(rate) = arbitrary_sample_rate(&mut u) else {
+        let Ok(rate) = u.arbitrary::<f32>() else {
             return;
         };
         output.clear();
