@@ -57,6 +57,22 @@ impl Drop for CounterGuard<'_> {
     }
 }
 
+impl CloseValue for &CounterGuard<'_> {
+    type Closed = u64;
+
+    fn close(self) -> Self::Closed {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+impl CloseValue for CounterGuard<'_> {
+    type Closed = u64;
+
+    fn close(self) -> Self::Closed {
+        (&self).close()
+    }
+}
+
 impl CloseValue for &'_ Counter {
     type Closed = u64;
 
@@ -121,5 +137,16 @@ mod tests {
         assert_eq!(count, 1);
         drop(guard);
         assert_eq!(COUNTER.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn counter_guard_close_value() {
+        let counter = Counter::new(0);
+        let (guard, _) = counter.increment_scoped();
+        // CloseValue reads the current count (1) without decrementing.
+        assert_eq!((&guard).close(), 1);
+        // Guard still decrements on drop.
+        drop(guard);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
 }
