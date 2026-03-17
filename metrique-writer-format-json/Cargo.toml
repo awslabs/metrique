@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer-format-json"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -13,7 +13,7 @@ itoa = { workspace = true }
 dtoa = { workspace = true }
 rand = { workspace = true }
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.12" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.17" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.19" }
 
 [dev-dependencies]
 metrique-writer-core = { path = "../metrique-writer-core", features = ["private-test-util"] }
