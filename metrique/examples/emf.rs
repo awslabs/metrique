@@ -3,14 +3,12 @@
 
 use std::time::SystemTime;
 
+use metrique::ServiceMetrics;
 use metrique::emf::{Emf, HighStorageResolution, NoMetric};
 use metrique::unit_of_work::metrics;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
-    sink::global_entry_sink,
 };
-
-global_entry_sink! { ServiceMetrics }
 
 #[derive(Debug)]
 #[metrics(

@@ -5,15 +5,12 @@ use core::time::Duration;
 
 use metrique::emf::Emf;
 use metrique::unit_of_work::metrics;
-use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt};
-use metrique::writer::{GlobalEntrySink, sink::global_entry_sink};
-use metrique::{Counter, OnParentDrop, Slot, SlotGuard};
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use metrique::{Counter, OnParentDrop, ServiceMetrics, Slot, SlotGuard};
 use tokio::task;
 use tokio::time::sleep;
 use tokio_util::task::TaskTracker;
 use tracing::{info, warn};
-
-global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {

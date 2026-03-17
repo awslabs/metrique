@@ -8,11 +8,9 @@ use metrique::timers::{EpochMicros, Stopwatch, Timer, Timestamp, TimestampOnClos
 use metrique::unit::Microsecond;
 use metrique::unit_of_work::metrics;
 use metrique::writer::{AttachGlobalEntrySinkExt, EntryIoStreamExt, FormatExt};
-use metrique::writer::{BoxEntrySink, Entry, GlobalEntrySink, sink::global_entry_sink};
-use metrique::{LazySlot, OnParentDrop, SlotGuard};
+use metrique::writer::{BoxEntrySink, Entry, GlobalEntrySink};
+use metrique::{LazySlot, OnParentDrop, ServiceMetrics, SlotGuard};
 use metrique_timesource::{TimeSource, set_time_source};
-
-global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]
 #[derive(Default)]

@@ -13,11 +13,8 @@ use core::default::Default;
 use std::time::{Duration, Instant, SystemTime};
 
 use metrique::emf::Emf;
-use metrique::writer::{
-    AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink, sink::global_entry_sink,
-};
-use metrique::{OnParentDrop, Slot, SlotGuard, unit_of_work::metrics};
-global_entry_sink! { ServiceMetrics }
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use metrique::{OnParentDrop, ServiceMetrics, Slot, SlotGuard, unit_of_work::metrics};
 
 #[metrics]
 struct RequestMetrics {

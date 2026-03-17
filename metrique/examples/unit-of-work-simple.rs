@@ -15,13 +15,12 @@ use std::time::SystemTime;
 use metrique::emf::Emf;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
-    sink::global_entry_sink,
 };
 use metrique::{
+    ServiceMetrics,
     unit::{Count, Microsecond},
     unit_of_work::metrics,
 };
-global_entry_sink! { ServiceMetrics }
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {

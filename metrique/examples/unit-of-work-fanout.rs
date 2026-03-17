@@ -12,11 +12,8 @@ use std::{
 };
 
 use metrique::emf::Emf;
-use metrique::writer::{
-    AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink, sink::global_entry_sink,
-};
-use metrique::{CloseValue, Counter, SharedChild, Slot, unit_of_work::metrics};
-global_entry_sink! { ServiceMetrics }
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
+use metrique::{CloseValue, Counter, ServiceMetrics, SharedChild, Slot, unit_of_work::metrics};
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
