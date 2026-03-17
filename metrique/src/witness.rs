@@ -19,7 +19,7 @@ use crate::CloseValue;
 ///
 /// ```
 /// use std::sync::Arc;
-/// use metrique_core::Witness;
+/// use metrique::Witness;
 ///
 /// let shared = Witness::new(String::from("v1"));
 ///

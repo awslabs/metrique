@@ -14,11 +14,7 @@ mod inflectable_entry_impls;
 mod namestyle;
 
 pub use atomics::{Counter, CounterGuard};
-#[cfg(feature = "witness")]
-mod witness;
 pub use namestyle::NameStyle;
-#[cfg(feature = "witness")]
-pub use witness::{SharedRef, Witness};
 
 /// Close a given value
 ///

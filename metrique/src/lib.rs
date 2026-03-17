@@ -96,7 +96,9 @@ pub use metrique_core::{
     CloseValue, CloseValueRef, Counter, CounterGuard, InflectableEntry, NameStyle,
 };
 #[cfg(feature = "witness")]
-pub use metrique_core::{SharedRef, Witness};
+mod witness;
+#[cfg(feature = "witness")]
+pub use witness::{SharedRef, Witness};
 
 /// Unit types and utilities for metrics.
 ///

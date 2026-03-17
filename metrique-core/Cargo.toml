@@ -8,13 +8,9 @@ description = "Library for working with unit of work metrics - core traits"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
-[features]
-witness = ["dep:arc-swap"]
-
 [dependencies]
 metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.13" }
 itertools = { workspace = true }
-arc-swap = { version = "1", optional = true }
 
 [dev-dependencies]
 metrique = { path = "../metrique" }

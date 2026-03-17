@@ -15,7 +15,7 @@ emf = ["dep:metrique-writer-format-emf"]
 # re-exports metrique-writer-format-json as metrique::json
 json = ["dep:metrique-writer-format-json"]
 # Enables `Witness<T>` for atomically swappable values with snapshot semantics
-witness = ["metrique-core/witness"]
+witness = ["dep:arc-swap"]
 # Human-readable local development format (pretty, JSON, markdown table)
 local-format = ["dep:serde_json", "dep:jiff"]
 # utilities for tests
@@ -47,6 +47,7 @@ ryu = { workspace = true }
 itoa = { workspace = true }
 serde_json = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
+arc-swap = { version = "1", optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
