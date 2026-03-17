@@ -13,6 +13,7 @@ changelog_include = [
     "metrique-writer",
     "metrique-writer-core",
     "metrique-writer-format-emf",
+    "metrique-writer-format-json",
     "metrique-writer-macro",
     "metrique-aggregation"
 ]
