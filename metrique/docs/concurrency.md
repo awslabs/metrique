@@ -9,7 +9,7 @@ asynchronous operations: flush guards, slots, atomics, and shared handles.
 | [`Slot`](crate::Slot) | Collect a value from exactly one sub-task | No (oneshot channel) | No (channel overhead) | [Slot example below](#using-slots-to-collect-values-from-tasks) |
 | [`Counter`](crate::Counter) / atomics | Fan out to many tasks that increment shared counters | Yes | Yes (atomic ops) | [unit-of-work-fanout] |
 | [`Counter::increment_scoped`](crate::Counter::increment_scoped) | Track in-flight operations with automatic decrement on drop | Yes | Yes (atomic ops) | [global-state] |
-| [`Witness`](crate::Witness) | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
+| [`State`](metrique_util::State) | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
 | [`Handle`](crate::AppendAndCloseOnDrop::handle) | Share the full metric entry across tasks via `Arc` | Yes (is an `Arc`) | No (Arc overhead) | [Atomics example below](#using-atomics) |
 
 ## Metrics with complex lifetimes
@@ -203,23 +203,23 @@ fn count_concurrent_ducks() {
 
 <!-- TODO: add an API to spawn a task that will force-flush the entry after a timeout. -->
 
-### Using `Witness` for shared, swappable snapshots
+### Using `State` for shared, swappable snapshots
 
-*Requires the `witness` feature:*
+*Requires the `state` feature from `metrique-util`:*
 
 ```toml
 [dependencies]
-metrique = { version = "0.1", features = ["witness"] }
+metrique-util = { version = "0.1", features = ["state"] }
 ```
 
-[`Witness`](crate::Witness) is an atomically swappable shared value where
+[`State`](metrique_util::State) is an atomically swappable shared value where
 each cloned handle captures a snapshot on first read. Put it in your metrics
 struct, and the emitted metric will always reflect the state that was current
-when the request first read it. See the [`Witness`](crate::Witness) type
+when the request first read it. See the [`State`](metrique_util::State) type
 documentation for the full mental model and API.
 
 See the [global-state example][global-state] for a complete working
-example combining `Witness` with `Counter::increment_scoped`.
+example combining `State` with `Counter::increment_scoped`.
 
 ### Using `OnceLock` for lazily initialized values
 
@@ -260,7 +260,7 @@ async fn handle_request() {
 ```
 
 See the [global-state example][global-state] for a complete working example
-combining `Counter::increment_scoped` with `Witness` for shared state.
+combining `Counter::increment_scoped` with `State` for shared state.
 
 [global-state]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs
 

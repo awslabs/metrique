@@ -92,7 +92,8 @@ unit-of-work record lets you correlate: "this request was throttled because
 
 Several primitives support this:
 
-- [`Witness<T>`](crate::Witness) (requires the `witness` feature): an
+- [`State<T>`](metrique_util::State) (requires the `state` feature on
+  `metrique-util`): an
   atomically swappable value. The first read captures a snapshot, so the
   emitted metric matches the state seen during processing.
 - [`Counter`](crate::Counter): a lock-free counter with

@@ -95,10 +95,6 @@ use std::sync::Arc;
 pub use metrique_core::{
     CloseValue, CloseValueRef, Counter, CounterGuard, InflectableEntry, NameStyle,
 };
-#[cfg(feature = "witness")]
-mod witness;
-#[cfg(feature = "witness")]
-pub use witness::{LatestRef, Witness};
 
 /// Unit types and utilities for metrics.
 ///

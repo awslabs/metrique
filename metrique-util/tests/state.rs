@@ -1,14 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-#![cfg(feature = "witness")]
+#![cfg(feature = "state")]
 
 use std::sync::Arc;
 
-use metrique::Witness;
 use metrique::unit_of_work::metrics;
 use metrique::writer::sink::VecEntrySink;
 use metrique::writer::test_util;
+use metrique_util::State;
 
 #[metrics(subfield_owned)]
 #[derive(Clone, Debug, Default)]
@@ -21,17 +21,17 @@ struct AppConfig {
 struct MyMetrics {
     operation: &'static str,
     #[metrics(flatten)]
-    config: Witness<AppConfig>,
+    config: State<AppConfig>,
     duck_count: usize,
 }
 
 #[test]
-fn witness_flattened() {
+fn state_flattened() {
     let vec_sink = VecEntrySink::new();
 
     let mut metrics = MyMetrics {
         operation: "PutItem",
-        config: Witness::new(AppConfig {
+        config: State::new(AppConfig {
             feature_xyz_enabled: false,
             traffic_policy: "default".into(),
         }),
@@ -51,9 +51,9 @@ fn witness_flattened() {
 
 /// First load() captures the value. Later writes don't affect it.
 #[test]
-fn witness_snapshot_on_first_load() {
+fn state_snapshot_on_first_load() {
     let vec_sink = VecEntrySink::new();
-    let state = Witness::new(AppConfig {
+    let state = State::new(AppConfig {
         feature_xyz_enabled: false,
         traffic_policy: "default".into(),
     });
@@ -83,11 +83,11 @@ fn witness_snapshot_on_first_load() {
 }
 
 /// Simulates concurrent requests straddling a config reload.
-/// Each request clones the Witness and loads at different times.
+/// Each request clones the State and loads at different times.
 #[test]
-fn witness_across_config_reload() {
+fn state_across_config_reload() {
     let vec_sink = VecEntrySink::new();
-    let state = Witness::new(AppConfig {
+    let state = State::new(AppConfig {
         feature_xyz_enabled: false,
         traffic_policy: "default".into(),
     });
@@ -151,9 +151,9 @@ fn witness_across_config_reload() {
 
 /// Spawns tasks that load config at different times relative to a swap.
 #[tokio::test]
-async fn witness_spawned_tasks_across_config_reload() {
+async fn state_spawned_tasks_across_config_reload() {
     let vec_sink = VecEntrySink::new();
-    let state: &'static Witness<AppConfig> = Box::leak(Box::new(Witness::new(AppConfig {
+    let state: &'static State<AppConfig> = Box::leak(Box::new(State::new(AppConfig {
         feature_xyz_enabled: false,
         traffic_policy: "default".into(),
     })));

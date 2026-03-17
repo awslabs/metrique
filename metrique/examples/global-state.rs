@@ -9,22 +9,22 @@
 //!
 //! This example shows two approaches:
 //!
-//! 1. **Borrowed (`&'static`)**: `Counter` and `OnceLock<Witness<T>>`
+//! 1. **Borrowed (`&'static`)**: `Counter` and `OnceLock<State<T>>`
 //!    live in statics. Cheap, no `Arc` overhead, but not injectable
 //!    for tests. The `OnceLock` here is purely for lazy initialization
-//!    of the `Witness`; the snapshot behavior comes from `Witness` itself.
+//!    of the `State`; the snapshot behavior comes from `State` itself.
 //!
 //! 2. **Owned (clone-per-request)**: state lives in an `AppState` struct
 //!    that is cloned into each request's metrics. Cloning shares the
 //!    underlying `Counter` (via `Arc`) and gives each request a fresh
-//!    `Witness` snapshot slot. More flexible, easy to inject in tests.
+//!    `State` snapshot slot. More flexible, easy to inject in tests.
 //!
 //! Both patterns flatten shared state into the per-request metric, so
 //! every emitted record includes the current counter value, config
 //! snapshot, etc.
 //!
 //! Key primitives used:
-//! - [`Witness<T>`](metrique::Witness): atomically swappable value with
+//! - [`State<T>`](metrique_util::State): atomically swappable value with
 //!   snapshot-on-first-read semantics.
 //! - [`Counter::increment_scoped`](metrique::Counter::increment_scoped):
 //!   in-flight tracking with automatic decrement on drop.
@@ -35,31 +35,32 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use metrique::{
-    Counter, ServiceMetrics, Witness,
+    Counter, ServiceMetrics,
     emf::Emf,
     unit_of_work::metrics,
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
+use metrique_util::State;
 
 // ---------------------------------------------------------------------------
 // Borrowed (static) state
 // ---------------------------------------------------------------------------
 
 static IN_FLIGHT: Counter = Counter::new(0);
-static NODE_GROUP: OnceLock<Witness<String>> = OnceLock::new();
+static NODE_GROUP: OnceLock<State<String>> = OnceLock::new();
 
 fn init_statics() {
     NODE_GROUP.get_or_init(|| {
-        let w = Witness::new("unknown".to_string());
+        let w = State::new("unknown".to_string());
         tokio::runtime::Handle::current().spawn(refresh_node_group_forever(w.clone()));
         w
     });
 }
 
-// subfield_owned: CloseValueRef can't close `&&Witness/Counter`, only `&Witness/Counter`
+// subfield_owned: CloseValueRef can't close `&&State/Counter`, only `&State/Counter`
 #[metrics(subfield_owned)]
 struct BorrowedState {
-    node_group: &'static OnceLock<Witness<String>>,
+    node_group: &'static OnceLock<State<String>>,
     in_flight: &'static Counter,
 }
 
@@ -76,13 +77,13 @@ impl BorrowedState {
 // Owned (clone-per-request) state
 // ---------------------------------------------------------------------------
 
-// Cloning shares the Counter (via Arc) and gives a fresh Witness snapshot slot.
+// Cloning shares the Counter (via Arc) and gives a fresh State snapshot slot.
 #[derive(Clone)]
 #[metrics(subfield_owned)]
 struct AppState {
     active_requests: Arc<Counter>,
     #[metrics(flatten)]
-    app_config: Witness<AppConfig>,
+    app_config: State<AppConfig>,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -104,7 +105,7 @@ impl AppState {
     fn initialize() -> Self {
         let state = Self {
             active_requests: Arc::new(Counter::default()),
-            app_config: Witness::new(AppConfig::default()),
+            app_config: State::new(AppConfig::default()),
         };
 
         tokio::task::spawn(refresh_app_config_forever(state.clone()));
@@ -188,12 +189,12 @@ async fn do_some_work() {
 // Background refresh tasks
 // ---------------------------------------------------------------------------
 
-async fn refresh_node_group_forever(witness: Witness<String>) {
+async fn refresh_node_group_forever(state: State<String>) {
     let mut interval = tokio::time::interval(Duration::from_secs(30));
     loop {
         interval.tick().await;
         // load from disk, remote, etc
-        witness.store(Arc::new("us-east-1a".to_string()));
+        state.store(Arc::new("us-east-1a".to_string()));
     }
 }
 

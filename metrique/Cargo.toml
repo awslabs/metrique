@@ -14,8 +14,6 @@ default = ["service-metrics"]
 emf = ["dep:metrique-writer-format-emf"]
 # re-exports metrique-writer-format-json as metrique::json
 json = ["dep:metrique-writer-format-json"]
-# Enables `Witness<T>` for atomically swappable values with snapshot semantics
-witness = ["dep:arc-swap"]
 # Human-readable local development format (pretty, JSON, markdown table)
 local-format = ["dep:serde_json", "dep:jiff"]
 # utilities for tests
@@ -47,7 +45,6 @@ ryu = { workspace = true }
 itoa = { workspace = true }
 serde_json = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
-arc-swap = { version = "1", optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
@@ -70,6 +67,7 @@ tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
 metrique = { path = ".", features = ["emf", "test-util", "local-format"] }
+metrique-util = { path = "../metrique-util", features = ["state"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -78,7 +76,7 @@ rstest = { workspace = true }
 
 [[example]]
 name = "global-state"
-required-features = ["witness"]
+required-features = ["emf", "service-metrics"]
 doc-scrape-examples = true
 
 [[example]]
