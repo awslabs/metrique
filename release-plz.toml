@@ -10,6 +10,7 @@ changelog_include = [
     "metrique-metricsrs",
     "metrique-service-metrics",
     "metrique-timesource",
+    "metrique-util",
     "metrique-writer",
     "metrique-writer-core",
     "metrique-writer-format-emf",

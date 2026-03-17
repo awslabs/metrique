@@ -8,6 +8,8 @@ asynchronous operations: flush guards, slots, atomics, and shared handles.
 | [`FlushGuard`](crate::FlushGuard) / [`ForceFlushGuard`](crate::ForceFlushGuard) | Delay emission until background work completes | N/A (type-erased) | Yes | [unit-of-work-fanout] |
 | [`Slot`](crate::Slot) | Collect a value from exactly one sub-task | No (oneshot channel) | No (channel overhead) | [Slot example below](#using-slots-to-collect-values-from-tasks) |
 | [`Counter`](crate::Counter) / atomics | Fan out to many tasks that increment shared counters | Yes | Yes (atomic ops) | [unit-of-work-fanout] |
+| [`Counter::increment_scoped`](crate::Counter::increment_scoped) | Track in-flight operations with automatic decrement on drop | Yes | Yes (atomic ops) | [global-state] |
+| [`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
 | [`Handle`](crate::AppendAndCloseOnDrop::handle) | Share the full metric entry across tasks via `Arc` | Yes (is an `Arc`) | No (Arc overhead) | [Atomics example below](#using-atomics) |
 
 ## Metrics with complex lifetimes
@@ -200,5 +202,66 @@ fn count_concurrent_ducks() {
 ```
 
 <!-- TODO: add an API to spawn a task that will force-flush the entry after a timeout. -->
+
+### Using `State` for shared, swappable snapshots
+
+*Requires the `state` feature from `metrique-util`:*
+
+```toml
+[dependencies]
+metrique-util = { version = "0.1", features = ["state"] }
+```
+
+[`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) is an atomically swappable shared value where
+each cloned handle captures a snapshot on first read. Put it in your metrics
+struct, and the emitted metric will always reflect the state that was current
+when the request first read it. See the [`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) type
+documentation for the full mental model and API.
+
+See the [global-state example][global-state] for a complete working
+example combining `State` with `Counter::increment_scoped`.
+
+### Using `OnceLock` for lazily initialized values
+
+[`OnceLock<T>`](std::sync::OnceLock) implements [`CloseValue`](crate::CloseValue)
+when `T` does. It closes as `Option<T::Closed>`, returning `None` if the lock
+has not been initialized. This is useful for values that are set once at startup
+(or on first use) and then read for the lifetime of the process.
+
+```rust,ignore
+use std::sync::OnceLock;
+
+static INSTANCE_ID: OnceLock<String> = OnceLock::new();
+
+#[metrics(subfield_owned)]
+struct ServerInfo {
+    instance_id: &'static OnceLock<String>,
+}
+```
+
+### Tracking in-flight operations with `Counter::increment_scoped`
+
+[`Counter::increment_scoped`](crate::Counter::increment_scoped) increments a
+counter by 1 and returns a guard ([`CounterGuard`](crate::CounterGuard)) that
+decrements it on drop, along with the new count. This is useful for tracking
+how many operations are in flight at any given time.
+
+```rust,ignore
+use metrique::Counter;
+
+static IN_FLIGHT: Counter = Counter::new(0);
+
+async fn handle_request() {
+    let (_guard, count) = IN_FLIGHT.increment_scoped();
+    // count is the number of in-flight requests (including this one)
+    do_work().await;
+    // guard drops here, decrementing the counter
+}
+```
+
+See the [global-state example][global-state] for a complete working example
+combining `Counter::increment_scoped` with `State` for shared state.
+
+[global-state]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs
 
 [unit-of-work-fanout]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-fanout.rs

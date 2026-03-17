@@ -67,15 +67,16 @@ tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
 metrique = { path = ".", features = ["emf", "test-util", "local-format"] }
+metrique-util = { path = "../metrique-util", features = ["state"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 toml = { workspace = true }
 rstest = { workspace = true }
 
-# We need to name one example so that our examples that use dev-dependencies get scraped
 [[example]]
-name = "unit-of-work-simple"
+name = "global-state"
+required-features = ["emf", "service-metrics"]
 doc-scrape-examples = true
 
 [[example]]
