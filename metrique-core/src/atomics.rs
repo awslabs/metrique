@@ -57,6 +57,7 @@ impl Drop for CounterGuard<'_> {
     }
 }
 
+#[diagnostic::do_not_recommend]
 impl CloseValue for &CounterGuard<'_> {
     type Closed = u64;
 
@@ -65,6 +66,7 @@ impl CloseValue for &CounterGuard<'_> {
     }
 }
 
+#[diagnostic::do_not_recommend]
 impl CloseValue for CounterGuard<'_> {
     type Closed = u64;
 
