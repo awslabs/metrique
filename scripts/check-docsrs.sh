@@ -21,6 +21,38 @@ generate_patch_entries() {
         '.packages[] | select(.name != $skip) | "\(.name) = { path = \"\(.manifest_path | rtrimstr("/Cargo.toml"))\" }"'
 }
 
+# cargo package strips doc-scrape-examples from [[example]] sections, but
+# docs.rs reads it from the published Cargo.toml. Restore the flag so the
+# packaged build faithfully reproduces docs.rs behavior (examples that
+# reference dev-only crates will fail to scrape, just like on docs.rs).
+restore_doc_scrape_examples() {
+    local source_toml=$1
+    local packaged_toml=$2
+
+    # Find example names that have doc-scrape-examples = true in the source.
+    # Uses awk to track [[example]] sections: when we see the flag, emit the
+    # most recent name.
+    local names
+    names=$(awk '
+        /^\[\[example\]\]/     { name="" }
+        /^name *= *"/ { match($0, /"([^"]+)"/, m); name=m[1] }
+        /^doc-scrape-examples *= *true/ { if (name != "") print name }
+    ' "$source_toml")
+
+    local ex
+    for ex in $names; do
+        # Only inject if not already present (some cargo versions preserve it).
+        if ! awk -v name="$ex" '
+            /^\[\[example\]\]/ { if (!found_scrape) found_name=0 }
+            /^name *= *"/ { match($0, /"([^"]+)"/, m); if (m[1]==name) found_name=1 }
+            found_name && /^doc-scrape-examples *= *true/ { found_scrape=1 }
+            END { exit !found_scrape }
+        ' "$packaged_toml"; then
+            sed -i "/^name = \"$ex\"/a doc-scrape-examples = true" "$packaged_toml"
+        fi
+    done
+}
+
 check_package() {
     local pkg_name=$1
     local pkg_version=$2
@@ -28,9 +60,10 @@ check_package() {
 
     echo "→ Checking docs.rs build for $pkg_name..."
 
-    # cargo package + docs-rs on the packaged crate catches workspace unification bugs.
-    # Falls back to building directly from the workspace when cargo package fails
-    # (e.g. unpublished crates or features not yet on crates.io).
+    # cargo package + docs-rs on the packaged crate catches workspace unification bugs
+    # and dev-dependency leaks into scraped examples. Falls back to building directly
+    # from the workspace only when cargo package itself fails (e.g. unpublished crates
+    # or features not yet on crates.io).
     if cargo package -p "$pkg_name" --allow-dirty --no-verify 2>/dev/null; then
         # Extract the .crate tarball (cargo package --no-verify doesn't extract)
         rm -rf "$pkg_dir"
@@ -39,14 +72,17 @@ check_package() {
         # Patch the extracted Cargo.toml so workspace siblings resolve locally.
         generate_patch_entries "$pkg_name" >> "$pkg_dir/Cargo.toml"
 
-        if (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET"); then
-            return
-        fi
-        echo "  ⚠ packaged docs-rs build failed, falling back to workspace build"
-    else
-        echo "  ⚠ cargo package failed, falling back to workspace build"
+        # Restore doc-scrape-examples = true that cargo package strips.
+        local source_toml
+        source_toml=$(cargo metadata --no-deps --format-version 1 | \
+            jq -r --arg name "$pkg_name" '.packages[] | select(.name == $name) | .manifest_path')
+        restore_doc_scrape_examples "$source_toml" "$pkg_dir/Cargo.toml"
+
+        (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET")
+        return
     fi
 
+    echo "  ⚠ cargo package failed, falling back to workspace build"
     cargo +nightly docs-rs -p "$pkg_name" --target "$TARGET"
 }
 

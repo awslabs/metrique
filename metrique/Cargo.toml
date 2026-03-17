@@ -77,7 +77,8 @@ rstest = { workspace = true }
 [[example]]
 name = "global-state"
 required-features = ["emf", "service-metrics"]
-doc-scrape-examples = true
+# Uses metrique-util (dev-dep only), which is unavailable during doc scraping on docs.rs
+doc-scrape-examples = false
 
 [[example]]
 name = "json"
