@@ -1,6 +1,6 @@
 [package]
 name = "metrique-util"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
@@ -13,7 +13,7 @@ default = []
 state = ["dep:arc-swap"]
 
 [dependencies]
-metrique-core = { path = "../metrique-core", version = "0.1.16" }
+metrique-core = { path = "../metrique-core", version = "0.1.17" }
 arc-swap = { version = "1", optional = true }
 
 [dev-dependencies]

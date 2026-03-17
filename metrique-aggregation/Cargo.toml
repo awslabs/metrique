@@ -1,6 +1,6 @@
 [package]
 name = "metrique-aggregation"
-version = "0.1.8"
+version = "0.1.9"
 edition = "2024"
 rust-version = "1.89" # build.yml
 license = "Apache-2.0"
@@ -10,8 +10,8 @@ readme = "README.md"
 
 [dependencies]
 metrique = { path = "../metrique", version = "0.1" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.18" }
-metrique-core = { path = "../metrique-core", version = "0.1.16" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.19" }
+metrique-core = { path = "../metrique-core", version = "0.1.17" }
 metrique-macro = { path = "../metrique-macro", version = "0.1.14" }
 smallvec.workspace = true
 histogram.workspace = true

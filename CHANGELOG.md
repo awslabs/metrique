@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.21](https://github.com/awslabs/metrique/compare/metrique-v0.1.20...metrique-v0.1.21) - 2026-03-17
+
+### Added
+
+- `metrique-util` crate with `State<T>` (feature: `state`): atomically swappable shared value with snapshot-on-first-read semantics ([#235](https://github.com/awslabs/metrique/pull/235))
+
+  ```rust
+  let shared = State::new(AppConfig::default());
+  shared.store(Arc::new(new_config)); // background task swaps in new config
+  let request = shared.clone();       // each request clones a handle
+  let config = request.snapshot();    // first snapshot() pins the value
+  ```
+
+- `Counter::increment_scoped`: returns a guard that decrements on drop, for tracking in-flight work ([#235](https://github.com/awslabs/metrique/pull/235))
+
+  ```rust
+  static IN_FLIGHT: Counter = Counter::new(0);
+  let _guard = IN_FLIGHT.increment_scoped(); // +1 now, -1 on drop
+  ```
+
+- `Counter::new` is now `const fn`, enabling `static Counter` declarations ([#235](https://github.com/awslabs/metrique/pull/235))
+- `CloseValue` impl for `CounterGuard` and `OnceLock<T>` ([#235](https://github.com/awslabs/metrique/pull/235))
+- Pure JSON output format via `metrique::json::Json` ([#224](https://github.com/awslabs/metrique/pull/224))
+
+  ```rust
+  let _handle = ServiceMetrics::attach_to_stream(
+      Json::new().output_to_makewriter(|| std::io::stdout().lock()),
+  );
+  // {"timestamp":...,"metrics":{...},"properties":{...}}
+  ```
+
+- `skip_validate_dimensions_exist` setter on `EmfBuilder` ([#223](https://github.com/awslabs/metrique/pull/223))
+
+### Fixed
+
+- EMF produced trailing commas when distribution ends with skipped observation ([#222](https://github.com/awslabs/metrique/pull/222))
+
+### Other
+
+- Add [`_guide`](https://docs.rs/metrique/latest/metrique/_guide/) module with cookbook, concurrency, sinks, sampling, testing ([#219](https://github.com/awslabs/metrique/pull/219), [#232](https://github.com/awslabs/metrique/pull/232))
+- *(examples)* add global-state example combining `State`, `Counter::increment_scoped`, and `OnceLock` ([#235](https://github.com/awslabs/metrique/pull/235))
+- *(examples)* use metrique::ServiceMetrics instead of global_entry_sink! ([#241](https://github.com/awslabs/metrique/pull/241))
+- Add metrique json feature and formatter re-export ([#242](https://github.com/awslabs/metrique/pull/242))
+
 ## [0.1.20](https://github.com/awslabs/metrique/compare/metrique-v0.1.19...metrique-v0.1.20) - 2026-03-04
 
 ### Added
