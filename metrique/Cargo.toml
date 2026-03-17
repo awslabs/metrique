@@ -12,6 +12,8 @@ rust-version = "1.89" # See build.yml for why this MSRV
 default = ["service-metrics"]
 # re-exports metrique-writer-format-emf as metrique::emf
 emf = ["dep:metrique-writer-format-emf"]
+# re-exports metrique-writer-format-json as metrique::json
+json = ["dep:metrique-writer-format-json"]
 # Human-readable local development format (pretty, JSON, markdown table)
 local-format = ["dep:serde_json", "dep:jiff"]
 # utilities for tests
@@ -35,6 +37,7 @@ metrique-metricsrs = { path = "../metrique-metricsrs", version = "0.1.19", optio
 metrique-service-metrics = { path = "../metrique-service-metrics", version = "0.1.17", optional = true }
 metrique-timesource = { path = "../metrique-timesource", version = "0.1.8" }
 metrique-writer-format-emf = { path = "../metrique-writer-format-emf", version = "0.1.17", optional = true }
+metrique-writer-format-json = { path = "../metrique-writer-format-json", version = "0.1.0", optional = true }
 metrique-writer-macro = { path = "../metrique-writer-macro", version = "0.1.7" }
 tracing-appender = { workspace = true, optional = true }
 tracing-subscriber = { workspace = true, optional = true }
@@ -74,6 +77,10 @@ rstest = { workspace = true }
 [[example]]
 name = "unit-of-work-simple"
 doc-scrape-examples = true
+
+[[example]]
+name = "json"
+required-features = ["json"]
 
 [package.metadata.docs.rs]
 all-features = true

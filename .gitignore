@@ -1,3 +1,8 @@
 /target
 /metrique/my
 /metrique-service-metrics/my
+
+# Fuzzing
+fuzz/target
+fuzz/artifacts
+fuzz/corpus
