@@ -28,32 +28,26 @@ check_package() {
 
     echo "→ Checking docs.rs build for $pkg_name..."
 
-    # Package without verification — we need to patch Cargo.toml before building.
-    # cargo package validates features against crates.io, which fails when
-    # workspace siblings introduce new features that haven't been published
-    # yet. Fall back to building docs directly from the workspace in that case.
-    local pkg_err
-    if ! pkg_err=$(cargo package -p "$pkg_name" --allow-dirty --no-verify 2>&1); then
-        if echo "$pkg_err" | grep -q "does not have that feature"; then
-            echo "  ⚠ cargo package failed (unpublished feature), falling back to workspace build"
-            local manifest_dir
-            manifest_dir=$(cargo metadata --no-deps --format-version 1 | \
-                jq -r ".packages[] | select(.name == \"$pkg_name\") | .manifest_path | rtrimstr(\"/Cargo.toml\")")
-            (cd "$manifest_dir" && cargo +nightly docs-rs --target "$TARGET")
+    # cargo package + docs-rs on the packaged crate catches workspace unification bugs.
+    # Falls back to building directly from the workspace when cargo package fails
+    # (e.g. unpublished crates or features not yet on crates.io).
+    if cargo package -p "$pkg_name" --allow-dirty --no-verify 2>/dev/null; then
+        # Extract the .crate tarball (cargo package --no-verify doesn't extract)
+        rm -rf "$pkg_dir"
+        tar xzf "target/package/$pkg_name-$pkg_version.crate" -C target/package/
+
+        # Patch the extracted Cargo.toml so workspace siblings resolve locally.
+        generate_patch_entries "$pkg_name" >> "$pkg_dir/Cargo.toml"
+
+        if (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET"); then
             return
         fi
-        echo "$pkg_err" >&2
-        return 1
+        echo "  ⚠ packaged docs-rs build failed, falling back to workspace build"
+    else
+        echo "  ⚠ cargo package failed, falling back to workspace build"
     fi
 
-    # Extract the .crate tarball (cargo package --no-verify doesn't extract)
-    rm -rf "$pkg_dir"
-    tar xzf "target/package/$pkg_name-$pkg_version.crate" -C target/package/
-
-    # Patch the extracted Cargo.toml so workspace siblings resolve locally.
-    generate_patch_entries "$pkg_name" >> "$pkg_dir/Cargo.toml"
-
-    (cd "$pkg_dir" && cargo +nightly docs-rs --target "$TARGET")
+    cargo +nightly docs-rs -p "$pkg_name" --target "$TARGET"
 }
 
 if [ $# -eq 0 ]; then

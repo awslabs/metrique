@@ -92,7 +92,7 @@ unit-of-work record lets you correlate: "this request was throttled because
 
 Several primitives support this:
 
-- [`State<T>`](metrique_util::State) (requires the `state` feature on
+- [`State<T>`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) (requires the `state` feature on
   `metrique-util`): an
   atomically swappable value. The first read captures a snapshot, so the
   emitted metric matches the state seen during processing.

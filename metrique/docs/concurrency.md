@@ -9,7 +9,7 @@ asynchronous operations: flush guards, slots, atomics, and shared handles.
 | [`Slot`](crate::Slot) | Collect a value from exactly one sub-task | No (oneshot channel) | No (channel overhead) | [Slot example below](#using-slots-to-collect-values-from-tasks) |
 | [`Counter`](crate::Counter) / atomics | Fan out to many tasks that increment shared counters | Yes | Yes (atomic ops) | [unit-of-work-fanout] |
 | [`Counter::increment_scoped`](crate::Counter::increment_scoped) | Track in-flight operations with automatic decrement on drop | Yes | Yes (atomic ops) | [global-state] |
-| [`State`](metrique_util::State) | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
+| [`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
 | [`Handle`](crate::AppendAndCloseOnDrop::handle) | Share the full metric entry across tasks via `Arc` | Yes (is an `Arc`) | No (Arc overhead) | [Atomics example below](#using-atomics) |
 
 ## Metrics with complex lifetimes
@@ -212,10 +212,10 @@ fn count_concurrent_ducks() {
 metrique-util = { version = "0.1", features = ["state"] }
 ```
 
-[`State`](metrique_util::State) is an atomically swappable shared value where
+[`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) is an atomically swappable shared value where
 each cloned handle captures a snapshot on first read. Put it in your metrics
 struct, and the emitted metric will always reflect the state that was current
-when the request first read it. See the [`State`](metrique_util::State) type
+when the request first read it. See the [`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) type
 documentation for the full mental model and API.
 
 See the [global-state example][global-state] for a complete working
