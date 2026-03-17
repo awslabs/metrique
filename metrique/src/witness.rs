@@ -23,10 +23,10 @@ use crate::CloseValue;
 /// [`store`](Witness::store) to swap in new values; each request
 /// [`clone`](Clone::clone)s a handle, and the snapshot is captured
 /// automatically when the metric is closed for emission. You only
-/// need to call [`load`](Witness::load) explicitly if your request
-/// handler needs the value for its own logic (e.g. branching on a
-/// feature flag); calling `load` early also pins the snapshot to
-/// that point rather than emission time.
+/// need to call [`snapshot`](Witness::snapshot) explicitly if your
+/// request handler needs the value for its own logic (e.g. branching
+/// on a feature flag); calling `snapshot` early also pins the captured
+/// value to that point rather than emission time.
 ///
 /// ```rust,ignore
 /// // Background task refreshes config on a loop.
@@ -47,8 +47,8 @@ use crate::CloseValue;
 /// # How it works
 ///
 /// All clones of a `Witness` share the same underlying value. Each clone
-/// has its own snapshot slot: the first call to [`load`](Witness::load)
-/// captures the current value, and all subsequent loads on that handle
+/// has its own snapshot slot: the first call to [`snapshot`](Witness::snapshot)
+/// captures the current value, and all subsequent calls on that handle
 /// return the same `Arc<T>`. Calling [`clone`](Clone::clone) produces a
 /// fresh handle with an empty snapshot slot.
 ///
@@ -57,7 +57,7 @@ use crate::CloseValue;
 /// a handle per request so each request gets its own snapshot.
 ///
 /// For hot paths that need the latest value (bypassing the snapshot and
-/// `Arc` clone), use [`shared_ref`](Witness::shared_ref).
+/// `Arc` clone), use [`latest`](Witness::latest).
 ///
 /// ```
 /// use std::sync::Arc;
@@ -68,38 +68,38 @@ use crate::CloseValue;
 /// // Clone for a per-request handle.
 /// let request = shared.clone();
 ///
-/// // First load captures "v1".
-/// assert_eq!(*request.load(), "v1");
+/// // First snapshot captures "v1".
+/// assert_eq!(*request.snapshot(), "v1");
 ///
 /// // Background task updates the shared state.
 /// shared.store(Arc::new(String::from("v2")));
 ///
 /// // The request handle still sees "v1".
-/// assert_eq!(*request.load(), "v1");
+/// assert_eq!(*request.snapshot(), "v1");
 ///
-/// // shared_ref always sees the latest.
-/// assert_eq!(*request.shared_ref(), "v2");
+/// // latest() always sees the current value.
+/// assert_eq!(*request.latest(), "v2");
 ///
 /// // A new clone captures the updated value.
 /// let next_request = shared.clone();
-/// assert_eq!(*next_request.load(), "v2");
+/// assert_eq!(*next_request.snapshot(), "v2");
 /// ```
 pub struct Witness<T> {
     swap: Arc<arc_swap::ArcSwap<T>>,
-    snapshot: OnceLock<Arc<T>>,
+    snap: OnceLock<Arc<T>>,
 }
 
-/// A cheap, short-lived reference returned by [`Witness::shared_ref`].
+/// A cheap, short-lived reference returned by [`Witness::latest`].
 ///
 /// Always reads the latest value (bypasses the snapshot). This means
 /// that the guarded value might differ from metrics emitted by its related
 /// [`Witness`].
 ///
 /// Derefs to `T` without cloning. Not `Send`; for cross-task use, call
-/// [`load`](Witness::load) instead.
-pub struct SharedRef<T>(arc_swap::Guard<Arc<T>>);
+/// [`snapshot`](Witness::snapshot) instead.
+pub struct LatestRef<T>(arc_swap::Guard<Arc<T>>);
 
-impl<T> std::ops::Deref for SharedRef<T> {
+impl<T> std::ops::Deref for LatestRef<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.0
@@ -111,36 +111,38 @@ impl<T> Witness<T> {
     pub fn new(val: T) -> Self {
         Self {
             swap: Arc::new(arc_swap::ArcSwap::from_pointee(val)),
-            snapshot: OnceLock::new(),
+            snap: OnceLock::new(),
         }
     }
 
     /// Atomically replace the shared value.
     ///
     /// All handles (including this one) will see the new value on their
-    /// next [`load`](Witness::load), unless they have already captured a
-    /// snapshot. A handle that has already called `load` is unaffected;
-    /// its snapshot is immutable.
+    /// next [`snapshot`](Witness::snapshot), unless they have already
+    /// captured one. A handle that has already called `snapshot` is
+    /// unaffected; its captured value is immutable.
     pub fn store(&self, val: Arc<T>) {
         self.swap.store(val);
     }
 
-    /// Load the value. The first call captures a snapshot; subsequent
-    /// calls return the same `Arc<T>`.
-    pub fn load(&self) -> Arc<T> {
-        self.snapshot.get_or_init(|| self.swap.load_full()).clone()
+    /// Capture and return a snapshot of the current value.
+    ///
+    /// The first call captures the value; subsequent calls return the
+    /// same `Arc<T>`.
+    pub fn snapshot(&self) -> Arc<T> {
+        self.snap.get_or_init(|| self.swap.load_full()).clone()
     }
 
     /// Get a cheap guard for the latest shared value, bypassing the snapshot.
-    /// The returned value may differ from what [`load`](Witness::load) returns
-    /// (and from what metrics will emit on close).
+    /// The returned value may differ from what [`snapshot`](Witness::snapshot)
+    /// returns (and from what metrics will emit on close).
     ///
-    /// Use [`load`](Witness::load) for a `Send` handle or when you need
-    /// snapshot consistency.
+    /// Use [`snapshot`](Witness::snapshot) for a `Send` handle or when you
+    /// need snapshot consistency.
     ///
-    /// Returns a [`SharedRef`] that derefs to `T`.
-    pub fn shared_ref(&self) -> SharedRef<T> {
-        SharedRef(self.swap.load())
+    /// Returns a [`LatestRef`] that derefs to `T`.
+    pub fn latest(&self) -> LatestRef<T> {
+        LatestRef(self.swap.load())
     }
 }
 
@@ -150,7 +152,7 @@ impl<T> Clone for Witness<T> {
     fn clone(&self) -> Self {
         Self {
             swap: self.swap.clone(),
-            snapshot: OnceLock::new(),
+            snap: OnceLock::new(),
         }
     }
 }
@@ -159,7 +161,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Witness<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut d = f.debug_struct("Witness");
         d.field("current", &*self.swap.load());
-        if let Some(snap) = self.snapshot.get() {
+        if let Some(snap) = self.snap.get() {
             d.field("snapshot", snap);
         }
         d.finish()
@@ -174,7 +176,7 @@ where
     type Closed = T::Closed;
 
     fn close(self) -> Self::Closed {
-        Arc::unwrap_or_clone(self.load()).close()
+        Arc::unwrap_or_clone(self.snapshot()).close()
     }
 }
 
@@ -186,7 +188,7 @@ where
     type Closed = T::Closed;
 
     fn close(self) -> Self::Closed {
-        Arc::unwrap_or_clone(self.load()).close()
+        Arc::unwrap_or_clone(self.snapshot()).close()
     }
 }
 
@@ -220,51 +222,51 @@ mod tests {
     }
 
     #[test]
-    fn first_load_captures() {
+    fn first_snapshot_captures() {
         let x = Witness::new(42u64);
-        assert_eq!(*x.load(), 42);
+        assert_eq!(*x.snapshot(), 42);
         x.store(Arc::new(100));
         // Still returns the captured value.
-        assert_eq!(*x.load(), 42);
+        assert_eq!(*x.snapshot(), 42);
     }
 
     #[test]
-    fn store_before_load() {
+    fn store_before_snapshot() {
         let x = Witness::new(42u64);
         x.store(Arc::new(100));
-        assert_eq!(*x.load(), 100);
+        assert_eq!(*x.snapshot(), 100);
     }
 
     #[test]
-    fn store_after_load_updates_shared() {
+    fn store_after_snapshot_updates_shared() {
         let x = Witness::new(42u64);
-        x.load();
+        x.snapshot();
         x.store(Arc::new(100));
         // Snapshot is unchanged.
-        assert_eq!(*x.load(), 42);
+        assert_eq!(*x.snapshot(), 42);
         // But a fresh clone sees the new value.
-        assert_eq!(*x.clone().load(), 100);
+        assert_eq!(*x.clone().snapshot(), 100);
     }
 
     #[test]
-    fn shared_ref_sees_latest() {
+    fn latest_sees_current() {
         let x = Witness::new(42u64);
         x.store(Arc::new(100));
-        assert_eq!(*x.shared_ref(), 100);
+        assert_eq!(*x.latest(), 100);
     }
 
     #[test]
     fn clone_gets_fresh_snapshot() {
         let x = Witness::new(42u64);
-        x.load(); // capture 42
+        x.snapshot(); // capture 42
 
         let writer = x.clone();
         writer.store(Arc::new(100));
 
         let reader = x.clone();
-        assert_eq!(*reader.load(), 100);
+        assert_eq!(*reader.snapshot(), 100);
         // Original still has 42.
-        assert_eq!(*x.load(), 42);
+        assert_eq!(*x.snapshot(), 42);
     }
 
     #[test]
@@ -272,8 +274,8 @@ mod tests {
         let x = Witness::new(42u64);
         let cloned = x.clone();
         x.store(Arc::new(100));
-        assert_eq!(*x.shared_ref(), 100);
-        assert_eq!(*cloned.shared_ref(), 100);
+        assert_eq!(*x.latest(), 100);
+        assert_eq!(*cloned.latest(), 100);
     }
 
     #[test]
@@ -287,7 +289,7 @@ mod tests {
     #[test]
     fn debug_with_snapshot() {
         let x = Witness::new(42u64);
-        x.load();
+        x.snapshot();
         let dbg = format!("{:?}", x);
         assert!(dbg.contains("snapshot"));
     }

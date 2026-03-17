@@ -66,7 +66,7 @@ fn witness_snapshot_on_first_load() {
     .append_on_drop(vec_sink.clone());
 
     // Read config in business logic (captures the snapshot).
-    let _config = metrics.config.load();
+    let _config = metrics.config.snapshot();
 
     // Update after the snapshot was captured.
     state.store(Arc::new(AppConfig {
@@ -99,7 +99,7 @@ fn witness_across_config_reload() {
         duck_count: 1,
     }
     .append_on_drop(vec_sink.clone());
-    let _config = req1.config.load();
+    let _config = req1.config.snapshot();
 
     // req2: clone, load, and close before the swap
     let req2 = MyMetrics {
@@ -108,7 +108,7 @@ fn witness_across_config_reload() {
         duck_count: 2,
     }
     .append_on_drop(vec_sink.clone());
-    let _config = req2.config.load();
+    let _config = req2.config.snapshot();
     drop(req2);
 
     // Config reload
@@ -124,7 +124,7 @@ fn witness_across_config_reload() {
         duck_count: 3,
     }
     .append_on_drop(vec_sink.clone());
-    let _config = req3.config.load();
+    let _config = req3.config.snapshot();
     drop(req3);
 
     // req1 closes after the swap, but its snapshot is from before
@@ -170,7 +170,7 @@ async fn witness_spawned_tasks_across_config_reload() {
             duck_count: 1,
         }
         .append_on_drop(sink);
-        let _config = metrics.config.load();
+        let _config = metrics.config.snapshot();
 
         pre_swap_tx.send(()).unwrap();
         swap_done_rx.await.unwrap();
@@ -188,7 +188,7 @@ async fn witness_spawned_tasks_across_config_reload() {
             duck_count: 2,
         }
         .append_on_drop(sink);
-        let _config = metrics.config.load();
+        let _config = metrics.config.snapshot();
         drop(metrics);
     });
     task2.await.unwrap();
@@ -210,7 +210,7 @@ async fn witness_spawned_tasks_across_config_reload() {
             duck_count: 3,
         }
         .append_on_drop(sink);
-        let _config = metrics.config.load();
+        let _config = metrics.config.snapshot();
         drop(metrics);
     });
 

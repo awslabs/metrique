@@ -98,7 +98,7 @@ pub use metrique_core::{
 #[cfg(feature = "witness")]
 mod witness;
 #[cfg(feature = "witness")]
-pub use witness::{SharedRef, Witness};
+pub use witness::{LatestRef, Witness};
 
 /// Unit types and utilities for metrics.
 ///

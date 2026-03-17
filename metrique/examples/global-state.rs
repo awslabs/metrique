@@ -171,7 +171,7 @@ async fn handle_request(state: &AppState) {
 
     // Loading here to branch on the config; this also pins the metric
     // snapshot to this point rather than emission time.
-    let config = metrics.app_state.app_config.load();
+    let config = metrics.app_state.app_config.snapshot();
     if matches!(config.throttle_policy, ThrottlePolicy::Throttle) {
         metrics.throttled = true;
     }
