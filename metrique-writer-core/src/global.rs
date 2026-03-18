@@ -595,6 +595,10 @@ macro_rules! global_entry_sink {
                             let _guard = Self::set_test_sink(sink);
                             f()
                         }
+                        pub fn sink_or_noop() -> BoxEntrySink {
+                            <Self as $crate::global::AttachGlobalEntrySink>::try_sink()
+                                .unwrap_or_else(BoxEntrySink::noop)
+                        }
 
                         /// Install a runtime-scoped test sink for a specific tokio runtime.
                         ///

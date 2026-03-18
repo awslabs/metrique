@@ -133,6 +133,17 @@ impl BoxEntrySink {
     pub fn new(sink: impl EntrySink<BoxEntry> + Send + Sync + 'static) -> Self {
         Self(Arc::new(Box::new(sink)))
     }
+    #[cfg(feature = "test-util")]
+    pub fn noop() -> Self {
+        struct NoopSink;
+        impl EntrySink<BoxEntry> for NoopSink {
+            fn append(&self, _entry: BoxEntry) {}
+            fn flush_async(&self) -> FlushWait {
+                FlushWait::ready()
+            }
+        }
+        Self::new(NoopSink)
+    }
 }
 
 /// This struct contains a future that can be used to wait for flushing to complete
