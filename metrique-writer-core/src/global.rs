@@ -595,6 +595,36 @@ macro_rules! global_entry_sink {
                             let _guard = Self::set_test_sink(sink);
                             f()
                         }
+
+                        /// Returns the attached sink, or a no-op sink that silently discards all
+                        /// entries if no sink is currently attached.
+                        ///
+                        /// Unlike [`sink()`](crate::GlobalEntrySink::sink), this method will never
+                        /// panic. If no sink has been
+                        /// [`attach()`](crate::global::AttachGlobalEntrySink::attach)ed and no
+                        /// test sink has been installed, it returns a sink that silently discards
+                        /// all entries.
+                        ///
+                        /// If a sink *is* attached (via
+                        /// [`attach()`](crate::global::AttachGlobalEntrySink::attach),
+                        /// [`set_test_sink()`](Self::set_test_sink), etc.), this behaves
+                        /// identically to [`sink()`](crate::GlobalEntrySink::sink).
+                        ///
+                        /// # Example
+                        #[doc = $crate::__macro_doctest!()]
+                        /// #[test]
+                        /// fn test_metrics() {
+                        ///     #[metrics(rename_all = "PascalCase")]
+                        ///     struct MyMetrics {
+                        ///         operation: &'static str,
+                        ///     }
+                        ///
+                        ///     // On drop: entry is silently discarded since no sink was attached
+                        ///     let _my_metrics =
+                        ///         MyMetrics { operation: "test" }.append_on_drop(ServiceMetrics::sink_or_noop());
+                        ///
+                        /// }
+                        /// ```
                         pub fn sink_or_noop() -> BoxEntrySink {
                             <Self as $crate::global::AttachGlobalEntrySink>::try_sink()
                                 .unwrap_or_else(BoxEntrySink::noop)
@@ -701,8 +731,8 @@ mod tests {
     use crate::test_stream::TestSink;
     use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
     use metrique_writer::{
-        AttachGlobalEntrySink, AttachGlobalEntrySinkExt as _, Entry, EntryWriter, GlobalEntrySink,
-        format::FormatExt as _, sink::FlushImmediately,
+        AttachGlobalEntrySink, AttachGlobalEntrySinkExt as _, Entry, EntrySink, EntryWriter,
+        GlobalEntrySink, format::FormatExt as _, sink::FlushImmediately,
     };
     use metrique_writer_format_emf::{Emf, EntryDimensions};
     use std::{
@@ -989,6 +1019,38 @@ mod tests {
         ServiceMetrics::append(TestEntry);
         assert_eq!(global_inspector.entries().len(), 2);
         assert_eq!(thread_local_inspector.entries().len(), 1);
+    }
+
+    #[test]
+    fn sink_or_noop_without_attached_sink() {
+        let sink = ServiceMetrics::sink_or_noop();
+        sink.append(TestEntry);
+    }
+
+    #[test]
+    fn sink_or_noop_with_test_sink() {
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _guard = ServiceMetrics::set_test_sink(sink);
+
+        ServiceMetrics::sink_or_noop().append(TestEntry);
+        assert_eq!(inspector.entries().len(), 1);
+        assert_eq!(inspector.entries()[0].metrics["BasicIntCount"], 1234);
+    }
+
+    #[test]
+    fn sink_or_noop_append_on_drop_without_sink() {
+        let _metric = ServiceMetrics::sink_or_noop().append_on_drop(TestEntry);
+    }
+
+    #[test]
+    fn sink_or_noop_append_on_drop_with_test_sink() {
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _guard = ServiceMetrics::set_test_sink(sink);
+
+        {
+            let _metric = ServiceMetrics::sink_or_noop().append_on_drop(TestEntry);
+        }
+        assert_eq!(inspector.entries().len(), 1);
     }
 }
 // Helper macro that conditionally expands based on the test-util feature

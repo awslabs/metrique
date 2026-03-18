@@ -50,8 +50,10 @@ fn test_metrics () {
 ```
 
 There are two ways to control the queue:
+
 1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
 2. Use the test-queue functionality provided out-of-the-box by global entry queues:
+
 ```rust
 use metrique::writer::GlobalEntrySink;
 use metrique::ServiceMetrics;
@@ -62,6 +64,33 @@ let _guard = ServiceMetrics::set_test_sink(sink);
 ```
 
 See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detailed examples.
+
+### Ignoring metrics with `sink_or_noop`
+
+If your test doesn't need to inspect metrics at all and you just want to avoid the panic from an unattached sink, use `sink_or_noop()`:
+
+```rust,no_run
+use metrique::unit_of_work::metrics;
+use metrique::ServiceMetrics;
+use metrique::writer::GlobalEntrySink;
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetrics {
+    operation: &'static str,
+}
+
+#[test]
+fn test_that_does_not_care_about_metrics() {
+    // No need to attach a sink or set up a test sink — entries are silently discarded
+    let mut metrics = RequestMetrics {
+        operation: "SayHello",
+    }.append_on_drop(ServiceMetrics::sink_or_noop());
+
+    // ... run your test logic ...
+}
+```
+
+This is simpler than the alternatives of `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly. If a sink _is_ attached, `sink_or_noop()` returns it — so this also works in integration tests where a real sink may or may not be configured.
 
 ## Debugging common issues
 

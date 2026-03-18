@@ -133,6 +133,10 @@ impl BoxEntrySink {
     pub fn new(sink: impl EntrySink<BoxEntry> + Send + Sync + 'static) -> Self {
         Self(Arc::new(Box::new(sink)))
     }
+
+    /// Returns a [`BoxEntrySink`] that silently discards all entries.
+    ///
+    /// Only available when the `test-util` feature is enabled.
     #[cfg(feature = "test-util")]
     pub fn noop() -> Self {
         struct NoopSink;
