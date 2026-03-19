@@ -98,7 +98,7 @@ Several primitives support this:
   emitted metric matches the state seen during processing.
 - [`Counter`](https://docs.rs/metrique/latest/metrique/struct.Counter.html): a lock-free counter with
   `increment_scoped()` for tracking in-flight work.
-- [`OnceLock<T>`](std::sync::OnceLock): for values initialized once at
+- [`OnceLock<T>`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html): for values initialized once at
   startup (node group, build version).
 
 These can be `&'static` references or fields inside an `Arc<SharedState>`.
