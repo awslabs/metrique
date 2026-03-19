@@ -1,6 +1,6 @@
 # Metrique Aggregation
 
-**Aggregation is an optional optimization for specific high-volume scenarios. For most applications, [sampling](sampling.md) is the better approach.**
+**Aggregation is an optional optimization for specific high-volume scenarios. For most applications, [sampling](https://docs.rs/metrique/latest/metrique/_guide/sampling/) is the better approach.**
 
 Metrique's aggregation system allows multiple metric entries to be combined in-memory before emission, reducing backend load while preserving statistical accuracy. This is valuable when sampling alone doesn't meet your requirements.
 
@@ -419,5 +419,5 @@ struct StorageOp {
 ## Next Steps
 
 - See [Aggregation Internals](aggregated-internals.md) for implementation details
-- Learn about [Custom Aggregation Strategies](custom-strategies.md) for ecosystem integration
-- Read [Sampling Guide](sampling.md) for the recommended approach for most applications
+- Learn about Custom Aggregation Strategies for ecosystem integration
+- Read [Sampling Guide](https://docs.rs/metrique/latest/metrique/_guide/sampling/) for the recommended approach for most applications
