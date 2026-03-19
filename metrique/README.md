@@ -1,6 +1,6 @@
 metrique is a crate to emit unit-of-work metrics
 
-- [`#[metrics]` macro reference](https://docs.rs/metrique/0.1/metrique/unit_of_work/attr.metrics.html)
+- [`#[metrics]` macro reference](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html)
 
 Unlike many popular metric frameworks that are based on the concept of your application having a fixed-ish set of counters and gauges, which are periodically updated to a central place, metrique is based on the concept of structured **metric records**. Your application emits a series of metric records - that are essentially structured log entries - to an observability service such as [Amazon CloudWatch], and the observability service allows you to view and alarm on complex aggregations of the metrics.
 
@@ -304,16 +304,16 @@ struct TimerExample {
 }
 ```
 
-[`Instant`]: std::time::Instant
-[`Duration`]: std::time::Duration
-[`Timer`]: timers::Timer
-[`Stopwatch`]: timers::Stopwatch
-[`Timestamp`]: timers::Timestamp
-[`TimestampOnClose`]: timers::TimestampOnClose
-[`SystemTime`]: std::time::SystemTime
-[`EpochSeconds`]: timers::EpochSeconds
-[`EpochMillis`]: timers::EpochMillis
-[`EpochMicros`]: timers::EpochMicros
+[`Instant`]: https://doc.rust-lang.org/std/time/struct.Instant.html
+[`Duration`]: https://doc.rust-lang.org/std/time/struct.Duration.html
+[`Timer`]: https://docs.rs/metrique/latest/metrique/timers/struct.Timer.html
+[`Stopwatch`]: https://docs.rs/metrique/latest/metrique/timers/struct.Stopwatch.html
+[`Timestamp`]: https://docs.rs/metrique/latest/metrique/timers/struct.Timestamp.html
+[`TimestampOnClose`]: https://docs.rs/metrique/latest/metrique/timers/struct.TimestampOnClose.html
+[`SystemTime`]: https://doc.rust-lang.org/std/time/struct.SystemTime.html
+[`EpochSeconds`]: https://docs.rs/metrique/latest/metrique/timers/struct.EpochSeconds.html
+[`EpochMillis`]: https://docs.rs/metrique/latest/metrique/timers/struct.EpochMillis.html
+[`EpochMicros`]: https://docs.rs/metrique/latest/metrique/timers/struct.EpochMicros.html
 
 ### Returning Metrics from Subcomponents
 
@@ -638,8 +638,11 @@ impl CloseValue for MyTimer {
 }
 ```
 
-[`CloseValue`]: https://docs.rs/metrique/0.1/metrique/trait.CloseValue.html
-[`CloseValueRef`]: https://docs.rs/metrique/0.1/metrique/trait.CloseValueRef.html
+[`CloseValue`]: https://docs.rs/metrique/latest/metrique/trait.CloseValue.html
+[`CloseValueRef`]: https://docs.rs/metrique/latest/metrique/trait.CloseValueRef.html
+[`CloseEntry`]: https://docs.rs/metrique/latest/metrique/trait.CloseEntry.html
+[`ServiceMetrics`]: https://docs.rs/metrique/latest/metrique/struct.ServiceMetrics.html
+[`Slot`]: https://docs.rs/metrique/latest/metrique/struct.Slot.html
 
 ### Custom [`ValueFormatter`]s
 
