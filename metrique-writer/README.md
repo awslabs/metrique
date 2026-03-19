@@ -232,5 +232,11 @@ let mut metric = MyMetrics::default();
 queue.append_any(metric);
 ```
 
-[emf-docs]: htps://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
-[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
+[emf-docs]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
+[`Format`]: https://docs.rs/metrique-writer/latest/metrique_writer/format/trait.Format.html
+[`Entry`]: https://docs.rs/metrique-writer/latest/metrique_writer/trait.Entry.html
+[`EntrySink`]: https://docs.rs/metrique-writer/latest/metrique_writer/trait.EntrySink.html
+[`EntryIoStream`]: https://docs.rs/metrique-writer/latest/metrique_writer/trait.EntryIoStream.html
+[`sink::global_entry_sink`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/macro.global_entry_sink.html
+[`sink::BackgroundQueue`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.BackgroundQueue.html
+[`sink::FlushImmediately`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.FlushImmediately.html

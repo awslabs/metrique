@@ -419,5 +419,4 @@ struct StorageOp {
 ## Next Steps
 
 - See [Aggregation Internals](aggregated-internals.md) for implementation details
-- Learn about Custom Aggregation Strategies for ecosystem integration
 - Read [Sampling Guide](https://docs.rs/metrique/latest/metrique/_guide/sampling/) for the recommended approach for most applications

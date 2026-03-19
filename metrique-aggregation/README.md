@@ -201,7 +201,7 @@ The aggregation system is built on several traits that work together:
 
 The [`aggregate`] macro generates implementations of these traits for your type. For most use cases, you don't need to implement these manually - the macro handles it.
 
-For more detail, see the [`traits`] module.
+For more detail, see the [`traits`](https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/) module.
 
 
 # Advanced Usage Patterns
@@ -332,24 +332,24 @@ See the `histogram` example for more usage patterns.
 
 
 
-[`aggregate`]: macro@crate::aggregate
-[`AggregateValue<T>`]: crate::traits::AggregateValue
-[`Sum`]: crate::value::Sum
-[`Histogram<T>`]: crate::histogram::Histogram
-[`KeepLast`]: crate::value::KeepLast
-[`Aggregate<T>`]: crate::aggregator::Aggregate
-[`WorkerSink`]: crate::sink::WorkerSink
-[`MutexSink`]: crate::sink::MutexSink
-[`RootSink`]: crate::traits::RootSink
-[`KeyedAggregator`]: crate::aggregator::KeyedAggregator
-[`TeeSink`]: crate::sink::TeeSink
-[`NonAggregatedSink`]: crate::sink::NonAggregatedSink
-[`Merge`]: crate::traits::Merge
-[`MergeRef`]: crate::traits::MergeRef
-[`Key`]: crate::traits::Key
-[`AggregateStrategy`]: crate::traits::AggregateStrategy
-[`AggregateSink<T>`]: crate::traits::AggregateSink
-[`ExponentialAggregationStrategy`]: crate::histogram::ExponentialAggregationStrategy
-[`SortAndMerge`]: crate::histogram::SortAndMerge
-[`AtomicExponentialAggregationStrategy`]: crate::histogram::AtomicExponentialAggregationStrategy
-[`SharedHistogram`]: crate::histogram::SharedHistogram
+[`aggregate`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/attr.aggregate.html
+[`AggregateValue<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.AggregateValue.html
+[`Sum`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/value/struct.Sum.html
+[`Histogram<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.Histogram.html
+[`KeepLast`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/value/struct.KeepLast.html
+[`Aggregate<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/aggregator/struct.Aggregate.html
+[`WorkerSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.WorkerSink.html
+[`MutexSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.MutexSink.html
+[`RootSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.RootSink.html
+[`KeyedAggregator`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/aggregator/struct.KeyedAggregator.html
+[`TeeSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.TeeSink.html
+[`NonAggregatedSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.NonAggregatedSink.html
+[`Merge`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.Merge.html
+[`MergeRef`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.MergeRef.html
+[`Key`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.Key.html
+[`AggregateStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.AggregateStrategy.html
+[`AggregateSink<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.AggregateSink.html
+[`ExponentialAggregationStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.ExponentialAggregationStrategy.html
+[`SortAndMerge`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.SortAndMerge.html
+[`AtomicExponentialAggregationStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.AtomicExponentialAggregationStrategy.html
+[`SharedHistogram`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.SharedHistogram.html
