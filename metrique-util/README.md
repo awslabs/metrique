@@ -14,3 +14,5 @@ metrique-util = { version = "0.1", features = ["state"] }
 ```
 
 See the [metrique documentation](https://docs.rs/metrique) for the full framework.
+
+[`State<T>`]: https://docs.rs/metrique-util/latest/metrique_util/state/struct.State.html

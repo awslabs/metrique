@@ -21,6 +21,7 @@ You can find examples setting up EMF uploading in the [EMF docs](https://docs.rs
 [`TestEntrySink`]: https://docs.rs/metrique/latest/metrique/test_util/struct.TestEntrySink.html
 [`output_to_makewriter`]: https://docs.rs/metrique/latest/metrique/writer/trait.FormatExt.html#method.output_to_makewriter
 [`output_to`]: https://docs.rs/metrique/latest/metrique/writer/trait.FormatExt.html#method.output_to
+[`std::io::Write`]: https://doc.rust-lang.org/std/io/trait.Write.html
 
 ## Sink types
 
