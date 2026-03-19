@@ -625,6 +625,29 @@ macro_rules! global_entry_sink {
                         ///
                         /// }
                         /// ```
+                        ///
+                        /// When a sink *is* attached, entries are captured:
+                        #[doc = $crate::__macro_doctest!()]
+                        /// # use metrique_writer::sink::global_entry_sink;
+                        /// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
+                        /// # global_entry_sink! { ServiceMetrics }
+                        /// #[test]
+                        /// fn test_metrics_with_sink() {
+                        ///     #[metrics(rename_all = "PascalCase")]
+                        ///     struct MyMetrics {
+                        ///         operation: &'static str,
+                        ///     }
+                        ///
+                        ///     let TestEntrySink { inspector, sink } = test_entry_sink();
+                        ///     let _guard = ServiceMetrics::set_test_sink(sink);
+                        ///
+                        ///     let _my_metrics =
+                        ///         MyMetrics { operation: "test" }.append_on_drop(ServiceMetrics::sink_or_noop());
+                        ///     drop(_my_metrics);
+                        ///
+                        ///     assert_eq!(inspector.entries()[0].values["Operation"], "test");
+                        /// }
+                        /// ```
                         pub fn sink_or_noop() -> BoxEntrySink {
                             <Self as $crate::global::AttachGlobalEntrySink>::try_sink()
                                 .unwrap_or_else(BoxEntrySink::noop)
