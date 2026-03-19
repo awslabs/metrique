@@ -16,11 +16,11 @@ The log entries being structured means that you can easily use problem-specific 
 - [`_guide::sampling`] - congressional sampling and the tee pattern for high-volume services
 - [`_guide::testing`] - test utilities and debugging common issues
 
-[`_guide::cookbook`]: crate::_guide::cookbook
-[`_guide::concurrency`]: crate::_guide::concurrency
-[`_guide::sinks`]: crate::_guide::sinks
-[`_guide::sampling`]: crate::_guide::sampling
-[`_guide::testing`]: crate::_guide::testing
+[`_guide::cookbook`]: https://docs.rs/metrique/latest/metrique/_guide/cookbook/
+[`_guide::concurrency`]: https://docs.rs/metrique/latest/metrique/_guide/concurrency/
+[`_guide::sinks`]: https://docs.rs/metrique/latest/metrique/_guide/sinks/
+[`_guide::sampling`]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
+[`_guide::testing`]: https://docs.rs/metrique/latest/metrique/_guide/testing/
 
 ## Getting Started (Applications)
 
@@ -34,14 +34,14 @@ by using the [`sink`] method (you must attach a destination before calling [`sin
 a panic!).
 
 If the global sink is not suitable, see
-[sinks other than `ServiceMetrics`](crate::_guide::sinks#sinks-other-than-servicemetrics).
+[sinks other than `ServiceMetrics`](https://docs.rs/metrique/latest/metrique/_guide/sinks/#sinks-other-than-servicemetrics).
 
 The example below will write the metrics to a `tracing_appender::rolling::RollingFileAppender`
 in EMF format.
 
-[`sink`]: metrique_writer::GlobalEntrySink::sink
-[`attach`]: metrique_writer::AttachGlobalEntrySink::attach
-[`attach_to_stream`]: metrique_writer::AttachGlobalEntrySinkExt::attach_to_stream
+[`sink`]: https://docs.rs/metrique/latest/metrique/writer/trait.GlobalEntrySink.html#method.sink
+[`attach`]: https://docs.rs/metrique/latest/metrique/writer/trait.AttachGlobalEntrySink.html#method.attach
+[`attach_to_stream`]: https://docs.rs/metrique/latest/metrique/writer/trait.AttachGlobalEntrySinkExt.html#method.attach_to_stream
 
 ```rust,no_run
 use std::path::PathBuf;
@@ -239,7 +239,7 @@ When `RequestMetrics` with `Operation::CountCats(CatMetrics { cats_counted: 7 })
 ### Timing Events
 
 `metrique` provides several timing primitives to simplify measuring time. They are all mockable via
-[`metrique_timesource`]:
+[`metrique_timesource`]: https://docs.rs/metrique-timesource/latest/metrique_timesource/
 
  * [`Timer`] / [`Stopwatch`]: Reports a [`Duration`] using the [`Instant`] time-source. It can either be a
    [`Timer`] (in which case it starts as soon as it is created), or a [`Stopwatch`] (in which case you must
@@ -331,11 +331,11 @@ Sometimes, managing metrics with a simple ownership and mutable reference patter
 for example when spawning background tasks or fanning out work in parallel. `metrique` provides flush
 guards, [`Slot`]s, atomics, and shared handles to cover these cases.
 
-See [`_guide::concurrency`](crate::_guide::concurrency) for details and examples.
+See [`_guide::concurrency`](https://docs.rs/metrique/latest/metrique/_guide/concurrency/) for details and examples.
 
 ### Using sampling to deal with too-many-metrics
 
-Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider [sampling](crate::_guide::sampling).
+Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider [sampling](https://docs.rs/metrique/latest/metrique/_guide/sampling/).
 
 ## Controlling metric output
 
@@ -359,7 +359,7 @@ struct RequestMetrics {
 ### Renaming metric fields
 
 > the complex interaction between naming, prefixing, and inflection is deterministic, but sometimes might
-> not do what you expect. It is critical that you add [tests](crate::_guide::testing) that validate that
+> not do what you expect. It is critical that you add [tests](https://docs.rs/metrique/latest/metrique/_guide/testing/) that validate that
 > the keys being produced match your expectations
 
 You can customize how metric field names appear in the output using several approaches:
@@ -587,11 +587,11 @@ struct MyMetrics {
 }
 ```
 
-Ordinary fields in metrics need to implement [`CloseValue`]`<Output: `[`metrique_writer::Value`]`>`.
+Ordinary fields in metrics need to implement [`CloseValue`]`<Output: `[`metrique_writer::Value`](https://docs.rs/metrique/latest/metrique/writer/trait.Value.html)`>`.
 
 If you use a formatter (`#[metrics(format)]`), your field needs to implement [`CloseValue`],
 and its output needs to be supported by the [formatter](#custom-valueformatters) instead of
-implementing [`metrique_writer::Value`].
+implementing [`metrique_writer::Value`](https://docs.rs/metrique/latest/metrique/writer/trait.Value.html).
 
 Nested fields (`#[metrics(flatten)]`) need to implement [`CloseEntry`].
 
@@ -673,8 +673,8 @@ struct MyMetric {
 }
 ```
 
-[`ValueFormatter`]: metrique_writer::value::ValueFormatter
-[`ValueWriter`]: metrique_writer::ValueWriter
+[`ValueFormatter`]: https://docs.rs/metrique/latest/metrique/writer/value/trait.ValueFormatter.html
+[`ValueWriter`]: https://docs.rs/metrique/latest/metrique/writer/trait.ValueWriter.html
 
 ## Destinations
 
@@ -682,7 +682,7 @@ struct MyMetric {
 The global [`ServiceMetrics`] sink is the easiest way to get started, but you can also create
 locally-defined global sinks or use `EntrySink` directly for non-global or specifically-typed sinks.
 
-See [`_guide::sinks`](crate::_guide::sinks) for details on sink types, destinations,
+See [`_guide::sinks`](https://docs.rs/metrique/latest/metrique/_guide/sinks/) for details on sink types, destinations,
 and alternatives to `ServiceMetrics`.
 
 ## Sampling
@@ -691,14 +691,14 @@ High-volume services may want to sample metrics to reduce CPU and agent load. `m
 fixed-fraction sampling and a congressional sampler that preserves rare events. A common pattern is
 to tee metrics into an archived log of record and a sampled stream for CloudWatch.
 
-See [`_guide::sampling`](crate::_guide::sampling) for details and a full example.
+See [`_guide::sampling`](https://docs.rs/metrique/latest/metrique/_guide/sampling/) for details and a full example.
 
 ## Testing
 
 `metrique` provides test utilities for introspecting emitted entries without reading EMF directly.
 Use `TestEntrySink` to capture entries and assert on their values and metrics.
 
-See [`_guide::testing`](crate::_guide::testing) for details, examples, and
+See [`_guide::testing`](https://docs.rs/metrique/latest/metrique/_guide/testing/) for details, examples, and
 debugging tips.
 
 ## Security Concerns
