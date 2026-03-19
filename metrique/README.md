@@ -239,6 +239,8 @@ When `RequestMetrics` with `Operation::CountCats(CatMetrics { cats_counted: 7 })
 ### Timing Events
 
 `metrique` provides several timing primitives to simplify measuring time. They are all mockable via
+[`metrique_timesource`].
+
 [`metrique_timesource`]: https://docs.rs/metrique-timesource/latest/metrique_timesource/
 
  * [`Timer`] / [`Stopwatch`]: Reports a [`Duration`] using the [`Instant`] time-source. It can either be a
