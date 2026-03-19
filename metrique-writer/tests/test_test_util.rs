@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use metrique_writer::{
-    AnyEntrySink, Entry, EntryConfig, EntryWriter, EntrySink, Observation,
-    test_util::{TestEntry, TestEntrySink, test_entry_sink, render_entry_sink, to_test_entry},
+    AnyEntrySink, Entry, EntryConfig, EntrySink, EntryWriter, Observation,
+    test_util::{TestEntry, TestEntrySink, render_entry_sink, test_entry_sink, to_test_entry},
     value::Distribution,
 };
 use metrique_writer_format_emf::Emf;
@@ -90,9 +90,7 @@ fn render_queue_captures_emf_output() {
         request_count: u64,
     }
 
-    let (queue, sink) = render_entry_sink(
-        Emf::all_validations("MyNamespace".into(), vec![vec![]])
-    );
+    let (queue, sink) = render_entry_sink(Emf::all_validations("MyNamespace".into(), vec![vec![]]));
     sink.append(MyMetrics { request_count: 7 });
 
     let entries = queue.entries();

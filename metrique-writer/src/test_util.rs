@@ -22,8 +22,8 @@ use metrique_writer_core::{
 use ordered_float::OrderedFloat;
 
 use crate::{
-    AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter,
-    format::Format, sink::FlushWait,
+    AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter, format::Format,
+    sink::FlushWait,
 };
 
 /// Test flag. This is merely reflected in [TestEntry] to allow seeing that flags are set.
