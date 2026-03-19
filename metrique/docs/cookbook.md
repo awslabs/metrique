@@ -50,19 +50,19 @@ defined up front, with compile-time enforcement.
 The most common pattern. Each request, job, or event gets its own metric record
 with full context for debugging.
 
-See the [Getting Started](crate#getting-started-applications) section and the
+See the [Getting Started](https://docs.rs/metrique/latest/metrique/#getting-started-applications) section and the
 [unit-of-work-simple](https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-simple.rs)
 example.
 
 ### Sampled unit-of-work
 
 When you want unit-of-work metrics but full emission is too expensive, sample
-the stream. The [congressional sampler](`crate::writer::sample::CongressSample`)
+the stream. The [congressional sampler](https://docs.rs/metrique/latest/metrique/writer/sample/struct.CongressSample.html)
 gives rare events (errors, unusual operations) a higher sampling rate so they
 aren't lost. A common setup is to tee into an archived log of record (all entries)
 and a sampled stream for CloudWatch.
 
-See [`_guide::sampling`](crate::_guide::sampling) for details and
+See [`_guide::sampling`](https://docs.rs/metrique/latest/metrique/_guide/sampling/) for details and
 a full example.
 
 ### Aggregated
@@ -70,9 +70,9 @@ a full example.
 When individual records are too expensive for your throughput, aggregate
 while preserving distributions via histograms. The threshold depends on your
 infrastructure and metric backend; profile to find the right balance.
-Consider using [`tee()`](crate::writer::stream::tee) to combine an
+Consider using [`tee()`](https://docs.rs/metrique/latest/metrique/writer/stream/fn.tee.html) to combine an
 aggregated stream for dashboards with a
-[sampled](crate::_guide::sampling) stream of raw records for debugging.
+[sampled](https://docs.rs/metrique/latest/metrique/_guide/sampling/) stream of raw records for debugging.
 
 Two flavors:
 
@@ -96,7 +96,7 @@ Several primitives support this:
   `metrique-util`): an
   atomically swappable value. The first read captures a snapshot, so the
   emitted metric matches the state seen during processing.
-- [`Counter`](crate::Counter): a lock-free counter with
+- [`Counter`](https://docs.rs/metrique/latest/metrique/struct.Counter.html): a lock-free counter with
   `increment_scoped()` for tracking in-flight work.
 - [`OnceLock<T>`](std::sync::OnceLock): for values initialized once at
   startup (node group, build version).
@@ -106,7 +106,7 @@ Either way, flatten them into your per-request metrics struct so they appear
 in every record.
 
 See the [global-state example](https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs)
-and the [concurrency guide](crate::_guide::concurrency) for details.
+and the [concurrency guide](https://docs.rs/metrique/latest/metrique/_guide/concurrency/) for details.
 
 ### Periodic metrics (gauges, counters, metadata)
 
@@ -163,8 +163,8 @@ to have the data reported by periodic metrics be time-of-report invariant
 ## "My TPS is too high"
 
 Before dismissing unit-of-work metrics, consider
-[sampling](crate::_guide::sampling). The
-[congressional sampler](`crate::writer::sample::CongressSample`) preserves rare
+[sampling](https://docs.rs/metrique/latest/metrique/_guide/sampling/). The
+[congressional sampler](https://docs.rs/metrique/latest/metrique/writer/sample/struct.CongressSample.html) preserves rare
 events while reducing volume.
 
 For truly high-frequency events, [`metrique-aggregation`](https://docs.rs/metrique-aggregation)
@@ -182,7 +182,7 @@ structured record that can serve both purposes:
 - **Metrics as logs**: the same records, with full context (request ID, operation,
   status code), archived for offline querying and debugging.
 
-A common pattern is to [tee](crate::_guide::sampling) the output into
+A common pattern is to [tee](https://docs.rs/metrique/latest/metrique/_guide/sampling/) the output into
 both destinations: a sampled stream for the metrics backend and an unsampled
 archive for log analysis. This gives you aggregated dashboards *and* the ability
 to drill into individual records when debugging.

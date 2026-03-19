@@ -347,7 +347,7 @@ let stream = Emf::builder("MyApp".into(), vec![vec![]])
 [Cloudwatch Contributor Insights]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/ContributorInsights.html
 [read logs from your file and write them to a log group]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/create-cloudwatch-agent-configuration-file-examples.html
 [TCP / UDP interface]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Generation_CloudWatch_Agent.html
-[`Emf`]: metrique_writer_format_emf::Emf
-[`output_to`]: metrique_writer::FormatExt::output_to
-[`io::Write::flush`]: std::io::Write::flush
-[`io::Write::write`]: std::io::Write::write
+[`Emf`]: https://docs.rs/metrique/latest/metrique/emf/struct.Emf.html
+[`output_to`]: https://docs.rs/metrique/latest/metrique/writer/trait.FormatExt.html#method.output_to
+[`io::Write::flush`]: https://doc.rust-lang.org/std/io/trait.Write.html#tymethod.flush
+[`io::Write::write`]: https://doc.rust-lang.org/std/io/trait.Write.html#tymethod.write
