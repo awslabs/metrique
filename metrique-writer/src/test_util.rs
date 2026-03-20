@@ -477,7 +477,8 @@ impl<F: Format + Send + 'static> AnyEntrySink for RenderQueue<F> {
     fn append_any(&self, entry: impl Entry + Send + 'static) {
         let mut g = self.0.lock().unwrap();
         let mut buf = Vec::new();
-        g.0.format(&entry, &mut buf).unwrap();
+        g.0.format(&entry, &mut buf)
+            .unwrap_or_else(|e| panic!("RenderQueue: format error: {e}"));
         g.1.push(String::from_utf8(buf).expect("format produced non-UTF-8 output"));
     }
 
