@@ -148,6 +148,32 @@ impl BoxEntrySink {
         }
         Self::new(NoopSink)
     }
+
+    /// Returns a [`BoxEntrySink`] that defers sink resolution until entries are appended.
+    ///
+    /// The `factory` closure is called each time an entry is appended or flushed. If it
+    /// returns `Some(sink)`, the entry is forwarded to that sink. If it returns `None`,
+    /// the entry is silently discarded.
+    pub fn lazy(factory: impl Fn() -> Option<BoxEntrySink> + Send + Sync + 'static) -> Self {
+        Self::new(LazySink(Arc::new(factory)))
+    }
+}
+
+struct LazySink(Arc<dyn Fn() -> Option<BoxEntrySink> + Send + Sync>);
+
+impl EntrySink<BoxEntry> for LazySink {
+    fn append(&self, entry: BoxEntry) {
+        if let Some(sink) = (self.0)() {
+            sink.0.append(entry);
+        }
+    }
+
+    fn flush_async(&self) -> FlushWait {
+        match (self.0)() {
+            Some(sink) => sink.0.flush_async(),
+            None => FlushWait::ready(),
+        }
+    }
 }
 
 /// This struct contains a future that can be used to wait for flushing to complete
@@ -228,5 +254,39 @@ impl<E: Entry, Q: EntrySink<E>> Deref for AppendOnDrop<E, Q> {
 impl<E: Entry, Q: EntrySink<E>> DerefMut for AppendOnDrop<E, Q> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.entry.as_mut().unwrap()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_stream::TestEntry;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn lazy_sink_forwards_when_resolved() {
+        let appended = Arc::new(Mutex::new(false));
+        let appended_clone = appended.clone();
+
+        struct MarkerSink(Arc<Mutex<bool>>);
+        impl EntrySink<BoxEntry> for MarkerSink {
+            fn append(&self, _entry: BoxEntry) {
+                *self.0.lock().unwrap() = true;
+            }
+            fn flush_async(&self) -> FlushWait {
+                FlushWait::ready()
+            }
+        }
+
+        let sink =
+            BoxEntrySink::lazy(move || Some(BoxEntrySink::new(MarkerSink(appended_clone.clone()))));
+        sink.append_any(TestEntry(1));
+        assert!(*appended.lock().unwrap());
+    }
+
+    #[test]
+    fn lazy_sink_discards_when_none() {
+        let sink = BoxEntrySink::lazy(|| None);
+        sink.append_any(TestEntry(1));
     }
 }

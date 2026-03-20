@@ -596,19 +596,20 @@ macro_rules! global_entry_sink {
                             f()
                         }
 
-                        /// Returns the attached sink, or a no-op sink that silently discards all
-                        /// entries if no sink is currently attached.
+                        /// Returns a lazily-resolved sink that looks up the attached sink each
+                        /// time an entry is appended.
                         ///
                         /// Unlike [`sink()`](crate::GlobalEntrySink::sink), this method will never
-                        /// panic. If no sink has been
-                        /// [`attach()`](crate::global::AttachGlobalEntrySink::attach)ed and no
-                        /// test sink has been installed, it returns a sink that silently discards
-                        /// all entries.
+                        /// panic. The returned [`BoxEntrySink`] defers resolution: when an entry
+                        /// is actually appended (e.g., on drop of an [`AppendOnDrop`] guard), it
+                        /// checks whether a sink is attached at *that* point. If a sink is
+                        /// available, the entry is forwarded to it; otherwise the entry is
+                        /// silently discarded.
                         ///
-                        /// If a sink *is* attached (via
-                        /// [`attach()`](crate::global::AttachGlobalEntrySink::attach),
-                        /// [`set_test_sink()`](Self::set_test_sink), etc.), this behaves
-                        /// identically to [`sink()`](crate::GlobalEntrySink::sink).
+                        /// This means it is safe to call `sink_or_noop()` before a sink has been
+                        /// [`attach()`](crate::global::AttachGlobalEntrySink::attach)ed -- entries
+                        /// will still reach the real sink as long as it is attached before the
+                        /// entries are emitted.
                         ///
                         /// # Example
                         #[doc = $crate::__macro_doctest!()]
@@ -619,7 +620,7 @@ macro_rules! global_entry_sink {
                         ///         operation: &'static str,
                         ///     }
                         ///
-                        ///     // On drop: entry is silently discarded since no sink was attached
+                        ///     // On drop: no sink is attached, so the entry is silently discarded
                         ///     let _my_metrics =
                         ///         MyMetrics { operation: "test" }.append_on_drop(ServiceMetrics::sink_or_noop());
                         ///
@@ -649,8 +650,7 @@ macro_rules! global_entry_sink {
                         /// }
                         /// ```
                         pub fn sink_or_noop() -> BoxEntrySink {
-                            <Self as $crate::global::AttachGlobalEntrySink>::try_sink()
-                                .unwrap_or_else(BoxEntrySink::noop)
+                            BoxEntrySink::lazy(<Self as $crate::global::AttachGlobalEntrySink>::try_sink)
                         }
 
                         /// Install a runtime-scoped test sink for a specific tokio runtime.
@@ -1074,6 +1074,31 @@ mod tests {
             let _metric = ServiceMetrics::sink_or_noop().append_on_drop(TestEntry);
         }
         assert_eq!(inspector.entries().len(), 1);
+    }
+
+    #[test]
+    fn sink_or_noop_resolves_lazily() {
+        let lazy_sink = ServiceMetrics::sink_or_noop();
+
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _guard = ServiceMetrics::set_test_sink(sink);
+
+        lazy_sink.append(TestEntry);
+        assert_eq!(inspector.entries().len(), 1);
+        assert_eq!(inspector.entries()[0].metrics["BasicIntCount"], 1234);
+    }
+
+    #[test]
+    fn sink_or_noop_append_on_drop_resolves_lazily() {
+        let lazy_sink = ServiceMetrics::sink_or_noop();
+        let metric = lazy_sink.append_on_drop(TestEntry);
+
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _guard = ServiceMetrics::set_test_sink(sink);
+
+        drop(metric);
+        assert_eq!(inspector.entries().len(), 1);
+        assert_eq!(inspector.entries()[0].metrics["BasicIntCount"], 1234);
     }
 }
 // Helper macro that conditionally expands based on the test-util feature

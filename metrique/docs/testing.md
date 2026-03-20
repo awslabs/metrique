@@ -67,7 +67,7 @@ See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detai
 
 ### Ignoring metrics with `sink_or_noop`
 
-If your test doesn't need to inspect metrics at all and you just want to avoid the panic from an unattached sink, use `sink_or_noop()`:
+If your test doesn't need to inspect metrics at all and you just want to avoid the panic from an unattached sink, use `sink_or_noop()`. The returned sink lazily resolves the underlying global sink each time an entry is appended, so it is safe to obtain it before a sink is attached:
 
 ```rust,no_run
 use metrique::unit_of_work::metrics;
@@ -90,7 +90,7 @@ fn test_that_does_not_care_about_metrics() {
 }
 ```
 
-This is simpler than the alternatives of `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly. If a sink _is_ attached, `sink_or_noop()` returns it — so this also works in integration tests where a real sink may or may not be configured.
+This is simpler than the alternatives of `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly. Because `sink_or_noop()` resolves lazily, it also works in integration tests where a real sink may be attached after the guard is created — entries will reach the real sink as long as it is available when they are emitted.
 
 ## Debugging common issues
 
