@@ -5,12 +5,12 @@ asynchronous operations: flush guards, slots, atomics, and shared handles.
 
 | Primitive | Use case | Works with `Arc`? | Zero-cost? | Example |
 |-----------|----------|-------------------|------------|---------|
-| [`FlushGuard`](crate::FlushGuard) / [`ForceFlushGuard`](crate::ForceFlushGuard) | Delay emission until background work completes | N/A (type-erased) | Yes | [unit-of-work-fanout] |
-| [`Slot`](crate::Slot) | Collect a value from exactly one sub-task | No (oneshot channel) | No (channel overhead) | [Slot example below](#using-slots-to-collect-values-from-tasks) |
-| [`Counter`](crate::Counter) / atomics | Fan out to many tasks that increment shared counters | Yes | Yes (atomic ops) | [unit-of-work-fanout] |
-| [`Counter::increment_scoped`](crate::Counter::increment_scoped) | Track in-flight operations with automatic decrement on drop | Yes | Yes (atomic ops) | [global-state] |
-| [`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
-| [`Handle`](crate::AppendAndCloseOnDrop::handle) | Share the full metric entry across tasks via `Arc` | Yes (is an `Arc`) | No (Arc overhead) | [Atomics example below](#using-atomics) |
+| [`FlushGuard`] / [`ForceFlushGuard`] | Delay emission until background work completes | N/A (type-erased) | Yes | [unit-of-work-fanout] |
+| [`Slot`] | Collect a value from exactly one sub-task | No (oneshot channel) | No (channel overhead) | [Slot example below](#using-slots-to-collect-values-from-tasks) |
+| [`Counter`] / atomics | Fan out to many tasks that increment shared counters | Yes | Yes (atomic ops) | [unit-of-work-fanout] |
+| [`Counter::increment_scoped`] | Track in-flight operations with automatic decrement on drop | Yes | Yes (atomic ops) | [global-state] |
+| [`State`] | Shared state with snapshot-on-first-read per handle | Yes | No (Arc + atomic load) | [global-state] |
+| [`Handle`] | Share the full metric entry across tasks via `Arc` | Yes (is an `Arc`) | No (Arc overhead) | [Atomics example below](#using-atomics) |
 
 ## Metrics with complex lifetimes
 
@@ -41,9 +41,9 @@ from all of them.
 You don't want to wrap your parent metric in an `Arc`, as that will prevent you from having mutable access
 to metric fields, but you still want to delay metric emission.
 
-To allow for that, the [`AppendAndCloseOnDrop`](crate::AppendAndCloseOnDrop) guard (which is what the `<MetricName>Guard` aliases point to)
-has [`flush_guard`](crate::AppendAndCloseOnDrop::flush_guard) and [`force_flush_guard`](crate::AppendAndCloseOnDrop::force_flush_guard) functions. The flush guards are type-erased (they have
-types [`FlushGuard`](crate::FlushGuard) and [`ForceFlushGuard`](crate::ForceFlushGuard), which don't mention the type of the metric entry).
+To allow for that, the [`AppendAndCloseOnDrop`] guard (which is what the `<MetricName>Guard` aliases point to)
+has [`flush_guard`] and [`force_flush_guard`] functions. The flush guards are type-erased (they have
+types [`FlushGuard`] and [`ForceFlushGuard`], which don't mention the type of the metric entry).
 
 ```rust,ignore
 let mut metrics = RequestMetrics::init("DoSomething");
@@ -67,10 +67,10 @@ let slot = metrics.child.open(OnParentDrop::Wait(metrics.flush_guard()));
 
 The metric will then be emitted when either:
 
-1. The owner handle of the metric and *all* the [`FlushGuard`](crate::FlushGuard)s have been dropped
-2. The owner handle of the metric and *any* of the [`ForceFlushGuard`](crate::ForceFlushGuard)s have been dropped.
+1. The owner handle of the metric and *all* the [`FlushGuard`]s have been dropped
+2. The owner handle of the metric and *any* of the [`ForceFlushGuard`]s have been dropped.
 
-This makes [`force_flush_guard`](crate::AppendAndCloseOnDrop::force_flush_guard) useful to emit a metric via a timeout even if some
+This makes [`force_flush_guard`] useful to emit a metric via a timeout even if some
 of the downstream tasks have not completed, which is useful since you normally
 want metrics even (maybe *especially*) when things are stuck (the downstream tasks
 presumably have access to the metric struct via an [`Arc`](#using-atomics)
@@ -84,9 +84,9 @@ See the examples below to see how the flush guards are used.
 In some cases, you might want a sub-task (potentially a Tokio task, but maybe just a sub-component of your code)
 to be able to add some metric fields to your metric entry, but without forcing an ownership relationship.
 
-In that case, you can use [`Slot`](crate::Slot), which creates a oneshot channel, over which the value of the metric can be sent.
+In that case, you can use [`Slot`], which creates a oneshot channel, over which the value of the metric can be sent.
 
-Note that [`Slot`](crate::Slot) does not delay the parent metric entry's emission. If the parent is emitted before the slot is filled, the slot's metrics are skipped. To avoid this, either wait for the subtask to complete, call [`Slot::wait_for_data`](crate::Slot::wait_for_data), or use [`OnParentDrop::Wait`](crate::OnParentDrop::Wait) to hold a [`FlushGuard`](crate::FlushGuard) until the slot is closed.
+Note that [`Slot`] does not delay the parent metric entry's emission. If the parent is emitted before the slot is filled, the slot's metrics are skipped. To avoid this, either wait for the subtask to complete, call [`Slot::wait_for_data`], or use [`OnParentDrop::Wait`] to hold a [`FlushGuard`] until the slot is closed.
 
 ```rust
 use metrique::writer::GlobalEntrySink;
@@ -159,7 +159,7 @@ async fn call_downstream_service(mut metrics: SlotGuard<DownstreamMetrics>) {
 You might want to "fan out" work to multiple scopes that are in the background or otherwise operating in parallel. You can
 accomplish this by using atomic field types to store the metrics, and fanout-friendly wrapper APIs on your metrics entry.
 
-Anything that implements [`CloseValue`](crate::CloseValue) can be used as a field. `metrique` provides a number of basic primitives such as [`Counter`](crate::Counter), a thin wrapper around `AtomicU64`. Most `std::sync::atomic` types also implement [`CloseValueRef`](crate::CloseValueRef) directly. If you need to build your own primitives, implement `CloseValue` for both the owned type and `&T` (see the [`CloseValue`](crate::CloseValue) trait docs). [`CloseValueRef`](crate::CloseValueRef) is then derived automatically. By using primitives that can be mutated through shared references, you make it possible to use [`Handle`](crate::AppendAndCloseOnDrop::handle) or your own `Arc` to share the metrics entry around multiple owners or tasks.
+Anything that implements [`CloseValue`] can be used as a field. `metrique` provides a number of basic primitives such as [`Counter`], a thin wrapper around `AtomicU64`. Most `std::sync::atomic` types also implement [`CloseValueRef`] directly. If you need to build your own primitives, implement `CloseValue` for both the owned type and `&T` (see the [`CloseValue`] trait docs). [`CloseValueRef`] is then derived automatically. By using primitives that can be mutated through shared references, you make it possible to use [`Handle`] or your own `Arc` to share the metrics entry around multiple owners or tasks.
 
 For further usage of atomics for concurrent metric updates, see [the fanout example][unit-of-work-fanout].
 
@@ -212,10 +212,10 @@ fn count_concurrent_ducks() {
 metrique-util = { version = "0.1", features = ["state"] }
 ```
 
-[`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) is an atomically swappable shared value where
+[`State`] is an atomically swappable shared value where
 each cloned handle captures a snapshot on first read. Put it in your metrics
 struct, and the emitted metric will always reflect the state that was current
-when the request first read it. See the [`State`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) type
+when the request first read it. See the [`State`] type
 documentation for the full mental model and API.
 
 See the [global-state example][global-state] for a complete working
@@ -223,7 +223,7 @@ example combining `State` with `Counter::increment_scoped`.
 
 ### Using `OnceLock` for lazily initialized values
 
-[`OnceLock<T>`](std::sync::OnceLock) implements [`CloseValue`](crate::CloseValue)
+[`OnceLock<T>`] implements [`CloseValue`]
 when `T` does. It closes as `Option<T::Closed>`, returning `None` if the lock
 has not been initialized. This is useful for values that are set once at startup
 (or on first use) and then read for the lifetime of the process.
@@ -241,8 +241,8 @@ struct ServerInfo {
 
 ### Tracking in-flight operations with `Counter::increment_scoped`
 
-[`Counter::increment_scoped`](crate::Counter::increment_scoped) increments a
-counter by 1 and returns a guard ([`CounterGuard`](crate::CounterGuard)) that
+[`Counter::increment_scoped`] increments a
+counter by 1 and returns a guard ([`CounterGuard`]) that
 decrements it on drop, along with the new count. This is useful for tracking
 how many operations are in flight at any given time.
 
@@ -265,3 +265,20 @@ combining `Counter::increment_scoped` with `State` for shared state.
 [global-state]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs
 
 [unit-of-work-fanout]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-fanout.rs
+
+[`AppendAndCloseOnDrop`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html
+[`CloseValue`]: https://docs.rs/metrique/latest/metrique/trait.CloseValue.html
+[`CloseValueRef`]: https://docs.rs/metrique/latest/metrique/trait.CloseValueRef.html
+[`Counter::increment_scoped`]: https://docs.rs/metrique/latest/metrique/struct.Counter.html#method.increment_scoped
+[`Counter`]: https://docs.rs/metrique/latest/metrique/struct.Counter.html
+[`CounterGuard`]: https://docs.rs/metrique/latest/metrique/struct.CounterGuard.html
+[`flush_guard`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html#method.flush_guard
+[`FlushGuard`]: https://docs.rs/metrique/latest/metrique/struct.FlushGuard.html
+[`force_flush_guard`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html#method.force_flush_guard
+[`ForceFlushGuard`]: https://docs.rs/metrique/latest/metrique/struct.ForceFlushGuard.html
+[`Handle`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html#method.handle
+[`OnceLock<T>`]: https://doc.rust-lang.org/std/sync/struct.OnceLock.html
+[`OnParentDrop::Wait`]: https://docs.rs/metrique/latest/metrique/enum.OnParentDrop.html#variant.Wait
+[`Slot::wait_for_data`]: https://docs.rs/metrique/latest/metrique/struct.Slot.html#method.wait_for_data
+[`Slot`]: https://docs.rs/metrique/latest/metrique/struct.Slot.html
+[`State`]: https://docs.rs/metrique-util/latest/metrique_util/struct.State.html

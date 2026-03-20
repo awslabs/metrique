@@ -6,3 +6,6 @@ is that the [`Entry`] macro generates paths that depend on `metrique-writer`,
 and the [`MetriqueEntry`] macro generates paths that depend on `metrique`. The
 corresponding crates re-export the right macro to ensure you only need
 to have a single dependency in your `Cargo.toml`.
+
+[`Entry`]: https://docs.rs/metrique-writer/latest/metrique_writer/derive.Entry.html
+[`MetriqueEntry`]: https://docs.rs/metrique/latest/metrique/writer/derive.Entry.html

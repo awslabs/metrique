@@ -45,11 +45,11 @@ Because metrique builds on plain structs, metric structure is enforced at compil
 
 ### Why use `metrique`?
 
-#### Instead of [OpenTelemetry](https://opentelemetry.io/)
+#### Instead of [OpenTelemetry]
 OTel and metrique solve different problems and future work may add an OTel backend for metrique. `metrique` is about emitting events that capture all the metrics associated with single unit of work, in Rust, as efficiently as possible.
 
-#### Instead of [metrics.rs](https://metrics.rs/)
-`metrique` is actually compatible with `metrics.rs` via the [`metrique-metricsrs`](https://crates.io/crates/metrique-metricsrs) crate! This allows you to periodically
+#### Instead of [metrics.rs]
+`metrique` is actually compatible with `metrics.rs` via the [`metrique-metricsrs`] crate! This allows you to periodically
 flush the contents of metrics collected via libraries already compatible with `metrics.rs` as a single event.
 
 However, if your goal is to emit structured events that produce metrics with as little overhead as possible:
@@ -58,7 +58,7 @@ However, if your goal is to emit structured events that produce metrics with as 
 
 ## Getting Started
 
-Most applications and libraries will use [`metrique`](metrique) directly and configure a writer with [`metrique-writer`](metrique-writer). See the [examples](metrique/examples) for several examples of different common patterns.
+Most applications and libraries will use [`metrique`] directly and configure a writer with [`metrique-writer`]. See the [examples] for several examples of different common patterns.
 
 Applications will define a metrics entry struct that they annotate with `#[metrics]`:
 ```rust
@@ -130,13 +130,13 @@ fn initialize_metrics(service_log_dir: PathBuf) -> AttachHandle {
 }
 ```
 
-> See [`metrique-writer`](metrique-writer) for more information about queues and destinations.
+> See [`metrique-writer`] for more information about queues and destinations.
 
 You can either attach it to a global destination or thread the queue to the location you construct your metrics object directly. 
 
-For production, only formatters for [Amazon EMF] and plain JSON ([`metrique-writer-format-json`](metrique-writer-format-json)) are provided, but more may be added in the future.
+For production, only formatters for [Amazon EMF] and plain JSON ([`metrique-writer-format-json`]) are provided, but more may be added in the future.
 
-For local development, [`metrique::local::LocalFormat`] provides human-readable output (pretty-printed key-value pairs, JSON, or markdown tables) with automatic histogram percentile computation. See the [module docs](https://docs.rs/metrique/latest/metrique/local/index.html) for a guide on implementing your own custom format.
+For local development, [`metrique::local::LocalFormat`] provides human-readable output (pretty-printed key-value pairs, JSON, or markdown tables) with automatic histogram percentile computation. See the [module docs] for a guide on implementing your own custom format.
 
 You can also implement a custom format using the [`Format`] trait.
 If you do, you can optionally implement a custom [`EntrySink`] if you need flush
@@ -146,7 +146,7 @@ functionality beyond writing bytes to an arbitrary I/O destination.
 
 When you have many observations of the same metric within a single unit of work, you can use histograms to aggregate them into a distribution rather than emitting each observation individually.
 
-The [`metrique-aggregation`](metrique-aggregation) crate provides histogram types that collect observations and emit them as distributions:
+The [`metrique-aggregation`] crate provides histogram types that collect observations and emit them as distributions:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -168,7 +168,7 @@ Common use cases include:
 - Batch processing where you want to track per-item latency
 - Any operation that generates multiple measurements to aggregate
 
-For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/docs/sampling.md) is a better approach than aggregation. Consider histograms when you need precise distributions for high-frequency events.
+For most applications, [sampling] is a better approach than aggregation. Consider histograms when you need precise distributions for high-frequency events.
 
 ## Glossary
 
@@ -211,17 +211,28 @@ For most applications, [sampling](https://github.com/awslabs/metrique/blob/main/
    different task or thread. A [`Slot`] can also hold a reference to a [`FlushGuard`] that can delay
    metric entry emission until the [`Slot`] is finalized.
 
-[`AppendAndCloseOnDrop`]: https://docs.rs/metrique/0.1/metrique/struct.AppendAndCloseOnDrop.html
-[`BackgroundQueue`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sink/struct.BackgroundQueue.html
-[`Entry`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.Entry.html
-[`EntryIoStream`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntryIoStream.html
-[`EntrySink`]: https://docs.rs/metrique-writer/0.1/metrique_writer/trait.EntrySink.html
-[`Format`]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
-[`FlushGuard`]: https://docs.rs/metrique/0.1/metrique/slot/struct.FlushGuard.html
-[`FlushImmediately`]: https://docs.rs/metrique-writer/0.1/metrique_writer/sink/struct.FlushImmediately.html
-[`InflectableEntry`]: https://docs.rs/metrique/0.1/metrique/trait.InflectableEntry.html
-[`RootEntry`]: https://docs.rs/metrique/0.1/metrique/struct.RootEntry.html
-[`Slot`]: https://docs.rs/metrique/0.1/metrique/slot/struct.Slot.html
+[`AppendAndCloseOnDrop`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html
+[`BackgroundQueue`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.BackgroundQueue.html
+[`Entry`]: https://docs.rs/metrique-writer/latest/metrique_writer/trait.Entry.html
+[`EntryIoStream`]: https://docs.rs/metrique-writer/latest/metrique_writer/trait.EntryIoStream.html
+[`EntrySink`]: https://docs.rs/metrique-writer/latest/metrique_writer/trait.EntrySink.html
+[`Format`]: https://docs.rs/metrique-writer/latest/metrique_writer/format/trait.Format.html
+[`FlushGuard`]: https://docs.rs/metrique/latest/metrique/slot/struct.FlushGuard.html
+[`FlushImmediately`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.FlushImmediately.html
+[`InflectableEntry`]: https://docs.rs/metrique/latest/metrique/trait.InflectableEntry.html
+[`metrique`]: https://crates.io/crates/metrique
+[`metrique-aggregation`]: https://crates.io/crates/metrique-aggregation
+[`metrique::local::LocalFormat`]: https://docs.rs/metrique/latest/metrique/local/struct.LocalFormat.html
+[`metrique-metricsrs`]: https://crates.io/crates/metrique-metricsrs
+[`metrique-writer`]: https://crates.io/crates/metrique-writer
+[`metrique-writer-format-json`]: https://crates.io/crates/metrique-writer-format-json
+[`RootEntry`]: https://docs.rs/metrique/latest/metrique/struct.RootEntry.html
+[`Slot`]: https://docs.rs/metrique/latest/metrique/slot/struct.Slot.html
+[examples]: https://github.com/awslabs/metrique/tree/main/metrique/examples
+[metrics.rs]: https://metrics.rs/
+[module docs]: https://docs.rs/metrique/latest/metrique/local/index.html
+[OpenTelemetry]: https://opentelemetry.io/
+[sampling]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
 
 ## Security
 
