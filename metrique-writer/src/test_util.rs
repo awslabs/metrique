@@ -459,6 +459,14 @@ impl AnyEntrySink for Inspector {
 /// A sink that captures rendered output for format-aware testing.
 pub struct RenderQueue<F>(Arc<Mutex<(F, Vec<String>)>>);
 
+impl<F> std::fmt::Debug for RenderQueue<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RenderQueue")
+            .field("entries", &self.0.lock().unwrap().1)
+            .finish()
+    }
+}
+
 impl<F> Clone for RenderQueue<F> {
     fn clone(&self) -> Self {
         Self(Arc::clone(&self.0))
