@@ -478,7 +478,7 @@ impl<F: Format + Send + 'static> AnyEntrySink for RenderQueue<F> {
         let mut g = self.0.lock().unwrap();
         let mut buf = Vec::new();
         g.0.format(&entry, &mut buf).unwrap();
-        g.1.push(String::from_utf8_lossy(&buf).into_owned());
+        g.1.push(String::from_utf8(buf).expect("format produced non-UTF-8 output"));
     }
 
     fn flush_async(&self) -> FlushWait {
