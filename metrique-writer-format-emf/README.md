@@ -4,5 +4,5 @@ A `metrique` [Format] for formatting `metrique` metrics to
 For more details, read the docs for [Emf].
 
 [emf-docs]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
-[Format]: https://docs.rs/metrique-writer/0.1/metrique_writer/format/trait.Format.html
-[Emf]: crate::Emf
+[Format]: https://docs.rs/metrique-writer/latest/metrique_writer/format/trait.Format.html
+[Emf]: https://docs.rs/metrique-writer-format-emf/latest/metrique_writer_format_emf/struct.Emf.html

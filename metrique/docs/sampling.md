@@ -2,7 +2,7 @@
 
 If your service's TPS is too high for full metric emission, sampling lets you
 reduce volume while preserving visibility into rare events. See also the
-["My TPS is too high"](crate::_guide::cookbook#my-tps-is-too-high)
+["My TPS is too high"]
 section in the cookbook.
 
 ## Overview
@@ -15,10 +15,10 @@ It is common to tee the metric into 2 destinations:
  1. A highly-compressed "log of record" that contains all entries and is eventually persisted to S3 or other long-term storage.
  1. An uncompressed, but sampled, metrics log that is published to CloudWatch.
 
-The sampling can be done naively at some [fixed fraction](`crate::writer::sample::FixedFractionSample`), but at low rates can
+The sampling can be done naively at some [fixed fraction], but at low rates can
 cause low-frequency events to be missed. This includes service errors or validation errors, especially when the service is
 designed to have an availability much higher than the chosen sample rate. Instead, we recommend the use of the
-[congressional sampler](`crate::writer::sample::CongressSample`). It uses a fixed metric emission target rate and
+[congressional sampler]. It uses a fixed metric emission target rate and
 gives lower-frequency events a higher sampling rate to boost their accuracy.
 
 The example below uses the congressional sampler keyed by the request operation and the status code to
@@ -85,4 +85,7 @@ let metric = RequestMetrics {
 // _join_service_metrics drop (e.g. during service shutdown) blocks until the queue is drained
 ```
 
-[`with_sampling`]: crate::emf::Emf::with_sampling
+[`with_sampling`]: https://docs.rs/metrique/latest/metrique/emf/struct.Emf.html#method.with_sampling
+["My TPS is too high"]: https://docs.rs/metrique/latest/metrique/_guide/cookbook/#my-tps-is-too-high
+[congressional sampler]: https://docs.rs/metrique/latest/metrique/writer/sample/struct.CongressSample.html
+[fixed fraction]: https://docs.rs/metrique/latest/metrique/writer/sample/struct.FixedFractionSample.html
