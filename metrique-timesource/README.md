@@ -7,7 +7,7 @@ This was originally written to support `Metrique`, but can be used for any appli
 ## Features
 
 - Zero-cost abstraction when not compiled with the `custom-timesource` enabled
-- Built in support for `tokio`'s time [`pause`](https://docs.rs/tokio/latest/tokio/time/fn.pause.html) with `tokio` feature
+- Built in support for `tokio`'s time [`pause`] with `tokio` feature
 - Provide a time source manually or via a thread-local
 - Compatible with `std::time::Instant` and `std::time::SystemTime`
 
@@ -148,3 +148,5 @@ with_time_source(custom, || {
 2. `TokioTime` which uses `tokio::time::Instant::now`
 
 It is also possible to write your own by implementing the `Time` trait. See the `fakes` module for an example.
+
+[`pause`]: https://docs.rs/tokio/latest/tokio/time/fn.pause.html

@@ -1,5 +1,5 @@
 This mode provides a few [`metrics::Recorder`]s that can be used for emitting metrics
-via metrique-writer. This includes [`MetricsReporter`]  that is designed for use in EC2/Fargate,
+via metrique-writer. This includes [`MetricReporter`]  that is designed for use in EC2/Fargate,
 [`lambda_reporter`] that is designed for use in Lambda, and [`capture`] that is
 designed for use in unit tests.
 
@@ -43,7 +43,7 @@ let logger = MetricReporter::builder()
 Currently, there is only 1 metrics.rs version supported (0.24), but when there
 will be more, having the feature-flag for an unused metrics.rs version will do no harm.
 
-[`metrics::Recorder`]: metrics_024::Recorder
-[`MetricsReporter`]: crate::MetricReporter
-[`lambda_reporter`]: crate::lambda_reporter
-[`capture`]: crate::capture
+[`metrics::Recorder`]: https://docs.rs/metrics/latest/metrics/trait.Recorder.html
+[`MetricReporter`]: https://docs.rs/metrique-metricsrs/latest/metrique_metricsrs/struct.MetricReporter.html
+[`lambda_reporter`]: https://docs.rs/metrique-metricsrs/latest/metrique_metricsrs/lambda_reporter/
+[`capture`]: https://docs.rs/metrique-metricsrs/latest/metrique_metricsrs/capture/

@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use metrique_writer::{
-    AnyEntrySink, Entry, EntryConfig, EntryWriter, Observation,
-    test_util::{TestEntry, TestEntrySink, test_entry_sink, to_test_entry},
+    AnyEntrySink, Entry, EntryConfig, EntrySink, EntryWriter, Observation,
+    test_util::{TestEntry, TestEntrySink, render_entry_sink, test_entry_sink, to_test_entry},
     value::Distribution,
 };
+use metrique_writer_format_emf::Emf;
 
 #[test]
 fn test_sink_records_entries() {
@@ -79,4 +80,43 @@ fn repeated_entry_errors_u64() {
 #[should_panic(expected = "found a repeated sample")]
 fn repeated_entry_errors_f64() {
     let _panics = entry_with_repeat().metrics["a"].as_f64();
+}
+
+#[test]
+fn render_queue_captures_emf_output() {
+    #[derive(Entry)]
+    #[entry(rename_all = "PascalCase")]
+    struct MyMetrics {
+        request_count: u64,
+    }
+
+    let (queue, sink) = render_entry_sink(Emf::all_validations("MyNamespace".into(), vec![vec![]]));
+
+    // entries() returns empty vec before first entry
+    assert!(queue.entries().is_empty());
+
+    sink.append(MyMetrics { request_count: 7 });
+
+    let entries = queue.entries();
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].contains("\"MyNamespace\""));
+    assert!(entries[0].contains("\"RequestCount\""));
+
+    // multiple appends
+    sink.append(MyMetrics { request_count: 42 });
+    sink.append(MyMetrics { request_count: 99 });
+
+    let entries = queue.entries();
+    assert_eq!(entries.len(), 3);
+    assert!(entries[1].contains("\"RequestCount\""));
+    assert!(entries[2].contains("\"RequestCount\""));
+
+    // smoke test of the Display impl
+    let display = queue.to_string();
+    assert!(!display.is_empty());
+    assert_eq!(
+        display.matches("\"MyNamespace\"").count(),
+        3,
+        "each appended entry should appear in the display"
+    );
 }

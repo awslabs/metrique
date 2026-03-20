@@ -779,6 +779,7 @@ dependencies = [
  "metrique-writer-format-emf",
  "metrique-writer-format-json",
  "metrique-writer-macro",
+ "regex-lite",
  "rstest",
  "rustversion",
  "ryu",

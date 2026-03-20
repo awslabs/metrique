@@ -1,6 +1,6 @@
 # metrique-util
 
-Additional utilities for [metrique](https://crates.io/crates/metrique).
+Additional utilities for [metrique].
 
 ## Features
 
@@ -13,4 +13,8 @@ Additional utilities for [metrique](https://crates.io/crates/metrique).
 metrique-util = { version = "0.1", features = ["state"] }
 ```
 
-See the [metrique documentation](https://docs.rs/metrique) for the full framework.
+See the [metrique documentation] for the full framework.
+
+[metrique]: https://crates.io/crates/metrique
+[metrique documentation]: https://docs.rs/metrique
+[`State<T>`]: https://docs.rs/metrique-util/latest/metrique_util/state/struct.State.html
