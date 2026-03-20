@@ -201,7 +201,7 @@ The aggregation system is built on several traits that work together:
 
 The [`aggregate`] macro generates implementations of these traits for your type. For most use cases, you don't need to implement these manually - the macro handles it.
 
-For more detail, see the [`traits`](https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/) module.
+For more detail, see the [`traits`] module.
 
 
 # Advanced Usage Patterns
@@ -353,3 +353,4 @@ See the `histogram` example for more usage patterns.
 [`SortAndMerge`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.SortAndMerge.html
 [`AtomicExponentialAggregationStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.AtomicExponentialAggregationStrategy.html
 [`SharedHistogram`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.SharedHistogram.html
+[`traits`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/

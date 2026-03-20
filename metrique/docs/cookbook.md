@@ -50,19 +50,19 @@ defined up front, with compile-time enforcement.
 The most common pattern. Each request, job, or event gets its own metric record
 with full context for debugging.
 
-See the [Getting Started](https://docs.rs/metrique/latest/metrique/#getting-started-applications) section and the
-[unit-of-work-simple](https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-simple.rs)
+See the [Getting Started] section and the
+[unit-of-work-simple]
 example.
 
 ### Sampled unit-of-work
 
 When you want unit-of-work metrics but full emission is too expensive, sample
-the stream. The [congressional sampler](https://docs.rs/metrique/latest/metrique/writer/sample/struct.CongressSample.html)
+the stream. The [congressional sampler]
 gives rare events (errors, unusual operations) a higher sampling rate so they
 aren't lost. A common setup is to tee into an archived log of record (all entries)
 and a sampled stream for CloudWatch.
 
-See [`_guide::sampling`](https://docs.rs/metrique/latest/metrique/_guide/sampling/) for details and
+See [`_guide::sampling`] for details and
 a full example.
 
 ### Aggregated
@@ -70,18 +70,18 @@ a full example.
 When individual records are too expensive for your throughput, aggregate
 while preserving distributions via histograms. The threshold depends on your
 infrastructure and metric backend; profile to find the right balance.
-Consider using [`tee()`](https://docs.rs/metrique/latest/metrique/writer/stream/fn.tee.html) to combine an
+Consider using [`tee()`] to combine an
 aggregated stream for dashboards with a
-[sampled](https://docs.rs/metrique/latest/metrique/_guide/sampling/) stream of raw records for debugging.
+[sampled] stream of raw records for debugging.
 
 Two flavors:
 
 - **Embedded**: aggregate sub-operations within a single unit of work. See the
-  [embedded example](https://github.com/awslabs/metrique/blob/main/metrique-aggregation/examples/embedded.rs).
+  [embedded example].
 - **Sink-level**: aggregate across units of work. See the
-  [sink_level example](https://github.com/awslabs/metrique/blob/main/metrique-aggregation/examples/sink_level.rs).
+  [sink_level example].
 
-See [`metrique-aggregation`](https://docs.rs/metrique-aggregation) for full details.
+See [`metrique-aggregation`] for full details.
 
 ### Shared state in unit-of-work
 
@@ -92,21 +92,21 @@ unit-of-work record lets you correlate: "this request was throttled because
 
 Several primitives support this:
 
-- [`State<T>`](https://docs.rs/metrique-util/latest/metrique_util/struct.State.html) (requires the `state` feature on
+- [`State<T>`] (requires the `state` feature on
   `metrique-util`): an
   atomically swappable value. The first read captures a snapshot, so the
   emitted metric matches the state seen during processing.
-- [`Counter`](https://docs.rs/metrique/latest/metrique/struct.Counter.html): a lock-free counter with
+- [`Counter`]: a lock-free counter with
   `increment_scoped()` for tracking in-flight work.
-- [`OnceLock<T>`](https://doc.rust-lang.org/std/sync/struct.OnceLock.html): for values initialized once at
+- [`OnceLock<T>`]: for values initialized once at
   startup (node group, build version).
 
 These can be `&'static` references or fields inside an `Arc<SharedState>`.
 Either way, flatten them into your per-request metrics struct so they appear
 in every record.
 
-See the [global-state example](https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs)
-and the [concurrency guide](https://docs.rs/metrique/latest/metrique/_guide/concurrency/) for details.
+See the [global-state example]
+and the [concurrency guide] for details.
 
 ### Periodic metrics (gauges, counters, metadata)
 
@@ -163,11 +163,11 @@ to have the data reported by periodic metrics be time-of-report invariant
 ## "My TPS is too high"
 
 Before dismissing unit-of-work metrics, consider
-[sampling](https://docs.rs/metrique/latest/metrique/_guide/sampling/). The
-[congressional sampler](https://docs.rs/metrique/latest/metrique/writer/sample/struct.CongressSample.html) preserves rare
+[sampling]. The
+[congressional sampler] preserves rare
 events while reducing volume.
 
-For truly high-frequency events, [`metrique-aggregation`](https://docs.rs/metrique-aggregation)
+For truly high-frequency events, [`metrique-aggregation`]
 provides efficient aggregation with histograms. The best approach is often both:
 aggregated metrics for dashboards and alarms, plus a sampled stream of raw events
 for debugging.
@@ -182,7 +182,24 @@ structured record that can serve both purposes:
 - **Metrics as logs**: the same records, with full context (request ID, operation,
   status code), archived for offline querying and debugging.
 
-A common pattern is to [tee](https://docs.rs/metrique/latest/metrique/_guide/sampling/) the output into
+A common pattern is to [tee] the output into
 both destinations: a sampled stream for the metrics backend and an unsampled
 archive for log analysis. This gives you aggregated dashboards *and* the ability
 to drill into individual records when debugging.
+
+[`_guide::sampling`]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
+[`Counter`]: https://docs.rs/metrique/latest/metrique/struct.Counter.html
+[`metrique-aggregation`]: https://docs.rs/metrique-aggregation
+[`OnceLock<T>`]: https://doc.rust-lang.org/std/sync/struct.OnceLock.html
+[`State<T>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.State.html
+[`tee()`]: https://docs.rs/metrique/latest/metrique/writer/stream/fn.tee.html
+[concurrency guide]: https://docs.rs/metrique/latest/metrique/_guide/concurrency/
+[congressional sampler]: https://docs.rs/metrique/latest/metrique/writer/sample/struct.CongressSample.html
+[embedded example]: https://github.com/awslabs/metrique/blob/main/metrique-aggregation/examples/embedded.rs
+[Getting Started]: https://docs.rs/metrique/latest/metrique/#getting-started-applications
+[global-state example]: https://github.com/awslabs/metrique/blob/main/metrique/examples/global-state.rs
+[sampled]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
+[sampling]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
+[sink_level example]: https://github.com/awslabs/metrique/blob/main/metrique-aggregation/examples/sink_level.rs
+[tee]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
+[unit-of-work-simple]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-simple.rs

@@ -1,6 +1,6 @@
 # Using `metrique` with the EMF Format
 
-`metrique` has out-of-the box support for creating logs in [EMF (Embedded Metrics Format)](https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html). There are a few key concepts to understand to effectively leverage EMF.
+`metrique` has out-of-the box support for creating logs in [EMF (Embedded Metrics Format)]. There are a few key concepts to understand to effectively leverage EMF.
 
 ## Dimensions
 EMF has the concept of dimensions. When your metrics are ingested to CloudWatch, they will **only** be aggregated against the dimensions that you specify. Each unique "dimension set" creates a new metric in CloudWatch. If you need to analyze after the fact, you can use [Cloudwatch Log Insights] (adhoc general purpose search and analysis) and [Cloudwatch Contributor Insights] (an online processing system that aggregates your data according to predefined rules).
@@ -249,16 +249,16 @@ There are three destinations typically used:
 
 Your choice of destination will depend on your platform and performance needs. See specific guidance for [Fargate](#fargate--ecs), [Lambda](#lambda), and [EC2](#ec2).
 
-**Important Note**: In all cases, you do not (and should not) use a nonblocking writer like [`tracing_appender::non_blocking`](https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/index.html) when configuring `metrique`. There is _already_ a background sink. By using a non-blocking writer, you're adding a second level of indirection that is both unnecessary and will consume more memory during failure.
+**Important Note**: In all cases, you do not (and should not) use a nonblocking writer like [`tracing_appender::non_blocking`] when configuring `metrique`. There is _already_ a background sink. By using a non-blocking writer, you're adding a second level of indirection that is both unnecessary and will consume more memory during failure.
 
 ## Platform Specific Guidance
 
 ### Fargate / ECS
 
-On Fargate & ECS it is common to emit to `stdout` and collect logs with [`firelens`](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_firelens.html). If you do **not** want to comingle,
+On Fargate & ECS it is common to emit to `stdout` and collect logs with [`firelens`]. If you do **not** want to comingle,
 generally you will direct one of the streams (e.g. metrics) to a TCP destination instead. The simplest approach, however, is using the [awslogs driver].
 
-If you have extremely high throughput, you may want to flush to disk and [use firelens/fluentbit and exec for file rotation](https://github.com/aws-samples/amazon-ecs-firelens-examples/tree/mainline/examples/fluent-bit/ecs-log-deletion).
+If you have extremely high throughput, you may want to flush to disk and [use firelens/fluentbit and exec for file rotation].
 
 To configure `metrique` to output to a file, use the `RollingFileAppender`:
 
@@ -351,3 +351,7 @@ let stream = Emf::builder("MyApp".into(), vec![vec![]])
 [`output_to`]: https://docs.rs/metrique/latest/metrique/writer/trait.FormatExt.html#method.output_to
 [`io::Write::flush`]: https://doc.rust-lang.org/std/io/trait.Write.html#tymethod.flush
 [`io::Write::write`]: https://doc.rust-lang.org/std/io/trait.Write.html#tymethod.write
+[EMF (Embedded Metrics Format)]: https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/CloudWatch_Embedded_Metric_Format_Specification.html
+[`firelens`]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_firelens.html
+[`tracing_appender::non_blocking`]: https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/index.html
+[use firelens/fluentbit and exec for file rotation]: https://github.com/aws-samples/amazon-ecs-firelens-examples/tree/mainline/examples/fluent-bit/ecs-log-deletion
