@@ -91,10 +91,32 @@ fn render_queue_captures_emf_output() {
     }
 
     let (queue, sink) = render_entry_sink(Emf::all_validations("MyNamespace".into(), vec![vec![]]));
+
+    // entries() returns empty vec before first entry
+    assert!(queue.entries().is_empty());
+
     sink.append(MyMetrics { request_count: 7 });
 
     let entries = queue.entries();
     assert_eq!(entries.len(), 1);
     assert!(entries[0].contains("\"MyNamespace\""));
     assert!(entries[0].contains("\"RequestCount\""));
+
+    // multiple appends
+    sink.append(MyMetrics { request_count: 42 });
+    sink.append(MyMetrics { request_count: 99 });
+
+    let entries = queue.entries();
+    assert_eq!(entries.len(), 3);
+    assert!(entries[1].contains("\"RequestCount\""));
+    assert!(entries[2].contains("\"RequestCount\""));
+
+    // smoke test of the Display impl
+    let display = queue.to_string();
+    assert!(!display.is_empty());
+    assert_eq!(
+        display.matches("\"MyNamespace\"").count(),
+        3,
+        "each appended entry should appear in the display"
+    );
 }
