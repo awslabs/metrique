@@ -4,7 +4,7 @@
 
 ### Quick assertions with `test_metric`
 
-For simple tests where you just want to verify field values without setting up a sink, [`test_metric`](crate::test_util::test_metric) closes a metric struct and returns a [`TestEntry`](crate::test_util::TestEntry) you can assert against directly:
+For simple tests where you just want to verify field values without setting up a sink, [`test_metric`] closes a metric struct and returns a [`TestEntry`] you can assert against directly:
 
 ```rust,ignore
 use metrique::test_util::test_metric;
@@ -17,7 +17,7 @@ For tests that need to verify the full emit pipeline, use `test_entry_sink` belo
 
 ### Testing with `test_entry_sink`
 
-`metrique` provides `test_entry_sink` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the [`TestEntrySink`](crate::test_util::TestEntrySink) to test that you are emitting the metrics that you expect:
+`metrique` provides `test_entry_sink` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the [`TestEntrySink`] to test that you are emitting the metrics that you expect:
 
 > Note: enable the `test-util` feature of `metrique` to enable test utility features.
 
@@ -100,7 +100,7 @@ and cannot be swapped for a real sink after creation.
 
 ### Human-readable output with `LocalFormat`
 
-[`LocalFormat`](crate::local::LocalFormat) renders metric entries in a readable
+[`LocalFormat`] renders metric entries in a readable
 format (pretty, JSON, or markdown table) instead of EMF. Swap it in during local
 development to see what your code is emitting:
 
@@ -144,3 +144,8 @@ fn main() {
     tracing_subscriber::fmt::init();
 }
 ```
+
+[`LocalFormat`]: https://docs.rs/metrique/latest/metrique/local/struct.LocalFormat.html
+[`test_metric`]: https://docs.rs/metrique/latest/metrique/test_util/fn.test_metric.html
+[`TestEntry`]: https://docs.rs/metrique/latest/metrique/test_util/struct.TestEntry.html
+[`TestEntrySink`]: https://docs.rs/metrique/latest/metrique/test_util/struct.TestEntrySink.html
