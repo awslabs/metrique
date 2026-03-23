@@ -541,6 +541,9 @@ macro_rules! global_entry_sink {
                 ///
                 /// # Example
                 #[doc = $crate::__macro_doctest!()]
+                /// # use metrique_writer::sink::global_entry_sink;
+                /// # use metrique_writer::test_util::{test_entry_sink, TestEntrySink};
+                /// # global_entry_sink! { ServiceMetrics }
                 /// #[test]
                 /// fn test_metrics() {
                 ///     #[metrics(rename_all = "PascalCase")]
