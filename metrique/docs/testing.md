@@ -65,9 +65,11 @@ let _guard = ServiceMetrics::set_test_sink(sink);
 
 See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detailed examples.
 
-### Ignoring metrics with `sink_or_noop`
+### Lazy sink resolution with `sink_or_discard`
 
-If your test doesn't need to inspect metrics at all and you just want to avoid the panic from an unattached sink, use `sink_or_noop()`. The returned sink lazily resolves the underlying global sink each time an entry is appended, so it is safe to obtain it before a sink is attached:
+`sink_or_discard()` returns a lazily-resolved sink that checks for an attached sink each time an entry is appended. If a sink is available at that point the entry is forwarded to it; otherwise the entry is silently discarded.
+
+This is useful when the code emitting metrics doesn't control when (or whether) a sink is attached. Metrics will automatically flow to the real sink once one is available, and are silently discarded otherwise.
 
 ```rust,no_run
 use metrique::unit_of_work::metrics;
@@ -81,16 +83,18 @@ struct RequestMetrics {
 
 #[test]
 fn test_that_does_not_care_about_metrics() {
-    // No need to attach a sink or set up a test sink — entries are silently discarded
     let mut metrics = RequestMetrics {
         operation: "SayHello",
-    }.append_on_drop(ServiceMetrics::sink_or_noop());
+    }.append_on_drop(ServiceMetrics::sink_or_discard());
 
     // ... run your test logic ...
 }
 ```
 
-This is simpler than the alternatives of `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly. Because `sink_or_noop()` resolves lazily, it also works in integration tests where a real sink may be attached after the guard is created — entries will reach the real sink as long as it is available when they are emitted.
+Unlike `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly,
+`sink_or_discard()` resolves lazily on every append: if a real sink is attached later,
+entries will flow to it automatically. `DevNullSink` permanently discards all entries
+and cannot be swapped for a real sink after creation.
 
 ## Debugging common issues
 

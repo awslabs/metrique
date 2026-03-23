@@ -134,21 +134,6 @@ impl BoxEntrySink {
         Self(Arc::new(Box::new(sink)))
     }
 
-    /// Returns a [`BoxEntrySink`] that silently discards all entries.
-    ///
-    /// Only available when the `test-util` feature is enabled.
-    #[cfg(feature = "test-util")]
-    pub fn noop() -> Self {
-        struct NoopSink;
-        impl EntrySink<BoxEntry> for NoopSink {
-            fn append(&self, _entry: BoxEntry) {}
-            fn flush_async(&self) -> FlushWait {
-                FlushWait::ready()
-            }
-        }
-        Self::new(NoopSink)
-    }
-
     /// Returns a [`BoxEntrySink`] that defers sink resolution until entries are appended.
     ///
     /// The `factory` closure is called each time an entry is appended or flushed. If it
@@ -264,29 +249,47 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     #[test]
-    fn lazy_sink_forwards_when_resolved() {
-        let appended = Arc::new(Mutex::new(false));
-        let appended_clone = appended.clone();
+    fn lazy_sink_resolves_at_append_time() {
+        let inner: Arc<Mutex<Option<BoxEntrySink>>> = Arc::new(Mutex::new(None));
+        let inner_clone = inner.clone();
 
-        struct MarkerSink(Arc<Mutex<bool>>);
-        impl EntrySink<BoxEntry> for MarkerSink {
+        let sink = BoxEntrySink::lazy(move || inner_clone.lock().unwrap().clone());
+
+        sink.append_any(TestEntry(1));
+
+        let flush_before_attach = AnyEntrySink::flush_async(&sink);
+        drop(flush_before_attach);
+
+        let appended = Arc::new(Mutex::new(Vec::new()));
+        let appended_clone = appended.clone();
+        let flushes = Arc::new(Mutex::new(0));
+        let flushes_clone = flushes.clone();
+
+        struct CollectorSink {
+            appended: Arc<Mutex<Vec<u64>>>,
+            flushes: Arc<Mutex<u64>>,
+        }
+        impl EntrySink<BoxEntry> for CollectorSink {
             fn append(&self, _entry: BoxEntry) {
-                *self.0.lock().unwrap() = true;
+                self.appended.lock().unwrap().push(1);
             }
             fn flush_async(&self) -> FlushWait {
+                *self.flushes.lock().unwrap() += 1;
                 FlushWait::ready()
             }
         }
 
-        let sink =
-            BoxEntrySink::lazy(move || Some(BoxEntrySink::new(MarkerSink(appended_clone.clone()))));
-        sink.append_any(TestEntry(1));
-        assert!(*appended.lock().unwrap());
-    }
+        *inner.lock().unwrap() = Some(BoxEntrySink::new(CollectorSink {
+            appended: appended_clone,
+            flushes: flushes_clone,
+        }));
 
-    #[test]
-    fn lazy_sink_discards_when_none() {
-        let sink = BoxEntrySink::lazy(|| None);
-        sink.append_any(TestEntry(1));
+        sink.append_any(TestEntry(2));
+
+        let flush_after_attach = AnyEntrySink::flush_async(&sink);
+        drop(flush_after_attach);
+
+        assert_eq!(appended.lock().unwrap().len(), 1);
+        assert_eq!(*flushes.lock().unwrap(), 1);
     }
 }
