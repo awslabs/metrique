@@ -50,8 +50,10 @@ fn test_metrics () {
 ```
 
 There are two ways to control the queue:
+
 1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
 2. Use the test-queue functionality provided out-of-the-box by global entry queues:
+
 ```rust
 use metrique::writer::GlobalEntrySink;
 use metrique::ServiceMetrics;
@@ -62,6 +64,37 @@ let _guard = ServiceMetrics::set_test_sink(sink);
 ```
 
 See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detailed examples.
+
+### Lazy sink resolution with `sink_or_discard`
+
+`sink_or_discard()` returns a lazily-resolved sink that checks for an attached sink each time an entry is appended. If a sink is available at that point the entry is forwarded to it; otherwise the entry is silently discarded.
+
+This is useful when the code emitting metrics doesn't control when (or whether) a sink is attached. Metrics will automatically flow to the real sink once one is available, and are silently discarded otherwise.
+
+```rust,no_run
+use metrique::unit_of_work::metrics;
+use metrique::ServiceMetrics;
+use metrique::writer::GlobalEntrySink;
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetrics {
+    operation: &'static str,
+}
+
+#[test]
+fn test_that_does_not_care_about_metrics() {
+    let mut metrics = RequestMetrics {
+        operation: "SayHello",
+    }.append_on_drop(ServiceMetrics::sink_or_discard());
+
+    // ... run your test logic ...
+}
+```
+
+Unlike `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly,
+`sink_or_discard()` resolves lazily on every append: if a real sink is attached later,
+entries will flow to it automatically. `DevNullSink` permanently discards all entries
+and cannot be swapped for a real sink after creation.
 
 ## Debugging common issues
 
