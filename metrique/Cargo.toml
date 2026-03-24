@@ -67,7 +67,7 @@ tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
 metrique = { path = ".", features = ["emf", "test-util", "local-format"] }
-metrique-util = { path = "../metrique-util", features = ["state"] }
+metrique-util = { path = "../metrique-util", features = ["state", "tokio-metrics-bridge"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -83,6 +83,11 @@ doc-scrape-examples = false
 [[example]]
 name = "json"
 required-features = ["json"]
+
+[[example]]
+name = "tokio-metrics"
+required-features = ["emf", "service-metrics"]
+doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true
