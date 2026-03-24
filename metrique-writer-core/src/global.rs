@@ -550,7 +550,7 @@ macro_rules! global_entry_sink {
                     weak.upgrade()
                         .expect("AttachHandle already dropped — cannot register shutdown after detach")
                         .lock().unwrap()
-                        .insert(0, f); // Pre-pend the functions so that they're in front of the sink when dropped.
+                        .insert(0, f); // Prepend the functions so that they're in front of the sink when dropped.
                 }
             }
 
@@ -1211,26 +1211,25 @@ mod shutdown_registry_tests {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { sink, .. } = test_entry_sink();
 
-        // Track call order: subscriber = 1, sink detach = 2
-        let order = Arc::new(Mutex::new(Vec::new()));
-        let order2 = order.clone();
+        let sink_was_attached_during_shutdown = Arc::new(AtomicBool::new(false));
+        let flag = sink_was_attached_during_shutdown.clone();
 
         let handle = Sink::attach((sink, ()));
 
-        // The sink detach fn is already at position 0 (pushed in AttachHandle::new).
-        // Subscriber should be prepended before it.
+        // The sink detach fn is already at position 0.
+        // Subscriber should be prepended before it, so the sink is still attached when this runs.
         Sink::register_shutdown_fn(Box::new(move || {
-            order2.lock().unwrap().push("subscriber");
+            flag.store(Sink::try_sink().is_some(), Ordering::SeqCst);
         }));
 
-        // Wrap the handle to also record when the sink detach runs.
-        // We can check that the sink is still attached when the subscriber runs
-        // by checking Sink::try_sink() inside the shutdown fn.
         drop(handle);
 
-        // subscriber was prepended, so it runs first
-        let calls = order.lock().unwrap();
-        assert_eq!(calls[0], "subscriber");
+        assert!(
+            sink_was_attached_during_shutdown.load(Ordering::SeqCst),
+            "subscriber shutdown fn should run while sink is still attached"
+        );
+        // And after drop completes, the sink should be detached.
+        assert!(Sink::try_sink().is_none());
     }
 
     #[test]
