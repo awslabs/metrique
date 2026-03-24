@@ -325,7 +325,7 @@ impl Drop for TokioRuntimeTestSinkGuard {
 
 impl Drop for AttachHandle {
     fn drop(&mut self) {
-        // Shutdown functions are pre-pended, drain so that subscribers abort first, and the sink detaches last.
+        // Shutdown functions are prepended, drain so that subscribers abort first, and the sink detaches last.
         for shutdown_fn in self.shutdown_registry.lock().unwrap().drain(..) {
             shutdown_fn();
         }
@@ -347,6 +347,7 @@ impl AttachHandle {
     /// shutdown. You *must* have another mechanism to ensure metrics are flushed.
     pub fn forget(self) {
         self.shutdown_registry.lock().unwrap().clear();
+        std::mem::forget(self);
     }
 
     #[doc(hidden)]
@@ -1258,20 +1259,6 @@ mod shutdown_registry_tests {
 
         // Sink should still be usable
         assert!(Sink::try_sink().is_some());
-    }
-
-    #[test]
-    #[should_panic(expected = "AttachHandle already dropped")]
-    fn register_after_forget_panics() {
-        metrique_writer::sink::global_entry_sink! { Sink }
-        let TestEntrySink { sink, .. } = test_entry_sink();
-
-        let handle = Sink::attach((sink, ()));
-        handle.forget();
-
-        // forget consumes the handle, dropping the Arc. The Weak can no longer
-        // upgrade, registering new shutdown fns after forgetting is a user error.
-        Sink::register_shutdown_fn(Box::new(|| {}));
     }
 
     #[test]
