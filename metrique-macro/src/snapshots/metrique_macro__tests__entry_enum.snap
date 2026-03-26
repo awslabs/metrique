@@ -21,6 +21,7 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -49,7 +50,7 @@ const _: () = {
                         >,
                     >()
                 },
-                &self.value,
+                &__metrique_self.value,
             );
         }
         fn sample_group(
@@ -57,6 +58,7 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
+            let __metrique_self = self;
             ::std::iter::empty()
         }
     }
@@ -64,9 +66,10 @@ const _: () = {
 impl metrique::CloseValue for &'_ Nested {
     type Closed = NestedEntry;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
         NestedEntry {
-            value: metrique::CloseValue::close(&self.value),
+            value: metrique::CloseValue::close(&__metrique_self.value),
         }
     }
 }
@@ -157,8 +160,9 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             #[allow(deprecated)]
-            match self {
+            match __metrique_self {
                 StatusEntry::Active { count, latency } => {
                     ::metrique::writer::EntryWriter::value(
                         writer,
@@ -234,7 +238,8 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
-            match self {
+            let __metrique_self = self;
+            match __metrique_self {
                 StatusEntry::Active { .. } => {
                     StatusEntrySampleGroupIter::V0(::std::iter::empty())
                 }
@@ -255,8 +260,9 @@ const _: () = {
 impl metrique::CloseValue for &'_ Status {
     type Closed = StatusEntry;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
-        match self {
+        match __metrique_self {
             Status::Active { count, latency } => {
                 StatusEntry::Active {
                     count: metrique::CloseValue::close(count),
@@ -358,8 +364,9 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             #[allow(deprecated)]
-            match self {
+            match __metrique_self {
                 OperationEntry::Read { bytes } => {
                     ::metrique::writer::EntryWriter::value(
                         writer,
@@ -402,7 +409,8 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
-            match self {
+            let __metrique_self = self;
+            match __metrique_self {
                 OperationEntry::Read { .. } => {
                     OperationEntrySampleGroupIter::V0(::std::iter::empty())
                 }
@@ -418,8 +426,9 @@ const _: () = {
 impl metrique::CloseValue for Operation {
     type Closed = OperationEntry;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
-        match self {
+        match __metrique_self {
             Operation::Read { bytes } => {
                 OperationEntry::Read {
                     bytes: metrique::CloseValue::close(bytes),

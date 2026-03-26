@@ -44,8 +44,9 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             #[allow(deprecated)]
-            match self {
+            match __metrique_self {
                 OperationEntry::Read { bytes } => {
                     struct OperationPreserve;
                     impl ::metrique::concat::ConstStr for OperationPreserve {
@@ -113,7 +114,8 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
-            match self {
+            let __metrique_self = self;
+            match __metrique_self {
                 OperationEntry::Read { .. } => {
                     OperationEntrySampleGroupIter::V0({
                         struct OperationPreserve;
@@ -152,8 +154,9 @@ const _: () = {
 impl metrique::CloseValue for Operation {
     type Closed = OperationEntry;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
-        match self {
+        match __metrique_self {
             Operation::Read { bytes } => {
                 OperationEntry::Read {
                     bytes: metrique::CloseValue::close(bytes),

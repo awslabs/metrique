@@ -1088,6 +1088,17 @@ pub(crate) struct MetricsField {
 }
 
 impl MetricsField {
+    /// Extract `#[cfg(...)]` and `#[cfg_attr(...)]` attributes from this field's external attrs.
+    /// These must be propagated to generated declarations/usages so cfg-disabled fields
+    /// are not referenced in write/close/sample_group code.
+    pub(crate) fn cfg_attrs(&self) -> impl Iterator<Item = &Attribute> {
+        self.external_attrs
+            .iter()
+            .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
+    }
+}
+
+impl MetricsField {
     fn core_field(&self, is_named: bool) -> Ts2 {
         let MetricsField {
             ref external_attrs,
@@ -1126,7 +1137,9 @@ impl MetricsField {
         } else {
             quote! { #base_type }
         };
+        let cfg_attrs = self.cfg_attrs();
         Some(quote_spanned! { *span=>
+                #(#cfg_attrs)*
                 #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
                 #[doc(hidden)]
                 #inner
@@ -1140,12 +1153,12 @@ impl MetricsField {
         }
     }
 
-    pub(crate) fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
+    pub(crate) fn close_value(&self, ownership_kind: OwnershipKind, self_ident: &Ident) -> Ts2 {
         let ident = &self.ident;
         let span = self.span;
         let field_expr = match ownership_kind {
-            OwnershipKind::ByValue => quote_spanned! {span=> self.#ident },
-            OwnershipKind::ByRef => quote_spanned! {span=> &self.#ident },
+            OwnershipKind::ByValue => quote_spanned! {span=> #self_ident.#ident },
+            OwnershipKind::ByRef => quote_spanned! {span=> &#self_ident.#ident },
         };
         self.close_field_expr(field_expr)
     }
@@ -1167,7 +1180,8 @@ impl MetricsField {
             base
         };
 
-        quote! { #ident: #base }
+        let cfg_attrs = self.cfg_attrs();
+        quote! { #(#cfg_attrs)* #ident: #base }
     }
 }
 
@@ -1487,6 +1501,8 @@ fn generate_close_value_impls(
     impl_body: Ts2,
 ) -> Ts2 {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let mixed = proc_macro2::Span::mixed_site();
+    let self_ident = entry_impl::mixed_site_self();
 
     let (metrics_struct_ty, proxy_impl) = match root_attrs.ownership_kind() {
         OwnershipKind::ByValue => (quote!(#base_ty #ty_generics), quote!()),
@@ -1501,12 +1517,19 @@ fn generate_close_value_impls(
             }),
         ),
     };
+
+    // Shared hygiene pattern: see `mixed_site_writer` / `mixed_site_self` docs in `entry_impl.rs`.
+    let close_fn = quote_spanned! {mixed=>
+        fn close(self) -> Self::Closed {
+            let #self_ident = self;
+            #impl_body
+        }
+    };
+
     quote! {
         impl #impl_generics metrique::CloseValue for #metrics_struct_ty #where_clause {
             type Closed = #closed_ty #ty_generics;
-            fn close(self) -> Self::Closed {
-                #impl_body
-            }
+            #close_fn
         }
 
         #proxy_impl

@@ -48,8 +48,9 @@ impl ::metrique::writer::Value for OperationValue {
 impl metrique::CloseValue for &'_ Operation {
     type Closed = OperationValue;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
-        match self {
+        match __metrique_self {
             Operation::Read => OperationValue::Read,
             Operation::Write => OperationValue::Write,
         }

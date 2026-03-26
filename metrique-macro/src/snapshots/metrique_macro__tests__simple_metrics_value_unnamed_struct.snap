@@ -23,9 +23,10 @@ impl ::metrique::writer::Value for RequestValueValue {
 impl metrique::CloseValue for &'_ RequestValue {
     type Closed = RequestValueValue;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
         RequestValueValue {
-            1: metrique::CloseValue::close(&self.1),
+            1: metrique::CloseValue::close(&__metrique_self.1),
         }
     }
 }

@@ -46,8 +46,9 @@ impl ::metrique::writer::Value for OperationValue {
 impl metrique::CloseValue for &'_ Operation {
     type Closed = OperationValue;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
-        match self {
+        match __metrique_self {
             Operation::Read => OperationValue::Read,
             Operation::Write => OperationValue::Write,
         }
@@ -104,6 +105,7 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -132,7 +134,7 @@ const _: () = {
                         >,
                     >()
                 },
-                &self.operation,
+                &__metrique_self.operation,
             );
             ::metrique::writer::EntryWriter::value(
                 writer,
@@ -162,7 +164,7 @@ const _: () = {
                         >,
                     >()
                 },
-                &self.request_id,
+                &__metrique_self.request_id,
             );
         }
         fn sample_group(
@@ -170,6 +172,7 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
+            let __metrique_self = self;
             {
                 struct OperationPreserve;
                 impl ::metrique::concat::ConstStr for OperationPreserve {
@@ -197,7 +200,7 @@ const _: () = {
                         >,
                     >(),
                     ::metrique::writer::core::SampleGroup::as_sample_group(
-                        &self.operation,
+                        &__metrique_self.operation,
                     ),
                 ))
             }
@@ -207,10 +210,11 @@ const _: () = {
 impl metrique::CloseValue for &'_ Metadata {
     type Closed = MetadataEntry;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
         MetadataEntry {
-            operation: metrique::CloseValue::close(&self.operation),
-            request_id: metrique::CloseValue::close(&self.request_id),
+            operation: metrique::CloseValue::close(&__metrique_self.operation),
+            request_id: metrique::CloseValue::close(&__metrique_self.request_id),
         }
     }
 }
@@ -322,8 +326,9 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             #[allow(deprecated)]
-            match self {
+            match __metrique_self {
                 RequestResultEntry::Success { operation, bytes } => {
                     ::metrique::writer::EntryWriter::value(
                         writer,
@@ -462,7 +467,8 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
-            match self {
+            let __metrique_self = self;
+            match __metrique_self {
                 RequestResultEntry::Success { operation, .. } => {
                     RequestResultEntrySampleGroupIter::V0({
                         struct OperationPreserve;
@@ -547,8 +553,9 @@ const _: () = {
 impl metrique::CloseValue for RequestResult {
     type Closed = RequestResultEntry;
     fn close(self) -> Self::Closed {
+        let __metrique_self = self;
         #[allow(deprecated)]
-        match self {
+        match __metrique_self {
             RequestResult::Success { operation, bytes } => {
                 RequestResultEntry::Success {
                     operation: metrique::CloseValue::close(operation),
