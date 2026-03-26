@@ -17,7 +17,7 @@ struct AppConfig {
     traffic_policy: TrafficPolicy,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Default)]
 #[metrics(value(string))]
 enum TrafficPolicy {
     #[default]
