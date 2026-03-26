@@ -77,3 +77,66 @@ async fn string_value() {
     assert_eq!(entry.values["time_as_epoch_millis"], "1000.0");
     assert_eq!(entry.values["nested_foo"], "ZAB");
 }
+
+#[test]
+fn value_string_entry_auto_derives_debug_clone_copy() {
+    #[metrics(value(string))]
+    enum AutoDerived {
+        Alpha,
+    }
+
+    // The closed value should also have Debug, Clone, Copy auto-derived
+    let closed = metrique::CloseValue::close(AutoDerived::Alpha);
+
+    let debug_str = format!("{:?}", closed);
+    assert_eq!(debug_str, "Alpha");
+
+    let cloned = closed.clone();
+    assert_eq!(format!("{:?}", cloned), "Alpha");
+
+    let copied = closed;
+    let still_usable_after_copy = closed;
+    assert_eq!(format!("{:?}", copied), "Alpha");
+    assert_eq!(format!("{:?}", still_usable_after_copy), "Alpha");
+}
+
+#[test]
+fn value_string_extra_user_derives_before_metrics() {
+    // User can derive additional traits (PartialEq, Default) before #[metrics].
+    #[derive(PartialEq, Default)]
+    #[metrics(value(string))]
+    enum Priority {
+        #[default]
+        Low,
+    }
+
+    let p = Priority::Low;
+    let _ = format!("{:?}", p); // Debug: auto-derived
+    let copied = p; // Copy: auto-derived
+    assert_eq!(p, copied); // PartialEq: user-derived
+    assert_eq!(Priority::default(), Priority::Low); // Default: user-derived
+
+    let closed = metrique::CloseValue::close(p);
+    assert_eq!(format!("{:?}", closed), "Low");
+}
+
+#[test]
+fn value_string_user_derives_after_metrics_silently_ignored() {
+    // Debug/Clone/Copy placed after #[metrics] are silently stripped (auto-derived).
+    // Other derives (PartialEq, Default) are preserved.
+    #[metrics(value(string))]
+    #[derive(Debug, Clone, Copy, PartialEq, Default)]
+    enum Priority {
+        #[default]
+        Low,
+    }
+
+    let p = Priority::Low;
+    let _ = format!("{:?}", p);
+    let copied = p;
+    assert_eq!(p, copied);
+    assert_eq!(Priority::default(), Priority::Low);
+
+    let closed = metrique::CloseValue::close(p);
+    assert_eq!(format!("{:?}", closed), "Low");
+}
