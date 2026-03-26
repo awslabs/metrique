@@ -2,13 +2,13 @@
 source: metrique-macro/src/lib.rs
 expression: parsed_file
 ---
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Operation {
     Read,
     Write,
 }
 #[doc(hidden)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OperationValue {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
