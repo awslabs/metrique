@@ -1501,7 +1501,6 @@ fn generate_close_value_impls(
     impl_body: Ts2,
 ) -> Ts2 {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let mixed = proc_macro2::Span::mixed_site();
     let self_ident = entry_impl::mixed_site_self();
 
     let (metrics_struct_ty, proxy_impl) = match root_attrs.ownership_kind() {
@@ -1518,8 +1517,7 @@ fn generate_close_value_impls(
         ),
     };
 
-    // Shared hygiene pattern: see `mixed_site_writer` / `mixed_site_self` docs in `entry_impl.rs`.
-    let close_fn = quote_spanned! {mixed=>
+    let close_fn = quote! {
         fn close(self) -> Self::Closed {
             let #self_ident = self;
             #impl_body
