@@ -151,7 +151,7 @@ fn generate_entry_struct(
     Ok(quote!(
         #[doc(hidden)]
         #[allow(clippy::type_complexity)]
-        #allowed_derives
+        #(#allowed_derives)*
         pub struct #name #generics #body
     ))
 }
