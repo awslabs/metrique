@@ -77,6 +77,21 @@ error: Cannot combine `flatten` with `unit`
    |                                ^^^^
 
 error[E0277]: CloseValue is not implemented for &TimestampOnClose
+  --> tests/ui/fail/enum_kitchen_sink.rs:89:1
+   |
+89 | #[metrics(subfield)]
+   | ^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
+90 | struct TimestampWrapper {
+91 |     timestamp: metrique::timers::TimestampOnClose,
+   |     --------- required by a bound introduced by this call
+   |
+   = help: the trait `CloseValue` is not implemented for `&TimestampOnClose`
+   = note: You may need to add `#[metrics]` to `&TimestampOnClose` or implement `CloseValue` directly.
+   = note: if &TimestampOnClose implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the trait `CloseValue` is implemented for `TimestampOnClose`
+
+error[E0277]: CloseValue is not implemented for &TimestampOnClose
   --> tests/ui/fail/enum_kitchen_sink.rs:91:5
    |
 91 |     timestamp: metrique::timers::TimestampOnClose,
@@ -89,6 +104,24 @@ error[E0277]: CloseValue is not implemented for &TimestampOnClose
    = help: the trait `CloseValue` is implemented for `TimestampOnClose`
 
 error[E0277]: CloseValue is not implemented for &String
+  --> tests/ui/fail/enum_kitchen_sink.rs:94:1
+   |
+94 | #[metrics(subfield)]
+   | ^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
+95 | struct StringWrapper {
+96 |     value: String,
+   |     ----- required by a bound introduced by this call
+   |
+   = help: the trait `CloseValue` is not implemented for `&String`
+   = note: You may need to add `#[metrics]` to `&String` or implement `CloseValue` directly.
+   = note: if &String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+help: consider dereferencing here
+   |
+94 | *#[metrics(subfield)]
+   | +
+
+error[E0277]: CloseValue is not implemented for &String
   --> tests/ui/fail/enum_kitchen_sink.rs:96:5
    |
 96 |     value: String,
@@ -98,10 +131,7 @@ error[E0277]: CloseValue is not implemented for &String
    = note: You may need to add `#[metrics]` to `&String` or implement `CloseValue` directly.
    = note: if &String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
    = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-help: consider dereferencing here
-   |
-96 |     *value: String,
-   |     +
+   = help: the trait `CloseValue` is implemented for `String`
 
 error[E0277]: CloseValue is not implemented for &TimestampOnClose
    --> tests/ui/fail/enum_kitchen_sink.rs:101:14
