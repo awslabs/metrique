@@ -163,11 +163,18 @@ fn generate_close_value_impls_for_struct(
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> Ts2 {
-    let self_ident = crate::entry_impl::mixed_site_self();
+    let mixed = proc_macro2::Span::mixed_site();
+    let ownership = root_attrs.ownership_kind();
     let fields = fields
         .iter()
         .filter(|f| !matches!(f.attrs.kind, MetricsFieldKind::Ignore(_)))
-        .map(|f| f.close_value(root_attrs.ownership_kind(), &self_ident));
+        .map(|f| {
+            // Relocate `__metrique_self` to the field's source position so that diagnostics
+            // (e.g. deref suggestions) point to the field, not the `#[metrics]` attribute.
+            // `located_at` preserves mixed-site hygiene needed for macro_rules.
+            let self_ident = Ident::new("__metrique_self", mixed.located_at(f.span));
+            f.close_value(ownership, &self_ident)
+        });
     let config: Vec<Ts2> = root_attrs.create_configuration();
 
     let impl_body = quote! {
