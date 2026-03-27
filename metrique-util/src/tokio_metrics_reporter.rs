@@ -36,6 +36,32 @@ impl TokioRuntimeMetricsConfig {
 }
 
 /// Extension methods for subscribing Tokio runtime metrics to a global entry sink.
+///
+/// Spawns a background task that periodically samples
+/// [`RuntimeMetrics`](tokio_metrics::RuntimeMetrics) and appends each snapshot to the sink.
+/// The task is automatically aborted when the [`AttachHandle`] is dropped.
+///
+/// # `tokio_unstable`
+///
+/// When the runtime is built with `RUSTFLAGS="--cfg tokio_unstable"` and
+/// `enable_metrics_poll_time_histogram` is called on the runtime builder, each
+/// snapshot also includes a `poll_time_histogram` entry emitted as a distribution
+/// metric with bucket ranges from the runtime handle.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use metrique_util::{AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig};
+/// use std::time::Duration;
+///
+/// let _handle = ServiceMetrics::attach_to_stream(emf.output_to(std::io::stderr()));
+///
+/// let config = TokioRuntimeMetricsConfig::default()
+///     .with_interval(Duration::from_secs(30));
+/// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
+/// ```
+///
+/// [`AttachHandle`]: metrique_writer_core::global::AttachHandle
 pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEntrySink {
     /// Subscribe to Tokio runtime metrics, adding the subscription to this handle.
     ///

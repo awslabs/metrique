@@ -208,6 +208,25 @@ if you use metric entries to track user log-in operations, and your application 
 
 In that case, you should not be using [`BackgroundQueue`] or sampling. It is probably fine to use the [`Format`](crate::writer::format::Format) implementations in that case, but it is recommended to test and audit your use-case to make sure nothing is being missed.
 
+## Metric source integrations
+
+Global entry sinks support subscribing background metric sources that
+automatically append entries at a configured interval. The subscription
+is tied to the [`AttachHandle`] — when it drops, the background task is
+aborted.
+
+Available integrations (via [`metrique-util`]):
+
+- **Tokio runtime metrics** — enable the `tokio-metrics-bridge` feature on
+  `metrique-util` and call [`subscribe_tokio_runtime_metrics`] to
+  start appending [`RuntimeMetrics`] snapshots (worker
+  utilization, queue depths, poll durations, and more).
+
+[`AttachHandle`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.AttachHandle.html
+[`metrique-util`]: https://docs.rs/metrique-util/latest/metrique_util/
+[`subscribe_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.subscribe_tokio_runtime_metrics
+[`RuntimeMetrics`]: https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.RuntimeMetrics.html
+
 ## Use of exporters
 
 The `metrique` library does not currently contain any code that exports the metrics outside of the current process. To make a working system, you normally need to integrate the `metrique` library with some exporter such as the [Amazon CloudWatch Agent].
