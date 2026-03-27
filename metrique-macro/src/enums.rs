@@ -269,9 +269,8 @@ pub(crate) fn generate_metrics_for_enum(
                 let variant_ident = &variant.ident;
                 quote::quote_spanned!(variant.ident.span()=> #enum_name::#variant_ident => #entry_name::#variant_ident)
             });
-            let self_ident = crate::entry_impl::mixed_site_self();
             let variants_map =
-                quote!(#[allow(deprecated)] match #self_ident { #(#variants_map),* });
+                quote!(#[allow(deprecated)] match __metrique_self_expr!() { #(#variants_map),* });
             crate::generate_close_value_impls(
                 &root_attrs,
                 enum_name,
@@ -423,8 +422,8 @@ fn generate_close_value_impl_for_enum(
         }
     });
 
-    let self_ident = crate::entry_impl::mixed_site_self();
-    let match_expr = quote!(#[allow(deprecated)] match #self_ident { #(#match_arms),* });
+    let match_expr =
+        quote!(#[allow(deprecated)] match __metrique_self_expr!() { #(#match_arms),* });
 
     crate::generate_close_value_impls(root_attrs, enum_name, entry_name, generics, match_expr)
 }

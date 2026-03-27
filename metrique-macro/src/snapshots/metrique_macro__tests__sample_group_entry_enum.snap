@@ -46,9 +46,13 @@ impl ::metrique::writer::Value for OperationValue {
 impl metrique::CloseValue for &'_ Operation {
     type Closed = OperationValue;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
-        match __metrique_self {
+        match __metrique_self_expr!() {
             Operation::Read => OperationValue::Read,
             Operation::Write => OperationValue::Write,
         }
@@ -210,11 +214,15 @@ const _: () = {
 impl metrique::CloseValue for &'_ Metadata {
     type Closed = MetadataEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         MetadataEntry {
-            operation: metrique::CloseValue::close(&__metrique_self.operation),
-            request_id: metrique::CloseValue::close(&__metrique_self.request_id),
+            operation: metrique::CloseValue::close(&__metrique_self_expr!().operation),
+            request_id: metrique::CloseValue::close(&__metrique_self_expr!().request_id),
         }
     }
 }
@@ -553,9 +561,13 @@ const _: () = {
 impl metrique::CloseValue for RequestResult {
     type Closed = RequestResultEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
-        match __metrique_self {
+        match __metrique_self_expr!() {
             RequestResult::Success { operation, bytes } => {
                 RequestResultEntry::Success {
                     operation: metrique::CloseValue::close(operation),

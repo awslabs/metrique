@@ -1153,12 +1153,12 @@ impl MetricsField {
         }
     }
 
-    pub(crate) fn close_value(&self, ownership_kind: OwnershipKind, self_ident: &Ident) -> Ts2 {
+    pub(crate) fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
         let ident = &self.ident;
         let span = self.span;
         let field_expr = match ownership_kind {
-            OwnershipKind::ByValue => quote_spanned! {span=> #self_ident.#ident },
-            OwnershipKind::ByRef => quote_spanned! {span=> &#self_ident.#ident },
+            OwnershipKind::ByValue => quote_spanned! {span=> __metrique_self_expr!().#ident },
+            OwnershipKind::ByRef => quote_spanned! {span=> &__metrique_self_expr!().#ident },
         };
         self.close_field_expr(field_expr)
     }
@@ -1501,7 +1501,6 @@ fn generate_close_value_impls(
     impl_body: Ts2,
 ) -> Ts2 {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let self_ident = entry_impl::mixed_site_self();
 
     let (metrics_struct_ty, proxy_impl) = match root_attrs.ownership_kind() {
         OwnershipKind::ByValue => (quote!(#base_ty #ty_generics), quote!()),
@@ -1519,7 +1518,14 @@ fn generate_close_value_impls(
 
     let close_fn = quote! {
         fn close(self) -> Self::Closed {
-            let #self_ident = self;
+            // `self` is expanded from macro_rules! input in some callers
+            // Routing receiver access through a local macro preserves hygiene in those cases,
+            // while avoiding the extra diagnostic site caused by other approaches like rebinding self.
+            macro_rules! __metrique_self_expr {
+                () => {
+                    self
+                };
+            }
             #impl_body
         }
     };

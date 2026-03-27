@@ -66,10 +66,14 @@ const _: () = {
 impl metrique::CloseValue for &'_ Nested {
     type Closed = NestedEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         NestedEntry {
-            value: metrique::CloseValue::close(&__metrique_self.value),
+            value: metrique::CloseValue::close(&__metrique_self_expr!().value),
         }
     }
 }
@@ -260,9 +264,13 @@ const _: () = {
 impl metrique::CloseValue for &'_ Status {
     type Closed = StatusEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
-        match __metrique_self {
+        match __metrique_self_expr!() {
             Status::Active { count, latency } => {
                 StatusEntry::Active {
                     count: metrique::CloseValue::close(count),
@@ -426,9 +434,13 @@ const _: () = {
 impl metrique::CloseValue for Operation {
     type Closed = OperationEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
-        match __metrique_self {
+        match __metrique_self_expr!() {
             Operation::Read { bytes } => {
                 OperationEntry::Read {
                     bytes: metrique::CloseValue::close(bytes),

@@ -133,11 +133,17 @@ const _: () = {
 impl metrique::CloseValue for RequestMetrics {
     type Closed = RequestMetricsEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         RequestMetricsEntry {
-            operation: metrique::CloseValue::close(__metrique_self.operation),
-            number_of_ducks: metrique::CloseValue::close(__metrique_self.number_of_ducks),
+            operation: metrique::CloseValue::close(__metrique_self_expr!().operation),
+            number_of_ducks: metrique::CloseValue::close(
+                __metrique_self_expr!().number_of_ducks,
+            ),
         }
     }
 }

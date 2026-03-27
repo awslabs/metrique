@@ -39,9 +39,13 @@ impl ::metrique::writer::Value for FooValue {
 impl metrique::CloseValue for &'_ Foo {
     type Closed = FooValue;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
-        match __metrique_self {
+        match __metrique_self_expr!() {
             Foo::Bar => FooValue::Bar,
         }
     }

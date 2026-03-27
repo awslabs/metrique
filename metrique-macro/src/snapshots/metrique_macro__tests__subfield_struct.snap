@@ -67,10 +67,14 @@ const _: () = {
 impl metrique::CloseValue for &'_ NestedMetrics {
     type Closed = NestedMetricsEntry;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         NestedMetricsEntry {
-            counter: metrique::CloseValue::close(&__metrique_self.counter),
+            counter: metrique::CloseValue::close(&__metrique_self_expr!().counter),
         }
     }
 }

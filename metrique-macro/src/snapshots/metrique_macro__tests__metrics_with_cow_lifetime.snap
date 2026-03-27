@@ -103,11 +103,15 @@ const _: () = {
 impl<'a> metrique::CloseValue for Foo<'a> {
     type Closed = FooEntry<'a>;
     fn close(self) -> Self::Closed {
-        let __metrique_self = self;
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         FooEntry {
-            a: metrique::CloseValue::close(__metrique_self.a),
-            b: metrique::CloseValue::close(__metrique_self.b),
+            a: metrique::CloseValue::close(__metrique_self_expr!().a),
+            b: metrique::CloseValue::close(__metrique_self_expr!().b),
         }
     }
 }
