@@ -16,7 +16,7 @@ const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 #[non_exhaustive]
 pub struct TokioRuntimeMetricsConfig {
     /// Sampling interval used by the reporter loop.
-    pub interval: Duration,
+    interval: Duration,
 }
 
 impl Default for TokioRuntimeMetricsConfig {
