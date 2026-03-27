@@ -28,6 +28,7 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -56,7 +57,7 @@ const _: () = {
                         >,
                     >()
                 },
-                &self.a,
+                &__metrique_self.a,
             );
             ::metrique::writer::EntryWriter::value(
                 writer,
@@ -86,7 +87,7 @@ const _: () = {
                         >,
                     >()
                 },
-                &self.b,
+                &__metrique_self.b,
             );
         }
         fn sample_group(
@@ -94,6 +95,7 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
+            let __metrique_self = self;
             ::std::iter::empty()
         }
     }
@@ -101,10 +103,15 @@ const _: () = {
 impl<'a> metrique::CloseValue for Foo<'a> {
     type Closed = FooEntry<'a>;
     fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         FooEntry {
-            a: metrique::CloseValue::close(self.a),
-            b: metrique::CloseValue::close(self.b),
+            a: metrique::CloseValue::close(__metrique_self_expr!().a),
+            b: metrique::CloseValue::close(__metrique_self_expr!().b),
         }
     }
 }

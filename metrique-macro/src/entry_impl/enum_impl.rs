@@ -40,24 +40,38 @@ pub(crate) fn generate_enum_entry_impl(
     let (impl_generics, _, _) = impl_generics.split_for_impl();
     let (_, ty_generics, where_clause) = generics.split_for_impl();
 
+    let mixed = proc_macro2::Span::mixed_site();
+    let writer_ident = mixed_site_writer();
+    let self_ident = mixed_site_self();
+
+    // Macro hygiene pattern: see `mixed_site_writer` / `mixed_site_self` docs in `entry_impl.rs`.
+    let write_fn = quote_spanned! {mixed=>
+        fn write<'__metrique_write>(&'__metrique_write self, #writer_ident: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>) {
+            let #self_ident = self;
+            #[allow(deprecated)]
+            match #self_ident {
+                #(#write_arms)*
+            }
+        }
+    };
+
+    let sample_group_fn = quote_spanned! {mixed=>
+        fn sample_group(&self) -> impl ::std::iter::Iterator<Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>)> {
+            let #self_ident = self;
+            match #self_ident {
+                #(#sample_group_arms),*
+            }
+        }
+    };
+
     quote! {
         const _: () = {
             #iter_enum
 
             #[expect(deprecated)]
             impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
-                fn write<'__metrique_write>(&'__metrique_write self, writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>) {
-                    #[allow(deprecated)]
-                    match self {
-                        #(#write_arms)*
-                    }
-                }
-
-                fn sample_group(&self) -> impl ::std::iter::Iterator<Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>)> {
-                    match self {
-                        #(#sample_group_arms),*
-                    }
-                }
+                #write_fn
+                #sample_group_fn
             }
         };
     }
@@ -72,6 +86,7 @@ fn generate_write_arms(
         .tag
         .as_ref()
         .map(|tag| tag.field_name(root_attrs));
+    let writer_ident = mixed_site_writer();
 
     variants
         .iter()
@@ -87,7 +102,7 @@ fn generate_write_arms(
                 let value = crate::inflect::inflect_no_prefix(root_attrs, variant);
                 quote! {
                     #extra
-                    ::metrique::writer::EntryWriter::value(writer, ::metrique::concat::const_str_value::<#name>(), #value);
+                    ::metrique::writer::EntryWriter::value(#writer_ident, ::metrique::concat::const_str_value::<#name>(), #value);
                 }
             });
 
@@ -140,6 +155,7 @@ fn generate_tuple_writes(
     root_attrs: &RootAttributes,
     variant_span: proc_macro2::Span,
 ) -> (Vec<Ident>, Vec<Ts2>) {
+    let writer_ident = mixed_site_writer();
     tuple_data
         .iter()
         .enumerate()
@@ -154,12 +170,12 @@ fn generate_tuple_writes(
                     };
                     quote::quote_spanned!(*span=>
                         #extra
-                        ::metrique::InflectableEntry::<#ns>::write(#binding, writer);
+                        ::metrique::InflectableEntry::<#ns>::write(#binding, #writer_ident);
                     )
                 }
                 MetricsFieldKind::FlattenEntry(span) => {
                     quote::quote_spanned!(*span=>
-                        ::metrique::writer::Entry::write(#binding, writer);
+                        ::metrique::writer::Entry::write(#binding, #writer_ident);
                     )
                 }
                 MetricsFieldKind::Ignore(_) => quote!(),

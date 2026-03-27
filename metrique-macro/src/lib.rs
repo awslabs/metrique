@@ -1088,6 +1088,17 @@ pub(crate) struct MetricsField {
 }
 
 impl MetricsField {
+    /// Extract `#[cfg(...)]` and `#[cfg_attr(...)]` attributes from this field's external attrs.
+    /// These must be propagated to generated declarations/usages so cfg-disabled fields
+    /// are not referenced in write/close/sample_group code.
+    pub(crate) fn cfg_attrs(&self) -> impl Iterator<Item = &Attribute> {
+        self.external_attrs
+            .iter()
+            .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
+    }
+}
+
+impl MetricsField {
     fn core_field(&self, is_named: bool) -> Ts2 {
         let MetricsField {
             ref external_attrs,
@@ -1126,7 +1137,9 @@ impl MetricsField {
         } else {
             quote! { #base_type }
         };
+        let cfg_attrs = self.cfg_attrs();
         Some(quote_spanned! { *span=>
+                #(#cfg_attrs)*
                 #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
                 #[doc(hidden)]
                 #inner
@@ -1144,8 +1157,8 @@ impl MetricsField {
         let ident = &self.ident;
         let span = self.span;
         let field_expr = match ownership_kind {
-            OwnershipKind::ByValue => quote_spanned! {span=> self.#ident },
-            OwnershipKind::ByRef => quote_spanned! {span=> &self.#ident },
+            OwnershipKind::ByValue => quote_spanned! {span=> __metrique_self_expr!().#ident },
+            OwnershipKind::ByRef => quote_spanned! {span=> &__metrique_self_expr!().#ident },
         };
         self.close_field_expr(field_expr)
     }
@@ -1167,7 +1180,8 @@ impl MetricsField {
             base
         };
 
-        quote! { #ident: #base }
+        let cfg_attrs = self.cfg_attrs();
+        quote! { #(#cfg_attrs)* #ident: #base }
     }
 }
 
@@ -1501,12 +1515,25 @@ fn generate_close_value_impls(
             }),
         ),
     };
+
+    let close_fn = quote! {
+        fn close(self) -> Self::Closed {
+            // `self` is expanded from macro_rules! input in some callers
+            // Routing receiver access through a local macro preserves hygiene in those cases,
+            // while avoiding the extra diagnostic site caused by other approaches like rebinding self.
+            macro_rules! __metrique_self_expr {
+                () => {
+                    self
+                };
+            }
+            #impl_body
+        }
+    };
+
     quote! {
         impl #impl_generics metrique::CloseValue for #metrics_struct_ty #where_clause {
             type Closed = #closed_ty #ty_generics;
-            fn close(self) -> Self::Closed {
-                #impl_body
-            }
+            #close_fn
         }
 
         #proxy_impl
