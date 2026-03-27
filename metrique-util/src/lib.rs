@@ -9,3 +9,8 @@
 mod state;
 #[cfg(feature = "state")]
 pub use state::{LatestRef, State};
+
+#[cfg(feature = "tokio-metrics-bridge")]
+mod tokio_metrics_reporter;
+#[cfg(feature = "tokio-metrics-bridge")]
+pub use tokio_metrics_reporter::{AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig};
