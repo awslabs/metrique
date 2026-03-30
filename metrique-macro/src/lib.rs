@@ -1479,13 +1479,16 @@ pub(crate) fn generate_on_drop_wrapper(
 
     quote! {
         #[doc = concat!("Metrics guard returned from [`", #inner_str, "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped.")]
+        #[allow(dead_code, unreachable_pub)]
         #vis type #guard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<#inner_static, Q>;
 
         #[doc = concat!("Metrics handle returned from [`", #guard_str, "::handle`], similar to an `Arc<", #guard_str, ">`.")]
+        #[allow(dead_code, unreachable_pub)]
         #vis type #handle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<#inner_static, Q>;
 
         impl #inner_static #where_clause {
             #[doc = "Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop."]
+            #[allow(dead_code, unreachable_pub)]
             #vis fn append_on_drop<Q: ::metrique::writer::EntrySink<::metrique::RootEntry<#target_static>> + Send + Sync + 'static>(self, sink: Q) -> #guard<Q> {
                 ::metrique::append_and_close(self, sink)
             }
