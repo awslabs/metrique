@@ -16,6 +16,25 @@ mod struct_impl;
 pub(crate) use enum_impl::generate_enum_entry_impl;
 pub(crate) use struct_impl::generate_struct_entry_impl;
 
+/// Hygiene helper for generated method-local identifiers.
+///
+/// When `#[metrics]` is expanded inside `macro_rules!`, field names from macro parameters
+/// can have a different hygiene context than proc-macro-generated identifiers.
+/// Using `Span::mixed_site()` keeps generated locals consistently resolvable in those bodies.
+pub(crate) fn mixed_site_writer() -> Ident {
+    format_ident!("writer", span = proc_macro2::Span::mixed_site())
+}
+
+/// Hygiene helper for the generated receiver binding (`__metrique_self`).
+///
+/// Similar to [`mixed_site_writer`], but specifically for `self` access:
+/// the `self` keyword works in signatures/bindings, while `self.field` can fail across
+/// hygiene boundaries. Generated code rebinds with `let __metrique_self = self;` and then
+/// uses `__metrique_self.field` for field access.
+pub(crate) fn mixed_site_self() -> Ident {
+    format_ident!("__metrique_self", span = proc_macro2::Span::mixed_site())
+}
+
 fn make_ns(ns: NameStyle, span: proc_macro2::Span) -> Ts2 {
     match ns {
         NameStyle::PascalCase => quote_spanned! {span=> NS::PascalCase },
@@ -167,26 +186,28 @@ fn generate_field_writes(
     field_access: impl Fn(&Ts2) -> Ts2,
 ) -> Vec<Ts2> {
     let mut writes = Vec::new();
+    let writer_ident = mixed_site_writer();
 
     for field in fields {
         let field_span = field.span;
         let ns = make_ns(root_attrs.rename_all, field_span);
+        let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
 
-        match &field.attrs.kind {
+        let write = match &field.attrs.kind {
             MetricsFieldKind::Timestamp(span) => {
                 let field_access = field_access(&field.ident);
-                writes.push(quote_spanned! {*span=>
+                quote_spanned! {*span=>
                     #[allow(clippy::useless_conversion)]
                     {
-                        ::metrique::writer::EntryWriter::timestamp(writer, (*#field_access).into());
+                        ::metrique::writer::EntryWriter::timestamp(#writer_ident, (*#field_access).into());
                     }
-                });
+                }
             }
             MetricsFieldKind::FlattenEntry(span) => {
                 let field_access = field_access(&field.ident);
-                writes.push(quote_spanned! {*span=>
-                    ::metrique::writer::Entry::write(#field_access, writer);
-                });
+                quote_spanned! {*span=>
+                    ::metrique::writer::Entry::write(#field_access, #writer_ident);
+                }
             }
             MetricsFieldKind::Flatten { span, prefix } => {
                 let (extra, ns) = match prefix {
@@ -194,10 +215,10 @@ fn generate_field_writes(
                     Some(prefix) => prefix.append_to(&ns, field_span),
                 };
                 let field_access = field_access(&field.ident);
-                writes.push(quote_spanned! {*span=>
+                quote_spanned! {*span=>
                     #extra
-                    ::metrique::InflectableEntry::<#ns>::write(#field_access, writer);
-                });
+                    ::metrique::InflectableEntry::<#ns>::write(#field_access, #writer_ident);
+                }
             }
             MetricsFieldKind::Ignore(_) => {
                 continue;
@@ -206,15 +227,20 @@ fn generate_field_writes(
                 let (extra, name) = make_inflect_metric_name(root_attrs, field);
                 let field_access = field_access(&field.ident);
                 let value = crate::value_impl::format_value(format, field_span, field_access);
-                writes.push(quote_spanned! {field_span=>
-                    ::metrique::writer::EntryWriter::value(writer,
+                quote_spanned! {field_span=>
+                    ::metrique::writer::EntryWriter::value(#writer_ident,
                         {
                             #extra
                             ::metrique::concat::const_str_value::<#name>()
                         }
                         , #value);
-                });
+                }
             }
+        };
+        if cfg_attrs.is_empty() {
+            writes.push(write);
+        } else {
+            writes.push(quote! { #(#cfg_attrs)* { #write } });
         }
     }
 
@@ -252,33 +278,33 @@ fn make_inflect_metric_name(root_attrs: &RootAttributes, field: &MetricsField) -
     )
 }
 
-/// Collect sample group iterators from a field, returning (field_ident, iterator_expr) for fields that have sample groups
-/// The `field_access` closure determines how to access the field (e.g., `#field_ident` or `&self.#field_ident`)
+/// Collect sample group iterators from a field, returning (field_ident, iterator_expr) for fields that have sample groups.
+/// The `field_access` closure determines how to access the field (e.g., `#field_ident` or `&__metrique_self.#field_ident`).
+///
+/// The returned iterator expression is guarded with the field's cfg/cfg_attr attributes:
+/// it starts from `empty()` and conditionally chains the field iterator when the attrs apply.
+/// This avoids referencing cfg-disabled fields and works for both `cfg(...)` and
+/// `cfg_attr(..., cfg(...))` forms without re-implementing cfg predicate logic.
 fn collect_field_sample_group<'a>(
     field: &'a MetricsField,
     root_attrs: &RootAttributes,
     field_access: impl FnOnce(&Ts2) -> Ts2,
 ) -> Option<(&'a Ts2, Ts2)> {
     let field_ident = &field.ident;
-    match &field.attrs.kind {
+    let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
+    let inner = match &field.attrs.kind {
         MetricsFieldKind::Flatten { span, .. } => {
             let ns = make_ns(root_attrs.rename_all, field.span);
             let access = field_access(field_ident);
-            Some((
-                field_ident,
-                quote_spanned!(*span=>
-                    ::metrique::InflectableEntry::<#ns>::sample_group(#access)
-                ),
-            ))
+            quote_spanned!(*span=>
+                ::metrique::InflectableEntry::<#ns>::sample_group(#access)
+            )
         }
         MetricsFieldKind::FlattenEntry(span) => {
             let access = field_access(field_ident);
-            Some((
-                field_ident,
-                quote_spanned!(*span=>
-                    ::metrique::writer::Entry::sample_group(#access)
-                ),
-            ))
+            quote_spanned!(*span=>
+                ::metrique::writer::Entry::sample_group(#access)
+            )
         }
         MetricsFieldKind::Field {
             sample_group: Some(span),
@@ -286,23 +312,36 @@ fn collect_field_sample_group<'a>(
         } => {
             let (extra, name) = make_inflect_metric_name(root_attrs, field);
             let access = field_access(field_ident);
-            Some((
-                field_ident,
-                quote_spanned!(*span=>
-                    {
-                        #extra
-                        ::std::iter::once((
-                            ::metrique::concat::const_str_value::<#name>(),
-                            ::metrique::writer::core::SampleGroup::as_sample_group(#access)
-                        ))
-                    }
-                ),
-            ))
+            quote_spanned!(*span=>
+                {
+                    #extra
+                    ::std::iter::once((
+                        ::metrique::concat::const_str_value::<#name>(),
+                        ::metrique::writer::core::SampleGroup::as_sample_group(#access)
+                    ))
+                }
+            )
         }
         MetricsFieldKind::Field {
             sample_group: None, ..
         }
         | MetricsFieldKind::Ignore(_)
-        | MetricsFieldKind::Timestamp(_) => None,
+        | MetricsFieldKind::Timestamp(_) => return None,
+    };
+    if cfg_attrs.is_empty() {
+        Some((field_ident, inner))
+    } else {
+        let wrapped = quote! {
+            {
+                let __metrique_sg = ::std::iter::empty::<(
+                    ::std::borrow::Cow<'static, str>,
+                    ::std::borrow::Cow<'static, str>,
+                )>();
+                #(#cfg_attrs)*
+                let __metrique_sg = __metrique_sg.chain(#inner);
+                __metrique_sg
+            }
+        };
+        Some((field_ident, wrapped))
     }
 }
