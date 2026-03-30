@@ -14,6 +14,7 @@ const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 /// Configuration for Tokio runtime metrics bridge subscriptions.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
+#[must_use]
 pub struct TokioRuntimeMetricsConfig {
     /// Sampling interval used by the reporter loop.
     interval: Duration,
