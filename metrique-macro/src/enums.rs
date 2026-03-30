@@ -238,17 +238,11 @@ pub(crate) fn generate_metrics_for_enum(
     let guard_name = quote::format_ident!("{}Guard", enum_name);
     let handle_name = quote::format_ident!("{}Handle", enum_name);
 
-    // For value(string) enums, auto-derive Debug, Clone, Copy on both the base and entry enums.
-    // User-provided Debug/Clone/Copy (placed after #[metrics]) are stripped to avoid duplication.
+    // For value(string) enums, auto-derive Debug, Clone, Copy on the generated Value enum only.
+    // The base enum keeps whatever the user provides — no stripping, no injection.
     let (base_attrs, entry_attrs) = if is_value_string {
         let auto_derives = crate::derive_utils::value_string_auto_derives();
-        let cleaned = crate::derive_utils::strip_derives(
-            &clean_attrs(&input.attrs),
-            &["Debug", "Clone", "Copy"],
-        );
-        let mut base = auto_derives.clone();
-        base.extend(cleaned);
-        (base, auto_derives)
+        (clean_attrs(&input.attrs), auto_derives)
     } else {
         let entry_attrs = crate::derive_utils::extract_allowed_derives(&input.attrs);
         (clean_attrs(&input.attrs), entry_attrs)

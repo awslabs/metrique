@@ -102,8 +102,8 @@ fn value_string_entry_auto_derives_debug_clone_copy() {
 
 #[test]
 fn value_string_extra_user_derives_before_metrics() {
-    // User can derive additional traits (PartialEq, Default) before #[metrics].
-    #[derive(PartialEq, Default)]
+    // User derives whatever they need on the base enum themselves.
+    #[derive(Debug, Clone, Copy, PartialEq, Default)]
     #[metrics(value(string))]
     enum Priority {
         #[default]
@@ -111,19 +111,18 @@ fn value_string_extra_user_derives_before_metrics() {
     }
 
     let p = Priority::Low;
-    let _ = format!("{:?}", p); // Debug: auto-derived
-    let copied = p; // Copy: auto-derived
-    assert_eq!(p, copied); // PartialEq: user-derived
-    assert_eq!(Priority::default(), Priority::Low); // Default: user-derived
+    let _ = format!("{:?}", p);
+    let copied = p;
+    assert_eq!(p, copied);
+    assert_eq!(Priority::default(), Priority::Low);
 
     let closed = metrique::CloseValue::close(p);
     assert_eq!(format!("{:?}", closed), "Low");
 }
 
 #[test]
-fn value_string_user_derives_after_metrics_silently_ignored() {
-    // Debug/Clone/Copy placed after #[metrics] are silently stripped (auto-derived).
-    // Other derives (PartialEq, Default) are preserved.
+fn value_string_user_derives_after_metrics_preserved() {
+    // All user derives (including Debug/Clone/Copy) are preserved as-is.
     #[metrics(value(string))]
     #[derive(Debug, Clone, Copy, PartialEq, Default)]
     enum Priority {

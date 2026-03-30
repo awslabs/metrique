@@ -2,7 +2,6 @@
 source: metrique-macro/src/lib.rs
 expression: parsed_file
 ---
-#[derive(Debug, Clone, Copy)]
 enum Operation {
     Read,
     Write,

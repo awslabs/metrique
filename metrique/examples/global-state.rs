@@ -93,7 +93,7 @@ struct AppConfig {
     throttle_policy: ThrottlePolicy,
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, Default)]
 #[metrics(value(string))]
 enum ThrottlePolicy {
     Throttle,
