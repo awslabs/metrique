@@ -68,8 +68,8 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEn
     /// The reporter task is automatically aborted when the [`AttachHandle`] is dropped.
     ///
     /// # Panics
-    /// Panics if the underlying sink has been detached (e.g. the `AttachHandle` was
-    /// dropped elsewhere before this call).
+    /// Panics if no sink has been attached yet, or if the underlying sink has been
+    /// detached (e.g. the `AttachHandle` was dropped elsewhere before this call).
     ///
     /// [`AttachHandle`]: metrique_writer_core::global::AttachHandle
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
