@@ -22,7 +22,8 @@ use metrique_writer_core::{
 use ordered_float::OrderedFloat;
 
 use crate::{
-    AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter, sink::FlushWait,
+    AnyEntrySink, BoxEntrySink, Entry, EntryWriter, Observation, Unit, ValueWriter, format::Format,
+    sink::FlushWait,
 };
 
 /// Test flag. This is merely reflected in [TestEntry] to allow seeing that flags are set.
@@ -453,6 +454,68 @@ impl AnyEntrySink for Inspector {
     fn flush_async(&self) -> FlushWait {
         FlushWait::ready()
     }
+}
+
+/// A sink that captures rendered output for format-aware testing.
+pub struct RenderQueue<F>(Arc<Mutex<(F, Vec<String>)>>);
+
+impl<F> std::fmt::Debug for RenderQueue<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RenderQueue")
+            .field("entries", &self.0.lock().unwrap().1)
+            .finish()
+    }
+}
+
+impl<F> Clone for RenderQueue<F> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
+    }
+}
+
+impl<F: Format + Send + 'static> AnyEntrySink for RenderQueue<F> {
+    fn append_any(&self, entry: impl Entry + Send + 'static) {
+        let mut g = self.0.lock().unwrap();
+        let mut buf = Vec::new();
+        g.0.format(&entry, &mut buf)
+            .unwrap_or_else(|e| panic!("RenderQueue: format error: {e}"));
+        g.1.push(String::from_utf8(buf).expect("format produced non-UTF-8 output"));
+    }
+
+    fn flush_async(&self) -> FlushWait {
+        FlushWait::ready()
+    }
+}
+
+impl<F> RenderQueue<F> {
+    /// Returns all captured rendered strings.
+    pub fn entries(&self) -> Vec<String> {
+        self.0.lock().unwrap().1.clone()
+    }
+}
+
+impl<F> std::fmt::Display for RenderQueue<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.lock().unwrap().1.join("\n"))
+    }
+}
+
+/// Create a [`RenderQueue`] sink backed by `format`.
+///
+/// ```no_run
+/// use metrique_writer::test_util::render_entry_sink;
+/// use metrique_writer::EntrySink;
+/// use metrique_writer_format_emf::Emf;
+///
+/// # #[derive(metrique_writer::Entry)] struct MyMetrics { value: u64 }
+/// let (queue, sink) = render_entry_sink(Emf::all_validations("MyNamespace".into(), vec![vec![]]));
+/// sink.append(MyMetrics { value: 42 });
+/// assert!(queue.entries()[0].contains("\"MyNamespace\""));
+/// ```
+pub fn render_entry_sink<F: Format + Send + 'static>(format: F) -> (RenderQueue<F>, BoxEntrySink) {
+    let queue = RenderQueue(Arc::new(Mutex::new((format, Vec::new()))));
+    let sink = BoxEntrySink::new(queue.clone());
+    (queue, sink)
 }
 
 #[cfg(test)]

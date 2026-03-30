@@ -4,7 +4,7 @@
 
 ### Quick assertions with `test_metric`
 
-For simple tests where you just want to verify field values without setting up a sink, [`test_metric`](crate::test_util::test_metric) closes a metric struct and returns a [`TestEntry`](crate::test_util::TestEntry) you can assert against directly:
+For simple tests where you just want to verify field values without setting up a sink, [`test_metric`] closes a metric struct and returns a [`TestEntry`] you can assert against directly:
 
 ```rust,ignore
 use metrique::test_util::test_metric;
@@ -17,7 +17,7 @@ For tests that need to verify the full emit pipeline, use `test_entry_sink` belo
 
 ### Testing with `test_entry_sink`
 
-`metrique` provides `test_entry_sink` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the [`TestEntrySink`](crate::test_util::TestEntrySink) to test that you are emitting the metrics that you expect:
+`metrique` provides `test_entry_sink` which allows introspecting the entries that are emitted (without needing to read EMF directly). You can use this functionality in combination with the [`TestEntrySink`] to test that you are emitting the metrics that you expect:
 
 > Note: enable the `test-util` feature of `metrique` to enable test utility features.
 
@@ -50,8 +50,10 @@ fn test_metrics () {
 ```
 
 There are two ways to control the queue:
+
 1. Pass the queue explicitly when constructing your metric object, e.g. by passing it into `init` (as done above)
 2. Use the test-queue functionality provided out-of-the-box by global entry queues:
+
 ```rust
 use metrique::writer::GlobalEntrySink;
 use metrique::ServiceMetrics;
@@ -63,11 +65,42 @@ let _guard = ServiceMetrics::set_test_sink(sink);
 
 See `examples/testing.rs` and `examples/testing-global-queues.rs` for more detailed examples.
 
+### Lazy sink resolution with `sink_or_discard`
+
+`sink_or_discard()` returns a lazily-resolved sink that checks for an attached sink each time an entry is appended. If a sink is available at that point the entry is forwarded to it; otherwise the entry is silently discarded.
+
+This is useful when the code emitting metrics doesn't control when (or whether) a sink is attached. Metrics will automatically flow to the real sink once one is available, and are silently discarded otherwise.
+
+```rust,no_run
+use metrique::unit_of_work::metrics;
+use metrique::ServiceMetrics;
+use metrique::writer::GlobalEntrySink;
+
+#[metrics(rename_all = "PascalCase")]
+struct RequestMetrics {
+    operation: &'static str,
+}
+
+#[test]
+fn test_that_does_not_care_about_metrics() {
+    let mut metrics = RequestMetrics {
+        operation: "SayHello",
+    }.append_on_drop(ServiceMetrics::sink_or_discard());
+
+    // ... run your test logic ...
+}
+```
+
+Unlike `set_test_sink(DevNullSink::boxed())` or passing a `DevNullSink` explicitly,
+`sink_or_discard()` resolves lazily on every append: if a real sink is attached later,
+entries will flow to it automatically. `DevNullSink` permanently discards all entries
+and cannot be swapped for a real sink after creation.
+
 ## Debugging common issues
 
 ### Human-readable output with `LocalFormat`
 
-[`LocalFormat`](crate::local::LocalFormat) renders metric entries in a readable
+[`LocalFormat`] renders metric entries in a readable
 format (pretty, JSON, or markdown table) instead of EMF. Swap it in during local
 development to see what your code is emitting:
 
@@ -111,3 +144,8 @@ fn main() {
     tracing_subscriber::fmt::init();
 }
 ```
+
+[`LocalFormat`]: https://docs.rs/metrique/latest/metrique/local/struct.LocalFormat.html
+[`test_metric`]: https://docs.rs/metrique/latest/metrique/test_util/fn.test_metric.html
+[`TestEntry`]: https://docs.rs/metrique/latest/metrique/test_util/struct.TestEntry.html
+[`TestEntrySink`]: https://docs.rs/metrique/latest/metrique/test_util/struct.TestEntrySink.html
