@@ -74,9 +74,10 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEn
     /// [`AttachHandle`]: metrique_writer_core::global::AttachHandle
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         let sink = Self::sink();
-        let task = spawn_tokio_runtime_metrics_task(sink, config);
+        let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);
         Self::register_shutdown_fn(Box::new(move || {
-            task.abort();
+            worker_abort.abort();
+            monitor.abort();
         }));
     }
 }
@@ -86,9 +87,9 @@ impl<T: AttachGlobalEntrySink + GlobalEntrySink> AttachGlobalEntrySinkTokioMetri
 fn spawn_tokio_runtime_metrics_task(
     sink: BoxEntrySink,
     config: TokioRuntimeMetricsConfig,
-) -> JoinHandle<()> {
+) -> (tokio::task::AbortHandle, JoinHandle<()>) {
     let interval = config.interval;
-    tokio::spawn(async move {
+    let worker = tokio::spawn(async move {
         tracing::debug!("tokio runtime metrics reporter started");
         let handle = Handle::current();
         let monitor = RuntimeMonitor::new(&handle);
@@ -107,7 +108,20 @@ fn spawn_tokio_runtime_metrics_task(
             tokio::time::sleep(interval).await;
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
-    })
+    });
+    let worker_abort = worker.abort_handle();
+    let monitor = tokio::spawn(async move {
+        match worker.await {
+            Ok(()) => {}
+            Err(err) if err.is_cancelled() => {
+                tracing::debug!("tokio runtime metrics reporter cancelled");
+            }
+            Err(err) => {
+                tracing::error!(?err, "tokio runtime metrics reporter panicked");
+            }
+        }
+    });
+    (worker_abort, monitor)
 }
 
 /// Emit `poll_time_histogram` bucket counts as a metrique distribution metric,
