@@ -66,12 +66,14 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEn
     /// Subscribe to Tokio runtime metrics, adding the subscription to this handle.
     ///
     /// The reporter task is automatically aborted when the [`AttachHandle`] is dropped.
+    /// If the handle is [`forgotten`], the reporter runs indefinitely.
     ///
     /// # Panics
     /// Panics if no sink has been attached yet, or if the underlying sink has been
-    /// detached (e.g. the `AttachHandle` was dropped elsewhere before this call).
+    /// detached (e.g. the `AttachHandle` was dropped or forgotten before this call).
     ///
     /// [`AttachHandle`]: metrique_writer_core::global::AttachHandle
+    /// [`forgotten`]: metrique_writer_core::global::AttachHandle::forget
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         let sink = Self::sink();
         let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);

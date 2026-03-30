@@ -181,6 +181,10 @@ pub trait AttachGlobalEntrySink {
     fn try_append<E: Entry + Send + 'static>(entry: E) -> Result<(), E>;
 
     /// Register a function to be called when the attach handle is dropped.
+    ///
+    /// # Panics
+    /// Panics if no sink has been attached, or if the [`AttachHandle`] was
+    /// dropped or [`forgotten`](AttachHandle::forget).
     fn register_shutdown_fn(f: ShutdownFn);
 }
 
@@ -244,7 +248,8 @@ pub trait AttachGlobalEntrySink {
 #[must_use = "if unused the global sink will be immediately detached and shut down"]
 pub struct AttachHandle {
     /// Registry of shutdown functions to call when the attach handle is dropped.
-    shutdown_registry: Arc<ShutdownRegistry>,
+    /// `None` after `forget()` is called.
+    shutdown_registry: Option<Arc<ShutdownRegistry>>,
 }
 
 #[doc(hidden)]
@@ -325,9 +330,11 @@ impl Drop for TokioRuntimeTestSinkGuard {
 
 impl Drop for AttachHandle {
     fn drop(&mut self) {
-        // Shutdown functions are prepended, drain so that subscribers abort first, and the sink detaches last.
-        for shutdown_fn in self.shutdown_registry.lock().unwrap().drain(..) {
-            shutdown_fn();
+        if let Some(registry) = self.shutdown_registry.take() {
+            // Shutdown functions are prepended, drain so that subscribers abort first, and the sink detaches last.
+            for shutdown_fn in registry.lock().unwrap().drain(..) {
+                shutdown_fn();
+            }
         }
     }
 }
@@ -337,22 +344,29 @@ impl AttachHandle {
     #[doc(hidden)]
     pub fn new(join: fn()) -> Self {
         Self {
-            shutdown_registry: Arc::new(Mutex::new(vec![Box::new(join)])),
+            shutdown_registry: Some(Arc::new(Mutex::new(vec![Box::new(join)]))),
         }
     }
 
     /// Cause the attached global sink to remain attached forever.
     ///
+    /// The sink and any subscribed background tasks (e.g. tokio runtime metrics) will
+    /// continue running indefinitely. Registered shutdown functions will not run.
+    /// Subsequent calls to [`register_shutdown_fn`](AttachGlobalEntrySink::register_shutdown_fn)
+    /// will panic.
+    ///
     /// Note that this will prevent the sink from guaranteeing metric entries are flushed during
     /// shutdown. You *must* have another mechanism to ensure metrics are flushed.
-    pub fn forget(self) {
-        self.shutdown_registry.lock().unwrap().clear();
-        std::mem::forget(self);
+    pub fn forget(mut self) {
+        self.shutdown_registry = None;
     }
 
     #[doc(hidden)]
     pub fn shutdown_registry_weak(&self) -> Weak<ShutdownRegistry> {
-        Arc::downgrade(&self.shutdown_registry)
+        self.shutdown_registry
+            .as_ref()
+            .map(Arc::downgrade)
+            .unwrap_or_default()
     }
 }
 
@@ -548,7 +562,7 @@ macro_rules! global_entry_sink {
                     let read = SHUTDOWN_REGISTRY.read().unwrap();
                     let weak = read.as_ref().expect("No sink attached — call attach() before subscribing");
                     weak.upgrade()
-                        .expect("AttachHandle already dropped — cannot register shutdown after detach")
+                        .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions")
                         .lock().unwrap()
                         .insert(0, f); // Prepend the functions so that they're in front of the sink when dropped.
                 }
@@ -1263,6 +1277,16 @@ mod shutdown_registry_tests {
     #[should_panic(expected = "No sink attached")]
     fn register_without_attach_panics() {
         metrique_writer::sink::global_entry_sink! { Sink }
+        Sink::register_shutdown_fn(Box::new(|| {}));
+    }
+
+    #[test]
+    #[should_panic(expected = "dropped or forgotten")]
+    fn register_after_forget_panics() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let handle = Sink::attach((sink, ()));
+        handle.forget();
         Sink::register_shutdown_fn(Box::new(|| {}));
     }
 
