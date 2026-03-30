@@ -3,8 +3,9 @@
 
 use std::time::Duration;
 
+use metrique_core::{CloseValue, InflectableEntry};
 use metrique_writer_core::global::{AttachGlobalEntrySink, GlobalEntrySink};
-use metrique_writer_core::{BoxEntrySink, EntrySink};
+use metrique_writer_core::{BoxEntrySink, Entry, EntrySink, EntryWriter};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tokio_metrics::RuntimeMonitor;
@@ -96,17 +97,7 @@ fn spawn_tokio_runtime_metrics_task(
         let handle = Handle::current();
         let monitor = RuntimeMonitor::new(&handle);
         for snapshot in monitor.intervals() {
-            // Take histogram counts before moving snapshot into append.
-            // Bucket ranges come from the runtime handle at format time.
-            #[cfg(tokio_unstable)]
-            let (snapshot, histogram_counts) = {
-                let mut snapshot = snapshot;
-                let counts = std::mem::take(&mut snapshot.poll_time_histogram);
-                (snapshot, counts)
-            };
-            sink.append(snapshot);
-            #[cfg(tokio_unstable)]
-            emit_poll_time_histogram(&sink, histogram_counts, handle.metrics());
+            sink.append(RootedEntry(snapshot.close()));
             tokio::time::sleep(interval).await;
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
@@ -126,56 +117,13 @@ fn spawn_tokio_runtime_metrics_task(
     (worker_abort, monitor)
 }
 
-/// Emit `poll_time_histogram` bucket counts as a metrique distribution metric,
-/// pairing each bucket's count with its range from the runtime handle.
-#[cfg(tokio_unstable)]
-fn emit_poll_time_histogram(
-    sink: &BoxEntrySink,
-    counts: Vec<u64>,
-    rt: tokio::runtime::RuntimeMetrics,
-) {
-    use metrique_writer_core::value::MetricFlags;
-    use metrique_writer_core::{Entry, EntryWriter, Observation, Unit, unit::NegativeScale};
+/// Wrapper that roots an [`InflectableEntry`] into an [`Entry`] for `sink.append()`.
+struct RootedEntry<M: InflectableEntry>(M);
 
-    // Emitted as a separate entry alongside RuntimeMetrics because
-    // `poll_time_histogram` uses #[entry(ignore)] on RuntimeMetrics — the raw
-    // Vec<u64> counts need bucket ranges from the runtime handle to be
-    // meaningful, which Entry::write() doesn't have access to.
-    struct PollTimeHistogramEntry {
-        counts: Vec<u64>,
-        rt: tokio::runtime::RuntimeMetrics,
+impl<M: InflectableEntry> Entry for RootedEntry<M> {
+    fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+        self.0.write(w);
     }
-
-    impl Entry for PollTimeHistogramEntry {
-        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-            writer.value("poll_time_histogram", self);
-        }
-    }
-
-    impl metrique_writer_core::Value for PollTimeHistogramEntry {
-        fn write(&self, writer: impl metrique_writer_core::ValueWriter) {
-            writer.metric(
-                self.counts
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, c)| **c > 0)
-                    .map(|(i, &count)| {
-                        let range = self.rt.poll_time_histogram_bucket_range(i);
-                        let midpoint_us =
-                            (range.start.as_micros() + range.end.as_micros()) as f64 / 2.0;
-                        Observation::Repeated {
-                            total: midpoint_us * count as f64,
-                            occurrences: count,
-                        }
-                    }),
-                Unit::Second(NegativeScale::Micro),
-                [],
-                MetricFlags::empty(),
-            );
-        }
-    }
-
-    sink.append(PollTimeHistogramEntry { counts, rt });
 }
 
 #[cfg(test)]
@@ -200,9 +148,28 @@ mod tests {
         // Advance past a few intervals so the reporter loop emits entries.
         tokio::time::sleep(Duration::from_millis(200)).await;
 
+        let entries = inspector.entries();
         assert!(
-            !inspector.entries().is_empty(),
+            !entries.is_empty(),
             "expected tokio runtime metrics entries"
+        );
+
+        // Verify runtime metrics are present in the entry.
+        let entry = &entries[0];
+        assert!(
+            entry.metrics.contains_key("WorkersCount"),
+            "expected WorkersCount metric, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+        assert!(entry.metrics.contains_key("TotalParkCount"));
+        assert!(entry.metrics.contains_key("Elapsed"));
+
+        // Under tokio_unstable, the histogram field should be present.
+        #[cfg(tokio_unstable)]
+        assert!(
+            entry.metrics.contains_key("PollTimeHistogram"),
+            "expected PollTimeHistogram metric under tokio_unstable, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
         );
     }
 

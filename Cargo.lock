@@ -1703,10 +1703,10 @@ dependencies = [
 [[package]]
 name = "tokio-metrics"
 version = "0.4.9"
-source = "git+https://github.com/yulnr/tokio-metrics?branch=metrique-entry-support#fbcb7a1d666e95427e018ac8151f9981dfc3e286"
+source = "git+https://github.com/yulnr/tokio-metrics?branch=metrique-entry-support#bd771327c4718e9ef2cc3c4578d57f53c9dc3e40"
 dependencies = [
  "futures-util",
- "metrique-writer",
+ "metrique",
  "pin-project-lite",
  "tokio",
  "tokio-stream",
