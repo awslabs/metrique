@@ -1183,7 +1183,6 @@ mod tests {
 #[cfg(test)]
 mod shutdown_registry_tests {
     use std::sync::Arc;
-    use std::sync::Mutex;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use metrique_writer::sink::AttachGlobalEntrySink;
