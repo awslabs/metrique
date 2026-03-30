@@ -1,5 +1,6 @@
 ---
 source: metrique-macro/src/lib.rs
+assertion_line: 1922
 expression: parsed_file
 ---
 enum Operation {
@@ -614,6 +615,7 @@ impl ::metrique::writer::core::SampleGroup for RequestResult {
     "Metrics guard returned from [`", "RequestResult",
     "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
 )]
+#[allow(dead_code, unreachable_pub)]
 type RequestResultGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
     RequestResult,
     Q,
@@ -622,12 +624,14 @@ type RequestResultGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndClos
     "Metrics handle returned from [`", "RequestResultGuard",
     "::handle`], similar to an `Arc<", "RequestResultGuard", ">`."
 )]
+#[allow(dead_code, unreachable_pub)]
 type RequestResultHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
     RequestResult,
     Q,
 >;
 impl RequestResult {
     ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    #[allow(dead_code, unreachable_pub)]
     fn append_on_drop<
         Q: ::metrique::writer::EntrySink<::metrique::RootEntry<RequestResultEntry>>
             + Send + Sync + 'static,

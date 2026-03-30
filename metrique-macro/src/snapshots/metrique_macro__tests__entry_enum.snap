@@ -1,5 +1,6 @@
 ---
 source: metrique-macro/src/lib.rs
+assertion_line: 1859
 expression: parsed_file
 ---
 struct Nested {
@@ -475,6 +476,7 @@ impl ::metrique::writer::core::SampleGroup for Operation {
     "Metrics guard returned from [`", "Operation",
     "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
 )]
+#[allow(dead_code, unreachable_pub)]
 type OperationGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
     Operation,
     Q,
@@ -483,12 +485,14 @@ type OperationGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnD
     "Metrics handle returned from [`", "OperationGuard",
     "::handle`], similar to an `Arc<", "OperationGuard", ">`."
 )]
+#[allow(dead_code, unreachable_pub)]
 type OperationHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
     Operation,
     Q,
 >;
 impl Operation {
     ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    #[allow(dead_code, unreachable_pub)]
     fn append_on_drop<
         Q: ::metrique::writer::EntrySink<::metrique::RootEntry<OperationEntry>> + Send
             + Sync + 'static,
