@@ -32,9 +32,14 @@ impl ::metrique::writer::core::SampleGroup for RequestValueValue {
 impl metrique::CloseValue for &'_ RequestValue {
     type Closed = RequestValueValue;
     fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         RequestValueValue {
-            value: metrique::CloseValue::close(&self.value),
+            value: metrique::CloseValue::close(&__metrique_self_expr!().value),
         }
     }
 }

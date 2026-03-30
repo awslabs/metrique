@@ -28,13 +28,14 @@ const _: () = {
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
         ) {
+            let __metrique_self = self;
             struct ApiPreserve;
             impl ::metrique::concat::ConstStr for ApiPreserve {
                 const VAL: &'static str = "API@";
             }
             ::metrique::InflectableEntry::<
                 <NS as ::metrique::NameStyle>::AppendPrefix<ApiPreserve>,
-            >::write(&self.nested, writer);
+            >::write(&__metrique_self.nested, writer);
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
@@ -63,7 +64,7 @@ const _: () = {
                         >,
                     >()
                 },
-                &self.operation,
+                &__metrique_self.operation,
             );
         }
         fn sample_group(
@@ -71,17 +72,23 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
         > {
-            ::metrique::InflectableEntry::<NS>::sample_group(&self.nested)
+            let __metrique_self = self;
+            ::metrique::InflectableEntry::<NS>::sample_group(&__metrique_self.nested)
         }
     }
 };
 impl metrique::CloseValue for RequestMetrics {
     type Closed = RequestMetricsEntry;
     fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
         #[allow(deprecated)]
         RequestMetricsEntry {
-            nested: metrique::CloseValue::close(self.nested),
-            operation: metrique::CloseValue::close(self.operation),
+            nested: metrique::CloseValue::close(__metrique_self_expr!().nested),
+            operation: metrique::CloseValue::close(__metrique_self_expr!().operation),
         }
     }
 }
