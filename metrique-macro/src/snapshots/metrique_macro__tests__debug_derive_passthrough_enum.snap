@@ -8,7 +8,7 @@ enum Operation {
     Write,
 }
 #[doc(hidden)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum OperationValue {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"

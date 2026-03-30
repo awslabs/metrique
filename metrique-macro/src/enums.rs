@@ -229,7 +229,8 @@ pub(crate) fn generate_metrics_for_enum(
     variants: &[MetricsVariant],
 ) -> Result<Ts2> {
     let enum_name = &input.ident;
-    let entry_name = if root_attrs.mode == MetricMode::ValueString {
+    let is_value_string = root_attrs.mode == MetricMode::ValueString;
+    let entry_name = if is_value_string {
         quote::format_ident!("{}Value", enum_name)
     } else {
         quote::format_ident!("{}Entry", enum_name)
@@ -237,16 +238,26 @@ pub(crate) fn generate_metrics_for_enum(
     let guard_name = quote::format_ident!("{}Guard", enum_name);
     let handle_name = quote::format_ident!("{}Handle", enum_name);
 
+    // For value(string) enums, auto-derive Debug, Clone, Copy on the generated Value enum only.
+    // The base enum keeps whatever the user provides — no stripping, no injection.
+    let (base_attrs, entry_attrs) = if is_value_string {
+        let auto_derives = crate::derive_utils::value_string_auto_derives();
+        (clean_attrs(&input.attrs), auto_derives)
+    } else {
+        let entry_attrs = crate::derive_utils::extract_allowed_derives(&input.attrs);
+        (clean_attrs(&input.attrs), entry_attrs)
+    };
+
     let base_enum = generate_base_enum(
         enum_name,
         &input.vis,
         &input.generics,
-        &clean_attrs(&input.attrs),
+        &base_attrs,
         variants,
     );
     let warnings = root_attrs.warnings();
 
-    let entry_enum = generate_entry_enum(&entry_name, &input.generics, variants, &input.attrs)?;
+    let entry_enum = generate_entry_enum(&entry_name, &input.generics, variants, &entry_attrs)?;
 
     let inner_impl = match root_attrs.mode {
         MetricMode::ValueString => value_impl::generate_value_impl_for_enum(
@@ -347,20 +358,16 @@ fn generate_entry_enum(
     name: &Ident,
     generics: &Generics,
     variants: &[MetricsVariant],
-    base_attrs: &[Attribute],
+    attrs: &[Attribute],
 ) -> Result<Ts2> {
     let variants = variants.iter().map(|variant| variant.entry_variant());
     let data = quote! {
         #(#variants,)*
     };
 
-    // pass through a subset of derives to the entry, currently just `Debug` and `Clone`
-    // _generally_ the Closed version of types will also implement debug.
-    let passthrough_derives = crate::derive_utils::extract_allowed_derives(base_attrs);
-
     Ok(quote! {
         #[doc(hidden)]
-        #passthrough_derives
+        #(#attrs)*
         pub enum #name #generics {
             #data
         }

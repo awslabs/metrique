@@ -1,8 +1,6 @@
-use proc_macro2::TokenStream as Ts2;
-use quote::quote;
 use syn::{Attribute, spanned::Spanned};
 
-pub(crate) fn extract_allowed_derives(attrs: &[Attribute]) -> Ts2 {
+pub(crate) fn extract_allowed_derives(attrs: &[Attribute]) -> Vec<Attribute> {
     let allowed = ["Debug", "Clone"];
     let mut found = vec![];
 
@@ -20,8 +18,19 @@ pub(crate) fn extract_allowed_derives(attrs: &[Attribute]) -> Ts2 {
     }
 
     if found.is_empty() {
-        quote!()
+        vec![]
     } else {
-        quote!(#[derive(#(#found),*)])
+        vec![syn::parse_quote!(#[derive(#(#found),*)])]
     }
+}
+
+/// Returns the auto-derive attributes for value(string) enums: `#[derive(Debug, Clone, Copy)]`
+///
+/// These are always applied to the generated Value enum for `value(string)` enums.
+pub(crate) fn value_string_auto_derives() -> Vec<Attribute> {
+    let derives: Vec<_> = ["Debug", "Clone", "Copy"]
+        .iter()
+        .map(|d| syn::Ident::new(d, proc_macro2::Span::call_site()))
+        .collect();
+    vec![syn::parse_quote!(#[derive(#(#derives),*)])]
 }

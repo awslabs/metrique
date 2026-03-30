@@ -48,7 +48,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `subfield` | Flag | When set, this metric can only be used when nested within other metrics, and can be consumed by reference (has both `impl CloseValue for &MyStruct` and `impl CloseValue for MyStruct`). It cannot be added to a sink directly. | `#[metrics(subfield)]` |
 /// | `subfield_owned` | Flag | When set, this metric can only be used when nested within other metrics. It cannot be added to a sink directly. | `#[metrics(subfield_owned)]` |
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
-/// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. | `#[metrics(value(string))]` |
+/// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
 ///
 /// # Field Attributes
@@ -256,7 +256,10 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// ## Value Enums
 ///
 /// Value enums with `#[metrics(value(string))]` convert enum variants to string values.
-/// Only unit variants are allowed. Variant names respect `#[metrics(name = "...")]` and `rename_all`:
+/// Only unit variants are allowed. Variant names respect `#[metrics(name = "...")]` and `rename_all`.
+///
+/// `Debug`, `Clone`, and `Copy` are automatically derived on the generated Value enum.
+/// The base enum is not modified — add your own derives as needed:
 ///
 /// ```rust
 /// # use metrique::unit_of_work::metrics;

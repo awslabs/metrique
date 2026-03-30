@@ -77,3 +77,65 @@ async fn string_value() {
     assert_eq!(entry.values["time_as_epoch_millis"], "1000.0");
     assert_eq!(entry.values["nested_foo"], "ZAB");
 }
+
+#[test]
+fn value_string_entry_auto_derives_debug_clone_copy() {
+    #[metrics(value(string))]
+    enum AutoDerived {
+        Alpha,
+    }
+
+    // The closed value should also have Debug, Clone, Copy auto-derived
+    let closed = metrique::CloseValue::close(AutoDerived::Alpha);
+
+    let debug_str = format!("{:?}", closed);
+    assert_eq!(debug_str, "Alpha");
+
+    let cloned = closed.clone();
+    assert_eq!(format!("{:?}", cloned), "Alpha");
+
+    let copied = closed;
+    let still_usable_after_copy = closed;
+    assert_eq!(format!("{:?}", copied), "Alpha");
+    assert_eq!(format!("{:?}", still_usable_after_copy), "Alpha");
+}
+
+#[test]
+fn value_string_extra_user_derives_before_metrics() {
+    // User derives whatever they need on the base enum themselves.
+    #[derive(Debug, Clone, Copy, PartialEq, Default)]
+    #[metrics(value(string))]
+    enum Priority {
+        #[default]
+        Low,
+    }
+
+    let p = Priority::Low;
+    let _ = format!("{:?}", p);
+    let copied = p;
+    assert_eq!(p, copied);
+    assert_eq!(Priority::default(), Priority::Low);
+
+    let closed = metrique::CloseValue::close(p);
+    assert_eq!(format!("{:?}", closed), "Low");
+}
+
+#[test]
+fn value_string_user_derives_after_metrics_preserved() {
+    // All user derives (including Debug/Clone/Copy) are preserved as-is.
+    #[metrics(value(string))]
+    #[derive(Debug, Clone, Copy, PartialEq, Default)]
+    enum Priority {
+        #[default]
+        Low,
+    }
+
+    let p = Priority::Low;
+    let _ = format!("{:?}", p);
+    let copied = p;
+    assert_eq!(p, copied);
+    assert_eq!(Priority::default(), Priority::Low);
+
+    let closed = metrique::CloseValue::close(p);
+    assert_eq!(format!("{:?}", closed), "Low");
+}
