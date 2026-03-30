@@ -1,4 +1,3 @@
-use proc_macro2::TokenStream as Ts2;
 use syn::{Attribute, spanned::Spanned};
 
 pub(crate) fn extract_allowed_derives(attrs: &[Attribute]) -> Vec<Attribute> {
