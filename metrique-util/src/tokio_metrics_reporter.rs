@@ -30,9 +30,8 @@ impl Default for TokioRuntimeMetricsConfig {
 
 impl TokioRuntimeMetricsConfig {
     /// Return a config with a custom sampling interval.
-    pub fn with_interval(mut self, interval: Duration) -> Self {
-        self.interval = interval;
-        self
+    pub fn with_interval(self, interval: Duration) -> Self {
+        Self { interval, ..self }
     }
 }
 
