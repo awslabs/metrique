@@ -760,7 +760,7 @@ dependencies = [
 
 [[package]]
 name = "metrique"
-version = "0.1.22"
+version = "0.1.23"
 dependencies = [
  "anyhow",
  "assert2",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-aggregation"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "assert2",
  "divan",
@@ -824,7 +824,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-core"
-version = "0.1.17"
+version = "0.1.18"
 dependencies = [
  "itertools",
  "metrique",
@@ -834,7 +834,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-macro"
-version = "0.1.14"
+version = "0.1.15"
 dependencies = [
  "Inflector",
  "assert2",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-metricsrs"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "derive-where",
  "futures",
@@ -874,7 +874,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-service-metrics"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "metrique",
  "metrique-writer",
@@ -884,7 +884,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-timesource"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "metrique-timesource",
  "tokio",
@@ -892,7 +892,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-util"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arc-swap",
  "metrique",
@@ -905,7 +905,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer"
-version = "0.1.19"
+version = "0.1.20"
 dependencies = [
  "ahash",
  "assert-json-diff",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-core"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "assert-json-diff",
  "derive-where",
@@ -958,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-emf"
-version = "0.1.18"
+version = "0.1.19"
 dependencies = [
  "assert-json-diff",
  "assert_approx_eq",
@@ -984,7 +984,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-json"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "dtoa",
  "itoa",
@@ -997,7 +997,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-macro"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "darling",
  "proc-macro2",
