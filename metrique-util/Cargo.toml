@@ -8,13 +8,27 @@ description = "Additional utilities for metrique"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
+
 [features]
 default = []
 state = ["dep:arc-swap"]
+tokio-metrics-bridge = [
+    "dep:metrique-writer-core",
+    "dep:tokio",
+    "dep:tokio-metrics",
+    "dep:tracing",
+]
 
 [dependencies]
 metrique-core = { path = "../metrique-core", version = "0.1.17" }
 arc-swap = { version = "1", optional = true }
+metrique-writer-core = { path = "../metrique-writer-core", version = "0.1.13", optional = true }
+tokio = { workspace = true, optional = true, features = ["time", "rt"] }
+# TODO: Update before merge, should point to tokio-metrics on crates.io
+tokio-metrics = { git = "https://github.com/yulnr/tokio-metrics", branch = "metrique-entry-support", optional = true, features = ["rt", "metrique-integration"] }
+tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
 metrique = { path = "../metrique", features = ["emf", "test-util"] }
