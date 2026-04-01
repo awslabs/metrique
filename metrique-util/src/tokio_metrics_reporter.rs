@@ -13,6 +13,11 @@ use tokio_metrics::RuntimeMonitor;
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Runtime metric field naming style used by the Tokio metrics bridge.
+///
+/// This is a re-export of [`metrique_core::DynamicNameStyle`].
+pub use metrique_core::DynamicNameStyle as MetricNameStyle;
+
 /// Configuration for Tokio runtime metrics bridge subscriptions.
 #[derive(Debug, Clone, Copy)]
 #[non_exhaustive]
@@ -20,12 +25,15 @@ const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 pub struct TokioRuntimeMetricsConfig {
     /// Sampling interval used by the reporter loop.
     interval: Duration,
+    /// Name style for emitted metric fields.
+    name_style: MetricNameStyle,
 }
 
 impl Default for TokioRuntimeMetricsConfig {
     fn default() -> Self {
         Self {
             interval: DEFAULT_METRIC_SAMPLING_INTERVAL,
+            name_style: MetricNameStyle::default(),
         }
     }
 }
@@ -34,6 +42,13 @@ impl TokioRuntimeMetricsConfig {
     /// Return a config with a custom sampling interval.
     pub fn with_interval(self, interval: Duration) -> Self {
         Self { interval, ..self }
+    }
+
+    /// Set the name style for emitted metric fields.
+    ///
+    /// Defaults to [`MetricNameStyle::Identity`].
+    pub fn with_name_style(self, name_style: MetricNameStyle) -> Self {
+        Self { name_style, ..self }
     }
 }
 
@@ -53,13 +68,16 @@ impl TokioRuntimeMetricsConfig {
 /// # Example
 ///
 /// ```rust,ignore
-/// use metrique_util::{AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig};
+/// use metrique_util::{
+///     AttachGlobalEntrySinkTokioMetricsExt, MetricNameStyle, TokioRuntimeMetricsConfig,
+/// };
 /// use std::time::Duration;
 ///
 /// let _handle = ServiceMetrics::attach_to_stream(emf.output_to(std::io::stderr()));
 ///
 /// let config = TokioRuntimeMetricsConfig::default()
-///     .with_interval(Duration::from_secs(30));
+///     .with_interval(Duration::from_secs(30))
+///     .with_name_style(MetricNameStyle::PascalCase);
 /// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
 /// ```
 ///
@@ -103,12 +121,16 @@ fn spawn_tokio_runtime_metrics_task(
     config: TokioRuntimeMetricsConfig,
 ) -> (tokio::task::AbortHandle, JoinHandle<()>) {
     let interval = config.interval;
+    let name_style = config.name_style;
     let worker = tokio::spawn(async move {
         tracing::debug!("tokio runtime metrics reporter started");
         let handle = Handle::current();
         let monitor = RuntimeMonitor::new(&handle);
         for snapshot in monitor.intervals() {
-            sink.append(RootedEntry(snapshot.close()));
+            sink.append(RootedEntry {
+                entry: snapshot.close(),
+                name_style,
+            });
             tokio::time::sleep(interval).await;
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
@@ -128,12 +150,46 @@ fn spawn_tokio_runtime_metrics_task(
     (worker_abort, monitor)
 }
 
-/// Wrapper that roots an [`InflectableEntry`] into an [`Entry`] for `sink.append()`.
-struct RootedEntry<M: InflectableEntry>(M);
+/// Wrapper that roots an [`InflectableEntry`] into an [`Entry`], applying the
+/// configured [`MetricNameStyle`].
+struct RootedEntry<M> {
+    entry: M,
+    name_style: MetricNameStyle,
+}
 
-impl<M: InflectableEntry> Entry for RootedEntry<M> {
+impl<M> Entry for RootedEntry<M>
+where
+    M: InflectableEntry<metrique_core::Identity>
+        + InflectableEntry<metrique_core::PascalCase>
+        + InflectableEntry<metrique_core::SnakeCase>
+        + InflectableEntry<metrique_core::KebabCase>,
+{
     fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
-        self.0.write(w);
+        use metrique_core::DynamicNameStyle;
+        match self.name_style {
+            DynamicNameStyle::Identity => {
+                InflectableEntry::<metrique_core::Identity>::write(&self.entry, w)
+            }
+            DynamicNameStyle::PascalCase => {
+                InflectableEntry::<metrique_core::PascalCase>::write(&self.entry, w)
+            }
+            DynamicNameStyle::SnakeCase => {
+                InflectableEntry::<metrique_core::SnakeCase>::write(&self.entry, w)
+            }
+            DynamicNameStyle::KebabCase => {
+                InflectableEntry::<metrique_core::KebabCase>::write(&self.entry, w)
+            }
+            _ => {
+                static WARNED_UNKNOWN_NAME_STYLE: AtomicBool = AtomicBool::new(false);
+                if !WARNED_UNKNOWN_NAME_STYLE.swap(true, Ordering::Relaxed) {
+                    tracing::warn!(
+                        ?self.name_style,
+                        "unknown MetricNameStyle variant; falling back to Identity"
+                    );
+                }
+                InflectableEntry::<metrique_core::Identity>::write(&self.entry, w)
+            }
+        }
     }
 }
 
@@ -144,10 +200,10 @@ mod tests {
     use metrique_writer::sink::AttachGlobalEntrySink;
     use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
 
-    use super::{AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig};
+    use super::{AttachGlobalEntrySinkTokioMetricsExt, MetricNameStyle, TokioRuntimeMetricsConfig};
 
     #[tokio::test(start_paused = true)]
-    async fn subscribe_appends_metrics() {
+    async fn subscribe_appends_metrics_identity() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
         let _handle = Sink::attach((sink, ()));
@@ -156,30 +212,126 @@ mod tests {
             TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        // Advance past a few intervals so the reporter loop emits entries.
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let entries = inspector.entries();
+        assert!(!entries.is_empty(), "expected entries");
+
+        let entry = &entries[0];
         assert!(
-            !entries.is_empty(),
-            "expected tokio runtime metrics entries"
+            entry.metrics.contains_key("workers_count"),
+            "expected snake_case field names with Identity style, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+        assert!(entry.metrics.contains_key("total_park_count"));
+        assert!(entry.metrics.contains_key("elapsed"));
+
+        #[cfg(tokio_unstable)]
+        assert!(
+            entry.metrics.contains_key("poll_time_histogram"),
+            "expected poll_time_histogram under tokio_unstable, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn subscribe_appends_metrics_pascal_case() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_tokio_runtime_metrics(
+            TokioRuntimeMetricsConfig::default()
+                .with_interval(Duration::from_millis(50))
+                .with_name_style(MetricNameStyle::PascalCase),
         );
 
-        // Verify runtime metrics are present in the entry.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let entries = inspector.entries();
+        assert!(!entries.is_empty(), "expected entries");
+
         let entry = &entries[0];
         assert!(
             entry.metrics.contains_key("WorkersCount"),
-            "expected WorkersCount metric, got keys: {:?}",
+            "expected PascalCase field names, got keys: {:?}",
             entry.metrics.keys().collect::<Vec<_>>()
         );
         assert!(entry.metrics.contains_key("TotalParkCount"));
         assert!(entry.metrics.contains_key("Elapsed"));
 
-        // Under tokio_unstable, the histogram field should be present.
         #[cfg(tokio_unstable)]
         assert!(
             entry.metrics.contains_key("PollTimeHistogram"),
-            "expected PollTimeHistogram metric under tokio_unstable, got keys: {:?}",
+            "expected PollTimeHistogram under tokio_unstable, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn subscribe_appends_metrics_snake_case() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_tokio_runtime_metrics(
+            TokioRuntimeMetricsConfig::default()
+                .with_interval(Duration::from_millis(50))
+                .with_name_style(MetricNameStyle::SnakeCase),
+        );
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let entries = inspector.entries();
+        assert!(!entries.is_empty(), "expected entries");
+
+        let entry = &entries[0];
+        assert!(
+            entry.metrics.contains_key("workers_count"),
+            "expected snake_case field names, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+        assert!(entry.metrics.contains_key("total_park_count"));
+        assert!(entry.metrics.contains_key("elapsed"));
+
+        #[cfg(tokio_unstable)]
+        assert!(
+            entry.metrics.contains_key("poll_time_histogram"),
+            "expected poll_time_histogram under tokio_unstable, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn subscribe_appends_metrics_kebab_case() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_tokio_runtime_metrics(
+            TokioRuntimeMetricsConfig::default()
+                .with_interval(Duration::from_millis(50))
+                .with_name_style(MetricNameStyle::KebabCase),
+        );
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let entries = inspector.entries();
+        assert!(!entries.is_empty(), "expected entries");
+
+        let entry = &entries[0];
+        assert!(
+            entry.metrics.contains_key("workers-count"),
+            "expected kebab-case field names, got keys: {:?}",
+            entry.metrics.keys().collect::<Vec<_>>()
+        );
+        assert!(entry.metrics.contains_key("total-park-count"));
+        assert!(entry.metrics.contains_key("elapsed"));
+
+        #[cfg(tokio_unstable)]
+        assert!(
+            entry.metrics.contains_key("poll-time-histogram"),
+            "expected poll-time-histogram under tokio_unstable, got keys: {:?}",
             entry.metrics.keys().collect::<Vec<_>>()
         );
     }

@@ -6,7 +6,9 @@ use std::time::Duration;
 use metrique::ServiceMetrics;
 use metrique::emf::Emf;
 use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt};
-use metrique_util::{AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig};
+use metrique_util::{
+    AttachGlobalEntrySinkTokioMetricsExt, MetricNameStyle, TokioRuntimeMetricsConfig,
+};
 
 const SAMPLING_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -19,7 +21,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .output_to(std::io::stderr()),
     );
 
-    let config = TokioRuntimeMetricsConfig::default().with_interval(SAMPLING_INTERVAL);
+    let config = TokioRuntimeMetricsConfig::default()
+        .with_interval(SAMPLING_INTERVAL)
+        .with_name_style(MetricNameStyle::KebabCase);
     ServiceMetrics::subscribe_tokio_runtime_metrics(config);
 
     tokio::join![do_work(), do_work(), do_work()];
