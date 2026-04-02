@@ -1,6 +1,6 @@
 [package]
 name = "metrique-aggregation"
-version = "0.1.9"
+version = "0.1.10"
 edition = "2024"
 rust-version = "1.89" # build.yml
 license = "Apache-2.0"
@@ -10,15 +10,15 @@ readme = "README.md"
 
 [dependencies]
 metrique = { path = "../metrique", version = "0.1" }
-metrique-writer = { path = "../metrique-writer", version = "0.1.19" }
-metrique-core = { path = "../metrique-core", version = "0.1.17" }
-metrique-macro = { path = "../metrique-macro", version = "0.1.14" }
+metrique-writer = { path = "../metrique-writer", version = "0.1.20" }
+metrique-core = { path = "../metrique-core", version = "0.1.18" }
+metrique-macro = { path = "../metrique-macro", version = "0.1.15" }
 smallvec.workspace = true
 histogram.workspace = true
 ordered-float.workspace = true
-metrique-writer-core = { version = "0.1.13", path = "../metrique-writer-core" }
+metrique-writer-core = { version = "0.1.14", path = "../metrique-writer-core" }
 tokio = { workspace = true, default-features = false, features = ["sync"] }
-metrique-timesource = { version = "0.1.8", path = "../metrique-timesource", features = ["test-util"] }
+metrique-timesource = { version = "0.1.9", path = "../metrique-timesource", features = ["test-util"] }
 hashbrown.workspace = true
 
 [dev-dependencies]

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.23](https://github.com/awslabs/metrique/compare/metrique-v0.1.22...metrique-v0.1.23) - 2026-04-01
+
+### Added
+
+- Graceful no-op when no sink is attached ([#251](https://github.com/awslabs/metrique/pull/251))
+
+### Fixed
+
+- *(metrics)* Make metrics macro inside macro_rules more hygiene-safe and cfg-aware ([#259](https://github.com/awslabs/metrique/pull/259))
+- *(metrics)* Derive debug through metrics macro ([#257](https://github.com/awslabs/metrique/pull/257))
+- *(doc)* Make `*.md` links work on crates.io/github also ([#254](https://github.com/awslabs/metrique/pull/254))
+
+### Other
+
+- Add RenderQueue sink ([#253](https://github.com/awslabs/metrique/pull/253))
+
 ## [0.1.22](https://github.com/awslabs/metrique/compare/metrique-v0.1.21...metrique-v0.1.22) - 2026-03-17
 
 ### Fixed
