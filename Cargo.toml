@@ -69,8 +69,8 @@ toml = "0.9"
 walkdir = "2"
 
 # TODO: Remove before merge — tokio-metrics depends on metrique from
-# awslabs git; patch to local to avoid duplicate crate errors.
-[patch."https://github.com/awslabs/metrique"]
+# crates.io; patch to local to avoid duplicate crate errors.
+[patch.crates-io]
 metrique = { path = "metrique" }
 metrique-core = { path = "metrique-core" }
 metrique-writer-core = { path = "metrique-writer-core" }

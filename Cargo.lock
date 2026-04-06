@@ -1703,7 +1703,7 @@ dependencies = [
 [[package]]
 name = "tokio-metrics"
 version = "0.4.9"
-source = "git+https://github.com/yulnr/tokio-metrics?branch=metrique-entry-support#f49c083ff7ded81b96fe458fe71b4cf13ea1a79a"
+source = "git+https://github.com/yulnr/tokio-metrics?branch=metrique-entry-support#5cc2ca6421dceab990108f7c52882a936bac4081"
 dependencies = [
  "futures-util",
  "metrique",
