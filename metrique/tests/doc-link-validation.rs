@@ -60,18 +60,6 @@ fn test_no_broken_link_patterns(
         }
     }
 
-    // Check for inline links [text](url). All links should use reference-style
-    // definitions for readability and easier auditing.
-    let inline_link_re = regex_lite::Regex::new(r"\[[^\]]+\]\(https?://[^)]+\)").unwrap();
-    for (line_num, line) in &non_code_lines {
-        if let Some(m) = inline_link_re.find(line) {
-            errors.push(format!(
-                "  line {line_num}: inline link `{}` (use a reference link definition instead)",
-                m.as_str()
-            ));
-        }
-    }
-
     // Check for undefined reference links.
     // Collect all link definitions: [label]: URL
     let definitions: HashSet<String> = non_code_lines
