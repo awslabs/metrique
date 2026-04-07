@@ -1,6 +1,6 @@
 metrique is a crate to emit unit-of-work metrics
 
-- [`#[metrics]` macro reference]
+- [`#[metrics]` macro reference](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html)
 
 Unlike many popular metric frameworks that are based on the concept of your application having a fixed-ish set of counters and gauges, which are periodically updated to a central place, metrique is based on the concept of structured **metric records**. Your application emits a series of metric records - that are essentially structured log entries - to an observability service such as [Amazon CloudWatch], and the observability service allows you to view and alarm on complex aggregations of the metrics.
 
@@ -21,12 +21,6 @@ The log entries being structured means that you can easily use problem-specific 
 [`_guide::sinks`]: https://docs.rs/metrique/latest/metrique/_guide/sinks/
 [`_guide::sampling`]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
 [`_guide::testing`]: https://docs.rs/metrique/latest/metrique/_guide/testing/
-[`#[metrics]` macro reference]: <https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html>
-[macro documentation]: <https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html#enums>
-[sinks other than `ServiceMetrics`]: <https://docs.rs/metrique/latest/metrique/_guide/sinks/#sinks-other-than-servicemetrics>
-[sampling guide]: <https://docs.rs/metrique/latest/metrique/_guide/sampling/>
-[testing guide]: <https://docs.rs/metrique/latest/metrique/_guide/testing/>
-
 ## Getting Started (Applications)
 
 Most metrics your application records will be "unit of work" metrics. In a classic HTTP server, these are typically tied to the request/response scope.
@@ -39,7 +33,7 @@ by using the [`sink`] method (you must attach a destination before calling [`sin
 a panic!).
 
 If the global sink is not suitable, see
-[sinks other than `ServiceMetrics`].
+[sinks other than `ServiceMetrics`](https://docs.rs/metrique/latest/metrique/_guide/sinks/#sinks-other-than-servicemetrics).
 
 The example below will write the metrics to a `tracing_appender::rolling::RollingFileAppender`
 in EMF format.
@@ -198,7 +192,7 @@ For more complex examples, see the [examples folder].
 
 ### Entry Enums
 
-Enums can be used as entries with different fields per variant. See the [macro documentation] for details. 
+Enums can be used as entries with different fields per variant. See the [macro documentation](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html#enums) for details. 
 
 Entry enums handle container and field-level attributes like structs. You can optionally include a "tag" field that contains the variant name.
 
@@ -342,7 +336,7 @@ See [`_guide::concurrency`] for details and examples.
 
 ### Using sampling to deal with too-many-metrics
 
-Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider [sampling][sampling guide].
+Generally, metrique is fast enough to preserve everything as a full event. But this isn't always possible. Before you reach for client side aggregation, consider [sampling](https://docs.rs/metrique/latest/metrique/_guide/sampling/).
 
 ## Controlling metric output
 
@@ -366,7 +360,7 @@ struct RequestMetrics {
 ### Renaming metric fields
 
 > the complex interaction between naming, prefixing, and inflection is deterministic, but sometimes might
-> not do what you expect. It is critical that you add [tests][testing guide] that validate that
+> not do what you expect. It is critical that you add [tests](https://docs.rs/metrique/latest/metrique/_guide/testing/) that validate that
 > the keys being produced match your expectations
 
 You can customize how metric field names appear in the output using several approaches:
