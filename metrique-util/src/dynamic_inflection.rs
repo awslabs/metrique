@@ -51,6 +51,7 @@ mod tests {
     use metrique::CloseValue;
     use metrique::unit_of_work::metrics;
     use metrique_core::DynamicNameStyle;
+    use assert2::check;
     use metrique_writer::test_util::to_test_entry;
     use rstest::rstest;
 
@@ -89,8 +90,8 @@ mod tests {
             name_style: style,
         };
         let t = to_test_entry(entry);
-        assert_eq!(t.metrics[expected_prefixed], 42);
-        assert_eq!(t.metrics[expected_plain], 7);
+        check!(t.metrics[expected_prefixed] == 42);
+        check!(t.metrics[expected_plain] == 7);
     }
 
     #[metrics]
@@ -128,8 +129,8 @@ mod tests {
             name_style: style,
         };
         let t = to_test_entry(entry);
-        assert_eq!(t.metrics[request_key], 5);
-        assert_eq!(t.metrics[workers_key], 0);
-        t.metrics[park_key].as_u64();
+        check!(t.metrics[request_key] == 5);
+        check!(t.metrics[workers_key] == 0);
+        check!(t.metrics[park_key].as_u64() == 0);
     }
 }

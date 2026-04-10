@@ -895,6 +895,7 @@ name = "metrique-util"
 version = "0.1.2"
 dependencies = [
  "arc-swap",
+ "assert2",
  "metrique",
  "metrique-core",
  "metrique-util",

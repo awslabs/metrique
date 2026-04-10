@@ -151,6 +151,7 @@ fn spawn_tokio_runtime_metrics_task(
 mod tests {
     use std::time::Duration;
 
+    use assert2::check;
     use metrique_writer::sink::AttachGlobalEntrySink;
     use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
 
@@ -169,15 +170,15 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let entries = inspector.entries();
-        assert!(!entries.is_empty(), "expected entries");
+        check!(!entries.is_empty());
 
-        let entry = &entries[0];
-        assert_eq!(entry.metrics["workers_count"], 1);
-        entry.metrics["total_park_count"].as_u64();
-        assert!(entry.metrics["elapsed"] > 0.0);
+        let entry = entries.last().unwrap();
+        check!(entry.metrics["workers_count"] == 1);
+        check!(entry.metrics["elapsed"] > 0.0);
+        check!(entry.metrics["total_park_count"] > 0);
 
         #[cfg(tokio_unstable)]
-        assert!(entry.metrics["poll_time_histogram"].num_observations() > 0);
+        check!(entry.metrics["poll_time_histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -195,15 +196,15 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let entries = inspector.entries();
-        assert!(!entries.is_empty(), "expected entries");
+        check!(!entries.is_empty());
 
-        let entry = &entries[0];
-        assert_eq!(entry.metrics["WorkersCount"], 1);
-        entry.metrics["TotalParkCount"].as_u64();
-        assert!(entry.metrics["Elapsed"] > 0.0);
+        let entry = entries.last().unwrap();
+        check!(entry.metrics["WorkersCount"] == 1);
+        check!(entry.metrics["Elapsed"] > 0.0);
+        check!(entry.metrics["TotalParkCount"] > 0);
 
         #[cfg(tokio_unstable)]
-        assert!(entry.metrics["PollTimeHistogram"].num_observations() > 0);
+        check!(entry.metrics["PollTimeHistogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -221,15 +222,15 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let entries = inspector.entries();
-        assert!(!entries.is_empty(), "expected entries");
+        check!(!entries.is_empty());
 
-        let entry = &entries[0];
-        assert_eq!(entry.metrics["workers_count"], 1);
-        entry.metrics["total_park_count"].as_u64();
-        assert!(entry.metrics["elapsed"] > 0.0);
+        let entry = entries.last().unwrap();
+        check!(entry.metrics["workers_count"] == 1);
+        check!(entry.metrics["elapsed"] > 0.0);
+        check!(entry.metrics["total_park_count"] > 0);
 
         #[cfg(tokio_unstable)]
-        assert!(entry.metrics["poll_time_histogram"].num_observations() > 0);
+        check!(entry.metrics["poll_time_histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -247,15 +248,15 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         let entries = inspector.entries();
-        assert!(!entries.is_empty(), "expected entries");
+        check!(!entries.is_empty());
 
-        let entry = &entries[0];
-        assert_eq!(entry.metrics["workers-count"], 1);
-        entry.metrics["total-park-count"].as_u64();
-        assert!(entry.metrics["elapsed"] > 0.0);
+        let entry = entries.last().unwrap();
+        check!(entry.metrics["workers-count"] == 1);
+        check!(entry.metrics["elapsed"] > 0.0);
+        check!(entry.metrics["total-park-count"] > 0);
 
         #[cfg(tokio_unstable)]
-        assert!(entry.metrics["poll-time-histogram"].num_observations() > 0);
+        check!(entry.metrics["poll-time-histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -271,13 +272,13 @@ mod tests {
         // Let some entries accumulate.
         tokio::time::sleep(Duration::from_millis(200)).await;
         let count_before = inspector.entries().len();
-        assert!(count_before > 0);
+        check!(count_before > 0);
 
         // Drop the attach handle — this should abort the reporter task.
         drop(handle);
 
         // Advance time further; no new entries should appear.
         tokio::time::sleep(Duration::from_millis(200)).await;
-        assert_eq!(inspector.entries().len(), count_before);
+        check!(inspector.entries().len() == count_before);
     }
 }
