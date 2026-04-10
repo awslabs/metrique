@@ -54,15 +54,19 @@ impl TokioRuntimeMetricsConfig {
 /// Extension methods for subscribing Tokio runtime metrics to a global entry sink.
 ///
 /// Spawns a background task that periodically samples
-/// [`RuntimeMetrics`](tokio_metrics::RuntimeMetrics) and appends each snapshot to the sink.
+/// [`RuntimeMetrics`] and appends each snapshot to the sink.
 /// The task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
 ///
-/// # `tokio_unstable`
+/// ## `tokio_unstable`
 ///
-/// When the runtime is built with `RUSTFLAGS="--cfg tokio_unstable"` and
-/// `enable_metrics_poll_time_histogram` is called on the runtime builder, each
-/// snapshot also includes a `poll_time_histogram` entry emitted as a distribution
-/// metric with bucket ranges from the runtime handle.
+/// This works with and without `tokio_unstable`. Without it, snapshots include
+/// the stable runtime metrics: worker counts, park/steal counts, queue depths,
+/// busy durations, and more. See [`RuntimeMetrics`] for the full field list.
+///
+/// Building with `RUSTFLAGS="--cfg tokio_unstable"` adds additional fields
+/// such as `mean_poll_duration`, `num_remote_schedules`,
+/// `budget_forced_yield_count`, and `poll_time_histogram`. The histogram
+/// requires calling `enable_metrics_poll_time_histogram` on the runtime builder.
 ///
 /// # Example
 ///
@@ -79,14 +83,24 @@ impl TokioRuntimeMetricsConfig {
 ///     .with_name_style(MetricNameStyle::PascalCase);
 /// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
 /// ```
+///
+/// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
 pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static {
     /// Subscribe to Tokio runtime metrics, adding the subscription to this handle.
+    ///
+    /// Spawns a background task that periodically samples [`RuntimeMetrics`] and
+    /// appends each snapshot to the sink. Additional fields are available when
+    /// building with `tokio_unstable`, see the
+    /// [trait-level docs](AttachGlobalEntrySinkTokioMetricsExt)
+    /// for details.
     ///
     /// The reporter task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
     /// If the handle is [`forgotten`](metrique::writer::sink::AttachHandle::forget), the reporter runs indefinitely.
     ///
     /// If no sink has been attached yet, entries are silently discarded until one
     /// is attached.
+    ///
+    /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
         let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);
