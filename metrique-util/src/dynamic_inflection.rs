@@ -48,10 +48,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use assert2::check;
     use metrique::CloseValue;
     use metrique::unit_of_work::metrics;
     use metrique_core::DynamicNameStyle;
-    use assert2::check;
     use metrique_writer::test_util::to_test_entry;
     use rstest::rstest;
 
