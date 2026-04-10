@@ -122,3 +122,15 @@ impl Value for Duration {
 impl MetricValue for Duration {
     type Unit = unit::Millisecond;
 }
+
+impl<V: Value> Value for Vec<V> {
+    fn write(&self, writer: impl ValueWriter) {
+        writer.values(self.iter());
+    }
+}
+
+impl<V: Value> Value for [V] {
+    fn write(&self, writer: impl ValueWriter) {
+        writer.values(self.iter());
+    }
+}

@@ -83,6 +83,56 @@ pub trait ValueWriter: Sized {
     fn invalid(self, reason: impl Into<String>) {
         self.error(ValidationError::invalid(reason))
     }
+
+    /// Write a list of values. Formats that support native arrays (e.g. EMF) can override this
+    /// to emit a structured representation. The default joins each element's string representation
+    /// with `", "`.
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        let mut buf = String::new();
+        for value in values {
+            if !buf.is_empty() {
+                buf.push_str(", ");
+            }
+            value.write(StringCapture(&mut buf));
+        }
+        self.string(&buf);
+    }
+}
+
+/// Adapter that captures a [`Value`]'s string representation into a buffer.
+struct StringCapture<'a>(&'a mut String);
+
+impl ValueWriter for StringCapture<'_> {
+    fn string(self, value: &str) {
+        self.0.push_str(value);
+    }
+
+    fn metric<'a>(
+        self,
+        distribution: impl IntoIterator<Item = Observation>,
+        _unit: Unit,
+        _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        _flags: MetricFlags<'_>,
+    ) {
+        use std::fmt::Write;
+        if let Some(obs) = distribution.into_iter().next() {
+            #[allow(unreachable_patterns)] // Observation is #[non_exhaustive]
+            match obs {
+                Observation::Unsigned(v) => {
+                    let _ = write!(self.0, "{v}");
+                }
+                Observation::Floating(v) => {
+                    let _ = write!(self.0, "{v}");
+                }
+                Observation::Repeated { total, .. } => {
+                    let _ = write!(self.0, "{total}");
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn error(self, _error: ValidationError) {}
 }
 
 /// The numeric value of a observation to include in a metric value.
