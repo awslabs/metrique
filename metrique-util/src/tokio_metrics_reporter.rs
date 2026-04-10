@@ -1,7 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::dynamic_inflection::DynamicInflectionEntry;
@@ -90,21 +89,11 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEn
     /// Panics if no sink has been attached yet, or if the underlying sink has been
     /// detached (e.g. the `AttachHandle` was dropped or forgotten before this call).
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
-        // Guard against duplicate subscriptions within the same attach cycle.
-        // Reset in the shutdown fn so re-attaching can subscribe again cleanly.
-        static SUBSCRIBED: AtomicBool = AtomicBool::new(false);
-        if SUBSCRIBED.swap(true, Ordering::Relaxed) {
-            tracing::warn!(
-                "subscribe_tokio_runtime_metrics called more than once; \
-                 duplicate reporter task will emit duplicate metrics"
-            );
-        }
         let sink = Self::sink();
         let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);
         Self::register_shutdown_fn(Box::new(move || {
             worker_abort.abort();
             monitor.abort();
-            SUBSCRIBED.store(false, Ordering::Relaxed);
         }));
     }
 }
