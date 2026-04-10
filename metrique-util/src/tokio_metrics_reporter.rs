@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
-use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, GlobalEntrySink};
+use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tokio_metrics::RuntimeMonitor;
@@ -79,17 +79,16 @@ impl TokioRuntimeMetricsConfig {
 ///     .with_name_style(MetricNameStyle::PascalCase);
 /// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
 /// ```
-pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEntrySink {
+pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static {
     /// Subscribe to Tokio runtime metrics, adding the subscription to this handle.
     ///
     /// The reporter task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
     /// If the handle is [`forgotten`](metrique::writer::sink::AttachHandle::forget), the reporter runs indefinitely.
     ///
-    /// # Panics
-    /// Panics if no sink has been attached yet, or if the underlying sink has been
-    /// detached (e.g. the `AttachHandle` was dropped or forgotten before this call).
+    /// If no sink has been attached yet, entries are silently discarded until one
+    /// is attached.
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
-        let sink = Self::sink();
+        let sink = BoxEntrySink::lazy(Self::try_sink);
         let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);
         Self::register_shutdown_fn(Box::new(move || {
             worker_abort.abort();
@@ -98,7 +97,7 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEn
     }
 }
 
-impl<T: AttachGlobalEntrySink + GlobalEntrySink> AttachGlobalEntrySinkTokioMetricsExt for T {}
+impl<T: AttachGlobalEntrySink + 'static> AttachGlobalEntrySinkTokioMetricsExt for T {}
 
 fn spawn_tokio_runtime_metrics_task(
     sink: BoxEntrySink,
