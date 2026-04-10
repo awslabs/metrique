@@ -442,3 +442,21 @@ fn empty_vec_property_emits_empty_string() {
     let entry = test_util::to_test_entry(&entries[0]);
     assert_eq!(entry.values["Plugins"], "");
 }
+
+#[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
+struct WithOptionalVecProperty {
+    tags: Vec<Option<String>>,
+}
+
+#[test]
+fn vec_with_none_elements_skips_them_in_default_format() {
+    let vec_sink = VecEntrySink::new();
+    WithOptionalVecProperty {
+        tags: vec![Some("a".into()), None, Some("c".into())],
+    }
+    .append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+    assert_eq!(entry.values["Tags"], "a, c");
+}

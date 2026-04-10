@@ -1729,13 +1729,19 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
     fn values<'a, V: Value + 'a>(mut self, values: impl IntoIterator<Item = &'a V>) {
         let buf = &mut self.entry.state.string_fields_buf;
         buf.push(',').json_string(&self.name).push(':').push('[');
-        let mut first = true;
+        let mut wrote_any = false;
         for value in values {
-            if !first {
+            let before = buf.as_str().len();
+            if wrote_any {
                 buf.push(',');
             }
-            first = false;
+            let after_sep = buf.as_str().len();
             value.write(EmfArrayElementWriter(buf));
+            if buf.as_str().len() > after_sep {
+                wrote_any = true;
+            } else {
+                buf.truncate(before);
+            }
         }
         buf.push(']');
 

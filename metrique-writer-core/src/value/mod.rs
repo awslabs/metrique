@@ -86,14 +86,19 @@ pub trait ValueWriter: Sized {
 
     /// Write a list of values. Formats that support native arrays (e.g. EMF) can override this
     /// to emit a structured representation. The default joins each element's string representation
-    /// with `", "`.
+    /// with `", "`, skipping elements that write nothing (e.g. `None`).
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
         let mut buf = String::new();
+        let mut elem = String::new();
         for value in values {
-            if !buf.is_empty() {
-                buf.push_str(", ");
+            elem.clear();
+            value.write(StringCapture(&mut elem));
+            if !elem.is_empty() {
+                if !buf.is_empty() {
+                    buf.push_str(", ");
+                }
+                buf.push_str(&elem);
             }
-            value.write(StringCapture(&mut buf));
         }
         self.string(&buf);
     }
@@ -116,7 +121,6 @@ impl ValueWriter for StringCapture<'_> {
     ) {
         use std::fmt::Write;
         if let Some(obs) = distribution.into_iter().next() {
-            #[allow(unreachable_patterns)] // Observation is #[non_exhaustive]
             match obs {
                 Observation::Unsigned(v) => {
                     let _ = write!(self.0, "{v}");
@@ -127,7 +131,6 @@ impl ValueWriter for StringCapture<'_> {
                 Observation::Repeated { total, .. } => {
                     let _ = write!(self.0, "{total}");
                 }
-                _ => {}
             }
         }
     }
