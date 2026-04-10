@@ -56,7 +56,7 @@ impl TokioRuntimeMetricsConfig {
 ///
 /// Spawns a background task that periodically samples
 /// [`RuntimeMetrics`](tokio_metrics::RuntimeMetrics) and appends each snapshot to the sink.
-/// The task is automatically aborted when the [`AttachHandle`] is dropped.
+/// The task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
 ///
 /// # `tokio_unstable`
 ///
@@ -80,20 +80,15 @@ impl TokioRuntimeMetricsConfig {
 ///     .with_name_style(MetricNameStyle::PascalCase);
 /// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
 /// ```
-///
-/// [`AttachHandle`]: metrique_writer_core::global::AttachHandle
 pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + GlobalEntrySink {
     /// Subscribe to Tokio runtime metrics, adding the subscription to this handle.
     ///
-    /// The reporter task is automatically aborted when the [`AttachHandle`] is dropped.
-    /// If the handle is [`forgotten`], the reporter runs indefinitely.
+    /// The reporter task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
+    /// If the handle is [`forgotten`](metrique::writer::sink::AttachHandle::forget), the reporter runs indefinitely.
     ///
     /// # Panics
     /// Panics if no sink has been attached yet, or if the underlying sink has been
     /// detached (e.g. the `AttachHandle` was dropped or forgotten before this call).
-    ///
-    /// [`AttachHandle`]: metrique_writer_core::global::AttachHandle
-    /// [`forgotten`]: metrique_writer_core::global::AttachHandle::forget
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         // Guard against duplicate subscriptions within the same attach cycle.
         // Reset in the shutdown fn so re-attaching can subscribe again cleanly.
