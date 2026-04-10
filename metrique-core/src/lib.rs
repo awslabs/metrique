@@ -13,7 +13,7 @@ pub mod concat;
 mod inflectable_entry_impls;
 mod namestyle;
 
-pub use atomics::{Counter, CounterGuard};
+pub use atomics::{Counter, CounterGuard, OwnedCounterGuard};
 pub use namestyle::NameStyle;
 
 /// Close a given value

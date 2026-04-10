@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use core::sync::atomic::{AtomicBool, AtomicU8, AtomicU16, AtomicU32, AtomicU64, AtomicUsize};
 
 use crate::CloseValue;
@@ -38,11 +40,28 @@ impl Counter {
     pub fn set(&self, i: u64) {
         self.0.store(i, std::sync::atomic::Ordering::SeqCst);
     }
+
+    /// Increments the count by 1, returning an owned guard that decrements the
+    /// count on drop, and the new value.
+    ///
+    /// Unlike [`increment_scoped`](Self::increment_scoped), the returned
+    /// [`OwnedCounterGuard`] can be moved across async boundaries or stored
+    /// in structs without lifetime constraints.
+    pub fn increment_owned(self: &Arc<Self>) -> (OwnedCounterGuard, u64) {
+        let count = self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        (
+            OwnedCounterGuard {
+                counter: Arc::clone(self),
+            },
+            count,
+        )
+    }
 }
 
 /// A guard that decrements a [`Counter`] when dropped.
 ///
 /// Returned by [`Counter::increment_scoped`].
+#[must_use]
 pub struct CounterGuard<'a>(&'a AtomicU64);
 
 impl Drop for CounterGuard<'_> {
@@ -68,6 +87,48 @@ impl CloseValue for &CounterGuard<'_> {
 
 #[diagnostic::do_not_recommend]
 impl CloseValue for CounterGuard<'_> {
+    type Closed = u64;
+
+    fn close(self) -> Self::Closed {
+        (&self).close()
+    }
+}
+
+/// An owned guard that decrements a [`Counter`] when dropped.
+///
+/// Unlike [`CounterGuard`], this guard can be moved across async boundaries
+/// or stored in structs without lifetime constraints.
+///
+/// Returned by [`Counter::increment_owned`].
+#[must_use]
+pub struct OwnedCounterGuard {
+    counter: Arc<Counter>,
+}
+
+impl Drop for OwnedCounterGuard {
+    fn drop(&mut self) {
+        self.counter
+            .0
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |v| Some(v.saturating_sub(1)),
+            )
+            .ok();
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl CloseValue for &OwnedCounterGuard {
+    type Closed = u64;
+
+    fn close(self) -> Self::Closed {
+        self.counter.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+#[diagnostic::do_not_recommend]
+impl CloseValue for OwnedCounterGuard {
     type Closed = u64;
 
     fn close(self) -> Self::Closed {
@@ -121,6 +182,8 @@ close_value_atomic!(atomic: AtomicBool, inner: bool);
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     #[test]
@@ -149,6 +212,66 @@ mod tests {
         assert_eq!((&guard).close(), 1);
         // Guard still decrements on drop.
         drop(guard);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn owned_counter_guard_increment_and_drop() {
+        let counter = Arc::new(Counter::new(0));
+        let (guard, count) = counter.increment_owned();
+        assert_eq!(count, 1);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        drop(guard);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn owned_counter_guard_saturates_at_zero() {
+        let counter = Arc::new(Counter::new(0));
+        let (guard, _) = counter.increment_owned();
+        // Manually set to 0 to test saturating_sub
+        counter.0.store(0, std::sync::atomic::Ordering::Relaxed);
+        drop(guard);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn owned_counter_guard_close_value() {
+        let counter = Arc::new(Counter::new(0));
+        let (guard, _) = counter.increment_owned();
+        assert_eq!((&guard).close(), 1);
+        // Guard still decrements on drop.
+        drop(guard);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn owned_counter_guard_move_across_threads() {
+        let counter = Arc::new(Counter::new(0));
+        let (guard, count) = counter.increment_owned();
+        assert_eq!(count, 1);
+        let counter_clone = Arc::clone(&counter);
+        let handle = std::thread::spawn(move || {
+            assert_eq!(
+                counter_clone.0.load(std::sync::atomic::Ordering::Relaxed),
+                1
+            );
+            drop(guard);
+        });
+        handle.join().unwrap();
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
+    #[test]
+    fn owned_counter_guard_multiple_guards() {
+        let counter = Arc::new(Counter::new(0));
+        let (g1, c1) = counter.increment_owned();
+        let (g2, c2) = counter.increment_owned();
+        assert_eq!(c1, 1);
+        assert_eq!(c2, 2);
+        drop(g1);
+        assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 1);
+        drop(g2);
         assert_eq!(counter.0.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
 }
