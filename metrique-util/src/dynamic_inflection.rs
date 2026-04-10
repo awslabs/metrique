@@ -45,3 +45,91 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use metrique::CloseValue;
+    use metrique::unit_of_work::metrics;
+    use metrique_core::DynamicNameStyle;
+    use metrique_writer::test_util::to_test_entry;
+    use rstest::rstest;
+
+    use super::DynamicInflectionEntry;
+
+    #[metrics(subfield_owned)]
+    #[derive(Default)]
+    struct Inner {
+        count: u64,
+    }
+
+    #[metrics]
+    #[derive(Default)]
+    struct Outer {
+        #[metrics(flatten, prefix = "pfx_")]
+        inner: Inner,
+        other: u64,
+    }
+
+    #[rstest]
+    #[case::identity(DynamicNameStyle::Identity, "pfx_count", "other")]
+    #[case::pascal_case(DynamicNameStyle::PascalCase, "PfxCount", "Other")]
+    #[case::snake_case(DynamicNameStyle::SnakeCase, "pfx_count", "other")]
+    #[case::kebab_case(DynamicNameStyle::KebabCase, "pfx-count", "other")]
+    fn prefix_inflection(
+        #[case] style: DynamicNameStyle,
+        #[case] expected_prefixed: &str,
+        #[case] expected_plain: &str,
+    ) {
+        let entry = DynamicInflectionEntry {
+            entry: Outer {
+                inner: Inner { count: 42 },
+                other: 7,
+            }
+            .close(),
+            name_style: style,
+        };
+        let t = to_test_entry(entry);
+        assert_eq!(t.metrics[expected_prefixed], 42);
+        assert_eq!(t.metrics[expected_plain], 7);
+    }
+
+    #[metrics]
+    struct WithRuntimeMetrics {
+        #[metrics(flatten, prefix = "rt_")]
+        runtime: tokio_metrics::RuntimeMetrics,
+        request_count: u64,
+    }
+
+    #[rstest]
+    #[case::identity(
+        DynamicNameStyle::Identity,
+        "request_count",
+        "rt_workers_count",
+        "rt_total_park_count"
+    )]
+    #[case::pascal_case(
+        DynamicNameStyle::PascalCase,
+        "RequestCount",
+        "RtWorkersCount",
+        "RtTotalParkCount"
+    )]
+    fn runtime_metrics_with_prefix(
+        #[case] style: DynamicNameStyle,
+        #[case] request_key: &str,
+        #[case] workers_key: &str,
+        #[case] park_key: &str,
+    ) {
+        let entry = DynamicInflectionEntry {
+            entry: WithRuntimeMetrics {
+                runtime: tokio_metrics::RuntimeMetrics::default(),
+                request_count: 5,
+            }
+            .close(),
+            name_style: style,
+        };
+        let t = to_test_entry(entry);
+        assert_eq!(t.metrics[request_key], 5);
+        assert_eq!(t.metrics[workers_key], 0);
+        t.metrics[park_key].as_u64();
+    }
+}

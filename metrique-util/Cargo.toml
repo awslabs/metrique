@@ -34,6 +34,7 @@ metrique = { path = "../metrique", features = ["emf", "test-util"] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
+rstest = { workspace = true }
 metrique-util = { path = ".", features = ["state"] }
 
 [package.metadata.docs.rs]

@@ -900,6 +900,7 @@ dependencies = [
  "metrique-util",
  "metrique-writer",
  "metrique-writer-core",
+ "rstest",
  "tokio",
  "tokio-metrics",
  "tracing",
