@@ -170,20 +170,12 @@ mod tests {
         assert!(!entries.is_empty(), "expected entries");
 
         let entry = &entries[0];
-        assert!(
-            entry.metrics.contains_key("workers_count"),
-            "expected snake_case field names with Identity style, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
-        assert!(entry.metrics.contains_key("total_park_count"));
-        assert!(entry.metrics.contains_key("elapsed"));
+        assert_eq!(entry.metrics["workers_count"], 1);
+        entry.metrics["total_park_count"].as_u64();
+        assert!(entry.metrics["elapsed"] > 0.0);
 
         #[cfg(tokio_unstable)]
-        assert!(
-            entry.metrics.contains_key("poll_time_histogram"),
-            "expected poll_time_histogram under tokio_unstable, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
+        assert!(entry.metrics["poll_time_histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -204,20 +196,12 @@ mod tests {
         assert!(!entries.is_empty(), "expected entries");
 
         let entry = &entries[0];
-        assert!(
-            entry.metrics.contains_key("WorkersCount"),
-            "expected PascalCase field names, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
-        assert!(entry.metrics.contains_key("TotalParkCount"));
-        assert!(entry.metrics.contains_key("Elapsed"));
+        assert_eq!(entry.metrics["WorkersCount"], 1);
+        entry.metrics["TotalParkCount"].as_u64();
+        assert!(entry.metrics["Elapsed"] > 0.0);
 
         #[cfg(tokio_unstable)]
-        assert!(
-            entry.metrics.contains_key("PollTimeHistogram"),
-            "expected PollTimeHistogram under tokio_unstable, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
+        assert!(entry.metrics["PollTimeHistogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -238,20 +222,12 @@ mod tests {
         assert!(!entries.is_empty(), "expected entries");
 
         let entry = &entries[0];
-        assert!(
-            entry.metrics.contains_key("workers_count"),
-            "expected snake_case field names, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
-        assert!(entry.metrics.contains_key("total_park_count"));
-        assert!(entry.metrics.contains_key("elapsed"));
+        assert_eq!(entry.metrics["workers_count"], 1);
+        entry.metrics["total_park_count"].as_u64();
+        assert!(entry.metrics["elapsed"] > 0.0);
 
         #[cfg(tokio_unstable)]
-        assert!(
-            entry.metrics.contains_key("poll_time_histogram"),
-            "expected poll_time_histogram under tokio_unstable, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
+        assert!(entry.metrics["poll_time_histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -272,20 +248,12 @@ mod tests {
         assert!(!entries.is_empty(), "expected entries");
 
         let entry = &entries[0];
-        assert!(
-            entry.metrics.contains_key("workers-count"),
-            "expected kebab-case field names, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
-        assert!(entry.metrics.contains_key("total-park-count"));
-        assert!(entry.metrics.contains_key("elapsed"));
+        assert_eq!(entry.metrics["workers-count"], 1);
+        entry.metrics["total-park-count"].as_u64();
+        assert!(entry.metrics["elapsed"] > 0.0);
 
         #[cfg(tokio_unstable)]
-        assert!(
-            entry.metrics.contains_key("poll-time-histogram"),
-            "expected poll-time-histogram under tokio_unstable, got keys: {:?}",
-            entry.metrics.keys().collect::<Vec<_>>()
-        );
+        assert!(entry.metrics["poll-time-histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
