@@ -4,9 +4,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use metrique_core::{CloseValue, InflectableEntry};
-use metrique_writer_core::global::{AttachGlobalEntrySink, GlobalEntrySink};
-use metrique_writer_core::{BoxEntrySink, Entry, EntrySink, EntryWriter};
+use crate::dynamic_inflection::DynamicInflectionEntry;
+use metrique::CloseValue;
+use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, GlobalEntrySink};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tokio_metrics::RuntimeMonitor;
@@ -127,7 +127,7 @@ fn spawn_tokio_runtime_metrics_task(
         let handle = Handle::current();
         let monitor = RuntimeMonitor::new(&handle);
         for snapshot in monitor.intervals() {
-            sink.append(RootedEntry {
+            sink.append(DynamicInflectionEntry {
                 entry: snapshot.close(),
                 name_style,
             });
@@ -148,49 +148,6 @@ fn spawn_tokio_runtime_metrics_task(
         }
     });
     (worker_abort, monitor)
-}
-
-/// Wrapper that roots an [`InflectableEntry`] into an [`Entry`], applying the
-/// configured [`MetricNameStyle`].
-struct RootedEntry<M> {
-    entry: M,
-    name_style: MetricNameStyle,
-}
-
-impl<M> Entry for RootedEntry<M>
-where
-    M: InflectableEntry<metrique_core::Identity>
-        + InflectableEntry<metrique_core::PascalCase>
-        + InflectableEntry<metrique_core::SnakeCase>
-        + InflectableEntry<metrique_core::KebabCase>,
-{
-    fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
-        use metrique_core::DynamicNameStyle;
-        match self.name_style {
-            DynamicNameStyle::Identity => {
-                InflectableEntry::<metrique_core::Identity>::write(&self.entry, w)
-            }
-            DynamicNameStyle::PascalCase => {
-                InflectableEntry::<metrique_core::PascalCase>::write(&self.entry, w)
-            }
-            DynamicNameStyle::SnakeCase => {
-                InflectableEntry::<metrique_core::SnakeCase>::write(&self.entry, w)
-            }
-            DynamicNameStyle::KebabCase => {
-                InflectableEntry::<metrique_core::KebabCase>::write(&self.entry, w)
-            }
-            _ => {
-                static WARNED_UNKNOWN_NAME_STYLE: AtomicBool = AtomicBool::new(false);
-                if !WARNED_UNKNOWN_NAME_STYLE.swap(true, Ordering::Relaxed) {
-                    tracing::warn!(
-                        ?self.name_style,
-                        "unknown MetricNameStyle variant; falling back to Identity"
-                    );
-                }
-                InflectableEntry::<metrique_core::Identity>::write(&self.entry, w)
-            }
-        }
-    }
 }
 
 #[cfg(test)]

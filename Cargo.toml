@@ -68,13 +68,11 @@ trybuild = "1.0"
 toml = "0.9"
 walkdir = "2"
 
-# TODO: Remove before merge — tokio-metrics depends on metrique from
-# crates.io; patch to local to avoid duplicate crate errors.
 [patch.crates-io]
 metrique = { path = "metrique" }
 metrique-core = { path = "metrique-core" }
-metrique-writer-core = { path = "metrique-writer-core" }
-metrique-writer = { path = "metrique-writer" }
 metrique-macro = { path = "metrique-macro" }
 metrique-timesource = { path = "metrique-timesource" }
+metrique-writer = { path = "metrique-writer" }
+metrique-writer-core = { path = "metrique-writer-core" }
 metrique-writer-macro = { path = "metrique-writer-macro" }
