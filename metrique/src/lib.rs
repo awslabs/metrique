@@ -94,6 +94,7 @@ use std::sync::Arc;
 
 pub use metrique_core::{
     CloseValue, CloseValueRef, Counter, CounterGuard, InflectableEntry, NameStyle,
+    OwnedCounterGuard,
 };
 
 /// Unit types and utilities for metrics.
