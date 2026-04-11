@@ -85,19 +85,19 @@ pub trait ValueWriter: Sized {
     }
 
     /// Write a list of values. Formats that support native arrays (e.g. EMF) can override this
-    /// to emit a structured representation. The default joins each element's string representation
-    /// with `", "`, skipping elements that write nothing (e.g. `None`).
+    /// to emit a structured representation. The default comma-joins each element's string
+    /// representation, skipping elements that write nothing (e.g. `None`).
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
         let mut buf = String::new();
-        let mut elem = String::new();
         for value in values {
-            elem.clear();
-            value.write(StringCapture(&mut elem));
-            if !elem.is_empty() {
-                if !buf.is_empty() {
-                    buf.push_str(", ");
-                }
-                buf.push_str(&elem);
+            let before = buf.len();
+            if !buf.is_empty() {
+                buf.push(',');
+            }
+            let after_sep = buf.len();
+            value.write(StringCapture(&mut buf));
+            if buf.len() <= after_sep {
+                buf.truncate(before);
             }
         }
         self.string(&buf);
@@ -105,6 +105,7 @@ pub trait ValueWriter: Sized {
 }
 
 /// Adapter that captures a [`Value`]'s string representation into a buffer.
+/// Only captures string values; metrics and errors are ignored.
 struct StringCapture<'a>(&'a mut String);
 
 impl ValueWriter for StringCapture<'_> {
@@ -114,25 +115,12 @@ impl ValueWriter for StringCapture<'_> {
 
     fn metric<'a>(
         self,
-        distribution: impl IntoIterator<Item = Observation>,
+        _distribution: impl IntoIterator<Item = Observation>,
         _unit: Unit,
         _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
         _flags: MetricFlags<'_>,
     ) {
-        use std::fmt::Write;
-        if let Some(obs) = distribution.into_iter().next() {
-            match obs {
-                Observation::Unsigned(v) => {
-                    let _ = write!(self.0, "{v}");
-                }
-                Observation::Floating(v) => {
-                    let _ = write!(self.0, "{v}");
-                }
-                Observation::Repeated { total, .. } => {
-                    let _ = write!(self.0, "{total}");
-                }
-            }
-        }
+        // Intentionally a no-op: values() is for string properties only.
     }
 
     fn error(self, _error: ValidationError) {}

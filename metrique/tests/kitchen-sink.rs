@@ -426,7 +426,7 @@ fn vec_property_comma_joins_in_default_format() {
     .append_on_drop(vec_sink.clone());
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
-    assert_eq!(entry.values["Plugins"], "auth, logging, cache");
+    assert_eq!(entry.values["Plugins"], "auth,logging,cache");
     assert_eq!(entry.metrics["Count"], 42);
 }
 
@@ -458,5 +458,5 @@ fn vec_with_none_elements_skips_them_in_default_format() {
     .append_on_drop(vec_sink.clone());
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
-    assert_eq!(entry.values["Tags"], "a, c");
+    assert_eq!(entry.values["Tags"], "a,c");
 }
