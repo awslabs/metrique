@@ -83,6 +83,47 @@ pub trait ValueWriter: Sized {
     fn invalid(self, reason: impl Into<String>) {
         self.error(ValidationError::invalid(reason))
     }
+
+    /// Write a list of values. Formats that support native arrays (e.g. EMF) can override this
+    /// to emit a structured representation. The default comma-joins each element's string
+    /// representation, skipping elements that write nothing (e.g. `None`).
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        let mut buf = String::new();
+        for value in values {
+            let before = buf.len();
+            if !buf.is_empty() {
+                buf.push(',');
+            }
+            let after_sep = buf.len();
+            value.write(StringCapture(&mut buf));
+            if buf.len() <= after_sep {
+                buf.truncate(before);
+            }
+        }
+        self.string(&buf);
+    }
+}
+
+/// Adapter that captures a [`Value`]'s string representation into a buffer.
+/// Only captures string values; metrics and errors are ignored.
+pub(crate) struct StringCapture<'a>(pub(crate) &'a mut String);
+
+impl ValueWriter for StringCapture<'_> {
+    fn string(self, value: &str) {
+        self.0.push_str(value);
+    }
+
+    fn metric<'a>(
+        self,
+        _distribution: impl IntoIterator<Item = Observation>,
+        _unit: Unit,
+        _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        _flags: MetricFlags<'_>,
+    ) {
+        // Intentionally a no-op: values() is for string properties only.
+    }
+
+    fn error(self, _error: ValidationError) {}
 }
 
 /// The numeric value of a observation to include in a metric value.

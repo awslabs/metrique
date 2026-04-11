@@ -100,3 +100,34 @@ async fn test_dimensions_merged_with_global_queue() {
         ]
     );
 }
+
+#[metrics(rename_all = "PascalCase")]
+struct VecMetrics {
+    #[metrics(timestamp)]
+    timestamp: SystemTime,
+    plugins: Vec<String>,
+    request_count: usize,
+}
+
+#[test]
+fn test_vec_property_emits_json_array_in_emf() {
+    let mut emf = Emf::all_validations("App".to_string(), vec![vec![]]);
+    let mut output = vec![];
+
+    emf.format(
+        &RootEntry::new(
+            VecMetrics {
+                timestamp: UNIX_EPOCH,
+                plugins: vec!["auth".into(), "cache".into()],
+                request_count: 5,
+            }
+            .close(),
+        ),
+        &mut output,
+    )
+    .unwrap();
+
+    let json: Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(json["Plugins"], serde_json::json!(["auth", "cache"]));
+    assert_eq!(json["RequestCount"], 5);
+}

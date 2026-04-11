@@ -79,6 +79,8 @@ trait DynValueWriter {
     );
 
     fn error(&mut self, error: ValidationError);
+
+    fn values_str(&mut self, values: &[&str]);
 }
 
 impl<E: Entry + Send + 'static> DynEntry for E {
@@ -163,6 +165,10 @@ impl<W: ValueWriter> DynValueWriter for ValueWriterToDyn<W> {
     fn error(&mut self, error: ValidationError) {
         self.0.take().unwrap().error(error)
     }
+
+    fn values_str(&mut self, values: &[&str]) {
+        self.0.take().unwrap().values(values.iter())
+    }
 }
 
 impl ValueWriter for ValueWriterFromDyn<'_> {
@@ -193,6 +199,19 @@ impl ValueWriter for ValueWriterFromDyn<'_> {
 
     fn error(self, error: ValidationError) {
         self.0.error(error)
+    }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        let strs: SmallVec<[String; 8]> = values
+            .into_iter()
+            .filter_map(|v| {
+                let mut s = String::new();
+                v.write(crate::value::StringCapture(&mut s));
+                if s.is_empty() { None } else { Some(s) }
+            })
+            .collect();
+        let refs: SmallVec<[&str; 8]> = strs.iter().map(|s| s.as_str()).collect();
+        self.0.values_str(&refs)
     }
 }
 

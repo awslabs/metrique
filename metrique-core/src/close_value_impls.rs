@@ -215,6 +215,15 @@ where
 }
 
 #[diagnostic::do_not_recommend]
+impl<V: CloseValue> CloseValue for Vec<V> {
+    type Closed = Vec<V::Closed>;
+
+    fn close(self) -> Self::Closed {
+        self.into_iter().map(CloseValue::close).collect()
+    }
+}
+
+#[diagnostic::do_not_recommend]
 impl<T: CloseValue, const N: usize> CloseValue for WithDimensions<T, N> {
     type Closed = WithDimensions<T::Closed, N>;
 

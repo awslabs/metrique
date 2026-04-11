@@ -93,6 +93,9 @@ impl Entry for EmfFuzzEntry {
                         }
                     }
                 }
+                FuzzField::ValueList { name, values } => {
+                    writer.value(name.0.as_str(), values);
+                }
             }
         }
     }

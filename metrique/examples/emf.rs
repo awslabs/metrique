@@ -26,6 +26,7 @@ struct RequestMetrics {
     number_of_ducks: usize,
     no_metric: NoMetric<usize>,
     high_storage_resolution: HighStorageResolution<usize>,
+    active_plugins: Vec<String>,
 }
 
 impl RequestMetrics {
@@ -37,6 +38,7 @@ impl RequestMetrics {
             number_of_ducks: 0,
             no_metric: (0).into(),
             high_storage_resolution: (0).into(),
+            active_plugins: vec!["auth".into(), "logging".into()],
         }
         .append_on_drop(ServiceMetrics::sink())
     }
@@ -69,7 +71,7 @@ fn main() {
     request.status = "SUCCESS";
 
     /*
-    {"_aws":{"CloudWatchMetrics":[{"Namespace":"MyApp","Dimensions":[["Region","Status","Operation"],["Region","Operation"]],"Metrics":[{"Name":"NumberOfDucks"},{"Name":"HighStorageResolution","StorageResolution":1}]}],"Timestamp":1753189090887},"NumberOfDucks":10,"NoMetric":1,"HighStorageResolution":1,"Region":"us-east-1","Operation":"CountDucks","Status":"SUCCESS"}
+    {"_aws":{"CloudWatchMetrics":[{"Namespace":"MyApp","Dimensions":[["Region","Status","Operation"],["Region","Operation"]],"Metrics":[{"Name":"NumberOfDucks"},{"Name":"HighStorageResolution","StorageResolution":1}]}],"Timestamp":1753189090887},"NumberOfDucks":10,"NoMetric":1,"HighStorageResolution":1,"ActivePlugins":["auth","logging"],"Region":"us-east-1","Operation":"CountDucks","Status":"SUCCESS"}
     */
 }
 

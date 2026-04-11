@@ -408,3 +408,55 @@ fn multiple_sinks() {
     assert_eq!(inspector1.entries().len(), 2);
     assert_eq!(inspector2.entries().len(), 1);
 }
+
+#[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
+struct WithVecProperty {
+    plugins: Vec<String>,
+    count: u32,
+}
+
+#[test]
+fn vec_property_comma_joins_in_default_format() {
+    let vec_sink = VecEntrySink::new();
+    WithVecProperty {
+        plugins: vec!["auth".into(), "logging".into(), "cache".into()],
+        count: 42,
+    }
+    .append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+    assert_eq!(entry.values["Plugins"], "auth,logging,cache");
+    assert_eq!(entry.metrics["Count"], 42);
+}
+
+#[test]
+fn empty_vec_property_emits_empty_string() {
+    let vec_sink = VecEntrySink::new();
+    WithVecProperty {
+        plugins: vec![],
+        count: 0,
+    }
+    .append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+    assert_eq!(entry.values["Plugins"], "");
+}
+
+#[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
+struct WithOptionalVecProperty {
+    tags: Vec<Option<String>>,
+}
+
+#[test]
+fn vec_with_none_elements_skips_them_in_default_format() {
+    let vec_sink = VecEntrySink::new();
+    WithOptionalVecProperty {
+        tags: vec![Some("a".into()), None, Some("c".into())],
+    }
+    .append_on_drop(vec_sink.clone());
+    let entries = vec_sink.drain();
+    let entry = test_util::to_test_entry(&entries[0]);
+    assert_eq!(entry.values["Tags"], "a,c");
+}
