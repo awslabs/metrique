@@ -18,6 +18,7 @@ struct RequestMetrics {
     operation: &'static str,
     status: &'static str,
     number_of_ducks: usize,
+    active_plugins: Vec<String>,
 }
 
 impl RequestMetrics {
@@ -27,6 +28,7 @@ impl RequestMetrics {
             operation,
             status: "INCOMPLETE",
             number_of_ducks: 0,
+            active_plugins: vec!["auth".into(), "logging".into()],
         }
         .append_on_drop(ServiceMetrics::sink())
     }
@@ -56,6 +58,6 @@ fn main() {
     request.status = "SUCCESS";
 
     /*
-    {"timestamp":<millis>,"metrics":{"number_of_ducks":{"value":10}},"properties":{"region":"us-east-1","operation":"CountDucks","status":"SUCCESS"}}
+    {"timestamp":<millis>,"metrics":{"number_of_ducks":{"value":10}},"properties":{"region":"us-east-1","operation":"CountDucks","status":"SUCCESS","active_plugins":["auth","logging"]}}
     */
 }
