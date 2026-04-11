@@ -346,7 +346,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-core"
-version = "0.1.16"
+version = "0.1.18"
 dependencies = [
  "itertools",
  "metrique-writer-core",
@@ -366,7 +366,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer"
-version = "0.1.18"
+version = "0.1.20"
 dependencies = [
  "ahash",
  "crossbeam-queue",
@@ -385,7 +385,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-core"
-version = "0.1.13"
+version = "0.1.14"
 dependencies = [
  "derive-where",
  "itertools",
@@ -395,7 +395,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-emf"
-version = "0.1.17"
+version = "0.1.19"
 dependencies = [
  "bit-set",
  "dtoa",
@@ -413,7 +413,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-json"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "dtoa",
  "itoa",
@@ -424,7 +424,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-macro"
-version = "0.1.7"
+version = "0.1.8"
 dependencies = [
  "darling",
  "proc-macro2",

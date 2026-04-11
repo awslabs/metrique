@@ -74,6 +74,11 @@ pub enum FuzzField {
         dimensions: Vec<(String, String)>,
         unit: FuzzUnit,
     },
+    /// A list of optional string values, exercising `ValueWriter::values()`
+    ValueList {
+        name: FuzzFieldName,
+        values: Vec<Option<String>>,
+    },
 }
 
 #[derive(Debug, Arbitrary)]
@@ -173,6 +178,9 @@ impl Entry for FuzzEntry {
                         unit: unit.0,
                     };
                     writer.value(name.0.as_str(), &metric);
+                }
+                FuzzField::ValueList { name, values } => {
+                    writer.value(name.0.as_str(), values);
                 }
             }
         }
