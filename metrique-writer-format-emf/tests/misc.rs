@@ -195,3 +195,16 @@ fn test_single_element_vec_in_emf() {
     let output: serde_json::Value = serde_json::from_str(&sink.dump()).unwrap();
     assert_json_diff::assert_json_eq!(output["Plugins"], serde_json::json!(["only"]));
 }
+
+#[test]
+fn test_vec_emits_json_array_through_boxed_entry() {
+    let sink = TestSink::default();
+    let mut stream = Emf::all_validations("App".into(), vec![vec![]]).output_to(sink.clone());
+    let boxed = VecEntry {
+        plugins: vec!["a".into(), "b".into()],
+    }
+    .boxed();
+    stream.next(&boxed).unwrap();
+    let output: serde_json::Value = serde_json::from_str(&sink.dump()).unwrap();
+    assert_json_diff::assert_json_eq!(output["Plugins"], serde_json::json!(["a", "b"]));
+}

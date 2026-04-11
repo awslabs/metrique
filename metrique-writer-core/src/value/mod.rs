@@ -106,7 +106,7 @@ pub trait ValueWriter: Sized {
 
 /// Adapter that captures a [`Value`]'s string representation into a buffer.
 /// Only captures string values; metrics and errors are ignored.
-struct StringCapture<'a>(&'a mut String);
+pub(crate) struct StringCapture<'a>(pub(crate) &'a mut String);
 
 impl ValueWriter for StringCapture<'_> {
     fn string(self, value: &str) {
