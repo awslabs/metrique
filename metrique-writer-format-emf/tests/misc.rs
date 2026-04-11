@@ -182,3 +182,16 @@ fn test_vec_with_none_elements_skips_them_in_emf() {
     let output: serde_json::Value = serde_json::from_str(&sink.dump()).unwrap();
     assert_json_diff::assert_json_eq!(output["Tags"], serde_json::json!(["a", "c"]));
 }
+
+#[test]
+fn test_single_element_vec_in_emf() {
+    let sink = TestSink::default();
+    let mut stream = Emf::all_validations("App".into(), vec![vec![]]).output_to(sink.clone());
+    stream
+        .next(&VecEntry {
+            plugins: vec!["only".into()],
+        })
+        .unwrap();
+    let output: serde_json::Value = serde_json::from_str(&sink.dump()).unwrap();
+    assert_json_diff::assert_json_eq!(output["Plugins"], serde_json::json!(["only"]));
+}

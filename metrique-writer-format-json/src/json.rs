@@ -215,6 +215,26 @@ struct JsonValueWriter<'b, 'c> {
     error: &'b mut ValidationErrorBuilder,
 }
 
+/// Adapter for writing individual elements inside a JSON array.
+struct JsonArrayElementWriter<'a>(&'a mut String);
+
+impl ValueWriter for JsonArrayElementWriter<'_> {
+    fn string(self, value: &str) {
+        push_json_string(self.0, value);
+    }
+
+    fn metric<'a>(
+        self,
+        _distribution: impl IntoIterator<Item = Observation>,
+        _unit: Unit,
+        _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        _flags: MetricFlags<'_>,
+    ) {
+    }
+
+    fn error(self, _error: ValidationError) {}
+}
+
 impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
     fn string(self, value: &str) {
         let buf = self.properties_buf;
@@ -222,6 +242,28 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
         push_json_string(buf, self.name);
         buf.push(':');
         push_json_string(buf, value);
+    }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        let buf = self.properties_buf;
+        buf.push(',');
+        push_json_string(buf, self.name);
+        buf.push_str(":[");
+        let mut wrote_any = false;
+        for value in values {
+            let before = buf.len();
+            if wrote_any {
+                buf.push(',');
+            }
+            let after_sep = buf.len();
+            value.write(JsonArrayElementWriter(buf));
+            if buf.len() > after_sep {
+                wrote_any = true;
+            } else {
+                buf.truncate(before);
+            }
+        }
+        buf.push(']');
     }
 
     fn metric<'a>(
@@ -767,5 +809,88 @@ mod tests {
 
         let result = format.format_with_sample_rate(&SimpleEntry, &mut output, f32::NAN);
         assert!(result.is_err());
+    }
+
+    struct VecEntry {
+        plugins: Vec<String>,
+    }
+
+    impl Entry for VecEntry {
+        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.timestamp(SystemTime::UNIX_EPOCH);
+            writer.value("Plugins", &self.plugins);
+        }
+    }
+
+    #[test]
+    fn test_vec_emits_json_array() {
+        let mut format = Json::new();
+        let mut output = Vec::new();
+        format
+            .format(
+                &VecEntry {
+                    plugins: vec!["auth".into(), "cache".into()],
+                },
+                &mut output,
+            )
+            .unwrap();
+        let json = parse_output(&output);
+        assert_eq!(
+            json["properties"]["Plugins"],
+            serde_json::json!(["auth", "cache"])
+        );
+    }
+
+    #[test]
+    fn test_single_element_vec_in_json() {
+        let mut format = Json::new();
+        let mut output = Vec::new();
+        format
+            .format(
+                &VecEntry {
+                    plugins: vec!["only".into()],
+                },
+                &mut output,
+            )
+            .unwrap();
+        let json = parse_output(&output);
+        assert_eq!(json["properties"]["Plugins"], serde_json::json!(["only"]));
+    }
+
+    #[test]
+    fn test_empty_vec_in_json() {
+        let mut format = Json::new();
+        let mut output = Vec::new();
+        format
+            .format(&VecEntry { plugins: vec![] }, &mut output)
+            .unwrap();
+        let json = parse_output(&output);
+        assert_eq!(json["properties"]["Plugins"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_vec_with_none_elements_in_json() {
+        struct VecOptionEntry {
+            tags: Vec<Option<String>>,
+        }
+        impl Entry for VecOptionEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH);
+                writer.value("Tags", &self.tags);
+            }
+        }
+
+        let mut format = Json::new();
+        let mut output = Vec::new();
+        format
+            .format(
+                &VecOptionEntry {
+                    tags: vec![Some("a".into()), None, Some("c".into())],
+                },
+                &mut output,
+            )
+            .unwrap();
+        let json = parse_output(&output);
+        assert_eq!(json["properties"]["Tags"], serde_json::json!(["a", "c"]));
     }
 }
