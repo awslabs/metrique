@@ -135,9 +135,10 @@ fn spawn_tokio_runtime_metrics_task(
     // Spawn a monitor to log panics
     tokio::spawn(async move {
         if let Err(err) = worker.await
-            && !err.is_cancelled() {
-                tracing::error!("tokio runtime metrics reporter panicked: {err}");
-            }
+            && !err.is_cancelled()
+        {
+            tracing::error!("tokio runtime metrics reporter panicked: {err}");
+        }
     });
     abort
 }
