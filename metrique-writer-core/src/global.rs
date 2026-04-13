@@ -284,8 +284,8 @@ impl ShutdownRegistry {
         self.0.lock().unwrap().push(f);
     }
 
-    pub(crate) fn drain_and_run(&self) {
-        for f in self.0.lock().unwrap().drain(..).rev() {
+    pub(crate) fn drain_and_run(self) {
+        for f in self.0.into_inner().unwrap().into_iter().rev() {
             f.call();
         }
     }
@@ -363,8 +363,12 @@ impl Drop for TokioRuntimeTestSinkGuard {
 
 impl Drop for AttachHandle {
     fn drop(&mut self) {
-        if let Some(registry) = self.shutdown_registry.take() {
-            registry.drain_and_run();
+        if let Some(arc) = self.shutdown_registry.take() {
+            // The macro holds only a Weak reference, so this is the sole strong ref.
+            match Arc::try_unwrap(arc) {
+                Ok(registry) => registry.drain_and_run(),
+                Err(_) => unreachable!("ShutdownRegistry should have no other strong references"),
+            }
         }
     }
 }
@@ -1225,7 +1229,7 @@ mod tests {
 
 #[cfg(test)]
 mod shutdown_registry_tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use metrique_writer::sink::AttachGlobalEntrySink;
@@ -1349,6 +1353,29 @@ mod shutdown_registry_tests {
             drop(handle);
         }
         assert_eq!(called.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn shutdown_fns_run_in_lifo_order() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+
+        let order = Arc::new(Mutex::new(Vec::new()));
+
+        let handle = Sink::attach((sink, ()));
+
+        // The attach call registers the sink detach fn first
+        // Register three more in order:
+        for i in 1..=3 {
+            let order = order.clone();
+            Sink::register_shutdown_fn(ShutdownFn::new(move || {
+                order.lock().unwrap().push(i);
+            }));
+        }
+
+        drop(handle);
+
+        assert_eq!(*order.lock().unwrap(), vec![3, 2, 1]);
     }
 }
 // Helper macro that conditionally expands based on the test-util feature
