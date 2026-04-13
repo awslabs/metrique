@@ -7,7 +7,6 @@ use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use tokio::runtime::Handle;
-use tokio::task::JoinHandle;
 use tokio_metrics::RuntimeMonitor;
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
@@ -103,10 +102,9 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
-        let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);
+        let abort = spawn_tokio_runtime_metrics_task(sink, config);
         Self::register_shutdown_fn(ShutdownFn::new(move || {
-            worker_abort.abort();
-            monitor.abort();
+            abort.abort();
         }));
     }
 }
@@ -116,7 +114,7 @@ impl<T: AttachGlobalEntrySink + 'static> AttachGlobalEntrySinkTokioMetricsExt fo
 fn spawn_tokio_runtime_metrics_task(
     sink: BoxEntrySink,
     config: TokioRuntimeMetricsConfig,
-) -> (tokio::task::AbortHandle, JoinHandle<()>) {
+) -> tokio::task::AbortHandle {
     let interval = config.interval;
     let name_style = config.name_style;
     let worker = tokio::spawn(async move {
@@ -132,19 +130,17 @@ fn spawn_tokio_runtime_metrics_task(
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
     });
-    let worker_abort = worker.abort_handle();
-    let monitor = tokio::spawn(async move {
-        match worker.await {
-            Ok(()) => {}
-            Err(err) if err.is_cancelled() => {
-                tracing::debug!("tokio runtime metrics reporter cancelled");
-            }
-            Err(err) => {
-                tracing::error!(?err, "tokio runtime metrics reporter panicked");
+    let abort = worker.abort_handle();
+
+    // Spawn a monitor to log panics
+    tokio::spawn(async move {
+        if let Err(err) = worker.await {
+            if !err.is_cancelled() {
+                tracing::error!("tokio runtime metrics reporter panicked: {err}");
             }
         }
     });
-    (worker_abort, monitor)
+    abort
 }
 
 #[cfg(test)]
@@ -274,10 +270,10 @@ mod tests {
         let count_before = inspector.entries().len();
         check!(count_before > 0);
 
-        // Drop the attach handle — this should abort the reporter task.
+        // Dropping the handle should abort the reporter task.
         drop(handle);
 
-        // Advance time further; no new entries should appear.
+        // Advance time further, no new entries should be appended.
         tokio::time::sleep(Duration::from_millis(200)).await;
         check!(inspector.entries().len() == count_before);
     }
