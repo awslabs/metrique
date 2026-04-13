@@ -678,7 +678,7 @@ pub mod writer {
     pub use metrique_writer_macro::MetriqueEntry as Entry;
 
     pub use metrique_writer::AttachGlobalEntrySinkExt;
-    pub use metrique_writer::{AttachGlobalEntrySink, EntryIoStreamExt, FormatExt};
+    pub use metrique_writer::{AttachGlobalEntrySink, EntryIoStreamExt, FormatExt, ShutdownFn};
     pub use metrique_writer::{entry, format, sample, sink, stream, value};
 
     #[cfg(feature = "test-util")]

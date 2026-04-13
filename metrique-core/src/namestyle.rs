@@ -126,3 +126,21 @@ impl<PREFIX: MaybeConstStr> NameStyle for KebabCase<PREFIX> {
         KEBAB: MaybeConstStr,
     > = KEBAB;
 }
+
+/// Runtime-selectable name style for metric field names.
+///
+/// This mirrors the compile-time [`NameStyle`] types (`Identity`, `PascalCase`,
+/// etc.) as enum variants for use in runtime configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
+pub enum DynamicNameStyle {
+    /// Keep original field names.
+    #[default]
+    Identity,
+    /// Convert to PascalCase (e.g. `WorkersCount`).
+    PascalCase,
+    /// Convert to snake_case (e.g. `workers_count`).
+    SnakeCase,
+    /// Convert to kebab-case (e.g. `workers-count`).
+    KebabCase,
+}

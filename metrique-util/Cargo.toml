@@ -8,19 +8,34 @@ description = "Additional utilities for metrique"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
+
 [features]
 default = []
 state = ["dep:arc-swap"]
+tokio-metrics-bridge = [
+    "dep:metrique",
+    "dep:tokio",
+    "dep:tokio-metrics",
+    "dep:tracing",
+]
 
 [dependencies]
 metrique-core = { path = "../metrique-core", version = "0.1.18" }
+metrique = { path = "../metrique", version = "0.1.23", optional = true, default-features = false }
 arc-swap = { version = "1", optional = true }
+tokio = { workspace = true, optional = true, features = ["time", "rt"] }
+tokio-metrics = { version = "0.5.0", optional = true, features = ["rt", "metrique-integration"] }
+tracing = { workspace = true, optional = true }
 
 [dev-dependencies]
+assert2 = { workspace = true }
 metrique = { path = "../metrique", features = ["emf", "test-util"] }
 metrique-writer = { path = "../metrique-writer", features = ["test-util"] }
 metrique-writer-core = { path = "../metrique-writer-core", features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
+rstest = { workspace = true }
 metrique-util = { path = ".", features = ["state"] }
 
 [package.metadata.docs.rs]
