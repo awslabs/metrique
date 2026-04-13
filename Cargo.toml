@@ -68,6 +68,9 @@ trybuild = "1.0"
 toml = "0.9"
 walkdir = "2"
 
+# External crates that depend on metrique pull it from crates.io, while workspace
+# members use local paths. Without these patches, Cargo treats them as separate
+# crates, causing duplicate type errors. Only affects workspace builds.
 [patch.crates-io]
 metrique = { path = "metrique" }
 metrique-core = { path = "metrique-core" }
