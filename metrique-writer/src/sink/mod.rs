@@ -23,7 +23,7 @@ pub use immediate_flush::{
 pub use metrique_writer_core::sink::{AnyEntrySink, AppendOnDrop, FlushWait};
 use metrique_writer_core::{BoxEntrySink, EntryIoStream, EntrySink};
 pub use metrique_writer_core::{
-    global::AttachGlobalEntrySink, global::AttachHandle, global_entry_sink,
+    global::AttachGlobalEntrySink, global::AttachHandle, global::ShutdownFn, global_entry_sink,
 };
 
 /// Extension trait for `AttachGlobalEntrySink`, containing functions that use

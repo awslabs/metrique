@@ -252,11 +252,43 @@ pub struct AttachHandle {
     shutdown_registry: Option<Arc<ShutdownRegistry>>,
 }
 
-#[doc(hidden)]
-pub type ShutdownFn = Box<dyn FnOnce() + Send>;
+/// A function to be called during shutdown when the [`AttachHandle`] is dropped.
+pub struct ShutdownFn(Box<dyn FnOnce() + Send>);
 
-#[doc(hidden)]
-pub type ShutdownRegistry = Mutex<Vec<ShutdownFn>>;
+impl ShutdownFn {
+    /// Create a new [`ShutdownFn`] from a closure.
+    pub fn new(f: impl FnOnce() + Send + 'static) -> Self {
+        Self(Box::new(f))
+    }
+
+    fn call(self) {
+        self.0();
+    }
+}
+
+/// Storage for [`ShutdownFn`]s registered on an [`AttachHandle`], to be run when the [`AttachHandle`] is dropped.
+///
+/// This type is public for macro-generated code. You should not need to use it directly,
+/// use [`AttachGlobalEntrySink::register_shutdown_fn`] instead.
+pub struct ShutdownRegistry(Mutex<Vec<ShutdownFn>>);
+
+impl ShutdownRegistry {
+    fn new(initial: ShutdownFn) -> Self {
+        Self(Mutex::new(vec![initial]))
+    }
+
+    /// Prepend a shutdown function so it runs before earlier ones (LIFO order).
+    #[doc(hidden)]
+    pub fn prepend(&self, f: ShutdownFn) {
+        self.0.lock().unwrap().insert(0, f);
+    }
+
+    pub(crate) fn drain_and_run(&self) {
+        for f in self.0.lock().unwrap().drain(..) {
+            f.call();
+        }
+    }
+}
 
 /// Guard that manages the lifecycle of a thread-local test sink override.
 ///
@@ -331,10 +363,7 @@ impl Drop for TokioRuntimeTestSinkGuard {
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(registry) = self.shutdown_registry.take() {
-            // Shutdown functions are prepended, drain so that subscribers abort first, and the sink detaches last.
-            for shutdown_fn in registry.lock().unwrap().drain(..) {
-                shutdown_fn();
-            }
+            registry.drain_and_run();
         }
     }
 }
@@ -344,7 +373,7 @@ impl AttachHandle {
     #[doc(hidden)]
     pub fn new(join: fn()) -> Self {
         Self {
-            shutdown_registry: Some(Arc::new(Mutex::new(vec![Box::new(join)]))),
+            shutdown_registry: Some(Arc::new(ShutdownRegistry::new(ShutdownFn::new(join)))),
         }
     }
 
@@ -563,8 +592,7 @@ macro_rules! global_entry_sink {
                     let weak = read.as_ref().expect("No sink attached — call attach() before subscribing");
                     weak.upgrade()
                         .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions")
-                        .lock().unwrap()
-                        .insert(0, f); // Prepend the functions so that they're in front of the sink when dropped.
+                        .prepend(f);
                 }
             }
 
@@ -1202,6 +1230,8 @@ mod shutdown_registry_tests {
     use metrique_writer::sink::AttachGlobalEntrySink;
     use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
 
+    use metrique_writer::ShutdownFn;
+
     #[test]
     fn shutdown_fn_runs_on_drop() {
         metrique_writer::sink::global_entry_sink! { Sink }
@@ -1210,7 +1240,7 @@ mod shutdown_registry_tests {
         let called2 = called.clone();
 
         let handle = Sink::attach((sink, ()));
-        Sink::register_shutdown_fn(Box::new(move || {
+        Sink::register_shutdown_fn(ShutdownFn::new(move || {
             called2.store(true, Ordering::SeqCst);
         }));
 
@@ -1231,7 +1261,7 @@ mod shutdown_registry_tests {
 
         // The sink detach fn is already at position 0.
         // Subscriber should be prepended before it, so the sink is still attached when this runs.
-        Sink::register_shutdown_fn(Box::new(move || {
+        Sink::register_shutdown_fn(ShutdownFn::new(move || {
             flag.store(Sink::try_sink().is_some(), Ordering::SeqCst);
         }));
 
@@ -1253,7 +1283,7 @@ mod shutdown_registry_tests {
         let called2 = called.clone();
 
         let handle = Sink::attach((sink, ()));
-        Sink::register_shutdown_fn(Box::new(move || {
+        Sink::register_shutdown_fn(ShutdownFn::new(move || {
             called2.store(true, Ordering::SeqCst);
         }));
 
@@ -1277,7 +1307,7 @@ mod shutdown_registry_tests {
     #[should_panic(expected = "No sink attached")]
     fn register_without_attach_panics() {
         metrique_writer::sink::global_entry_sink! { Sink }
-        Sink::register_shutdown_fn(Box::new(|| {}));
+        Sink::register_shutdown_fn(ShutdownFn::new(|| {}));
     }
 
     #[test]
@@ -1287,7 +1317,7 @@ mod shutdown_registry_tests {
         let TestEntrySink { sink, .. } = test_entry_sink();
         let handle = Sink::attach((sink, ()));
         handle.forget();
-        Sink::register_shutdown_fn(Box::new(|| {}));
+        Sink::register_shutdown_fn(ShutdownFn::new(|| {}));
     }
 
     #[test]
@@ -1300,7 +1330,7 @@ mod shutdown_registry_tests {
         {
             let handle = Sink::attach((sink, ()));
             let called2 = called.clone();
-            Sink::register_shutdown_fn(Box::new(move || {
+            Sink::register_shutdown_fn(ShutdownFn::new(move || {
                 called2.fetch_add(1, Ordering::SeqCst);
             }));
             drop(handle);
@@ -1312,7 +1342,7 @@ mod shutdown_registry_tests {
         {
             let handle = Sink::attach((sink, ()));
             let called2 = called.clone();
-            Sink::register_shutdown_fn(Box::new(move || {
+            Sink::register_shutdown_fn(ShutdownFn::new(move || {
                 called2.fetch_add(1, Ordering::SeqCst);
             }));
             drop(handle);

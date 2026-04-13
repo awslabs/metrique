@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
-use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink};
+use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 use tokio_metrics::RuntimeMonitor;
@@ -104,7 +104,7 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
         let (worker_abort, monitor) = spawn_tokio_runtime_metrics_task(sink, config);
-        Self::register_shutdown_fn(Box::new(move || {
+        Self::register_shutdown_fn(ShutdownFn::new(move || {
             worker_abort.abort();
             monitor.abort();
         }));
