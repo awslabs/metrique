@@ -277,14 +277,15 @@ impl ShutdownRegistry {
         Self(Mutex::new(vec![initial]))
     }
 
-    /// Prepend a shutdown function so it runs before earlier ones (LIFO order).
+    /// Add a shutdown function. Functions run in LIFO order when the
+    /// [`AttachHandle`] is dropped.
     #[doc(hidden)]
-    pub fn prepend(&self, f: ShutdownFn) {
-        self.0.lock().unwrap().insert(0, f);
+    pub fn push(&self, f: ShutdownFn) {
+        self.0.lock().unwrap().push(f);
     }
 
     pub(crate) fn drain_and_run(&self) {
-        for f in self.0.lock().unwrap().drain(..) {
+        for f in self.0.lock().unwrap().drain(..).rev() {
             f.call();
         }
     }
@@ -592,7 +593,7 @@ macro_rules! global_entry_sink {
                     let weak = read.as_ref().expect("No sink attached — call attach() before subscribing");
                     weak.upgrade()
                         .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions")
-                        .prepend(f);
+                        .push(f);
                 }
             }
 
@@ -1259,8 +1260,8 @@ mod shutdown_registry_tests {
 
         let handle = Sink::attach((sink, ()));
 
-        // The sink detach fn is already at position 0.
-        // Subscriber should be prepended before it, so the sink is still attached when this runs.
+        // The sink detach fn was registered first. Since shutdown runs in LIFO order,
+        // this subscriber fn runs before the sink detaches.
         Sink::register_shutdown_fn(ShutdownFn::new(move || {
             flag.store(Sink::try_sink().is_some(), Ordering::SeqCst);
         }));
