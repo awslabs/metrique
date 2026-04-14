@@ -67,7 +67,7 @@ struct Validation {
 /// 3. If the `AllowSplitEntries` config is enabled, there will be a separate entry
 ///    generated for each set of dimension values. This is generally the right thing to
 ///    do when emitting time-based metrics as it will cause them to be emitted correctly, but
-///    the wrong thing to do when emitting unit-of-work based metrics.
+///    the wrong thing to do when emitting wide events.
 ///
 /// In a future version, there might be additional options.
 ///

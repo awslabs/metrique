@@ -140,11 +140,15 @@ pub mod test_util {
     };
 }
 
-/// Unit of work metrics macros and utilities.
+/// Wide event macros and utilities.
 ///
-/// This module provides the `metrics` macro for defining unit of work metrics structs.
-/// Unit of work metrics are typically tied to the request/response scope and capture
-/// metrics over the course of a request.
+/// This module provides the `metrics` macro for defining wide event structs.
+/// The most common type of wide event is a unit-of-work metric, typically tied
+/// to the request/response scope, capturing all metrics over the course of a
+/// single action.
+///
+/// The module is named `unit_of_work` because that is the most common pattern,
+/// but the macro works for any wide event (periodic gauges, background jobs, etc.).
 ///
 /// Example:
 /// ```

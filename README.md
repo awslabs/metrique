@@ -9,7 +9,7 @@
 [Apache-2.0 licensed]: https://img.shields.io/badge/license-Apache_2.0-blue.svg
 [license]: ./LICENSE
 
-**Metrique is a set of crates for collecting and exporting *unit-of-work* metrics.**
+**Metrique is a set of crates for collecting and exporting *wide events*: structured metric records that capture everything about a single action.**
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -30,7 +30,7 @@ Formats can be implemented outside of this crate via the `Format` trait.
 
 ## Why Metrique?
 
-Metrique is designed for high-performance, structured metrics collection with minimal runtime overhead. Metrique is built around the principle that a metric associated with a specific action is more valuable than those that are only available aggregated over time. We call these metrics "unit-of-work" metrics because they correspond to a single unit of application work.
+Metrique is designed for high-performance, structured metrics collection with minimal runtime overhead. Metrique is built around the principle that a metric associated with a specific action is more valuable than those that are only available aggregated over time. We call these **wide events**: structured records that capture all the metrics, dimensions, and context for a single action. The most common type of wide event is a **unit-of-work** metric, where each record corresponds to a single unit of application work (an API request, a background job, a queue item).
 
 ### Performance
 Unlike metrics libraries that collect metrics in a `HashMap`, `metrique` uses plain structs. This eliminates allocation and hashmap lookups when producing metrics, resulting in significantly lower CPU overhead and memory pressure. This is especially important for high-throughput services.
@@ -46,7 +46,7 @@ Because metrique builds on plain structs, metric structure is enforced at compil
 ### Why use `metrique`?
 
 #### Instead of [OpenTelemetry]
-OTel and metrique solve different problems and future work may add an OTel backend for metrique. `metrique` is about emitting events that capture all the metrics associated with single unit of work, in Rust, as efficiently as possible.
+OTel and metrique solve different problems. In OTel terms, a metrique record is closest to a wide event (a richly attributed log or span) rather than an OTel metric. `metrique` is about emitting wide events that capture all the metrics associated with a single action, in Rust, as efficiently as possible. Future work may add OTel backends for both wide event export and OTel's aggregated metric observation style.
 
 #### Instead of [metrics.rs]
 `metrique` is actually compatible with `metrics.rs` via the [`metrique-metricsrs`] crate! This allows you to periodically
@@ -144,7 +144,7 @@ functionality beyond writing bytes to an arbitrary I/O destination.
 
 ## Aggregation
 
-When you have many observations of the same metric within a single unit of work, you can use histograms to aggregate them into a distribution rather than emitting each observation individually.
+When you have many observations of the same metric within a single wide event, you can use histograms to aggregate them into a distribution rather than emitting each observation individually.
 
 The [`metrique-aggregation`] crate provides histogram types that collect observations and emit them as distributions:
 

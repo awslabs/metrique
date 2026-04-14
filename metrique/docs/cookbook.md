@@ -5,21 +5,21 @@ helps you choose the right pattern for your use case.
 
 ## Principles
 
-### Principle 1: Unit-of-work metrics provide more value when debugging
+### Principle 1: Wide events provide more value when debugging
 
 Do not aggregate client-side unless necessary. When metrics are aggregated client
 side, critical debugging information is lost. For example, you cannot tell whether
 two fields spiked concurrently or whether they were both high at unrelated points
-during your aggregation window. Record metrics directly associated with a unit of
-work and let your metrics backend perform aggregation.
+during your aggregation window. Record metrics as wide events and let your metrics
+backend perform aggregation.
 
-**Unit-of-work metrics** (API response time, request size, request ID) let you
+**Wide events** (API response time, request size, request ID, all in one record) let you
 correlate individual records to debug *why* something happened. **Time-based
 metrics** (CPU usage, tokio task count, disk usage) show behavior over time but
 cannot explain causation.
 
-A production application typically needs both. Unit-of-work metrics are the primary
-focus of `metrique`; see [periodic metrics](#periodic-metrics-gauges-counters-metadata) for the time-based
+A production application typically needs both. Wide events are the primary
+focus of `metrique`, with unit-of-work metrics (one record per request, job, or event) being the most common type. See [periodic metrics](#periodic-metrics-gauges-counters-metadata) for the time-based
 case.
 
 ### Principle 2: Treat metrics as a critical component of your application
@@ -40,9 +40,9 @@ defined up front, with compile-time enforcement.
 | Pattern | When to use | Trade-off |
 |---------|-------------|-----------|
 | [Unit-of-work](#unit-of-work) | Clear unit of work (request, job, event) | Full context per record |
-| [Sampled unit-of-work](#sampled-unit-of-work) | Unit-of-work metrics at high volume where full emission is too expensive | Loses some records; rare events preserved by congressional sampler |
+| [Sampled unit-of-work](#sampled-unit-of-work) | High volume where full emission is too expensive | Loses some records; rare events preserved by congressional sampler |
 | [Aggregated](#aggregated) | High-frequency events where individual records are too expensive | Loses per-record context; consider combining with sampling |
-| [Shared state in unit-of-work](#shared-state-in-unit-of-work) | Global counters, config, or gauges that benefit from request correlation | Richer metadata per record; prefer over standalone periodic metrics |
+| [Shared state in wide events](#shared-state-in-wide-events) | Global counters, config, or gauges that benefit from request correlation | Richer metadata per record; prefer over standalone periodic metrics |
 | [Periodic (gauges, counters, metadata)](#periodic-metrics-gauges-counters-metadata) | Dedicated time series, or lightweight standalone emission | Point-in-time only; loses request correlation |
 
 ### Unit-of-work
@@ -56,7 +56,7 @@ example.
 
 ### Sampled unit-of-work
 
-When you want unit-of-work metrics but full emission is too expensive, sample
+When you want unit-of-work wide events but full emission is too expensive, sample
 the stream. The [congressional sampler]
 gives rare events (errors, unusual operations) a higher sampling rate so they
 aren't lost. A common setup is to tee into an archived log of record (all entries)
@@ -76,18 +76,18 @@ aggregated stream for dashboards with a
 
 Two flavors:
 
-- **Embedded**: aggregate sub-operations within a single unit of work. See the
+- **Embedded**: aggregate sub-operations within a single wide event. See the
   [embedded example].
-- **Sink-level**: aggregate across units of work. See the
+- **Sink-level**: aggregate across wide events. See the
   [sink_level example].
 
 See [`metrique-aggregation`] for full details.
 
-### Shared state in unit-of-work
+### Shared state in wide events
 
 Global state (in-flight counters, feature flags, config, node group) is most
 valuable when emitted alongside per-request metrics. Attaching it to each
-unit-of-work record lets you correlate: "this request was throttled because
+wide event lets you correlate: "this request was throttled because
 `ThrottlePolicy` was `Throttle` and there were 47 requests in flight."
 
 Several primitives support this:
@@ -114,8 +114,8 @@ Applications often have state that exists outside any single request: system
 gauges (CPU, memory), global counters (total requests served, cache hits),
 and metadata (node group, config version, feature flags).
 
-**Prefer attaching this data to unit-of-work metrics** using the primitives
-described in [shared state in unit-of-work](#shared-state-in-unit-of-work).
+**Prefer attaching this data to your wide events** using the primitives
+described in [shared state in wide events](#shared-state-in-wide-events).
 When a gauge or counter appears on every request record, you can correlate:
 "latency spiked while memory was at 85% and there were 200 requests in
 flight." Even data like CPU or memory usage benefits from appearing on
@@ -162,7 +162,7 @@ to have the data reported by periodic metrics be time-of-report invariant
 
 ## "My TPS is too high"
 
-Before dismissing unit-of-work metrics, consider
+Before dismissing wide events, consider
 [sampling]. The
 [congressional sampler] preserves rare
 events while reducing volume.

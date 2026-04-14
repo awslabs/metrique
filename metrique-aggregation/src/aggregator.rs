@@ -122,7 +122,7 @@ where
     }
 }
 
-/// Embedded aggregator for collecting multiple observations within a single unit of work
+/// Embedded aggregator for collecting multiple observations within a single wide event
 ///
 /// Use this when a single operation fans out to multiple sub-operations that you want to aggregate.
 ///

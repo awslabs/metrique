@@ -1,7 +1,7 @@
-This crate contains infrastructure to make writers that emit unit-of-work-based metrics.
+This crate contains infrastructure to make writers that emit wide events (structured metric records).
 
-If you want to write a library or application that generates unit-of-work
-based metrics, the API in this crate is lower-level than you'll want,
+If you want to write a library or application that generates wide events,
+the API in this crate is lower-level than you'll want,
 and it's normally much easier to do that via the `#[metrics]`
 macro in the `metrique` crate, and therefore, the main Getting Started
 documentation is in that crate - it is recommended to read that, even

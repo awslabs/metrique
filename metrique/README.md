@@ -1,8 +1,8 @@
-metrique is a crate to emit unit-of-work metrics
+metrique is a crate for emitting **wide events**: structured metric records that capture everything about a single action.
 
 - [`#[metrics]` macro reference](https://docs.rs/metrique/latest/metrique/unit_of_work/attr.metrics.html)
 
-Unlike many popular metric frameworks that are based on the concept of your application having a fixed-ish set of counters and gauges, which are periodically updated to a central place, metrique is based on the concept of structured **metric records**. Your application emits a series of metric records - that are essentially structured log entries - to an observability service such as [Amazon CloudWatch], and the observability service allows you to view and alarm on complex aggregations of the metrics.
+Unlike many popular metric frameworks that are based on the concept of your application having a fixed-ish set of counters and gauges, which are periodically updated to a central place, metrique is based on the concept of structured **metric records** (wide events). Your application emits a series of metric records to an observability service such as [Amazon CloudWatch], and the observability service allows you to view and alarm on complex aggregations of the metrics. The most common type of wide event is a **unit-of-work** metric, where each record corresponds to a single unit of application work (an API request, a background job, a queue item).
 
 The log entries being structured means that you can easily use problem-specific aggregations to track down the cause of issues, rather than only observing the symptoms.
 
@@ -23,7 +23,7 @@ The log entries being structured means that you can easily use problem-specific 
 [`_guide::testing`]: https://docs.rs/metrique/latest/metrique/_guide/testing/
 ## Getting Started (Applications)
 
-Most metrics your application records will be "unit of work" metrics. In a classic HTTP server, these are typically tied to the request/response scope.
+Most metrics your application records will be wide events tied to a unit of work. In a classic HTTP server, these are typically scoped to a single request/response cycle.
 
 You declare a struct that represents the metrics you plan to capture over the course of the request and annotate it with `#[metrics]`. That makes it possible to write it to a `Sink`. Rather than writing to the sink directly, you typically use `append_on_drop(sink)` to obtain a guard that will automatically write to the sink when dropped.
 

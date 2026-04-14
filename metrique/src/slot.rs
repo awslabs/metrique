@@ -35,7 +35,7 @@ fn make_slot<T: CloseValue>(initial_value: T) -> (SlotGuard<T>, Waiting<T::Close
 /// When you are ready to split off work, call [`Slot::open`] which will return a [`SlotGuard`].
 ///
 /// When the [`SlotGuard`] is dropped, the contained record is [`closed`](CloseValue::close) and sent back to the parent.
-/// This is helpful for patterns where [`crate::timers::TimestampOnClose`] is used to record the time a unit of work took.
+/// This is helpful for patterns where [`crate::timers::TimestampOnClose`] is used to record the time a wide event took.
 ///
 /// If you need to clone around the contained entry and write to it using &self,
 /// and you know that all background usages will complete before the parent entry flushes,

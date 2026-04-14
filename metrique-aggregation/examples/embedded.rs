@@ -1,7 +1,7 @@
 //! Example: Embedded Aggregation Pattern
 //!
 //! This example demonstrates using `Aggregate<T>` to aggregate multiple sub-operations
-//! within a single unit of work. A distributed query fans out to multiple backend shards,
+//! within a single wide event. A distributed query fans out to multiple backend shards,
 //! and we aggregate all the backend call metrics into a single entry.
 
 use metrique::DefaultSink;
@@ -39,7 +39,7 @@ struct BackendCall {
     #[aggregate(strategy = KeepLast, clone)]
     error_message: Option<String>,
 
-    // this field is ignored for aggregation, but preserved when using BackendCall in unit-of-work
+    // this field is ignored for aggregation, but preserved when using BackendCall in wide event
     // metrics. This means that when the raw events are emitted (in this example on slow reequests and errors)
     // they will contain the query_id so it can be traced back to the main record
     #[aggregate(ignore)]

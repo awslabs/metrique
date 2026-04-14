@@ -197,7 +197,7 @@ This data will be properly handled by CloudWatch Metrics — however — if you 
 
 Your choice of destination will depend on your deployment platform. In all cases, you'll want to decide whether you want to comingle logs and metrics or publish them to separate streams. There are pros and cons to each approach.
 - When events are comingled, it is easy to see the context of relevant logs around a specific metric event.
-- When events are _not_ comingled, things can be "cleaner" since you have one logstream that is the dedicated emission of unit-of-work metrics and a totally separate stream of tracing events.
+- When events are _not_ comingled, things can be "cleaner" since you have one logstream that is the dedicated emission of wide events and a totally separate stream of tracing events.
 
 Both approaches are used successfully in production.
 

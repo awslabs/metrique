@@ -8,7 +8,7 @@
 //!
 //! # When to use histograms
 //!
-//! Use histograms when you have many observations of the same metric within a single unit of work:
+//! Use histograms when you have many observations of the same metric within a single wide event:
 //!
 //! - A distributed query that fans out to multiple backend services
 //! - Processing a batch of items where you want to track per-item latency
@@ -143,7 +143,7 @@ pub trait SharedAggregationStrategy {
 
 /// A histogram that collects multiple observations and emits them as a distribution.
 ///
-/// Use this when you have many observations of the same metric within a single unit of work.
+/// Use this when you have many observations of the same metric within a single wide event.
 /// The histogram aggregates values in memory and emits them as a single metric entry.
 ///
 /// If you want to preserve all values instead of bucketing them, use `Histogram<T, SortAndMerge>` as

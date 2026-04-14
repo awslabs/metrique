@@ -22,7 +22,7 @@ Aggregation works alongside sampling - you can emit aggregated metrics for preci
 
 ### 1. Embedded Aggregation (`Aggregated<T>`)
 
-Use when a single unit of work fans out to multiple sub-operations:
+Use when a single wide event fans out to multiple sub-operations:
 
 ```rust
 use metrique::unit_of_work::metrics;

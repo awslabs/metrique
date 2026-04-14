@@ -5,7 +5,7 @@ When emitting high-frequency metrics, you often want to aggregate multiple obser
 Consider aggregation when:
 
 - **High-frequency, low-level events**: TLS handshakes, storage operations, or other infrastructure-level metrics
-- **Fan-out operations**: A single unit of work spawns multiple sub-operations you want to aggregate
+- **Fan-out operations**: A single wide event spans multiple sub-operations you want to aggregate
 - **Background processing**: Queue workers that generate one metric per processed item at an extremely high rate
 
 Sampling raw records is often a better approach than aggregation (and should often be combined with aggregation!) Preserving raw records can make it much easier to debug issues.

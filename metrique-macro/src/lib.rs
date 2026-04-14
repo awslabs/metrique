@@ -31,7 +31,7 @@ use syn::{
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
 
-/// Transforms a struct or enum into a unit-of-work metric.
+/// Transforms a struct or enum into a wide event (metric record).
 ///
 /// # Container Attributes
 ///

@@ -4,7 +4,7 @@ version = "0.1.3"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
-description = "Library for working with unit of work metrics - Pure JSON formatter"
+description = "Library for wide event metrics - Pure JSON formatter"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 

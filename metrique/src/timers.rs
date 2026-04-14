@@ -216,7 +216,7 @@ mod timestamp_to_str {
     }
 }
 
-/// Timers record the time it takes to do a unit of work
+/// Timers record the elapsed time of an operation within a wide event
 ///
 /// They are started automatically and stop automatically when dropped (unless you call `Timer::stop` first.)
 /// If you want a timer you can control explicitly, use [`Stopwatch`]
