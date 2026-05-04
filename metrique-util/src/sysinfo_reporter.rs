@@ -57,7 +57,7 @@ impl SysinfoMetricsConfig {
 /// included.
 ///
 /// [sysinfo docs]: https://docs.rs/sysinfo
-#[metrics]
+#[metrics(subfield)]
 pub struct SysinfoMetrics {
     // ----- CPU -----
     /// Global CPU usage percentage, averaged across all cores (0.0 to 100.0).
