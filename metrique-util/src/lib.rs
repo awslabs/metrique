@@ -23,9 +23,7 @@ pub use tokio_metrics_reporter::{
 #[cfg(feature = "sysinfo-bridge")]
 mod sysinfo_reporter;
 #[cfg(feature = "sysinfo-bridge")]
-pub use sysinfo_reporter::{
-    AttachGlobalEntrySinkSysinfoExt, SysinfoMetrics, SysinfoMetricsConfig,
-};
+pub use sysinfo_reporter::{AttachGlobalEntrySinkSysinfoExt, SysinfoMetrics, SysinfoMetricsConfig};
 // `MetricNameStyle` is shared between the two bridges. When tokio-metrics-bridge
 // is enabled it is re-exported above; otherwise expose it directly here.
 #[cfg(all(feature = "sysinfo-bridge", not(feature = "tokio-metrics-bridge")))]
