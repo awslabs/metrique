@@ -232,10 +232,8 @@ fn sample(
     let process = pid.and_then(|p| system.process(p));
     let load = System::load_average();
 
-    let (total_disk_space, available_disk_space) = disks
-        .list()
-        .iter()
-        .fold((0u64, 0u64), |(t, a), d| {
+    let (total_disk_space, available_disk_space) =
+        disks.list().iter().fold((0u64, 0u64), |(t, a), d| {
             (t + d.total_space(), a + d.available_space())
         });
 
@@ -312,15 +310,11 @@ fn sample(
         process_accumulated_cpu_time: process.map(|p| p.accumulated_cpu_time()).unwrap_or(0),
         process_run_time: process.map(|p| p.run_time()).unwrap_or(0),
         process_start_time: process.map(|p| p.start_time()).unwrap_or(0),
-        process_disk_read_bytes: process
-            .map(|p| p.disk_usage().read_bytes)
-            .unwrap_or(0),
+        process_disk_read_bytes: process.map(|p| p.disk_usage().read_bytes).unwrap_or(0),
         process_disk_total_read_bytes: process
             .map(|p| p.disk_usage().total_read_bytes)
             .unwrap_or(0),
-        process_disk_written_bytes: process
-            .map(|p| p.disk_usage().written_bytes)
-            .unwrap_or(0),
+        process_disk_written_bytes: process.map(|p| p.disk_usage().written_bytes).unwrap_or(0),
         process_disk_total_written_bytes: process
             .map(|p| p.disk_usage().total_written_bytes)
             .unwrap_or(0),
