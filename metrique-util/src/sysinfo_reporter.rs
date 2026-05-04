@@ -62,10 +62,6 @@ pub struct SysinfoMetrics {
     // ----- CPU -----
     /// Global CPU usage percentage, averaged across all cores (0.0 to 100.0).
     pub cpu_usage: f32,
-    /// Number of logical CPUs visible to the process.
-    pub num_cpus: u64,
-    /// Number of physical cores. `0` if sysinfo can't determine it on the host.
-    pub physical_core_count: u64,
 
     // ----- Memory -----
     /// Total physical memory in bytes.
@@ -152,8 +148,6 @@ pub struct SysinfoMetrics {
     pub process_accumulated_cpu_time: u64,
     /// Time the current process has been running, in seconds.
     pub process_run_time: u64,
-    /// Wall-clock time when the current process started, as a Unix timestamp.
-    pub process_start_time: u64,
     /// Bytes read from disk by the current process since the previous refresh.
     pub process_disk_read_bytes: u64,
     /// Cumulative bytes read from disk by the current process since its start.
@@ -265,8 +259,6 @@ fn sample(
 
     SysinfoMetrics {
         cpu_usage: system.global_cpu_usage(),
-        num_cpus: system.cpus().len() as u64,
-        physical_core_count: System::physical_core_count().unwrap_or(0) as u64,
 
         total_memory: system.total_memory(),
         used_memory: system.used_memory(),
@@ -309,7 +301,6 @@ fn sample(
         process_cpu_usage: process.map(|p| p.cpu_usage()).unwrap_or(0.0),
         process_accumulated_cpu_time: process.map(|p| p.accumulated_cpu_time()).unwrap_or(0),
         process_run_time: process.map(|p| p.run_time()).unwrap_or(0),
-        process_start_time: process.map(|p| p.start_time()).unwrap_or(0),
         process_disk_read_bytes: process.map(|p| p.disk_usage().read_bytes).unwrap_or(0),
         process_disk_total_read_bytes: process
             .map(|p| p.disk_usage().total_read_bytes)
@@ -415,7 +406,6 @@ mod tests {
         let entry = entries.last().unwrap();
         check!(entry.metrics["total_memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
-        check!(entry.metrics["num_cpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -438,7 +428,6 @@ mod tests {
         let entry = entries.last().unwrap();
         check!(entry.metrics["TotalMemory"] > 0);
         check!(entry.metrics["Uptime"] > 0);
-        check!(entry.metrics["NumCpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -461,7 +450,6 @@ mod tests {
         let entry = entries.last().unwrap();
         check!(entry.metrics["total_memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
-        check!(entry.metrics["num_cpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -484,7 +472,6 @@ mod tests {
         let entry = entries.last().unwrap();
         check!(entry.metrics["total-memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
-        check!(entry.metrics["num-cpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
