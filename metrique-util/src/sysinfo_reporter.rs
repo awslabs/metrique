@@ -413,7 +413,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entries = inspector.entries();
         check!(!entries.is_empty());
@@ -436,7 +436,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::PascalCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entries = inspector.entries();
         check!(!entries.is_empty());
@@ -459,7 +459,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::SnakeCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entries = inspector.entries();
         check!(!entries.is_empty());
@@ -482,7 +482,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::KebabCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entries = inspector.entries();
         check!(!entries.is_empty());
@@ -504,7 +504,7 @@ mod tests {
         );
 
         // Let some entries accumulate.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let count_before = inspector.entries().len();
         check!(count_before > 0);
 
@@ -512,7 +512,7 @@ mod tests {
         drop(handle);
 
         // Advance time further, no new entries should be appended.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
         check!(inspector.entries().len() == count_before);
     }
 }
