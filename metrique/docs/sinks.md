@@ -224,9 +224,11 @@ Available integrations (via [`metrique-util`]):
   utilization, queue depths, poll durations, and more).
 - **System metrics** — enable the `sysinfo-bridge` feature on
   `metrique-util` and call [`subscribe_sysinfo_metrics`] to start
-  appending [`SysinfoMetrics`] snapshots (CPU usage, memory, swap, load
-  average, uptime, and current-process RSS/VSZ/disk I/O), sampled via
-  [`sysinfo`].
+  appending [`SysinfoMetrics`] snapshots (CPU usage, core counts,
+  memory, swap, load average, uptime, aggregated disk space, aggregated
+  network rx/tx bytes/packets/errors, component temperatures, and
+  current-process memory/CPU/disk/runtime/open-file counters), sampled
+  via [`sysinfo`].
 
 [`AttachHandle`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.AttachHandle.html
 [`metrique-util`]: https://docs.rs/metrique-util/latest/metrique_util/

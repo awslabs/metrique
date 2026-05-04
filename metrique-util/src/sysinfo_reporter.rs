@@ -8,7 +8,7 @@ use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use metrique_core::DynamicNameStyle as MetricNameStyle;
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{Components, Disks, Networks, ProcessesToUpdate, System};
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -55,8 +55,15 @@ impl SysinfoMetricsConfig {
 /// [sysinfo docs]: https://docs.rs/sysinfo
 #[metrics]
 pub struct SysinfoMetrics {
+    // ----- CPU -----
     /// Global CPU usage percentage, averaged across all cores (0.0 to 100.0).
     pub cpu_usage: f32,
+    /// Number of logical CPUs visible to the process.
+    pub num_cpus: u64,
+    /// Number of physical cores. `0` if sysinfo can't determine it on the host.
+    pub physical_core_count: u64,
+
+    // ----- Memory -----
     /// Total physical memory in bytes.
     pub total_memory: u64,
     /// Used physical memory in bytes.
@@ -71,14 +78,65 @@ pub struct SysinfoMetrics {
     pub used_swap: u64,
     /// Free swap space in bytes.
     pub free_swap: u64,
+
+    // ----- Load average -----
     /// 1-minute load average. `0.0` on platforms without load average support.
     pub load_average_one: f64,
     /// 5-minute load average. `0.0` on platforms without load average support.
     pub load_average_five: f64,
     /// 15-minute load average. `0.0` on platforms without load average support.
     pub load_average_fifteen: f64,
+
     /// System uptime in seconds.
     pub uptime: u64,
+
+    // ----- Disks (aggregated across all mounted disks) -----
+    /// Number of mounted disks.
+    pub disk_count: u64,
+    /// Sum of total space across all mounted disks, in bytes.
+    pub total_disk_space: u64,
+    /// Sum of available space across all mounted disks, in bytes.
+    pub available_disk_space: u64,
+
+    // ----- Networks (aggregated across all interfaces) -----
+    /// Number of network interfaces being tracked.
+    pub network_interface_count: u64,
+    /// Bytes received across all interfaces since the previous refresh.
+    pub network_received: u64,
+    /// Cumulative bytes received across all interfaces since interface tracking began.
+    pub network_total_received: u64,
+    /// Bytes transmitted across all interfaces since the previous refresh.
+    pub network_transmitted: u64,
+    /// Cumulative bytes transmitted across all interfaces since interface tracking began.
+    pub network_total_transmitted: u64,
+    /// Packets received across all interfaces since the previous refresh.
+    pub network_packets_received: u64,
+    /// Cumulative packets received across all interfaces.
+    pub network_total_packets_received: u64,
+    /// Packets transmitted across all interfaces since the previous refresh.
+    pub network_packets_transmitted: u64,
+    /// Cumulative packets transmitted across all interfaces.
+    pub network_total_packets_transmitted: u64,
+    /// Receive errors across all interfaces since the previous refresh.
+    pub network_errors_on_received: u64,
+    /// Cumulative receive errors across all interfaces.
+    pub network_total_errors_on_received: u64,
+    /// Transmit errors across all interfaces since the previous refresh.
+    pub network_errors_on_transmitted: u64,
+    /// Cumulative transmit errors across all interfaces.
+    pub network_total_errors_on_transmitted: u64,
+
+    // ----- Components (thermal sensors) -----
+    /// Number of thermal/component sensors being tracked.
+    pub component_count: u64,
+    /// Maximum current temperature across all components, in degrees Celsius.
+    /// `0.0` if no component reports a temperature.
+    pub component_max_temperature: f32,
+    /// Maximum recorded temperature across all components, in degrees Celsius.
+    /// `0.0` if no component reports a max.
+    pub component_max_temperature_recorded: f32,
+
+    // ----- Current process -----
     /// Resident memory in bytes for the current process.
     pub process_memory: u64,
     /// Virtual memory in bytes for the current process.
@@ -86,10 +144,23 @@ pub struct SysinfoMetrics {
     /// CPU usage percentage for the current process. May exceed 100% on
     /// multi-core systems.
     pub process_cpu_usage: f32,
+    /// Total CPU time accumulated by the current process, in milliseconds.
+    pub process_accumulated_cpu_time: u64,
+    /// Time the current process has been running, in seconds.
+    pub process_run_time: u64,
+    /// Wall-clock time when the current process started, as a Unix timestamp.
+    pub process_start_time: u64,
+    /// Bytes read from disk by the current process since the previous refresh.
+    pub process_disk_read_bytes: u64,
     /// Cumulative bytes read from disk by the current process since its start.
     pub process_disk_total_read_bytes: u64,
+    /// Bytes written to disk by the current process since the previous refresh.
+    pub process_disk_written_bytes: u64,
     /// Cumulative bytes written to disk by the current process since its start.
     pub process_disk_total_written_bytes: u64,
+    /// Number of open file descriptors held by the current process. `0` on
+    /// platforms where sysinfo can't determine it.
+    pub process_open_files: u64,
 }
 
 /// Extension methods for subscribing system metrics to a global entry sink.
@@ -138,18 +209,63 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
 
 impl<T: AttachGlobalEntrySink + 'static> AttachGlobalEntrySinkSysinfoExt for T {}
 
-fn sample(system: &mut System, pid: Option<sysinfo::Pid>) -> SysinfoMetrics {
+fn sample(
+    system: &mut System,
+    disks: &mut Disks,
+    networks: &mut Networks,
+    components: &mut Components,
+    pid: Option<sysinfo::Pid>,
+) -> SysinfoMetrics {
     system.refresh_memory();
     system.refresh_cpu_all();
     if let Some(pid) = pid {
         system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
     }
+    disks.refresh(true);
+    networks.refresh(true);
+    components.refresh(true);
 
     let process = pid.and_then(|p| system.process(p));
     let load = System::load_average();
 
+    let (total_disk_space, available_disk_space) = disks
+        .list()
+        .iter()
+        .fold((0u64, 0u64), |(t, a), d| {
+            (t + d.total_space(), a + d.available_space())
+        });
+
+    let mut net = NetworkAggregate::default();
+    for data in networks.list().values() {
+        net.received += data.received();
+        net.total_received += data.total_received();
+        net.transmitted += data.transmitted();
+        net.total_transmitted += data.total_transmitted();
+        net.packets_received += data.packets_received();
+        net.total_packets_received += data.total_packets_received();
+        net.packets_transmitted += data.packets_transmitted();
+        net.total_packets_transmitted += data.total_packets_transmitted();
+        net.errors_on_received += data.errors_on_received();
+        net.total_errors_on_received += data.total_errors_on_received();
+        net.errors_on_transmitted += data.errors_on_transmitted();
+        net.total_errors_on_transmitted += data.total_errors_on_transmitted();
+    }
+
+    let (component_max_temperature, component_max_temperature_recorded) = components
+        .list()
+        .iter()
+        .fold((0.0f32, 0.0f32), |(cur, max), c| {
+            (
+                cur.max(c.temperature().unwrap_or(0.0)),
+                max.max(c.max().unwrap_or(0.0)),
+            )
+        });
+
     SysinfoMetrics {
         cpu_usage: system.global_cpu_usage(),
+        num_cpus: system.cpus().len() as u64,
+        physical_core_count: System::physical_core_count().unwrap_or(0) as u64,
+
         total_memory: system.total_memory(),
         used_memory: system.used_memory(),
         available_memory: system.available_memory(),
@@ -157,20 +273,74 @@ fn sample(system: &mut System, pid: Option<sysinfo::Pid>) -> SysinfoMetrics {
         total_swap: system.total_swap(),
         used_swap: system.used_swap(),
         free_swap: system.free_swap(),
+
         load_average_one: load.one,
         load_average_five: load.five,
         load_average_fifteen: load.fifteen,
+
         uptime: System::uptime(),
+
+        disk_count: disks.list().len() as u64,
+        total_disk_space,
+        available_disk_space,
+
+        network_interface_count: networks.list().len() as u64,
+        network_received: net.received,
+        network_total_received: net.total_received,
+        network_transmitted: net.transmitted,
+        network_total_transmitted: net.total_transmitted,
+        network_packets_received: net.packets_received,
+        network_total_packets_received: net.total_packets_received,
+        network_packets_transmitted: net.packets_transmitted,
+        network_total_packets_transmitted: net.total_packets_transmitted,
+        network_errors_on_received: net.errors_on_received,
+        network_total_errors_on_received: net.total_errors_on_received,
+        network_errors_on_transmitted: net.errors_on_transmitted,
+        network_total_errors_on_transmitted: net.total_errors_on_transmitted,
+
+        component_count: components.list().len() as u64,
+        component_max_temperature,
+        component_max_temperature_recorded,
+
         process_memory: process.map(|p| p.memory()).unwrap_or(0),
         process_virtual_memory: process.map(|p| p.virtual_memory()).unwrap_or(0),
         process_cpu_usage: process.map(|p| p.cpu_usage()).unwrap_or(0.0),
+        process_accumulated_cpu_time: process.map(|p| p.accumulated_cpu_time()).unwrap_or(0),
+        process_run_time: process.map(|p| p.run_time()).unwrap_or(0),
+        process_start_time: process.map(|p| p.start_time()).unwrap_or(0),
+        process_disk_read_bytes: process
+            .map(|p| p.disk_usage().read_bytes)
+            .unwrap_or(0),
         process_disk_total_read_bytes: process
             .map(|p| p.disk_usage().total_read_bytes)
+            .unwrap_or(0),
+        process_disk_written_bytes: process
+            .map(|p| p.disk_usage().written_bytes)
             .unwrap_or(0),
         process_disk_total_written_bytes: process
             .map(|p| p.disk_usage().total_written_bytes)
             .unwrap_or(0),
+        process_open_files: process
+            .and_then(|p| p.open_files())
+            .map(|v| v as u64)
+            .unwrap_or(0),
     }
+}
+
+#[derive(Default)]
+struct NetworkAggregate {
+    received: u64,
+    total_received: u64,
+    transmitted: u64,
+    total_transmitted: u64,
+    packets_received: u64,
+    total_packets_received: u64,
+    packets_transmitted: u64,
+    total_packets_transmitted: u64,
+    errors_on_received: u64,
+    total_errors_on_received: u64,
+    errors_on_transmitted: u64,
+    total_errors_on_transmitted: u64,
 }
 
 fn spawn_sysinfo_metrics_task(
@@ -182,9 +352,12 @@ fn spawn_sysinfo_metrics_task(
     let worker = tokio::spawn(async move {
         tracing::debug!("sysinfo metrics reporter started");
         let mut system = System::new();
+        let mut disks = Disks::new_with_refreshed_list();
+        let mut networks = Networks::new_with_refreshed_list();
+        let mut components = Components::new_with_refreshed_list();
         let pid = sysinfo::get_current_pid().ok();
         loop {
-            let snapshot = sample(&mut system, pid);
+            let snapshot = sample(&mut system, &mut disks, &mut networks, &mut components, pid);
             sink.append(DynamicInflectionEntry {
                 entry: snapshot.close(),
                 name_style,
@@ -231,9 +404,9 @@ mod tests {
         check!(!entries.is_empty());
 
         let entry = entries.last().unwrap();
-        check!(entry.metrics["total_memory"].as_u64() > 0);
-        check!(entry.metrics.contains_key("cpu_usage"));
-        check!(entry.metrics.contains_key("uptime"));
+        check!(entry.metrics["total_memory"] > 0);
+        check!(entry.metrics["uptime"] > 0);
+        check!(entry.metrics["num_cpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -254,9 +427,9 @@ mod tests {
         check!(!entries.is_empty());
 
         let entry = entries.last().unwrap();
-        check!(entry.metrics["TotalMemory"].as_u64() > 0);
-        check!(entry.metrics.contains_key("CpuUsage"));
-        check!(entry.metrics.contains_key("Uptime"));
+        check!(entry.metrics["TotalMemory"] > 0);
+        check!(entry.metrics["Uptime"] > 0);
+        check!(entry.metrics["NumCpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -277,9 +450,9 @@ mod tests {
         check!(!entries.is_empty());
 
         let entry = entries.last().unwrap();
-        check!(entry.metrics["total_memory"].as_u64() > 0);
-        check!(entry.metrics.contains_key("cpu_usage"));
-        check!(entry.metrics.contains_key("uptime"));
+        check!(entry.metrics["total_memory"] > 0);
+        check!(entry.metrics["uptime"] > 0);
+        check!(entry.metrics["num_cpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -300,9 +473,9 @@ mod tests {
         check!(!entries.is_empty());
 
         let entry = entries.last().unwrap();
-        check!(entry.metrics["total-memory"].as_u64() > 0);
-        check!(entry.metrics.contains_key("cpu-usage"));
-        check!(entry.metrics.contains_key("uptime"));
+        check!(entry.metrics["total-memory"] > 0);
+        check!(entry.metrics["uptime"] > 0);
+        check!(entry.metrics["num-cpus"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
