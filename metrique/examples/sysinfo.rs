@@ -21,7 +21,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let config = SysinfoMetricsConfig::default()
         .with_interval(SAMPLING_INTERVAL)
-        .with_name_style(MetricNameStyle::KebabCase);
+        .with_name_style(MetricNameStyle::KebabCase)
+        .with_disks()
+        .with_networks()
+        .with_components();
     ServiceMetrics::subscribe_sysinfo_metrics(config);
 
     // Burn some CPU and allocate some memory so the sampled metrics move.
