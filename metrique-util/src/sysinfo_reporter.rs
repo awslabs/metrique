@@ -356,6 +356,17 @@ fn spawn_sysinfo_metrics_task(
         let mut networks = Networks::new_with_refreshed_list();
         let mut components = Components::new_with_refreshed_list();
         let pid = sysinfo::get_current_pid().ok();
+
+        // Prime delta-based readings (CPU usage, network rx/tx since last
+        // refresh, etc.) so the first emitted sample has accurate values.
+        // sysinfo computes those from the time delta between two refreshes.
+        system.refresh_cpu_all();
+        if let Some(pid) = pid {
+            system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        }
+        networks.refresh(true);
+        tokio::time::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL).await;
+
         loop {
             let snapshot = sample(&mut system, &mut disks, &mut networks, &mut components, pid);
             sink.append(DynamicInflectionEntry {
