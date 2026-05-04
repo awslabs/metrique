@@ -335,13 +335,12 @@ fn sample(
 
     let components_metrics = components.map(|c| {
         c.refresh(true);
-        let (max_cur, max_recorded) =
-            c.list().iter().fold((0.0f32, 0.0f32), |(cur, max), comp| {
-                (
-                    cur.max(comp.temperature().unwrap_or(0.0)),
-                    max.max(comp.max().unwrap_or(0.0)),
-                )
-            });
+        let (max_cur, max_recorded) = c.list().iter().fold((0.0f32, 0.0f32), |(cur, max), comp| {
+            (
+                cur.max(comp.temperature().unwrap_or(0.0)),
+                max.max(comp.max().unwrap_or(0.0)),
+            )
+        });
         ComponentMetrics {
             component_count: c.list().len() as u64,
             component_max_temperature: max_cur,
