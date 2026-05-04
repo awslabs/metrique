@@ -10,14 +10,26 @@ mod state;
 #[cfg(feature = "state")]
 pub use state::{LatestRef, State};
 
-#[cfg(feature = "tokio-metrics-bridge")]
+#[cfg(any(feature = "tokio-metrics-bridge", feature = "sysinfo-bridge"))]
 mod dynamic_inflection;
+
 #[cfg(feature = "tokio-metrics-bridge")]
 mod tokio_metrics_reporter;
 #[cfg(feature = "tokio-metrics-bridge")]
 pub use tokio_metrics_reporter::{
     AttachGlobalEntrySinkTokioMetricsExt, MetricNameStyle, TokioRuntimeMetricsConfig,
 };
+
+#[cfg(feature = "sysinfo-bridge")]
+mod sysinfo_reporter;
+#[cfg(feature = "sysinfo-bridge")]
+pub use sysinfo_reporter::{
+    AttachGlobalEntrySinkSysinfoExt, SysinfoMetrics, SysinfoMetricsConfig,
+};
+// `MetricNameStyle` is shared between the two bridges. When tokio-metrics-bridge
+// is enabled it is re-exported above; otherwise expose it directly here.
+#[cfg(all(feature = "sysinfo-bridge", not(feature = "tokio-metrics-bridge")))]
+pub use metrique_core::DynamicNameStyle as MetricNameStyle;
 
 #[cfg(feature = "pending-sink")]
 #[cfg_attr(docsrs, doc(cfg(feature = "pending-sink")))]
