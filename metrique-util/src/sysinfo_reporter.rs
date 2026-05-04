@@ -52,6 +52,10 @@ impl SysinfoMetricsConfig {
 /// Field names mirror sysinfo's API verbatim. See the [sysinfo docs] for
 /// platform-specific behavior and the meaning of each value.
 ///
+/// `process_*` fields measure the process running this reporter: i.e. your
+/// service binary. Child processes, forked workers, and sidecars are not
+/// included.
+///
 /// [sysinfo docs]: https://docs.rs/sysinfo
 #[metrics]
 pub struct SysinfoMetrics {
