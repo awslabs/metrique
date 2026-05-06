@@ -3,7 +3,7 @@
 use std::{
     marker::PhantomData,
     sync::Arc,
-    sync::mpsc::{Sender, channel},
+    sync::mpsc::{RecvTimeoutError, Sender, channel},
     thread,
     time::{Duration, Instant},
 };
@@ -59,9 +59,13 @@ where
                         last_flush = Instant::now();
                         let _ = sender.send(());
                     }
-                    Err(_) => {
+                    Err(RecvTimeoutError::Timeout) => {
                         inner.flush();
                         last_flush = Instant::now();
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        inner.flush();
+                        return;
                     }
                 }
             }
@@ -94,5 +98,36 @@ where
 {
     fn merge(&self, entry: T) {
         self.send(entry);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct NoopSink;
+
+    impl AggregateSink<()> for NoopSink {
+        fn merge(&mut self, _entry: ()) {}
+    }
+
+    impl FlushableSink for NoopSink {
+        fn flush(&mut self) {}
+    }
+
+    #[test]
+    fn worker_thread_exits_when_all_senders_dropped() {
+        let sink = WorkerSink::<(), _>::new(NoopSink, Duration::from_secs(60));
+        let handle = Arc::clone(&sink._handle);
+        drop(sink);
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !handle.is_finished() {
+            if Instant::now() >= deadline {
+                panic!("worker thread still running 5s after senders were dropped");
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(handle.is_finished());
     }
 }
