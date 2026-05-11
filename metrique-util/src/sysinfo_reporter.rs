@@ -308,12 +308,7 @@ fn sample(
 
     let networks_metrics = networks.map(|n| {
         n.refresh(true);
-        let interfaces = n
-            .list()
-            .keys()
-            .cloned()
-            .collect::<Vec<_>>()
-            .join(",");
+        let interfaces = n.list().keys().cloned().collect::<Vec<_>>().join(",");
         let mut agg = NetworkMetrics {
             network_interface_count: n.list().len() as u64,
             network_interfaces: interfaces,
