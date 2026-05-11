@@ -104,30 +104,47 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    struct NoopSink;
+    struct CountingSink {
+        flushes: Arc<AtomicUsize>,
+    }
 
-    impl AggregateSink<()> for NoopSink {
+    impl AggregateSink<()> for CountingSink {
         fn merge(&mut self, _entry: ()) {}
     }
 
-    impl FlushableSink for NoopSink {
-        fn flush(&mut self) {}
+    impl FlushableSink for CountingSink {
+        fn flush(&mut self) {
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+        }
     }
 
     #[test]
-    fn worker_thread_exits_when_all_senders_dropped() {
-        let sink = WorkerSink::<(), _>::new(NoopSink, Duration::from_secs(60));
+    fn worker_flushes_and_exits_when_all_senders_dropped() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            Duration::from_secs(60),
+        );
         let handle = Arc::clone(&sink._handle);
         drop(sink);
 
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while !handle.is_finished() {
-            if Instant::now() >= deadline {
-                panic!("worker thread still running 5s after senders were dropped");
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        assert!(handle.is_finished());
+        let handle = Arc::into_inner(handle).expect("test holds the only handle ref");
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            handle.join().expect("worker thread panicked");
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("worker thread did not exit within 5s of disconnect");
+
+        assert_eq!(
+            flushes.load(Ordering::SeqCst),
+            1,
+            "worker should flush exactly once before exiting on disconnect",
+        );
     }
 }
