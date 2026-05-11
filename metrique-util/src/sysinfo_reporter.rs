@@ -151,6 +151,10 @@ pub struct SysinfoMetrics {
     /// Number of open file descriptors held by the current process. `0` on
     /// platforms where sysinfo can't determine it.
     pub process_open_files: u64,
+    /// Soft `RLIMIT_NOFILE` for the current process — the maximum number of
+    /// file descriptors it may have open. `0` on platforms where sysinfo
+    /// can't determine it.
+    pub process_open_files_limit: u64,
 
     // ----- Optional categories -----
     /// Aggregated disk metrics. `None` (entirely omitted from output) unless
@@ -185,6 +189,9 @@ pub struct DiskMetrics {
 pub struct NetworkMetrics {
     /// Number of network interfaces being tracked.
     pub network_interface_count: u64,
+    /// Comma-separated list of interface names being tracked at sampling
+    /// time, e.g. `"eth0,lo,wlan0"`.
+    pub network_interfaces: String,
     /// Bytes received across all interfaces since the previous refresh.
     pub network_received: u64,
     /// Cumulative bytes received across all interfaces since interface tracking began.
@@ -301,8 +308,15 @@ fn sample(
 
     let networks_metrics = networks.map(|n| {
         n.refresh(true);
+        let interfaces = n
+            .list()
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(",");
         let mut agg = NetworkMetrics {
             network_interface_count: n.list().len() as u64,
+            network_interfaces: interfaces,
             network_received: 0,
             network_total_received: 0,
             network_transmitted: 0,
@@ -380,6 +394,10 @@ fn sample(
             .unwrap_or(0),
         process_open_files: process
             .and_then(|p| p.open_files())
+            .map(|v| v as u64)
+            .unwrap_or(0),
+        process_open_files_limit: process
+            .and_then(|p| p.open_files_limit())
             .map(|v| v as u64)
             .unwrap_or(0),
 
