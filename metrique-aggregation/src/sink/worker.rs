@@ -3,7 +3,7 @@
 use std::{
     marker::PhantomData,
     sync::Arc,
-    sync::mpsc::{Sender, channel},
+    sync::mpsc::{RecvTimeoutError, Sender, channel},
     thread,
     time::{Duration, Instant},
 };
@@ -59,9 +59,13 @@ where
                         last_flush = Instant::now();
                         let _ = sender.send(());
                     }
-                    Err(_) => {
+                    Err(RecvTimeoutError::Timeout) => {
                         inner.flush();
                         last_flush = Instant::now();
+                    }
+                    Err(RecvTimeoutError::Disconnected) => {
+                        inner.flush();
+                        return;
                     }
                 }
             }
@@ -94,5 +98,53 @@ where
 {
     fn merge(&self, entry: T) {
         self.send(entry);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountingSink {
+        flushes: Arc<AtomicUsize>,
+    }
+
+    impl AggregateSink<()> for CountingSink {
+        fn merge(&mut self, _entry: ()) {}
+    }
+
+    impl FlushableSink for CountingSink {
+        fn flush(&mut self) {
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[test]
+    fn worker_flushes_and_exits_when_all_senders_dropped() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            Duration::from_secs(60),
+        );
+        let handle = Arc::clone(&sink._handle);
+        drop(sink);
+
+        let handle = Arc::into_inner(handle).expect("test holds the only handle ref");
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            handle.join().expect("worker thread panicked");
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("worker thread did not exit within 5s of disconnect");
+
+        assert_eq!(
+            flushes.load(Ordering::SeqCst),
+            1,
+            "worker should flush exactly once before exiting on disconnect",
+        );
     }
 }
