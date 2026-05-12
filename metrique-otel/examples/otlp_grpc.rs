@@ -1,8 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Raw `OtelSink` path: each request becomes one OTLP log + one observation
-//! per metric field. Suitable for low/medium volume.
+//! Raw `OtelSink` path: each request becomes one observation per metric
+//! field, with string fields on the entry attached as attributes to every
+//! metric in that entry. Suitable for low/medium volume.
 //!
 //! The recommended high-throughput topology is `KeyedAggregator -> WorkerSink
 //! -> OtelSink` (see `metrique-aggregation`); that path becomes the primary
@@ -11,10 +12,9 @@
 //!
 //! ## Running this example
 //!
-//! Start a local OTLP gRPC collector first. Two easy options:
+//! Start a local OTLP gRPC collector first:
 //!
 //! ```ignore
-//! # With docker, run opentelemetry-collector-contrib with stdout output
 //! docker run --rm -p 4317:4317 -p 4318:4318 \
 //!     otel/opentelemetry-collector-contrib:latest \
 //!     --config=/etc/otelcol-contrib/config.yaml
@@ -28,9 +28,9 @@
 //!     cargo run -p metrique-otel --example otlp_grpc
 //! ```
 //!
-//! The collector should see two log records (one per request) plus four
-//! metric series — `RequestCount`, `QueueDelta`, `Latency`, `CpuUsage` —
-//! each carrying an `Operation` attribute of `GET` or `POST`.
+//! The collector should see four metric series — `RequestCount`,
+//! `QueueDelta`, `Latency`, `CpuUsage` — each carrying an `Operation`
+//! attribute of `GET` or `POST`.
 
 use std::time::{Duration, SystemTime};
 

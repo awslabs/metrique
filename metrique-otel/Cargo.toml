@@ -13,13 +13,11 @@ metrique-writer-core = { workspace = true }
 metrique-writer = { workspace = true, features = ["background-queue"] }
 opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.32", features = [
-    "logs",
     "metrics",
     "rt-tokio",
 ] }
 opentelemetry-otlp = { version = "0.32", features = [
     "grpc-tonic",
-    "logs",
     "metrics",
 ] }
 tokio = { workspace = true, features = ["rt"] }
