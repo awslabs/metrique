@@ -6,6 +6,7 @@ members = [
     "metrique-core",
     "metrique-macro",
     "metrique-metricsrs",
+    "metrique-otel",
     "metrique-service-metrics",
     "metrique-timesource",
     "metrique-util",
@@ -23,6 +24,7 @@ metrique-aggregation = { version = "0.1", path = "metrique-aggregation" }
 metrique-core = { version = "0.1", path = "metrique-core" }
 metrique-macro = { version = "0.1", path = "metrique-macro" }
 metrique-metricsrs = { version = "0.1", path = "metrique-metricsrs" }
+metrique-otel = { version = "0.1", path = "metrique-otel" }
 metrique-service-metrics = { version = "0.1", path = "metrique-service-metrics" }
 metrique-timesource = { version = "0.1", path = "metrique-timesource" }
 metrique-util = { version = "0.1", path = "metrique-util" }
