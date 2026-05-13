@@ -5,7 +5,7 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use metrique_writer_core::{EntryWriter, entry::SampleGroupElement};
+use metrique_writer_core::{DescriptorRef, EntryWriter, entry::SampleGroupElement};
 
 use crate::{InflectableEntry, namestyle::NameStyle};
 
@@ -16,6 +16,10 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for &T {
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        (**self).descriptors()
     }
 }
 
@@ -33,6 +37,14 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for Option<T> 
             itertools::Either::Right([].into_iter())
         }
     }
+
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        if let Some(entry) = self.as_ref() {
+            itertools::Either::Left(entry.descriptors())
+        } else {
+            itertools::Either::Right(std::iter::empty())
+        }
+    }
 }
 
 impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for Box<T> {
@@ -43,6 +55,10 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for B
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        (**self).descriptors()
+    }
 }
 
 impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for Arc<T> {
@@ -52,6 +68,10 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for A
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        (**self).descriptors()
     }
 }
 
@@ -64,5 +84,9 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ToOwned + ?Sized> InflectableEntry
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        (**self).descriptors()
     }
 }

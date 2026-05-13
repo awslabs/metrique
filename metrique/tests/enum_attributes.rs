@@ -243,15 +243,15 @@ fn test_multi_field_tuple_variant() {
 }
 
 #[metrics(subfield)]
-struct CfgTupleA {
+pub struct CfgTupleA {
     a_val: u64,
 }
 #[metrics(subfield)]
-struct CfgTupleB {
+pub struct CfgTupleB {
     b_val: u64,
 }
 #[metrics(subfield)]
-struct CfgTupleC {
+pub struct CfgTupleC {
     c_val: u64,
 }
 

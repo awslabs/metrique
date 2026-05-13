@@ -801,3 +801,35 @@ fn tuple_variant_cfg_flatten_descriptor_ordering() {
     assert_eq!(d2[0].base_name(), "tc_val");
     assert_eq!(d3[0].base_name(), "c_val");
 }
+
+#[test]
+fn descriptors_forward_through_option_and_box() {
+    use metrique::writer::Entry;
+    use std::sync::Arc;
+
+    // Use BasicMetrics which has a known descriptor
+    let m = BasicMetrics {
+        request_id: String::new(),
+        count: 0,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let base_descs: Vec<_> = entry.descriptors().collect();
+    assert!(!base_descs.is_empty());
+
+    // Option<T> forwards when Some
+    let opt = Some(metrique::CloseValue::close(BasicMetrics {
+        request_id: String::new(),
+        count: 0,
+    }));
+    let opt_entry = metrique::RootEntry::new(opt);
+    let opt_descs: Vec<_> = opt_entry.descriptors().collect();
+    assert_eq!(opt_descs.len(), base_descs.len());
+    assert_eq!(opt_descs[0].name(), base_descs[0].name());
+
+    // Option<T> returns empty when None
+    let none: Option<<BasicMetrics as metrique::CloseValue>::Closed> = None;
+    let none_entry = metrique::RootEntry::new(none);
+    let none_descs: Vec<_> = none_entry.descriptors().collect();
+    assert_eq!(none_descs.len(), 0);
+}
