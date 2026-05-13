@@ -320,4 +320,79 @@ mod tests {
             FieldShape::Known(KnownShape::String)
         );
     }
+
+    #[test]
+    fn field_descriptor_with_unit() {
+        static TAGS: [ResolvedFieldTag; 0] = [];
+        static FIELD: FieldDescriptor = FieldDescriptor::__metrique_private_new(
+            "latency",
+            &TAGS,
+            FieldShape::Opaque,
+            Some(Unit::Second(crate::unit::NegativeScale::Milli)),
+        );
+        assert_eq!(FIELD.name(), "latency");
+        assert_eq!(
+            FIELD.unit(),
+            Some(Unit::Second(crate::unit::NegativeScale::Milli))
+        );
+    }
+
+    #[test]
+    fn entry_descriptor_with_timestamp() {
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new(
+            "MyEntry",
+            &[],
+            Some(TimestampDescriptor::__metrique_private_new("ts")),
+        );
+        assert_eq!(DESC.name(), "MyEntry");
+        assert_eq!(DESC.timestamp().unwrap().name(), "ts");
+    }
+
+    #[test]
+    fn entry_descriptor_without_timestamp() {
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("NoTs", &[], None);
+        assert!(DESC.timestamp().is_none());
+    }
+
+    #[test]
+    fn hand_written_entry_returns_none() {
+        use crate::{Entry, EntryWriter};
+        struct HandWritten;
+        impl Entry for HandWritten {
+            fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+        }
+        assert!(HandWritten.descriptor().is_none());
+    }
+
+    #[test]
+    fn boxentry_forwards_none_descriptor() {
+        use crate::{BoxEntry, Entry, EntryWriter};
+        struct HandWritten;
+        impl Entry for HandWritten {
+            fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+        }
+        let boxed = BoxEntry::new(HandWritten);
+        assert!(boxed.descriptor().is_none());
+    }
+
+    #[test]
+    fn boxentry_forwards_some_descriptor() {
+        use crate::{BoxEntry, Entry, EntryWriter};
+
+        static DESC: EntryDescriptor =
+            EntryDescriptor::__metrique_private_new("WithDesc", &[], None);
+
+        struct WithDescriptor;
+        impl Entry for WithDescriptor {
+            fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+            fn descriptor(&self) -> Option<DescriptorRef<'_>> {
+                Some(DescriptorRef::from_static(&DESC))
+            }
+        }
+
+        let boxed = BoxEntry::new(WithDescriptor);
+        let desc = boxed.descriptor().expect("should forward Some");
+        assert_eq!(desc.get().name(), "WithDesc");
+        assert_eq!(desc.id(), DescriptorRef::from_static(&DESC).id());
+    }
 }
