@@ -658,6 +658,10 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         self.metric.sample_group()
     }
+
+    fn descriptor(&self) -> Option<metrique_writer_core::DescriptorRef<'_>> {
+        self.metric.descriptor()
+    }
 }
 
 #[cfg(feature = "service-metrics")]

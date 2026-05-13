@@ -265,4 +265,8 @@ pub trait InflectableEntry<NS: namestyle::NameStyle = namestyle::Identity> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         vec![].into_iter()
     }
+    /// Returns a handle to the descriptor for this entry type, if one exists.
+    fn descriptor(&self) -> Option<metrique_writer_core::DescriptorRef<'_>> {
+        None
+    }
 }

@@ -149,6 +149,9 @@ const _: () = {
                 }
             }
         }
+        fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+            None
+        }
     }
 };
 impl metrique::CloseValue for Operation {

@@ -210,6 +210,34 @@ const _: () = {
                 ))
             }
         }
+        fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                    "operation",
+                    &__METRIQUE_TAGS_0,
+                    ::metrique::writer::core::FieldShape::Opaque,
+                    None,
+                ),
+                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                    "request_id",
+                    &__METRIQUE_TAGS_1,
+                    ::metrique::writer::core::FieldShape::Opaque,
+                    None,
+                ),
+            ];
+            static __METRIQUE_DESCRIPTOR: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                "Metadata",
+                &__METRIQUE_FIELDS,
+                None,
+            );
+            Some(
+                ::metrique::writer::core::DescriptorRef::from_static(
+                    &__METRIQUE_DESCRIPTOR,
+                ),
+            )
+        }
     }
 };
 impl metrique::CloseValue for &'_ Metadata {
@@ -556,6 +584,9 @@ const _: () = {
                     )
                 }
             }
+        }
+        fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+            None
         }
     }
 };

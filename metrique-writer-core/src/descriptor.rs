@@ -218,7 +218,7 @@ impl ResolvedFieldTag {
 
     /// Hidden constructor for use by the metrique macro only.
     #[doc(hidden)]
-    pub fn __metrique_private_new(tag_id: TypeId, state: FieldTagState) -> Self {
+    pub const fn __metrique_private_new(tag_id: TypeId, state: FieldTagState) -> Self {
         Self { tag_id, state }
     }
 }

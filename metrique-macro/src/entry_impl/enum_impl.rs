@@ -72,6 +72,11 @@ pub(crate) fn generate_enum_entry_impl(
             impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
                 #write_fn
                 #sample_group_fn
+
+                // TODO: enum descriptors (union-of-fields with optional wrapping)
+                fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+                    None
+                }
             }
         };
     }
