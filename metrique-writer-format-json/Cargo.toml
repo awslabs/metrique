@@ -2,7 +2,7 @@
 name = "metrique-writer-format-json"
 version = "0.1.4"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.91"
 license = "Apache-2.0"
 description = "Library for wide event metrics - Pure JSON formatter"
 repository = "https://github.com/awslabs/metrique"
