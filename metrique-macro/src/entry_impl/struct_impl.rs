@@ -169,46 +169,18 @@ fn assemble_descriptors_method(
     flatten_tag_statics: &[Ts2],
     flatten_chains: &[(bool, Ts2)],
 ) -> Ts2 {
-    let has_cfg = flatten_chains.iter().any(|(cfg, _)| *cfg);
-
     let base_expr = quote! {
         ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
             #entry_name::__metrique_descriptor(#own_style)
         ))
     };
 
-    if has_cfg {
-        // cfg-gated chains use let-rebinding (can't participate in binary tree).
-        // Build the non-cfg part as a binary tree, then rebind cfg chains on top.
-        let mut all_iters = vec![base_expr];
-        all_iters.extend(
-            flatten_chains
-                .iter()
-                .filter_map(|(cfg, t)| if !cfg { Some(t.clone()) } else { None }),
-        );
-        let tree = super::make_binary_tree_chain(all_iters);
-        let cfg_gated: Vec<_> = flatten_chains
-            .iter()
-            .filter_map(|(cfg, t)| if *cfg { Some(t) } else { None })
-            .collect();
-        quote! {
-            fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-                #(#flatten_tag_statics)*
-                let __desc = #tree;
-                #(#cfg_gated)*
-                __desc
-            }
-        }
-    } else {
-        // All chains are non-cfg: use binary tree for balanced type nesting.
-        let mut all_iters = vec![base_expr];
-        all_iters.extend(flatten_chains.iter().map(|(_, t)| t.clone()));
-        let tree = super::make_binary_tree_chain(all_iters);
-        quote! {
-            fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-                #(#flatten_tag_statics)*
-                #tree
-            }
+    let body = super::combine_descriptor_chains(base_expr, flatten_chains);
+
+    quote! {
+        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+            #(#flatten_tag_statics)*
+            #body
         }
     }
 }

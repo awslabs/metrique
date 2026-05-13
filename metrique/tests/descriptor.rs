@@ -644,3 +644,86 @@ fn enum_variants_have_different_descriptor_ids() {
     assert!(descs_simple[0].name().contains("Simple"));
     assert!(descs_child[0].name().contains("WithChild"));
 }
+
+#[metrics(subfield)]
+struct OrderChildA {
+    a_val: u64,
+}
+#[metrics(subfield)]
+struct OrderChildB {
+    b_val: u64,
+}
+#[metrics(subfield)]
+struct OrderChildC {
+    c_val: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct CfgOrderParent {
+    #[metrics(flatten)]
+    first: OrderChildA,
+    #[cfg(test)]
+    #[metrics(flatten)]
+    middle: OrderChildB,
+    #[metrics(flatten)]
+    last: OrderChildC,
+}
+
+#[test]
+fn cfg_flatten_ordering_preserved() {
+    let m = CfgOrderParent {
+        first: OrderChildA { a_val: 1 },
+        middle: OrderChildB { b_val: 2 },
+        last: OrderChildC { c_val: 3 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    assert_eq!(descriptors.len(), 4);
+    let d1: Vec<_> = descriptors[1].fields().collect();
+    let d2: Vec<_> = descriptors[2].fields().collect();
+    let d3: Vec<_> = descriptors[3].fields().collect();
+    assert_eq!(d1[0].base_name(), "a_val");
+    assert_eq!(d2[0].base_name(), "b_val");
+    assert_eq!(d3[0].base_name(), "c_val");
+}
+
+#[metrics(rename_all = "PascalCase")]
+enum EnumFieldOrder {
+    Multi {
+        alpha: u64,
+        beta: u64,
+        gamma: u64,
+        #[metrics(flatten)]
+        child: OrderChildA,
+        delta: u64,
+    },
+}
+
+#[test]
+fn enum_variant_field_order_matches_declaration() {
+    use metrique::writer::Entry;
+
+    let m = EnumFieldOrder::Multi {
+        alpha: 1,
+        beta: 2,
+        gamma: 3,
+        child: OrderChildA { a_val: 4 },
+        delta: 5,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors: Vec<_> = entry.descriptors().collect();
+
+    // Base descriptor has non-flatten fields in declaration order
+    let base_fields: Vec<_> = descriptors[0].fields().collect();
+    assert_eq!(base_fields[0].base_name(), "Alpha");
+    assert_eq!(base_fields[1].base_name(), "Beta");
+    assert_eq!(base_fields[2].base_name(), "Gamma");
+    assert_eq!(base_fields[3].base_name(), "Delta");
+
+    // Flatten child comes after base
+    assert_eq!(descriptors.len(), 2);
+    let child_fields: Vec<_> = descriptors[1].fields().collect();
+    assert_eq!(child_fields[0].base_name(), "a_val");
+}
