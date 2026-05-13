@@ -76,7 +76,7 @@ An audit sink reads the descriptor at first-use per entry type, walks `Entry::wr
 
 ## The descriptor model
 
-The descriptor types live in `metrique_writer_core::descriptor`. Sinks interact with `DescriptorRef` (yielded by `Entry::descriptors()`) and `FieldView` (yielded by iterating a descriptor's fields). Internal storage types are pub for macro construction but not intended for direct sink use. See the module rustdoc for the full API.
+The descriptor types live in `metrique_writer_core::descriptor`. `Entry::descriptors()` returns a `Descriptors` enum (`Available` or `Unavailable`), forcing callers to handle entries that haven't implemented descriptor support. When available, sinks interact with `DescriptorRef` and `FieldView`. For custom `Entry` implementations, the module provides const builder functions (`entry()`, `field()`, `timestamp()`) for constructing descriptors in statics. See the module rustdoc for the full API.
 
 ### Forward compatibility
 
