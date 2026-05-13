@@ -144,9 +144,11 @@ Extending `Entry` rather than introducing a separate trait keeps descriptor look
 
 ### Entry enums
 
-`#[metrics]` on an enum produces an entry whose variants share a single flat descriptor. The descriptor includes the variant-tag field (configured via `#[metrics(tag(name = "..."))]`) plus the union of all variant fields. Fields that appear only in some variants are represented as `FieldShape::Optional(..)` in the descriptor; the union-of-fields approach is what lets the entry have one schema for all variants.
+For enums without flatten fields in any variant, `descriptors()` yields a single descriptor containing the union of all variant fields (deduplicated by name) plus the tag field.
 
-Per-variant descriptors (where each variant emits its own narrower schema) are a future evolution that requires `DescriptorRef` to back with `Arc<EntryDescriptor>` rather than `&'static`; the opaque handle leaves that open.
+For enums with flatten fields, `descriptors()` dispatches per-variant: each variant yields the shared base descriptor (union of non-flatten fields) followed by that variant's flatten children's descriptors. An enum iterator type (generated per entry, same pattern as sample_group) unifies the different return types across variants.
+
+Sinks see different descriptor sequences depending on which variant is active. Each segment has its own `DescriptorId`, so per-segment caching works naturally. Sinks that want a single cache key for the whole entry can hash the sequence of ids.
 
 ### Aggregated entries
 
