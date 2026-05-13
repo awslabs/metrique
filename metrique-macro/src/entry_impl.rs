@@ -16,6 +16,53 @@ mod struct_impl;
 pub(crate) use enum_impl::generate_enum_entry_impl;
 pub(crate) use struct_impl::generate_struct_entry_impl;
 
+use crate::FieldTagAttr;
+
+pub(crate) fn resolve_field_tags(
+    field_tags: &[FieldTagAttr],
+    default_tags: &[FieldTagAttr],
+) -> Vec<Ts2> {
+    let mut resolved = Vec::new();
+
+    // Field-level tags take priority
+    for tag in field_tags {
+        let path = &tag.path;
+        let state = if tag.skip {
+            quote! { ::metrique::writer::core::FieldTagState::Absent }
+        } else {
+            quote! { ::metrique::writer::core::FieldTagState::Present }
+        };
+        resolved.push(quote! {
+            ::metrique::writer::core::ResolvedFieldTag::__metrique_private_new(
+                ::std::any::TypeId::of::<#path>(),
+                #state,
+            )
+        });
+    }
+
+    // Default tags fill in for paths not already specified at field level
+    for default_tag in default_tags {
+        let path = &default_tag.path;
+        let already_specified = field_tags.iter().any(|ft| ft.path == *path);
+        if already_specified {
+            continue;
+        }
+        let state = if default_tag.skip {
+            quote! { ::metrique::writer::core::FieldTagState::Absent }
+        } else {
+            quote! { ::metrique::writer::core::FieldTagState::Present }
+        };
+        resolved.push(quote! {
+            ::metrique::writer::core::ResolvedFieldTag::__metrique_private_new(
+                ::std::any::TypeId::of::<#path>(),
+                #state,
+            )
+        });
+    }
+
+    resolved
+}
+
 /// Hygiene helper for generated method-local identifiers.
 ///
 /// When `#[metrics]` is expanded inside `macro_rules!`, field names from macro parameters

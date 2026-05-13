@@ -1,5 +1,7 @@
+use super::resolve_field_tags;
 use super::*;
 use crate::enums::{MetricsVariant, VariantData};
+use crate::inflect::metric_name;
 
 /// Build a struct variant pattern from field identifiers.
 fn struct_pattern(
@@ -64,6 +66,8 @@ pub(crate) fn generate_enum_entry_impl(
         }
     };
 
+    let descriptor_fn = generate_enum_descriptor(entry_name, variants, root_attrs);
+
     quote! {
         const _: () = {
             #iter_enum
@@ -72,11 +76,7 @@ pub(crate) fn generate_enum_entry_impl(
             impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
                 #write_fn
                 #sample_group_fn
-
-                // TODO: enum descriptors (union-of-fields with optional wrapping)
-                fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
-                    None
-                }
+                #descriptor_fn
             }
         };
     }
@@ -320,6 +320,108 @@ fn collect_tuple_sample_group(
         MetricsFieldKind::Ignore(_) => None,
         MetricsFieldKind::Timestamp(_) | MetricsFieldKind::Field { .. } => {
             unreachable!("timestamp/plain fields are rejected earlier in tuple variant parsing")
+        }
+    }
+}
+
+fn generate_enum_descriptor(
+    entry_name: &Ident,
+    variants: &[MetricsVariant],
+    root_attrs: &RootAttributes,
+) -> Ts2 {
+    use std::collections::BTreeSet;
+
+    let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
+
+    let mut tag_statics = Vec::new();
+    let mut field_descriptors = Vec::new();
+    let mut field_idx = 0usize;
+    let mut seen_names = BTreeSet::new();
+
+    // Tag field comes first (if present)
+    if let Some(tag) = &root_attrs.tag {
+        let tag_field_name = tag.field_name(root_attrs);
+        if seen_names.insert(tag_field_name.clone()) {
+            let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
+            tag_statics.push(quote! {
+                static #tags_ident: [::metrique::writer::core::ResolvedFieldTag; 0] = [];
+            });
+            field_descriptors.push(quote! {
+                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                    #tag_field_name,
+                    &#tags_ident,
+                    ::metrique::writer::core::FieldShape::Opaque,
+                    None,
+                )
+            });
+            field_idx += 1;
+        }
+    }
+
+    // Union of all variant fields (deduplicated by name)
+    for variant in variants {
+        let fields = match &variant.data {
+            Some(VariantData::Struct(fields)) => fields.as_slice(),
+            _ => continue,
+        };
+        for field in fields {
+            match &field.attrs.kind {
+                MetricsFieldKind::Ignore(_) | MetricsFieldKind::Timestamp(_) => continue,
+                MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_) => continue,
+                MetricsFieldKind::Field { unit, .. } => {
+                    let field_name = metric_name(root_attrs, root_attrs.rename_all, field);
+                    if !seen_names.insert(field_name.clone()) {
+                        continue; // already in descriptor from another variant
+                    }
+
+                    let tags =
+                        resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
+                    let num_tags = tags.len();
+                    let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
+
+                    tag_statics.push(quote! {
+                        static #tags_ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [
+                            #(#tags),*
+                        ];
+                    });
+
+                    let unit_expr = match unit {
+                        Some(u) => {
+                            quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) }
+                        }
+                        None => quote! { None },
+                    };
+
+                    field_descriptors.push(quote! {
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            #field_name,
+                            &#tags_ident,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            #unit_expr,
+                        )
+                    });
+
+                    field_idx += 1;
+                }
+            }
+        }
+    }
+
+    let num_fields = field_descriptors.len();
+
+    quote! {
+        fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+            #(#tag_statics)*
+            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
+                #(#field_descriptors),*
+            ];
+            static __METRIQUE_DESCRIPTOR: ::metrique::writer::core::EntryDescriptor =
+                ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                    #struct_name,
+                    &__METRIQUE_FIELDS,
+                    None,
+                );
+            Some(::metrique::writer::core::DescriptorRef::from_static(&__METRIQUE_DESCRIPTOR))
         }
     }
 }

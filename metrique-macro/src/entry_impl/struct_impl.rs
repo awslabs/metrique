@@ -1,5 +1,5 @@
+use super::resolve_field_tags;
 use super::*;
-use crate::FieldTagAttr;
 use crate::inflect::metric_name;
 
 pub(crate) fn generate_struct_entry_impl(
@@ -131,48 +131,6 @@ fn generate_descriptor(
             Some(::metrique::writer::core::DescriptorRef::from_static(&__METRIQUE_DESCRIPTOR))
         }
     }
-}
-
-fn resolve_field_tags(field_tags: &[FieldTagAttr], default_tags: &[FieldTagAttr]) -> Vec<Ts2> {
-    let mut resolved = Vec::new();
-
-    // Field-level tags take priority
-    for tag in field_tags {
-        let path = &tag.path;
-        let state = if tag.skip {
-            quote! { ::metrique::writer::core::FieldTagState::Absent }
-        } else {
-            quote! { ::metrique::writer::core::FieldTagState::Present }
-        };
-        resolved.push(quote! {
-            ::metrique::writer::core::ResolvedFieldTag::__metrique_private_new(
-                ::std::any::TypeId::of::<#path>(),
-                #state,
-            )
-        });
-    }
-
-    // Default tags fill in for paths not already specified at field level
-    for default_tag in default_tags {
-        let path = &default_tag.path;
-        let already_specified = field_tags.iter().any(|ft| ft.path == *path);
-        if already_specified {
-            continue;
-        }
-        let state = if default_tag.skip {
-            quote! { ::metrique::writer::core::FieldTagState::Absent }
-        } else {
-            quote! { ::metrique::writer::core::FieldTagState::Present }
-        };
-        resolved.push(quote! {
-            ::metrique::writer::core::ResolvedFieldTag::__metrique_private_new(
-                ::std::any::TypeId::of::<#path>(),
-                #state,
-            )
-        });
-    }
-
-    resolved
 }
 
 fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<Ts2> {
