@@ -262,7 +262,6 @@ fn generate_descriptor(
             quote! {
                 #style_idx_u8 => {
                     #(#tag_statics)*
-                    #(#flatten_tag_statics)*
                     static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
                         #(#field_exprs),*
                     ];
@@ -306,6 +305,7 @@ fn generate_descriptor(
 
     let descriptors_method = quote! {
         fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+            #(#flatten_tag_statics)*
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
                 #entry_name::__metrique_descriptor(#own_style_index)
             ))

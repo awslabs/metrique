@@ -374,3 +374,118 @@ fn flatten_child_default_field_tag_resolved() {
     assert_eq!(beta_tags[0].tag_id(), dial9_id);
     assert_eq!(beta_tags[0].state(), FieldTagState::Absent);
 }
+
+// ─── Multilayer flatten tests ───────────────────────────────────────────────
+
+#[metrics(subfield)]
+struct GrandChild {
+    #[metrics(field_tag(AuditExport))]
+    deep_value: u64,
+}
+
+#[metrics(subfield, rename_all = "PascalCase")]
+struct MiddleChild {
+    middle_value: u64,
+    #[metrics(flatten, prefix = "inner_")]
+    grand: GrandChild,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct NestedFlattenParent {
+    top_value: u64,
+    #[metrics(flatten, prefix = "mid_")]
+    middle: MiddleChild,
+}
+
+#[test]
+fn nested_flatten_prefix_stacking() {
+    let m = NestedFlattenParent {
+        top_value: 1,
+        middle: MiddleChild {
+            middle_value: 2,
+            grand: GrandChild { deep_value: 3 },
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // Parent's own fields + middle's descriptor + grandchild's descriptor
+    assert!(descriptors.len() >= 2);
+
+    // Parent's own descriptor
+    let parent_fields: Vec<_> = descriptors[0].fields().collect();
+    assert_eq!(parent_fields[0].base_name(), "TopValue");
+
+    // Middle child's descriptor (with parent's flatten prefix "Mid" applied)
+    let middle_fields: Vec<_> = descriptors[1].fields().collect();
+    let mid_parts: Vec<&str> = middle_fields[0].name_parts().collect();
+    assert_eq!(mid_parts, vec!["Mid", "MiddleValue"]);
+}
+
+#[metrics(subfield, default_field_tag(Dial9Emit))]
+struct TaggedChild {
+    emitted: u64,
+    #[metrics(field_tag(skip(Dial9Emit)))]
+    skipped: u64,
+}
+
+#[metrics(rename_all = "PascalCase", default_field_tag(AuditExport))]
+struct TagPropagationParent {
+    own_field: u64,
+    #[metrics(flatten)]
+    child: TaggedChild,
+}
+
+#[test]
+fn flatten_tag_propagation_with_parent_default() {
+    let m = TagPropagationParent {
+        own_field: 1,
+        child: TaggedChild {
+            emitted: 2,
+            skipped: 3,
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    assert_eq!(descriptors.len(), 2);
+
+    // Parent's own field has AuditExport (from default_field_tag)
+    let parent_fields: Vec<_> = descriptors[0].fields().collect();
+    let parent_tags: Vec<_> = parent_fields[0].tags().collect();
+    assert!(
+        parent_tags
+            .iter()
+            .any(|t| t.tag_id() == TypeId::of::<AuditExport>()
+                && t.state() == FieldTagState::Present)
+    );
+
+    // Child's "emitted" field: has Dial9Emit (child's own default), plus AuditExport from parent default propagation
+    let child_fields: Vec<_> = descriptors[1].fields().collect();
+    let emitted_tags: Vec<_> = child_fields[0].tags().collect();
+    // Child's own Dial9Emit is present (baked)
+    assert!(emitted_tags.iter().any(|t| t.tag_id() == TypeId::of::<Dial9Emit>() && t.state() == FieldTagState::Present));
+    // Parent's AuditExport propagates as default (fills gap)
+    assert!(
+        emitted_tags
+            .iter()
+            .any(|t| t.tag_id() == TypeId::of::<AuditExport>()
+                && t.state() == FieldTagState::Present)
+    );
+
+    // Child's "skipped" field: has skip(Dial9Emit) (baked), plus AuditExport from parent default
+    let skipped_tags: Vec<_> = child_fields[1].tags().collect();
+    assert!(
+        skipped_tags
+            .iter()
+            .any(|t| t.tag_id() == TypeId::of::<Dial9Emit>() && t.state() == FieldTagState::Absent)
+    );
+    assert!(
+        skipped_tags
+            .iter()
+            .any(|t| t.tag_id() == TypeId::of::<AuditExport>()
+                && t.state() == FieldTagState::Present)
+    );
+}
