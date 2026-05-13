@@ -9,7 +9,7 @@ Two pieces, both opt-in for sinks:
 - An **entry descriptor** that describes a macro-derived entry's closed shape: ordered fields, their tags, optionality, lists, dynamic-key maps, units, canonical entry name, and an optional timestamp field.
 - A **field tag** system that lets sinks define their own static opt-in markers and lets users apply them at struct or field scope.
 
-None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sinks that do not call `Entry::descriptor()` pay nothing.
+None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sinks that do not call `Entry::descriptors()` pay nothing.
 
 ## Glossary
 
@@ -17,7 +17,7 @@ None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sink
 - **Field tag**: a user-defined marker type (e.g. `audit::Export`, `dial9::Emit`) that a sink crate declares and that users apply to fields via `#[metrics(field_tag(T))]`. Sinks read tags off the descriptor to decide per-field behaviour. Metrique does not interpret tag identity.
 - **`default_field_tag` / `field_tag`**: struct-level and field-level attributes for applying tags. `skip(T)` is an argument form that inverts a default. Flatten sites may carry `field_tag(...)` that propagates to flattened children as a default.
 - **`FieldShape`**: the closed/emitted shape of a field (scalar, optional, list, dynamic-key map, or opaque). Describes what the sink will see, not the raw Rust type.
-- **`DescriptorRef`**: the handle returned by `Entry::descriptor()`. Opaque; carries a stable `DescriptorId` for cache keying and a borrow of the underlying `EntryDescriptor`.
+- **`DescriptorRef`**: the handle yielded by `Entry::descriptors()`. Opaque; carries a stable `DescriptorId` for cache keying and a borrow of the underlying `EntryDescriptor`.
 - **`DescriptorId`**: an opaque identifier for a descriptor, stable within a single process lifetime. Used by sinks to cache derived data.
 
 ## What it enables
@@ -27,7 +27,7 @@ None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sink
 - First-class units in the descriptor, surfaced however each sink prefers.
 - All of the above after `BoxEntry` erasure.
 
-Sinks that do not call `Entry::descriptor()` pay nothing at runtime.
+Sinks that do not call `Entry::descriptors()` pay nothing at runtime.
 
 ## At a glance
 
@@ -106,7 +106,7 @@ Flattening an `Option<SubEntry>` into a parent entry propagates optionality to e
 
 `#[metrics(ignore)]` fields are not part of the descriptor. They do not emit, do not close, and do not appear in `fields()`.
 
-### The Opaque trapdoor
+### The Opaque escape hatch
 
 A field whose closed shape is `FieldShape::Opaque` is fully functional through `Entry::write` (every `Value` impl works; EMF and JSON handle it fine), but descriptor-aware sinks that selected it via a tag have no wire-level shape guarantee for it. Typical sinks skip opaque fields with a diagnostic and continue.
 
@@ -119,12 +119,14 @@ Users who want custom types to flow through descriptor-aware sinks should use `#
 The `Entry` trait has a defaulted method:
 
 ```rust
-fn descriptor(&self) -> Option<DescriptorRef<'_>> { None }
+fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> { std::iter::empty() }
 ```
 
-Macro-derived entries override this to return `Some`. Hand-written entries keep the default `None`. `BoxEntry` forwards the call through its dynamic dispatch layer.
+Macro-derived entries override this to yield a single descriptor. Composed entries (like `AggregationResult`) yield multiple descriptors in write order, one per logical segment. Hand-written entries keep the default (empty iterator) unless implemented directly. `BoxEntry` forwards the call through its dynamic dispatch layer.
 
-Sinks key their per-entry-type caches on `DescriptorId`. The initial release backs descriptors with `&'static EntryDescriptor` in macro-derived entries, so the id derivation is effectively a pointer-compare. That is an implementation detail; `DescriptorId` is opaque and free to change internal representation.
+The method returns an iterator rather than a single `Option` to support composed entries cleanly. A simple struct yields one descriptor. An `AggregationResult` yields two (key fields, then aggregated fields). A dynamic pool entry yields its base descriptor followed by each pool member's descriptor. Sinks walk the iterator in sequence; each descriptor covers a contiguous segment of the `Entry::write` output.
+
+Sinks key their per-entry-type caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. The initial release backs descriptors with `&'static EntryDescriptor` in macro-derived entries, so the id derivation is effectively a pointer-compare. That is an implementation detail; `DescriptorId` is opaque and free to change internal representation.
 
 Extending `Entry` rather than introducing a separate trait keeps descriptor lookup on the path users already know, keeps `BoxEntry` forwarding natural, and avoids growing the object-safety surface.
 
@@ -134,9 +136,15 @@ Extending `Entry` rather than introducing a separate trait keeps descriptor look
 
 Per-variant descriptors (where each variant emits its own narrower schema) are a future evolution that requires `DescriptorRef` to back with `Arc<EntryDescriptor>` rather than `&'static`; the opaque handle leaves that open.
 
+### Aggregated entries
+
+`AggregationResult` writes key fields then aggregated fields. Its `descriptors()` implementation chains the key entry's descriptor followed by the aggregated entry's descriptor. Both are generated by `#[metrics]` on the respective structs; no additional descriptor generation is needed in the aggregate macro.
+
+Sinks walking `descriptors()` see two segments in write order: key fields first, aggregated fields second. Each segment's descriptor carries its own tags, units, and field names. Flatten on key fields is rejected at compile time.
+
 ### `Entry::write` order contract
 
-The metrique macro emits exactly one `EntryWriter::value(name, ..)` callback per `FieldDescriptor`, in the same order as the fields in `descriptor().fields()`. Consumers walking `Entry::write` may index into the descriptor positionally.
+The metrique macro emits exactly one `EntryWriter::value(name, ..)` callback per `FieldDescriptor`, in the same order as the fields listed in each descriptor returned by `descriptors()`. For composed entries, each descriptor covers a contiguous segment of the write output; consumers walk descriptors in sequence, consuming fields from each.
 
 Multi-element fields (`Vec<T>`, `Flex<(String, T)>`, and similar) still produce exactly one `value()` callback per `FieldDescriptor`. The multiplicity is handled inside the `Value` impl, which the adapter's `ValueWriter` observes through `ValueWriter::values()` (for `Vec<T>` / `[T]`) or similar dispatch methods. Descriptor-aware sinks that want typed encoding for these fields override the corresponding `ValueWriter` method; the default implementations collapse multi-element data into a single scalar (comma-joined string for `values()`), which is a valid but lossy fallback.
 
@@ -182,7 +190,7 @@ Full resolution rules including worked inheritance and flatten cases are documen
 │ For each macro-derived entry:                               │
 │   impl Entry for ClosedX (as today)                         │
 │   static EntryDescriptor                                    │
-│   impl Entry::descriptor() returning Some(DescriptorRef)    │
+│   impl Entry::descriptors() yielding DescriptorRef          │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -206,21 +214,21 @@ Full resolution rules including worked inheritance and flatten cases are documen
 │ BoxEntry flows to one or more sinks.                        │
 │                                                             │
 │  ├── descriptor-unaware sink                                │
-│  │     calls Entry::write; never calls descriptor()         │
+│  │     calls Entry::write; never calls descriptors()        │
 │  │                                                          │
 │  └── descriptor-aware sink                                  │
-│        calls entry.descriptor()                             │
-│          None    -> skip (hand-written entry, opaque)       │
-│          Some(d) -> first-use structural checks, cache on   │
-│                     d.id(), then proceed                    │
+│        calls entry.descriptors()                            │
+│          empty  -> skip (hand-written entry, opaque)        │
+│          yields -> first-use structural checks, cache on    │
+│                    id(), then proceed                        │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ RUNTIME: inside a descriptor-aware sink                     │
 │                                                             │
-│ entry.write(SinkWriter { desc, tag: audit::Export }):       │
-│   walks Entry::write; the adapter consults the descriptor   │
+│ entry.write(SinkWriter { descs, tag: audit::Export }):      │
+│   walks Entry::write; the adapter consults descriptors      │
 │   (cached by DescriptorId) to decide per-field behaviour:   │
 │     - field tagged with the sink's tag -> encode            │
 │     - otherwise                         -> ignore           │
@@ -292,7 +300,7 @@ The initial release adds, per macro-derived entry type:
 - One or more slices of `ResolvedFieldTag` per field (only for tags that resolved to `Present` or `Absent` explicitly).
 - Small per-field constants for names, shapes, and units.
 
-Ballpark: a ten-field entry with a couple of tags per field and some nested shapes fits in about 500-1500 bytes of `.rodata`. One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `Entry::descriptor()` pay nothing beyond their existing costs.
+Ballpark: a ten-field entry with a couple of tags per field and some nested shapes fits in about 500-1500 bytes of `.rodata`. One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `Entry::descriptors()` pay nothing beyond their existing costs.
 
 ## Future evolution
 
@@ -300,7 +308,7 @@ Short list of things explicitly left out of the initial design that fit the syst
 
 - **Typed source extraction.** See the appendix below. Would let sinks pull a typed structural snapshot (timestamp, task id, correlation id, ...) out of the closed entry before encoding fields. Deferred pending a concrete second consumer (OTEL, a richer dial9 integration).
 - **Hand-written `Entry` impls opting into descriptors** via a `DescribeEntry` trait users implement by hand; same mechanism macro-derived entries use internally. Would require promoting metrique's hidden macro-only constructors to a public surface.
-- **Per-variant descriptors for entry enums.** A future `Entry::descriptor()` impl on an enum could return a different `DescriptorRef` per variant. `DescriptorRef` is opaque today specifically to leave this open; a `Shared(Arc<..>)`-backed variant of the handle would ship with that work.
+- **Per-variant descriptors for entry enums.** A future `Entry::descriptors()` impl on an enum could yield a different `DescriptorRef` per variant. `DescriptorRef` is opaque today specifically to leave this open; a `Shared(Arc<..>)`-backed variant of the handle would ship with that work.
 - **`FieldShape::Distribution(KnownShape)`** for distribution-typed fields (`Histogram<T>`, `SharedHistogram<T>`, and user types that emit many `Observation`s). Depends on a `DescribeValue` trait so value types can self-describe as distribution-shaped.
 - **Nested container recognition beyond one optional layer.** `Vec<Vec<T>>`, `Vec<Flex<..>>`, `Flex<(String, Vec<T>)>`, and double-optional all fall through to `Opaque` today; the descriptor enum accepts them, the macro's syntactic recognition just does not. Relaxing is an additive macro change.
 - **`#[metrics(entry_name = "...")]`** attribute for overriding the canonical entry name.

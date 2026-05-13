@@ -410,7 +410,7 @@ fn generate_enum_descriptor(
     let num_fields = field_descriptors.len();
 
     quote! {
-        fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
             #(#tag_statics)*
             static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
                 #(#field_descriptors),*
@@ -421,7 +421,7 @@ fn generate_enum_descriptor(
                     &__METRIQUE_FIELDS,
                     None,
                 );
-            Some(::metrique::writer::core::DescriptorRef::from_static(&__METRIQUE_DESCRIPTOR))
+            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&__METRIQUE_DESCRIPTOR))
         }
     }
 }

@@ -361,7 +361,7 @@ mod tests {
         impl Entry for HandWritten {
             fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
         }
-        assert!(HandWritten.descriptor().is_none());
+        assert!(HandWritten.descriptors().next().is_none());
     }
 
     #[test]
@@ -372,7 +372,7 @@ mod tests {
             fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
         }
         let boxed = BoxEntry::new(HandWritten);
-        assert!(boxed.descriptor().is_none());
+        assert!(boxed.descriptors().next().is_none());
     }
 
     #[test]
@@ -385,13 +385,13 @@ mod tests {
         struct WithDescriptor;
         impl Entry for WithDescriptor {
             fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
-            fn descriptor(&self) -> Option<DescriptorRef<'_>> {
-                Some(DescriptorRef::from_static(&DESC))
+            fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+                std::iter::once(DescriptorRef::from_static(&DESC))
             }
         }
 
         let boxed = BoxEntry::new(WithDescriptor);
-        let desc = boxed.descriptor().expect("should forward Some");
+        let desc = boxed.descriptors().next().expect("should forward Some");
         assert_eq!(desc.get().name(), "WithDesc");
         assert_eq!(desc.id(), DescriptorRef::from_static(&DESC).id());
     }

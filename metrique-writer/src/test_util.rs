@@ -372,8 +372,8 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
         self.metric.sample_group()
     }
 
-    fn descriptor(&self) -> Option<metrique_writer_core::DescriptorRef<'_>> {
-        self.metric.descriptor()
+    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
+        self.metric.descriptors()
     }
 }
 

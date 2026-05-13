@@ -321,6 +321,10 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
         self.key.write(w);
         self.aggregated.write(w);
     }
+
+    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
+        self.key.descriptors().chain(self.aggregated.descriptors())
+    }
 }
 
 impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for AggregationResult<A, B> {
@@ -335,6 +339,10 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
         self.key
             .sample_group()
             .chain(self.aggregated.sample_group())
+    }
+
+    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
+        self.key.descriptors().chain(self.aggregated.descriptors())
     }
 }
 

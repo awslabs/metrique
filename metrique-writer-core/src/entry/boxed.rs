@@ -50,8 +50,8 @@ impl Entry for BoxEntry {
         self.0.sample_group().into_iter()
     }
 
-    fn descriptor(&self) -> Option<DescriptorRef<'_>> {
-        self.0.descriptor()
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        self.0.descriptors().into_iter()
     }
 }
 
@@ -60,7 +60,7 @@ impl Entry for BoxEntry {
 trait DynEntry: Any + Send + 'static {
     fn write<'a>(&'a self, writer: &mut dyn DynEntryWriter<'a>);
     fn sample_group(&self) -> SmallVec<[(Cow<'static, str>, Cow<'static, str>); 2]>;
-    fn descriptor(&self) -> Option<DescriptorRef<'_>>;
+    fn descriptors(&self) -> SmallVec<[DescriptorRef<'_>; 1]>;
 }
 
 trait DynEntryWriter<'a> {
@@ -98,8 +98,8 @@ impl<E: Entry + Send + 'static> DynEntry for E {
         Entry::sample_group(self).collect()
     }
 
-    fn descriptor(&self) -> Option<DescriptorRef<'_>> {
-        Entry::descriptor(self)
+    fn descriptors(&self) -> SmallVec<[DescriptorRef<'_>; 1]> {
+        Entry::descriptors(self).collect()
     }
 }
 

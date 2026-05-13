@@ -185,12 +185,13 @@ pub trait Entry {
         MergedRef(self, other)
     }
 
-    /// Returns a handle to the descriptor for this entry type, if one exists.
+    /// Returns descriptors for this entry in write order.
     ///
-    /// Macro-derived entries override this to return structural metadata (field names,
-    /// tags, units). Hand-written entries return `None` by default.
-    fn descriptor(&self) -> Option<DescriptorRef<'_>> {
-        None
+    /// Each descriptor covers a contiguous segment of the `Entry::write` output.
+    /// Simple entries yield one descriptor. Composed entries (like aggregation results)
+    /// yield multiple. Hand-written entries return an empty iterator by default.
+    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+        std::iter::empty()
     }
 
     /// Move the entry to the heap and rely on dynamic dispatch.

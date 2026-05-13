@@ -27,7 +27,7 @@ fn basic_descriptor_fields() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc_ref = entry.descriptor().expect("should have descriptor");
+    let desc_ref = entry.descriptors().next().expect("should have descriptor");
     let desc = desc_ref.get();
 
     assert_eq!(desc.name(), "BasicMetrics");
@@ -52,7 +52,7 @@ fn descriptor_with_timestamp() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc_ref = entry.descriptor().unwrap();
+    let desc_ref = entry.descriptors().next().unwrap();
     let desc = desc_ref.get();
 
     assert_eq!(desc.name(), "WithTimestamp");
@@ -77,7 +77,7 @@ fn descriptor_with_unit() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptor().unwrap();
+    let desc = entry.descriptors().next().unwrap();
     let field = &desc.get().fields()[0];
 
     assert_eq!(field.name(), "Latency");
@@ -101,7 +101,7 @@ fn tag_resolution_default_and_skip() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptor().unwrap();
+    let desc = entry.descriptors().next().unwrap();
     let fields = desc.get().fields();
 
     let audit_id = TypeId::of::<AuditExport>();
@@ -143,7 +143,7 @@ fn multiple_tags_on_field() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptor().unwrap();
+    let desc = entry.descriptors().next().unwrap();
     let fields = desc.get().fields();
 
     let audit_id = TypeId::of::<AuditExport>();
@@ -187,7 +187,7 @@ fn ignored_fields_excluded_from_descriptor() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptor().unwrap();
+    let desc = entry.descriptors().next().unwrap();
 
     assert_eq!(desc.get().fields().len(), 1);
     assert_eq!(desc.get().fields()[0].name(), "Visible");
@@ -208,8 +208,8 @@ fn descriptor_id_stable_across_calls() {
     let e1 = metrique::RootEntry::new(c1);
     let e2 = metrique::RootEntry::new(c2);
 
-    let id1 = e1.descriptor().unwrap().id();
-    let id2 = e2.descriptor().unwrap().id();
+    let id1 = e1.descriptors().next().unwrap().id();
+    let id2 = e2.descriptors().next().unwrap().id();
     assert_eq!(id1, id2);
 }
 
@@ -224,7 +224,8 @@ fn boxentry_forwards_descriptor() {
     let boxed = entry.boxed();
 
     let desc = boxed
-        .descriptor()
+        .descriptors()
+        .next()
         .expect("BoxEntry should forward descriptor");
     assert_eq!(desc.get().name(), "BasicMetrics");
 }
@@ -240,7 +241,7 @@ fn field_name_override_in_descriptor() {
     let m = FieldNameOverride { original: 1 };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptor().unwrap();
+    let desc = entry.descriptors().next().unwrap();
 
     assert_eq!(desc.get().fields()[0].name(), "CustomName");
 }
@@ -255,7 +256,7 @@ fn prefix_applied_in_descriptor() {
     let m = PrefixedMetrics { latency: 100 };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptor().unwrap();
+    let desc = entry.descriptors().next().unwrap();
 
     assert_eq!(desc.get().fields()[0].name(), "ApiLatency");
 }

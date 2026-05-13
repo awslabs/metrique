@@ -128,7 +128,11 @@ const _: () = {
                 ))
             }
         }
-        fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
+        fn descriptors(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = ::metrique::writer::core::DescriptorRef<'_>,
+        > {
             static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
             static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
             static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
@@ -150,7 +154,7 @@ const _: () = {
                 &__METRIQUE_FIELDS,
                 None,
             );
-            Some(
+            ::std::iter::once(
                 ::metrique::writer::core::DescriptorRef::from_static(
                     &__METRIQUE_DESCRIPTOR,
                 ),
