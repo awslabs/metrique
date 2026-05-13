@@ -196,10 +196,17 @@ impl<'a> FieldView<'a> {
     }
     /// Resolved tags for this field.
     pub fn tags(&self) -> impl Iterator<Item = &'a ResolvedFieldTag> {
-        // Field-level tags (baked in static) win. Default tag layers fill in for
-        // tag ids not already present, with earlier layers taking priority.
         let field_tags = self.desc.descriptor.fields[self.idx].tags;
         let layers = &self.desc.default_tag_layers;
+
+        // Fast path: no default layers, just return the field's own tags directly.
+        if layers.is_empty() {
+            let tags: SmallVec<[&'a ResolvedFieldTag; 4]> = field_tags.iter().collect();
+            return tags.into_iter();
+        }
+
+        // Merge path: field-level tags win, then walk layers innermost-first,
+        // skipping tag ids already present.
         let mut seen_ids: SmallVec<[TypeId; 4]> = field_tags.iter().map(|t| t.tag_id).collect();
         let mut all_tags: SmallVec<[&'a ResolvedFieldTag; 4]> = field_tags.iter().collect();
         for layer in layers.iter() {
@@ -224,7 +231,14 @@ impl<'a> FieldView<'a> {
     }
 }
 
-/// Opaque identifier for a descriptor (including modifiers).
+/// Opaque identifier for a descriptor segment, stable within a process lifetime.
+///
+/// Intended for caching and deduplication by sinks. Two `DescriptorRef`s backed by
+/// the same static with the same modifiers produce equal ids. Collisions are
+/// theoretically possible (weak hash) but extremely unlikely in practice.
+///
+/// For a single cache key covering an entire entry (all segments), combine the
+/// sequence of ids from `entry.descriptors()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DescriptorId(u64);
 
