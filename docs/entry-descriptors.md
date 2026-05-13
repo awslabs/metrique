@@ -122,11 +122,23 @@ The `Entry` trait has a defaulted method:
 fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> { std::iter::empty() }
 ```
 
-Macro-derived entries override this to yield a single descriptor. Composed entries (like `AggregationResult`) yield multiple descriptors in write order, one per logical segment. Hand-written entries keep the default (empty iterator) unless implemented directly. `BoxEntry` forwards the call through its dynamic dispatch layer.
+Macro-derived entries override this to yield one or more descriptors. Composed entries (like `AggregationResult`) yield multiple descriptors in write order, one per logical segment. Hand-written entries keep the default (empty iterator). `BoxEntry` forwards the call through its dynamic dispatch layer.
 
-The method returns an iterator rather than a single `Option` to support composed entries cleanly. A simple struct yields one descriptor. An `AggregationResult` yields two (key fields, then aggregated fields). A dynamic pool entry yields its base descriptor followed by each pool member's descriptor. Sinks walk the iterator in sequence; each descriptor covers a contiguous segment of the `Entry::write` output.
+`DescriptorRef` is the primary sink-facing interface. It exposes field data through `FieldView`:
 
-Sinks key their per-entry-type caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. The initial release backs descriptors with `&'static EntryDescriptor` in macro-derived entries, so the id derivation is effectively a pointer-compare. That is an implementation detail; `DescriptorId` is opaque and free to change internal representation.
+```rust
+for desc in entry.descriptors() {
+    for field in desc.fields() {
+        let parts = field.name_parts();  // prefix chain + base name, zero allocation
+        let base = field.base_name();    // just the field name
+        let tags = field.tags();         // resolved with defaults applied
+        let shape = field.shape();
+        let unit = field.unit();
+    }
+}
+```
+
+Sinks key their per-segment caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. `DescriptorId` incorporates the base descriptor pointer plus any modifiers (prefix, default tags), so the same child struct with different flatten-site prefixes produces different ids.
 
 Extending `Entry` rather than introducing a separate trait keeps descriptor lookup on the path users already know, keeps `BoxEntry` forwarding natural, and avoids growing the object-safety surface.
 
@@ -263,26 +275,26 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 
 When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default tags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
 
+### Name style resolution
+
+Each entry type has 4 static descriptors (one per name style). A `__metrique_descriptor(style: u8)` inherent method selects the right one. Named constants (`STYLE_PRESERVE`, `STYLE_PASCAL`, `STYLE_SNAKE`, `STYLE_KEBAB`) are the single source of truth. The struct's own `descriptors()` uses its own `rename_all` index. Flatten chains call the child's `descriptors()` with the parent's concrete NS (from `make_ns(root_attrs.rename_all, ...)`), matching the write path's name style propagation.
+
 ### Prefix handling
 
-Flatten-site prefixes (e.g., `#[metrics(flatten, prefix = "http_")]`) are precomputed at macro time in the parent's name style and applied via a modifier on the child's `DescriptorRef`. Nested flatten-site prefixes stack: if a grandparent and parent both have flatten-site prefixes, both appear in `FieldView::name_parts()` (outermost first, then base name). Sinks concatenate the parts to get the full field name.
+Flatten-site prefixes (e.g., `#[metrics(flatten, prefix = "http_")]`) are precomputed at macro time in the parent's name style and applied via `.with_prefix()` on the child's `DescriptorRef`. Nested flatten-site prefixes stack via `SmallVec`. `FieldView::name_parts()` yields all prefixes (outermost first) then the base name. Sinks concatenate the parts to get the full field name.
 
 Container-level prefixes (on the struct itself) are baked into the struct's own static descriptor field names. They do NOT propagate to flattened children (see [#160](https://github.com/awslabs/metrique/issues/160)).
 
 ### Tag propagation through flatten
 
-When a parent flattens a child, the macro merges the flatten-site `field_tag` attributes with the parent's `default_field_tag` into a single defaults slice (flatten-site wins over parent default for the same tag id). This slice is applied as a modifier on the child's `DescriptorRef`.
+When a parent flattens a child, the macro merges the flatten-site `field_tag` attributes with the parent's `default_field_tag` into a single defaults slice (flatten-site wins over parent default for the same tag id). This slice is applied via `.with_default_tags()` on the child's `DescriptorRef`.
 
-At read time, `FieldView::tags()` resolves precedence: the child's own tags (baked in its static) win; the merged defaults fill in for tag ids not already present. This gives the full resolution order:
+At read time, `FieldView::tags()` resolves precedence by walking layers: the child's own tags (baked in its static) win; then each default layer is walked innermost-first, skipping tag ids already present. This gives the full resolution order:
 
 1. Child field-level `field_tag` (baked) wins
 2. Child struct-level `default_field_tag` (baked) wins
 3. Flatten-site `field_tag` (in merged defaults) fills gaps
 4. Parent `default_field_tag` (in merged defaults, lowest priority) fills remaining gaps
-
-### Name style propagation
-
-The parent calls the child's `descriptors()` with a concrete name style (derived from the parent's `rename_all`). The child has 4 static descriptors (one per name style), and compile-time trait dispatch (`__StaticStyledDescriptor`) selects the correct one. This ensures the child's field names match what `Entry::write()` emits under the parent's name style.
 
 ## Validation
 
