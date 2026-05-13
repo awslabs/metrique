@@ -336,15 +336,173 @@ fn generate_enum_descriptor(
 ) -> super::DescriptorOutput {
     use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
     use crate::inflect::NameStyle;
-    use std::collections::BTreeSet;
 
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
-    let mut field_metas = Vec::new();
-    let mut seen_names = BTreeSet::new();
-
     let styles = NameStyle::DESCRIPTOR_STYLES;
+    let own_style = style_const_for(root_attrs.rename_all);
+    let ns = make_ns(root_attrs.rename_all, entry_name.span());
 
-    // Tag field comes first (if present)
+    let has_flatten = variants.iter().any(|v| match &v.data {
+        Some(VariantData::Struct(fields)) => fields.iter().any(|f| {
+            matches!(
+                f.attrs.kind,
+                MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
+            )
+        }),
+        Some(VariantData::Tuple(tds)) => tds.iter().any(|td| {
+            matches!(
+                td.kind,
+                MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
+            )
+        }),
+        None => false,
+    });
+
+    let field_metas = collect_enum_field_metas(variants, root_attrs, &styles);
+    let timestamp_descriptor = quote! { None };
+    let descriptor_impl = generate_descriptor_impl(
+        entry_name,
+        generics,
+        &struct_name,
+        &field_metas,
+        &timestamp_descriptor,
+    );
+
+    if !has_flatten {
+        let descriptors_method = quote! {
+            fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+                ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                    #entry_name::__metrique_descriptor(#own_style)
+                ))
+            }
+        };
+        return super::DescriptorOutput {
+            trait_impls: descriptor_impl,
+            method: descriptors_method,
+        };
+    }
+
+    // Per-variant flatten chaining with enum iterator (same pattern as sample_group).
+    let variant_count = variants.len();
+    let iter_enum_name = format_ident!("{}DescIter", entry_name);
+    let iter_variants: Vec<_> = (0..variant_count)
+        .map(|i| format_ident!("V{}", i))
+        .collect();
+
+    let iter_next_arms: Vec<_> = iter_variants
+        .iter()
+        .map(|v| {
+            quote! { #iter_enum_name::#v(iter) => iter.next() }
+        })
+        .collect();
+
+    let iter_enum_def = quote! {
+        enum #iter_enum_name<'__metrique_lt, #(#iter_variants),*> {
+            #(#iter_variants(#iter_variants),)*
+            __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
+        }
+        impl<'__metrique_lt, #(#iter_variants: ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>>),*>
+            ::std::iter::Iterator for #iter_enum_name<'__metrique_lt, #(#iter_variants),*>
+        {
+            type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
+            fn next(&mut self) -> ::std::option::Option<Self::Item> {
+                match self {
+                    #(#iter_next_arms,)*
+                    #iter_enum_name::__Phantom(_) => None,
+                }
+            }
+        }
+    };
+
+    let match_arms: Vec<_> = variants.iter().enumerate().map(|(v_idx, variant)| {
+        let variant_ident = &variant.ident;
+        let iter_v = &iter_variants[v_idx];
+        let base = quote! {
+            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                #entry_name::__metrique_descriptor(#own_style)
+            ))
+        };
+
+        let (pattern, chain_expr) = match &variant.data {
+            Some(VariantData::Struct(fields)) => {
+                let flatten_fields: Vec<_> = fields.iter()
+                    .filter(|f| matches!(f.attrs.kind, MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)))
+                    .collect();
+                if flatten_fields.is_empty() {
+                    (quote! { #entry_name::#variant_ident { .. } }, base)
+                } else {
+                    let bindings: Vec<_> = flatten_fields.iter().map(|f| &f.ident).collect();
+                    let chains: Vec<_> = flatten_fields.iter().map(|f| {
+                        let ident = &f.ident;
+                        match &f.attrs.kind {
+                            MetricsFieldKind::Flatten { .. } => quote! { .chain(::metrique::InflectableEntry::<#ns>::descriptors(#ident)) },
+                            MetricsFieldKind::FlattenEntry(_) => quote! { .chain(::metrique::writer::Entry::descriptors(#ident)) },
+                            _ => unreachable!()
+                        }
+                    }).collect();
+                    (quote! { #entry_name::#variant_ident { #(#bindings),*, .. } }, quote! { #base #(#chains)* })
+                }
+            }
+            Some(VariantData::Tuple(tds)) => {
+                let has_tuple_flatten = tds.iter().any(|td| matches!(td.kind, MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)));
+                if !has_tuple_flatten {
+                    (quote! { #entry_name::#variant_ident(..) }, base)
+                } else {
+                    let patterns: Vec<_> = tds.iter().enumerate().map(|(i, td)| {
+                        if matches!(td.kind, MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)) {
+                            let b = format_ident!("__v{}", i);
+                            quote! { #b }
+                        } else {
+                            quote! { _ }
+                        }
+                    }).collect();
+                    let chains: Vec<_> = tds.iter().enumerate().filter_map(|(i, td)| {
+                        match &td.kind {
+                            MetricsFieldKind::Flatten { .. } => {
+                                let b = format_ident!("__v{}", i);
+                                Some(quote! { .chain(::metrique::InflectableEntry::<#ns>::descriptors(#b)) })
+                            }
+                            MetricsFieldKind::FlattenEntry(_) => {
+                                let b = format_ident!("__v{}", i);
+                                Some(quote! { .chain(::metrique::writer::Entry::descriptors(#b)) })
+                            }
+                            _ => None,
+                        }
+                    }).collect();
+                    (quote! { #entry_name::#variant_ident(#(#patterns),*) }, quote! { #base #(#chains)* })
+                }
+            }
+            None => (quote! { #entry_name::#variant_ident }, base),
+        };
+
+        quote! { #pattern => #iter_enum_name::#iter_v(#chain_expr) }
+    }).collect();
+
+    let descriptors_method = quote! {
+        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+            #[allow(deprecated)]
+            match self {
+                #(#match_arms),*
+            }
+        }
+    };
+
+    super::DescriptorOutput {
+        trait_impls: quote! { #iter_enum_def #descriptor_impl },
+        method: descriptors_method,
+    }
+}
+
+fn collect_enum_field_metas(
+    variants: &[MetricsVariant],
+    root_attrs: &RootAttributes,
+    styles: &[crate::inflect::NameStyle; 4],
+) -> Vec<super::DescriptorFieldMeta> {
+    use super::DescriptorFieldMeta;
+    use crate::inflect::NameStyle;
+    let mut field_metas = Vec::new();
+    let mut seen_names = std::collections::BTreeSet::new();
+
     if let Some(tag) = &root_attrs.tag {
         let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
         field_metas.push(DescriptorFieldMeta {
@@ -354,7 +512,6 @@ fn generate_enum_descriptor(
         });
     }
 
-    // Union of all variant fields (deduplicated by preserve-style name)
     for variant in variants {
         let fields = match &variant.data {
             Some(VariantData::Struct(fields)) => fields.as_slice(),
@@ -388,28 +545,5 @@ fn generate_enum_descriptor(
             }
         }
     }
-
-    let timestamp_descriptor = quote! { None };
-    let descriptor_impl = generate_descriptor_impl(
-        entry_name,
-        generics,
-        &struct_name,
-        &field_metas,
-        &timestamp_descriptor,
-    );
-
-    let own_style = style_const_for(root_attrs.rename_all);
-
-    let descriptors_method = quote! {
-        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(#own_style)
-            ))
-        }
-    };
-
-    super::DescriptorOutput {
-        trait_impls: descriptor_impl,
-        method: descriptors_method,
-    }
+    field_metas
 }

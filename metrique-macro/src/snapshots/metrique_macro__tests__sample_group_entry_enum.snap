@@ -440,6 +440,40 @@ const _: () = {
             }
         }
     }
+    enum RequestResultEntryDescIter<'__metrique_lt, V0, V1, V2, V3> {
+        V0(V0),
+        V1(V1),
+        V2(V2),
+        V3(V3),
+        __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
+    }
+    impl<
+        '__metrique_lt,
+        V0: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+        V1: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+        V2: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+        V3: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+    > ::std::iter::Iterator
+    for RequestResultEntryDescIter<'__metrique_lt, V0, V1, V2, V3> {
+        type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
+        fn next(&mut self) -> ::std::option::Option<Self::Item> {
+            match self {
+                RequestResultEntryDescIter::V0(iter) => iter.next(),
+                RequestResultEntryDescIter::V1(iter) => iter.next(),
+                RequestResultEntryDescIter::V2(iter) => iter.next(),
+                RequestResultEntryDescIter::V3(iter) => iter.next(),
+                RequestResultEntryDescIter::__Phantom(_) => None,
+            }
+        }
+    }
     impl RequestResultEntry {
         #[doc(hidden)]
         #[inline(always)]
@@ -800,11 +834,56 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = ::metrique::writer::core::DescriptorRef<'_>,
         > {
-            ::std::iter::once(
-                ::metrique::writer::core::DescriptorRef::from_static(
-                    RequestResultEntry::__metrique_descriptor(::metrique::STYLE_PRESERVE),
-                ),
-            )
+            #[allow(deprecated)]
+            match self {
+                RequestResultEntry::Success { .. } => {
+                    RequestResultEntryDescIter::V0(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                RequestResultEntry::__metrique_descriptor(
+                                    ::metrique::STYLE_PRESERVE,
+                                ),
+                            ),
+                        ),
+                    )
+                }
+                RequestResultEntry::Error { .. } => {
+                    RequestResultEntryDescIter::V1(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                RequestResultEntry::__metrique_descriptor(
+                                    ::metrique::STYLE_PRESERVE,
+                                ),
+                            ),
+                        ),
+                    )
+                }
+                RequestResultEntry::Timeout(__v0) => {
+                    RequestResultEntryDescIter::V2(
+                        ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    RequestResultEntry::__metrique_descriptor(
+                                        ::metrique::STYLE_PRESERVE,
+                                    ),
+                                ),
+                            )
+                            .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0)),
+                    )
+                }
+                RequestResultEntry::Cancelled(__v0, __v1) => {
+                    RequestResultEntryDescIter::V3(
+                        ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    RequestResultEntry::__metrique_descriptor(
+                                        ::metrique::STYLE_PRESERVE,
+                                    ),
+                                ),
+                            )
+                            .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
+                            .chain(::metrique::writer::Entry::descriptors(__v1)),
+                    )
+                }
+            }
         }
     }
 };
