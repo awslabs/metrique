@@ -426,7 +426,7 @@ fn generate_field_writes(
 /// e.g. `I1.chain(I2).chain(I3.chain(I4))`
 /// Chains iterators into a balanced binary tree of `.chain()` calls.
 /// Returns `::std::iter::empty()` for empty input.
-fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
+pub(crate) fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
     if iterators.is_empty() {
         return quote! { ::std::iter::empty() };
     }

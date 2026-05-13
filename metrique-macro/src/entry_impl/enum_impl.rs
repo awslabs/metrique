@@ -331,9 +331,7 @@ fn collect_tuple_sample_group(
 }
 
 /// Generates the enum iterator type for per-variant descriptor dispatch.
-/// Each variant's chain is independent (wrapped in the enum), so nesting depth
-/// is bounded by flatten fields per variant (typically 1-3), not by variant count.
-/// No need for make_binary_tree_chain here.
+/// Each variant's chain uses make_binary_tree_chain for balanced type nesting.
 /// Same pattern as sample_group: one variant per enum arm, unified via Iterator impl.
 fn generate_enum_descriptor(
     entry_name: &Ident,
@@ -478,10 +476,10 @@ fn is_flatten(kind: &MetricsFieldKind) -> bool {
 fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) -> Ts2 {
     match field_kind {
         MetricsFieldKind::Flatten { .. } => {
-            quote! { .chain(::metrique::InflectableEntry::<#ns>::descriptors(#binding)) }
+            quote! { ::metrique::InflectableEntry::<#ns>::descriptors(#binding) }
         }
         MetricsFieldKind::FlattenEntry(_) => {
-            quote! { .chain(::metrique::writer::Entry::descriptors(#binding)) }
+            quote! { ::metrique::writer::Entry::descriptors(#binding) }
         }
         _ => unreachable!("flatten_chain_expr is only called for flatten/flatten_entry"),
     }
@@ -512,13 +510,16 @@ fn build_variant_descriptor_arm(
                 (quote! { #entry_name::#variant_ident { .. } }, base.clone())
             } else {
                 let bindings: Vec<_> = flatten_fields.iter().map(|f| &f.ident).collect();
-                let chains: Vec<_> = flatten_fields
-                    .iter()
-                    .map(|f| flatten_chain_expr(&f.attrs.kind, &f.ident, ns))
-                    .collect();
+                let mut iters = vec![base.clone()];
+                iters.extend(
+                    flatten_fields
+                        .iter()
+                        .map(|f| flatten_chain_expr(&f.attrs.kind, &f.ident, ns)),
+                );
+                let tree = super::make_binary_tree_chain(iters);
                 (
                     quote! { #entry_name::#variant_ident { #(#bindings),*, .. } },
-                    quote! { #base #(#chains)* },
+                    tree,
                 )
             }
         }
@@ -540,20 +541,19 @@ fn build_variant_descriptor_arm(
                 })
                 .collect();
 
-            let chains: Vec<_> = tds
-                .iter()
-                .enumerate()
-                .filter(|(_, td)| is_flatten(&td.kind))
-                .map(|(i, td)| {
-                    let b = format_ident!("__v{}", i);
-                    flatten_chain_expr(&td.kind, &quote! { #b }, ns)
-                })
-                .collect();
+            let mut iters = vec![base.clone()];
+            iters.extend(
+                tds.iter()
+                    .enumerate()
+                    .filter(|(_, td)| is_flatten(&td.kind))
+                    .map(|(i, td)| {
+                        let b = format_ident!("__v{}", i);
+                        flatten_chain_expr(&td.kind, &quote! { #b }, ns)
+                    }),
+            );
+            let tree = super::make_binary_tree_chain(iters);
 
-            (
-                quote! { #entry_name::#variant_ident(#(#patterns),*) },
-                quote! { #base #(#chains)* },
-            )
+            (quote! { #entry_name::#variant_ident(#(#patterns),*) }, tree)
         }
         None => (quote! { #entry_name::#variant_ident }, base.clone()),
     }

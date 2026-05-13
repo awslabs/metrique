@@ -70,10 +70,9 @@ pub(crate) fn generate_struct_entry_impl(
 /// Returns `(flatten_tag_statics, flatten_chains)` where each chain is `(is_cfg_gated, tokens)`.
 /// Builds flatten chain entries for the descriptors() method.
 ///
-/// Unlike sample_group (which uses make_binary_tree_chain to avoid deep type nesting
-/// when many fields are chained), descriptor flatten chains are linear. This is fine
-/// because flatten depth is bounded by the number of flatten fields in one struct,
-/// which is typically 1-3 in practice.
+/// Returns (flatten_tag_statics, flatten_chains) where each non-cfg chain is a full
+/// iterator expression (used with make_binary_tree_chain for balanced type nesting).
+/// Cfg-gated chains use let-rebinding and are applied after the tree.
 fn build_flatten_chains(
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
@@ -124,7 +123,7 @@ fn build_flatten_chains(
                 };
 
                 if cfg_attrs.is_empty() {
-                    flatten_chains.push((false, quote! { .chain(#child_expr) }));
+                    flatten_chains.push((false, child_expr));
                 } else {
                     flatten_chains.push((
                         true,
@@ -141,7 +140,7 @@ fn build_flatten_chains(
                     ::metrique::writer::Entry::descriptors(&self.#field_ident)
                 };
                 if cfg_attrs.is_empty() {
-                    flatten_chains.push((false, quote! { .chain(#child_expr) }));
+                    flatten_chains.push((false, child_expr));
                 } else {
                     flatten_chains.push((
                         true,
@@ -172,11 +171,22 @@ fn assemble_descriptors_method(
 ) -> Ts2 {
     let has_cfg = flatten_chains.iter().any(|(cfg, _)| *cfg);
 
+    let base_expr = quote! {
+        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+            #entry_name::__metrique_descriptor(#own_style)
+        ))
+    };
+
     if has_cfg {
-        let normal: Vec<_> = flatten_chains
-            .iter()
-            .filter_map(|(cfg, t)| if !cfg { Some(t) } else { None })
-            .collect();
+        // cfg-gated chains use let-rebinding (can't participate in binary tree).
+        // Build the non-cfg part as a binary tree, then rebind cfg chains on top.
+        let mut all_iters = vec![base_expr];
+        all_iters.extend(
+            flatten_chains
+                .iter()
+                .filter_map(|(cfg, t)| if !cfg { Some(t.clone()) } else { None }),
+        );
+        let tree = super::make_binary_tree_chain(all_iters);
         let cfg_gated: Vec<_> = flatten_chains
             .iter()
             .filter_map(|(cfg, t)| if *cfg { Some(t) } else { None })
@@ -184,23 +194,20 @@ fn assemble_descriptors_method(
         quote! {
             fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
                 #(#flatten_tag_statics)*
-                let __desc = ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                    #entry_name::__metrique_descriptor(#own_style)
-                ))
-                #(#normal)*;
+                let __desc = #tree;
                 #(#cfg_gated)*
                 __desc
             }
         }
     } else {
-        let chains: Vec<_> = flatten_chains.iter().map(|(_, t)| t).collect();
+        // All chains are non-cfg: use binary tree for balanced type nesting.
+        let mut all_iters = vec![base_expr];
+        all_iters.extend(flatten_chains.iter().map(|(_, t)| t.clone()));
+        let tree = super::make_binary_tree_chain(all_iters);
         quote! {
             fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
                 #(#flatten_tag_statics)*
-                ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                    #entry_name::__metrique_descriptor(#own_style)
-                ))
-                #(#chains)*
+                #tree
             }
         }
     }

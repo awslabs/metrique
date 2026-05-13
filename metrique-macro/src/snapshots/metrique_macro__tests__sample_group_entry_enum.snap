@@ -803,8 +803,10 @@ const _: () = {
                                 ),
                             )
                         }
-                            .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
-                            .chain(::metrique::writer::Entry::descriptors(__v1)),
+                            .chain(
+                                ::metrique::InflectableEntry::<NS>::descriptors(__v0)
+                                    .chain(::metrique::writer::Entry::descriptors(__v1)),
+                            ),
                     )
                 }
             }
