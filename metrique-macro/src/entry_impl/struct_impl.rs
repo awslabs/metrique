@@ -11,12 +11,8 @@ pub(crate) fn generate_struct_entry_impl(
     let writes = generate_write_statements(fields, root_attrs);
     let sample_groups = generate_sample_group_statements(fields, root_attrs);
 
-    // Generate the descriptor infrastructure:
-    // - 4 trait impls of __StaticStyledDescriptor (one per name style: Identity, PascalCase, SnakeCase, KebabCase)
-    //   Each impl contains a static EntryDescriptor with field names resolved for that style.
-    //   This enables compile-time dispatch: when a parent calls descriptors() with a specific NS,
-    //   the trait resolves to the correct static without runtime branching.
-    // - The descriptors() method that uses the trait + chains flattened children with modifiers.
+    // Generate descriptor infrastructure: a __metrique_descriptor(style) method with 4 statics
+    // (one per name style), and a descriptors() method that selects the right one.
     let descriptor = generate_descriptor(entry_name, generics, fields, root_attrs);
 
     // Add NS as an additional generic parameter
@@ -50,11 +46,7 @@ pub(crate) fn generate_struct_entry_impl(
 
     quote! {
         const _: () = {
-            // Descriptor trait impls: one per name style, each providing a static
-            // EntryDescriptor with field names resolved for that style.
-            // The descriptors() method below uses compile-time trait dispatch
-            // (<NS as __StaticStyledDescriptor<Self>>::descriptor()) to select
-            // the right static based on the NS type parameter.
+            // Descriptor: __metrique_descriptor(style) method with 4 statics.
             #descriptor_trait_impls
 
             #[expect(deprecated)]
@@ -239,7 +231,12 @@ fn generate_descriptor(
         .map(|(style_idx, (style_name, _))| {
             let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_name);
             let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_name);
-            let style_idx_u8 = style_idx as u8;
+            let style_const = match style_idx {
+                0 => quote! { ::metrique::STYLE_PRESERVE },
+                1 => quote! { ::metrique::STYLE_PASCAL },
+                2 => quote! { ::metrique::STYLE_SNAKE },
+                _ => quote! { ::metrique::STYLE_KEBAB },
+            };
 
             let field_exprs: Vec<Ts2> = field_infos
                 .iter()
@@ -260,7 +257,7 @@ fn generate_descriptor(
                 .collect();
 
             quote! {
-                #style_idx_u8 => {
+                #style_const => {
                     #(#tag_statics)*
                     static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
                         #(#field_exprs),*
@@ -292,15 +289,15 @@ fn generate_descriptor(
     };
 
     // The struct's own descriptor uses its own rename_all (hardcoded at macro time).
-    // NS::__STYLE_INDEX is only used when a parent calls this struct's descriptors()
+    // The struct uses its own rename_all style (hardcoded at macro time).
     // via flatten (to propagate the parent's name style to this struct's fields).
     // But for the struct's own fields, the write path always uses make_ns(rename_all),
     // so the descriptor must match.
     let own_style_index = match root_attrs.rename_all {
-        crate::inflect::NameStyle::Preserve => 0u8,
-        crate::inflect::NameStyle::PascalCase => 1u8,
-        crate::inflect::NameStyle::SnakeCase => 2u8,
-        crate::inflect::NameStyle::KebabCase => 3u8,
+        crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },
+        crate::inflect::NameStyle::PascalCase => quote! { ::metrique::STYLE_PASCAL },
+        crate::inflect::NameStyle::SnakeCase => quote! { ::metrique::STYLE_SNAKE },
+        crate::inflect::NameStyle::KebabCase => quote! { ::metrique::STYLE_KEBAB },
     };
 
     let descriptors_method = quote! {

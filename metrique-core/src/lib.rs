@@ -14,7 +14,10 @@ mod inflectable_entry_impls;
 mod namestyle;
 
 pub use atomics::{Counter, CounterGuard, OwnedCounterGuard};
-pub use namestyle::{DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, SnakeCase};
+pub use namestyle::{
+    DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, STYLE_KEBAB, STYLE_PASCAL,
+    STYLE_PRESERVE, STYLE_SNAKE, SnakeCase,
+};
 
 /// Close a given value
 ///

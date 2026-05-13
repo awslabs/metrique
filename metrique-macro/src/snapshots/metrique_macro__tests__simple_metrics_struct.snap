@@ -35,7 +35,7 @@ const _: () = {
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
             match __style {
-                0u8 => {
+                ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
@@ -68,7 +68,7 @@ const _: () = {
                     );
                     &__METRIQUE_DESC_PRESERVE
                 }
-                1u8 => {
+                ::metrique::STYLE_PASCAL => {
                     static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
@@ -101,7 +101,7 @@ const _: () = {
                     );
                     &__METRIQUE_DESC_PASCAL
                 }
-                2u8 => {
+                ::metrique::STYLE_SNAKE => {
                     static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
@@ -134,7 +134,7 @@ const _: () = {
                     );
                     &__METRIQUE_DESC_SNAKE
                 }
-                3u8 => {
+                ::metrique::STYLE_KEBAB => {
                     static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
@@ -285,7 +285,9 @@ const _: () = {
         > {
             ::std::iter::once(
                 ::metrique::writer::core::DescriptorRef::from_static(
-                    RequestMetricsEntry::__metrique_descriptor(0u8),
+                    RequestMetricsEntry::__metrique_descriptor(
+                        ::metrique::STYLE_PRESERVE,
+                    ),
                 ),
             )
         }

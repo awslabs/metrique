@@ -20,8 +20,8 @@ use crate::FieldTagAttr;
 
 /// Output of descriptor generation for a struct or enum entry.
 pub(crate) struct DescriptorOutput {
-    /// Trait impls (`__StaticStyledDescriptor` for each name style).
-    /// These go outside the `InflectableEntry` impl block but inside `const _: ()`.
+    /// The `__metrique_descriptor(style)` inherent impl with 4 statics.
+    /// Goes outside the `InflectableEntry` impl block but inside `const _: ()`.
     pub(crate) trait_impls: Ts2,
     /// The `fn descriptors()` method body.
     /// Goes inside the `InflectableEntry` impl block.

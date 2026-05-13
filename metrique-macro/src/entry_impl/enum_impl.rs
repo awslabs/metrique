@@ -334,7 +334,6 @@ fn generate_enum_descriptor(
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
-    // Returns (trait_impls, descriptors_method) same as struct version.
     use crate::inflect::NameStyle;
     use std::collections::BTreeSet;
 
@@ -435,7 +434,12 @@ fn generate_enum_descriptor(
     let trait_impls: Vec<Ts2> = (0..4).map(|style_idx| {
         let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
         let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
-        let style_idx_u8 = style_idx as u8;
+        let style_const = match style_idx {
+            0 => quote! { ::metrique::STYLE_PRESERVE },
+            1 => quote! { ::metrique::STYLE_PASCAL },
+            2 => quote! { ::metrique::STYLE_SNAKE },
+            _ => quote! { ::metrique::STYLE_KEBAB },
+        };
 
         let field_exprs: Vec<Ts2> = field_infos.iter().map(|fi| {
             let name = &fi.names[style_idx];
@@ -452,7 +456,7 @@ fn generate_enum_descriptor(
         }).collect();
 
         quote! {
-            #style_idx_u8 => {
+            #style_const => {
                 #(#tag_statics)*
                 static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
                     #(#field_exprs),*
@@ -482,10 +486,17 @@ fn generate_enum_descriptor(
         }
     };
 
+    let own_style_index = match root_attrs.rename_all {
+        crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },
+        crate::inflect::NameStyle::PascalCase => quote! { ::metrique::STYLE_PASCAL },
+        crate::inflect::NameStyle::SnakeCase => quote! { ::metrique::STYLE_SNAKE },
+        crate::inflect::NameStyle::KebabCase => quote! { ::metrique::STYLE_KEBAB },
+    };
+
     let descriptors_method = quote! {
         fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(NS::__STYLE_INDEX)
+                #entry_name::__metrique_descriptor(#own_style_index)
             ))
         }
     };
