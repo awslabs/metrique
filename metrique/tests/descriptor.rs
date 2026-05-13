@@ -563,3 +563,57 @@ fn all_ignored_fields_produces_empty_descriptor() {
     assert_eq!(descriptors.len(), 1);
     assert_eq!(descriptors[0].fields_len(), 0);
 }
+
+#[metrics(subfield)]
+struct EnumChild {
+    child_val: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+enum EnumWithFlatten {
+    Simple {
+        count: u64,
+    },
+    WithChild {
+        count: u64,
+        #[metrics(flatten)]
+        child: EnumChild,
+    },
+}
+
+#[test]
+fn enum_variant_with_flatten_chains_child_descriptor() {
+    use metrique::writer::Entry;
+
+    let m = EnumWithFlatten::WithChild {
+        count: 1,
+        child: EnumChild { child_val: 2 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // Base descriptor (union of non-flatten fields) + child's descriptor
+    assert!(
+        descriptors.len() >= 2,
+        "expected base + child, got {}",
+        descriptors.len()
+    );
+
+    // Child's descriptor has its field
+    let child_fields: Vec<_> = descriptors[1].fields().collect();
+    assert_eq!(child_fields[0].base_name(), "child_val");
+}
+
+#[test]
+fn enum_variant_without_flatten_yields_one_descriptor() {
+    use metrique::writer::Entry;
+
+    let m = EnumWithFlatten::Simple { count: 1 };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // Only the base descriptor, no flatten children
+    assert_eq!(descriptors.len(), 1);
+}
