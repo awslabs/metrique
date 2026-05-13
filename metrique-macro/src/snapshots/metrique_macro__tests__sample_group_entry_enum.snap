@@ -201,7 +201,7 @@ const _: () = {
                     );
                     &__METRIQUE_DESC_KEBAB
                 }
-                _ => unreachable!(),
+                _ => unreachable!("unknown descriptor style index"),
             }
         }
     }
@@ -562,7 +562,7 @@ const _: () = {
                     );
                     &__METRIQUE_DESC_KEBAB
                 }
-                _ => unreachable!(),
+                _ => unreachable!("unknown descriptor style index"),
             }
         }
     }

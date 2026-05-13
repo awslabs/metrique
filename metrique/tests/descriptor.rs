@@ -489,3 +489,32 @@ fn flatten_tag_propagation_with_parent_default() {
                 && t.state() == FieldTagState::Present)
     );
 }
+
+#[metrics(subfield)]
+struct CfgChild {
+    cfg_value: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct CfgFlattenParent {
+    own: u64,
+    #[cfg(test)]
+    #[metrics(flatten)]
+    child: CfgChild,
+}
+
+#[test]
+fn cfg_gated_flatten_included_in_test() {
+    let m = CfgFlattenParent {
+        own: 1,
+        child: CfgChild { cfg_value: 2 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // In test cfg, child is included
+    assert_eq!(descriptors.len(), 2);
+    assert_eq!(descriptors[0].fields_len(), 1); // parent's own field
+    assert_eq!(descriptors[1].fields_len(), 1); // child's field
+}

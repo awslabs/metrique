@@ -92,6 +92,7 @@ fn generate_descriptor(
             }
             MetricsFieldKind::Flatten { prefix, .. } => {
                 let field_ident = &field.ident;
+                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
                 // Use the concrete NS derived from the parent's rename_all (not the generic NS).
                 // This matches how write() calls the child.
                 let ns = make_ns(root_attrs.rename_all, field.span);
@@ -123,16 +124,35 @@ fn generate_descriptor(
                     None
                 };
 
-                if prefix_expr.is_some() || tags_expr.is_some() {
-                    flatten_chains.push(quote! {
-                        .chain(
+                if cfg_attrs.is_empty() {
+                    if prefix_expr.is_some() || tags_expr.is_some() {
+                        flatten_chains.push(quote! {
+                            .chain(
+                                ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
+                                    .map(|d| d #prefix_expr #tags_expr)
+                            )
+                        });
+                    } else {
+                        flatten_chains.push(quote! {
+                            .chain(::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident))
+                        });
+                    }
+                } else {
+                    // cfg-gated flatten: use let-rebinding so the chain only exists when cfg is active.
+                    // When cfg is false, the let doesn't execute and __desc keeps its previous type.
+                    let chain_expr = if prefix_expr.is_some() || tags_expr.is_some() {
+                        quote! {
                             ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
                                 .map(|d| d #prefix_expr #tags_expr)
-                        )
-                    });
-                } else {
+                        }
+                    } else {
+                        quote! {
+                            ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
+                        }
+                    };
+                    // This gets emitted as a let-rebinding statement AFTER the initial chain
                     flatten_chains.push(quote! {
-                        .chain(::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident))
+                        #(#cfg_attrs)* let __desc = __desc.chain(#chain_expr);
                     });
                 }
             }
@@ -173,13 +193,40 @@ fn generate_descriptor(
     // The struct uses its own rename_all style (hardcoded at macro time).
     let own_style = style_const_for(root_attrs.rename_all);
 
-    let descriptors_method = quote! {
-        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-            #(#flatten_tag_statics)*
-            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(#own_style)
-            ))
-            #(#flatten_chains)*
+    // Split flatten chains: normal chains go in the expression, cfg-gated ones use let-rebinding.
+    let has_cfg_chains = flatten_chains
+        .iter()
+        .any(|c| c.to_string().contains("let __desc"));
+    let descriptors_method = if has_cfg_chains {
+        // Use let-rebinding pattern for cfg support
+        let normal_chains: Vec<_> = flatten_chains
+            .iter()
+            .filter(|c| !c.to_string().contains("let __desc"))
+            .collect();
+        let cfg_rebindings: Vec<_> = flatten_chains
+            .iter()
+            .filter(|c| c.to_string().contains("let __desc"))
+            .collect();
+        quote! {
+            fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+                #(#flatten_tag_statics)*
+                let __desc = ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                    #entry_name::__metrique_descriptor(#own_style)
+                ))
+                #(#normal_chains)*;
+                #(#cfg_rebindings)*
+                __desc
+            }
+        }
+    } else {
+        quote! {
+            fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+                #(#flatten_tag_statics)*
+                ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                    #entry_name::__metrique_descriptor(#own_style)
+                ))
+                #(#flatten_chains)*
+            }
         }
     };
 

@@ -1,6 +1,6 @@
 # Entry descriptors and field tags
 
-> **Status: design, not yet implemented.**
+> **Status: partially implemented.** Field tags, descriptors, and flatten chaining are implemented. Field shapes are deferred (all Opaque).
 
 A small system on top of metrique's existing `Entry` / `Value` / `CloseValue` traits that lets sinks introspect the structure of macro-derived entries.
 
@@ -17,7 +17,7 @@ None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sink
 - **Field tag**: a user-defined marker type (e.g. `audit::Export`, `dial9::Emit`) that a sink crate declares and that users apply to fields via `#[metrics(field_tag(T))]`. Sinks read tags off the descriptor to decide per-field behaviour. Metrique does not interpret tag identity.
 - **`default_field_tag` / `field_tag`**: struct-level and field-level attributes for applying tags. `skip(T)` is an argument form that inverts a default. Flatten sites may carry `field_tag(...)` that propagates to flattened children as a default.
 - **`FieldShape`**: the closed/emitted shape of a field (scalar, optional, list, dynamic-key map, or opaque). Describes what the sink will see, not the raw Rust type.
-- **`DescriptorRef`**: the handle yielded by `Entry::descriptors()`. Opaque; carries a stable `DescriptorId` for cache keying and a borrow of the underlying `EntryDescriptor`.
+- **`DescriptorRef`**: the handle yielded by `Entry::descriptors()`. Provides field access via `FieldView`, carries a stable `DescriptorId` for cache keying.
 - **`DescriptorId`**: an opaque identifier for a descriptor, stable within a single process lifetime. Used by sinks to cache derived data.
 
 ## What it enables

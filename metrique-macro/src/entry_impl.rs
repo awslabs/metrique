@@ -123,7 +123,7 @@ pub(crate) fn generate_descriptor_impl(
                 #(#tag_statics)*
                 match __style {
                     #(#style_arms)*
-                    _ => unreachable!()
+                    _ => unreachable!("unknown descriptor style index")
                 }
             }
         }

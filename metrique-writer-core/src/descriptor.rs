@@ -17,6 +17,7 @@ use crate::Unit;
 // ─── Internal storage types (pub for macro, sinks use DescriptorRef) ────────
 
 /// Static descriptor storage for a macro-derived entry.
+#[derive(Debug)]
 pub struct EntryDescriptor {
     name: &'static str,
     fields: &'static [FieldDescriptor],
@@ -40,6 +41,7 @@ impl EntryDescriptor {
 }
 
 /// Static field storage. Stores a single resolved name for one name style.
+#[derive(Debug)]
 pub struct FieldDescriptor {
     name: &'static str,
     tags: &'static [ResolvedFieldTag],
@@ -66,6 +68,7 @@ impl FieldDescriptor {
 }
 
 /// Describes the timestamp field of an entry.
+#[derive(Debug)]
 pub struct TimestampDescriptor {
     name: &'static str,
 }
@@ -104,7 +107,7 @@ impl TimestampDescriptor {
 ///     }
 /// }
 /// ```
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DescriptorRef<'a> {
     descriptor: &'a EntryDescriptor,
     id: DescriptorId,
@@ -170,7 +173,7 @@ impl<'a> DescriptorRef<'a> {
 }
 
 /// A view of a single field with modifiers applied.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FieldView<'a> {
     desc: &'a DescriptorRef<'a>,
     idx: usize,
@@ -328,6 +331,7 @@ impl<'a> ShapeRef<'a> {
 // ─── Tag types ──────────────────────────────────────────────────────────────
 
 /// A resolved field tag.
+#[derive(Debug)]
 pub struct ResolvedFieldTag {
     tag_id: TypeId,
     state: FieldTagState,
