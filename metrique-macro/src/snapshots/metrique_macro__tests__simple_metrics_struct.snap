@@ -34,11 +34,11 @@ const _: () = {
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
+            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
-                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "operation",
@@ -69,9 +69,6 @@ const _: () = {
                     &__METRIQUE_DESC_PRESERVE
                 }
                 ::metrique::STYLE_PASCAL => {
-                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "Operation",
@@ -102,9 +99,6 @@ const _: () = {
                     &__METRIQUE_DESC_PASCAL
                 }
                 ::metrique::STYLE_SNAKE => {
-                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "operation",
@@ -135,9 +129,6 @@ const _: () = {
                     &__METRIQUE_DESC_SNAKE
                 }
                 ::metrique::STYLE_KEBAB => {
-                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
                     static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "operation",

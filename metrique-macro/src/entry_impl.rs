@@ -28,6 +28,117 @@ pub(crate) struct DescriptorOutput {
     pub(crate) method: Ts2,
 }
 
+/// Metadata for a single field in the descriptor, collected at macro time.
+pub(crate) struct DescriptorFieldMeta {
+    /// Field name in each style: [preserve, pascal, snake, kebab]
+    pub(crate) names: [String; 4],
+    /// Resolved tag token streams for this field
+    pub(crate) tags: Vec<Ts2>,
+    /// Unit expression (None or Some(<Unit>::UNIT))
+    pub(crate) unit_expr: Ts2,
+}
+
+/// Generates the `__metrique_descriptor(style: u8)` inherent impl from collected field metadata.
+///
+/// Produces a match with 4 arms, each containing a static `EntryDescriptor` with field names
+/// resolved for that style. The style constants from `metrique-core` are used as match patterns.
+pub(crate) fn generate_descriptor_impl(
+    entry_name: &Ident,
+    generics: &syn::Generics,
+    struct_name: &str,
+    fields: &[DescriptorFieldMeta],
+    timestamp_descriptor: &Ts2,
+) -> Ts2 {
+    let num_fields = fields.len();
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+
+    // Generate tag statics (shared across all 4 style arms)
+    let tag_statics: Vec<Ts2> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let ident = format_ident!("__METRIQUE_TAGS_{}", i);
+            let tags = &f.tags;
+            let num_tags = tags.len();
+            quote! {
+                static #ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [
+                    #(#tags),*
+                ];
+            }
+        })
+        .collect();
+
+    let style_names = ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
+    let style_arms: Vec<Ts2> = (0..4)
+        .map(|style_idx| {
+            let style_const = match style_idx {
+                0 => quote! { ::metrique::STYLE_PRESERVE },
+                1 => quote! { ::metrique::STYLE_PASCAL },
+                2 => quote! { ::metrique::STYLE_SNAKE },
+                _ => quote! { ::metrique::STYLE_KEBAB },
+            };
+            let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
+            let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
+
+            let field_exprs: Vec<Ts2> = fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let name = &f.names[style_idx];
+                    let tags_ident = format_ident!("__METRIQUE_TAGS_{}", i);
+                    let unit_expr = &f.unit_expr;
+                    quote! {
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            #name,
+                            &#tags_ident,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            #unit_expr,
+                        )
+                    }
+                })
+                .collect();
+
+            quote! {
+                #style_const => {
+                    static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
+                        #(#field_exprs),*
+                    ];
+                    static #desc_ident: ::metrique::writer::core::EntryDescriptor =
+                        ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            #struct_name,
+                            &#fields_ident,
+                            #timestamp_descriptor,
+                        );
+                    &#desc_ident
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        impl #impl_generics #entry_name #ty_generics #where_clause {
+            #[doc(hidden)]
+            fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
+                #(#tag_statics)*
+                match __style {
+                    #(#style_arms)*
+                    _ => unreachable!()
+                }
+            }
+        }
+    }
+}
+
+/// Returns the style constant token stream for a given `NameStyle`.
+pub(crate) fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
+    match style {
+        crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },
+        crate::inflect::NameStyle::PascalCase => quote! { ::metrique::STYLE_PASCAL },
+        crate::inflect::NameStyle::SnakeCase => quote! { ::metrique::STYLE_SNAKE },
+        crate::inflect::NameStyle::KebabCase => quote! { ::metrique::STYLE_KEBAB },
+    }
+}
+
 pub(crate) fn resolve_field_tags(
     field_tags: &[FieldTagAttr],
     default_tags: &[FieldTagAttr],

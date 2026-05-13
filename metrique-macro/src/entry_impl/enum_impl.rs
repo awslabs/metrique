@@ -334,19 +334,13 @@ fn generate_enum_descriptor(
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
+    use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
     use crate::inflect::NameStyle;
     use std::collections::BTreeSet;
 
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
-
-    struct FieldInfo {
-        names: [String; 4],
-        tags: Vec<Ts2>,
-        tags_ident: Ident,
-        unit_expr: Ts2,
-    }
-    let mut field_infos = Vec::new();
-    let mut field_idx = 0usize;
+    let mut field_metas = Vec::new();
+    let mut seen_names = BTreeSet::new();
 
     let styles = [
         NameStyle::Preserve,
@@ -358,18 +352,14 @@ fn generate_enum_descriptor(
     // Tag field comes first (if present)
     if let Some(tag) = &root_attrs.tag {
         let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
-        let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
-        field_infos.push(FieldInfo {
+        field_metas.push(DescriptorFieldMeta {
             names,
             tags: vec![],
-            tags_ident,
             unit_expr: quote! { None },
         });
-        field_idx += 1;
     }
 
     // Union of all variant fields (deduplicated by preserve-style name)
-    let mut seen_names = BTreeSet::new();
     for variant in variants {
         let fields = match &variant.data {
             Some(VariantData::Struct(fields)) => fields.as_slice(),
@@ -384,119 +374,41 @@ fn generate_enum_descriptor(
                     if !seen_names.insert(preserve_name) {
                         continue;
                     }
-
                     let names: [String; 4] =
                         std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
-
                     let tags =
                         resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
-                    let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
-
                     let unit_expr = match unit {
                         Some(u) => {
                             quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) }
                         }
                         None => quote! { None },
                     };
-
-                    field_infos.push(FieldInfo {
+                    field_metas.push(DescriptorFieldMeta {
                         names,
                         tags,
-                        tags_ident,
                         unit_expr,
                     });
-                    field_idx += 1;
                 }
             }
         }
     }
 
-    let num_fields = field_infos.len();
+    let timestamp_descriptor = quote! { None };
+    let descriptor_impl = generate_descriptor_impl(
+        entry_name,
+        generics,
+        &struct_name,
+        &field_metas,
+        &timestamp_descriptor,
+    );
 
-    // Tag statics (shared across all 4 descriptors)
-    let tag_statics: Vec<Ts2> = field_infos
-        .iter()
-        .map(|fi| {
-            let ident = &fi.tags_ident;
-            let tags = &fi.tags;
-            let num_tags = tags.len();
-            quote! {
-                static #ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [
-                    #(#tags),*
-                ];
-            }
-        })
-        .collect();
-
-    // Generate 4 trait impls
-    let style_names = ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
-
-    let trait_impls: Vec<Ts2> = (0..4).map(|style_idx| {
-        let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
-        let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
-        let style_const = match style_idx {
-            0 => quote! { ::metrique::STYLE_PRESERVE },
-            1 => quote! { ::metrique::STYLE_PASCAL },
-            2 => quote! { ::metrique::STYLE_SNAKE },
-            _ => quote! { ::metrique::STYLE_KEBAB },
-        };
-
-        let field_exprs: Vec<Ts2> = field_infos.iter().map(|fi| {
-            let name = &fi.names[style_idx];
-            let tags_ident = &fi.tags_ident;
-            let unit_expr = &fi.unit_expr;
-            quote! {
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    #name,
-                    &#tags_ident,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    #unit_expr,
-                )
-            }
-        }).collect();
-
-        quote! {
-            #style_const => {
-                #(#tag_statics)*
-                static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
-                    #(#field_exprs),*
-                ];
-                static #desc_ident: ::metrique::writer::core::EntryDescriptor =
-                    ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        #struct_name,
-                        &#fields_ident,
-                        None,
-                    );
-                &#desc_ident
-            }
-        }
-    }).collect();
-
-    let (impl_generics_desc, ty_generics_desc, where_clause_desc) = generics.split_for_impl();
-
-    let descriptor_impl = quote! {
-        impl #impl_generics_desc #entry_name #ty_generics_desc #where_clause_desc {
-            #[doc(hidden)]
-            fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
-                match __style {
-                    #(#trait_impls)*
-                    _ => unreachable!()
-                }
-            }
-        }
-    };
-
-    let own_style_index = match root_attrs.rename_all {
-        crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },
-        crate::inflect::NameStyle::PascalCase => quote! { ::metrique::STYLE_PASCAL },
-        crate::inflect::NameStyle::SnakeCase => quote! { ::metrique::STYLE_SNAKE },
-        crate::inflect::NameStyle::KebabCase => quote! { ::metrique::STYLE_KEBAB },
-    };
+    let own_style = style_const_for(root_attrs.rename_all);
 
     let descriptors_method = quote! {
         fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(#own_style_index)
+                #entry_name::__metrique_descriptor(#own_style)
             ))
         }
     };
