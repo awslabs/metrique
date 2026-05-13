@@ -277,28 +277,15 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 
 When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default tags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
 
-### Name style resolution
+### How flatten propagates naming and tags
 
-Each entry type has 4 static descriptors (one per name style). A `__metrique_descriptor(style: u8)` inherent method selects the right one. Named constants (`STYLE_PRESERVE`, `STYLE_PASCAL`, `STYLE_SNAKE`, `STYLE_KEBAB`) are the single source of truth. The struct's own `descriptors()` uses its own `rename_all` index. Flatten chains call the child's `descriptors()` with the parent's concrete NS (from `make_ns(root_attrs.rename_all, ...)`), matching the write path's name style propagation.
+When a parent flattens a child, three things propagate to the child's descriptor:
 
-### Prefix handling
+**Name style.** The parent's `rename_all` determines which of the child's pre-computed name variants is used. Each entry has a static descriptor per name style; the parent selects the one matching its own convention.
 
-Flatten-site prefixes (e.g., `#[metrics(flatten, prefix = "http_")]`) are precomputed at macro time and applied as modifiers on the child's descriptor. Nested flatten-site prefixes stack. `FieldView::name_parts()` yields all prefixes then the base name; sinks concatenate to get the full field name.
+**Prefix.** A flatten-site prefix (e.g., `#[metrics(flatten, prefix = "http_")]`) is prepended to the child's field names. Nested prefixes stack. Container-level prefixes do not propagate ([#160](https://github.com/awslabs/metrique/issues/160)).
 
-Container-level prefixes (on the struct itself) are baked into the struct's own static field names. They do not propagate to flattened children (see [#160](https://github.com/awslabs/metrique/issues/160)).
-
-### Tag propagation through flatten
-
-When a parent flattens a child, the macro merges the flatten-site `field_tag` attributes with the parent's `default_field_tag` into a defaults layer applied to the child's descriptor.
-
-At read time, `FieldView::tags()` resolves precedence:
-
-1. Child field-level `field_tag` wins
-2. Child struct-level `default_field_tag` wins
-3. Flatten-site `field_tag` fills gaps
-4. Parent `default_field_tag` fills remaining gaps
-
-Parents can only add defaults; they cannot override a child's explicit tag decisions.
+**Tags.** The parent's `default_field_tag` and any flatten-site `field_tag` are merged into a defaults layer. At read time, the child's own tags always win; defaults only fill in for tag ids the child didn't specify. Parents cannot override a child's explicit tag decisions.
 
 ## Validation
 
