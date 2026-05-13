@@ -201,51 +201,33 @@ Full resolution rules including worked inheritance and flatten cases are documen
 ┌─────────────────────────────────────────────────────────────┐
 │ COMPILE TIME: metrique macro                                │
 │                                                             │
-│ For each macro-derived entry:                               │
-│   impl Entry for ClosedX (as today)                         │
-│   static EntryDescriptor                                    │
-│   impl Entry::descriptors() yielding DescriptorRef          │
+│ For each entry type:                                        │
+│   4 static EntryDescriptors (one per name style)            │
+│   impl descriptors() -> chains own + flattened children     │
+│   For enums: per-variant statics + enum iterator type       │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ RUNTIME: construction                                       │
+│ RUNTIME: sink receives BoxEntry                             │
 │                                                             │
-│ Fields populated normally.                                  │
+│  descriptor-aware sink calls entry.descriptors():           │
+│    yields one or more DescriptorRef segments in write order  │
+│                                                             │
+│  Simple struct:    [own fields]                             │
+│  With flatten:     [own fields] [child1] [child2] ...       │
+│  AggregationResult: [key fields] [aggregated fields]        │
+│  Enum variant:     [variant's fields] [variant's children]  │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
-│ RUNTIME: append-on-drop / close                             │
+│ RUNTIME: sink walks segments + Entry::write in parallel     │
 │                                                             │
-│ CloseValue closes all fields.                               │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│ RUNTIME: BackgroundQueue / tee                              │
-│                                                             │
-│ BoxEntry flows to one or more sinks.                        │
-│                                                             │
-│  ├── descriptor-unaware sink                                │
-│  │     calls Entry::write; never calls descriptors()        │
-│  │                                                          │
-│  └── descriptor-aware sink                                  │
-│        calls entry.descriptors()                            │
-│          empty  -> skip (hand-written entry, opaque)        │
-│          yields -> first-use structural checks, cache on    │
-│                    id(), then proceed                        │
-└─────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│ RUNTIME: inside a descriptor-aware sink                     │
-│                                                             │
-│ entry.write(SinkWriter { descs, tag: audit::Export }):      │
-│   walks Entry::write; the adapter consults descriptors      │
-│   (cached by DescriptorId) to decide per-field behaviour:   │
-│     - field tagged with the sink's tag -> encode            │
-│     - otherwise                         -> ignore           │
+│  for desc in entry.descriptors():                           │
+│    for field in desc.fields():                              │
+│      check field.tags() -> encode or skip                   │
+│      consume next value from Entry::write stream            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -367,14 +349,6 @@ A typed source-extraction system would add:
 - A `desc.source::<C: SourceTag>(entry: &dyn Any) -> Option<C::Snapshot>` API on the descriptor, returning a typed snapshot.
 - An optional `register_descriptor` hook that lets a sink discover, at program-startup time, every descriptor in the binary declaring its source tag. Backed by a link-time mechanism (e.g. `linkme`) behind the hook, so the public API does not pin the mechanism.
 - A `no_write` field attribute, so source-carrying fields can be retained in the closed value without appearing in normal emission.
-
-The trade-offs were worked through in earlier revisions of this design and are captured in the review doc's "Deferred: typed source extraction" section. The short version:
-
-- Wiring the hook into the `SourceTag` trait means metrique's macro emits one registration per `source(T)` declaration per descriptor whether the hook is overridden or not. Small (one pointer + linkme slot per declaration) but non-zero binary cost for every user.
-- Skipping the hook entirely and keeping only the typed extraction API forgoes binary-wide discovery; sinks can still validate per-descriptor on first use.
-- Skipping the whole source system and letting sinks read structural fields by tag-based marker (e.g. a `Dial9Context`-style struct whose fields carry a `dial9::Context` tag) works for the initial dial9 integration without any metrique surface beyond what is already shipped.
-
-The initial release takes the last path. When a second consumer (OTEL, other) materialises, the design-space discussion reopens here.
 
 Forward-compat: users of the V1 tag-based shape do not need to migrate when the source system lands. The `#[metrics(source(T))]` attribute would be additive; existing declarations continue to work.
 
