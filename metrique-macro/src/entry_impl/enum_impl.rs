@@ -331,6 +331,9 @@ fn collect_tuple_sample_group(
 }
 
 /// Generates the enum iterator type for per-variant descriptor dispatch.
+/// Each variant's chain is independent (wrapped in the enum), so nesting depth
+/// is bounded by flatten fields per variant (typically 1-3), not by variant count.
+/// No need for make_binary_tree_chain here.
 /// Same pattern as sample_group: one variant per enum arm, unified via Iterator impl.
 fn generate_enum_descriptor(
     entry_name: &Ident,
@@ -480,7 +483,7 @@ fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) ->
         MetricsFieldKind::FlattenEntry(_) => {
             quote! { .chain(::metrique::writer::Entry::descriptors(#binding)) }
         }
-        _ => unreachable!(),
+        _ => unreachable!("flatten_chain_expr is only called for flatten/flatten_entry"),
     }
 }
 

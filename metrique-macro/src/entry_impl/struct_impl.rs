@@ -68,6 +68,12 @@ pub(crate) fn generate_struct_entry_impl(
 /// - A cfg-gated let-rebinding (`#[cfg(...)] let __desc = __desc.chain(...)`) for cfg fields
 ///
 /// Returns `(flatten_tag_statics, flatten_chains)` where each chain is `(is_cfg_gated, tokens)`.
+/// Builds flatten chain entries for the descriptors() method.
+///
+/// Unlike sample_group (which uses make_binary_tree_chain to avoid deep type nesting
+/// when many fields are chained), descriptor flatten chains are linear. This is fine
+/// because flatten depth is bounded by the number of flatten fields in one struct,
+/// which is typically 1-3 in practice.
 fn build_flatten_chains(
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
