@@ -17,7 +17,7 @@ pub(crate) fn generate_struct_entry_impl(
     //   This enables compile-time dispatch: when a parent calls descriptors() with a specific NS,
     //   the trait resolves to the correct static without runtime branching.
     // - The descriptors() method that uses the trait + chains flattened children with modifiers.
-    let descriptor = generate_descriptor(entry_name, fields, root_attrs);
+    let descriptor = generate_descriptor(entry_name, generics, fields, root_attrs);
 
     // Add NS as an additional generic parameter
     let mut impl_generics = generics.clone();
@@ -77,6 +77,7 @@ pub(crate) fn generate_struct_entry_impl(
 ///   prefix/tag modifiers applied.
 fn generate_descriptor(
     entry_name: &Ident,
+    generics: &syn::Generics,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
@@ -277,8 +278,10 @@ fn generate_descriptor(
         })
         .collect();
 
+    let (impl_generics_desc, ty_generics_desc, where_clause_desc) = generics.split_for_impl();
+
     let descriptor_impl = quote! {
-        impl #entry_name {
+        impl #impl_generics_desc #entry_name #ty_generics_desc #where_clause_desc {
             #[doc(hidden)]
             fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
                 match __style {

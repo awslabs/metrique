@@ -28,12 +28,15 @@ fn basic_descriptor_fields() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc_ref = entry.descriptors().next().expect("should have descriptor");
-    let desc = desc_ref.get();
+    let desc = desc_ref;
 
     assert_eq!(desc.name(), "BasicMetrics");
-    assert_eq!(desc.fields().len(), 2);
-    assert_eq!(desc.fields()[0].name(), "RequestId");
-    assert_eq!(desc.fields()[1].name(), "Count");
+    assert_eq!(desc.fields_len(), 2);
+    assert_eq!(
+        desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "RequestId"
+    );
+    assert_eq!(desc.fields().collect::<Vec<_>>()[1].base_name(), "Count");
     assert!(desc.timestamp().is_none());
 }
 
@@ -53,15 +56,15 @@ fn descriptor_with_timestamp() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc_ref = entry.descriptors().next().unwrap();
-    let desc = desc_ref.get();
+    let desc = desc_ref;
 
     assert_eq!(desc.name(), "WithTimestamp");
     // timestamp is excluded from fields()
-    assert_eq!(desc.fields().len(), 1);
-    assert_eq!(desc.fields()[0].name(), "Value");
+    assert_eq!(desc.fields_len(), 1);
+    assert_eq!(desc.fields().collect::<Vec<_>>()[0].base_name(), "Value");
     // but available via timestamp()
     let ts = desc.timestamp().unwrap();
-    assert_eq!(ts.name(), "start");
+    assert_eq!(ts.base_name(), "start");
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -78,9 +81,9 @@ fn descriptor_with_unit() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
-    let field = &desc.get().fields()[0];
+    let field = &desc.fields().collect::<Vec<_>>()[0];
 
-    assert_eq!(field.name(), "Latency");
+    assert_eq!(field.base_name(), "Latency");
     assert!(field.unit().is_some());
 }
 
@@ -102,7 +105,7 @@ fn tag_resolution_default_and_skip() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
-    let fields = desc.get().fields();
+    let fields = desc.fields();
 
     let audit_id = TypeId::of::<AuditExport>();
 
@@ -144,13 +147,13 @@ fn multiple_tags_on_field() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
-    let fields = desc.get().fields();
+    let fields = desc.fields();
 
     let audit_id = TypeId::of::<AuditExport>();
     let dial9_id = TypeId::of::<Dial9Emit>();
 
     // important: both tags present
-    assert_eq!(fields[0].tags().len(), 2);
+    assert_eq!(fields[0].tags().count(), 2);
     assert!(
         fields[0]
             .tags()
@@ -165,8 +168,8 @@ fn multiple_tags_on_field() {
     );
 
     // trace_only: only Dial9Emit
-    assert_eq!(fields[1].tags().len(), 1);
-    assert_eq!(fields[1].tags()[0].tag_id(), dial9_id);
+    assert_eq!(fields[1].tags().count(), 1);
+    assert_eq!(fields[1].tags().collect::<Vec<_>>()[0].tag_id(), dial9_id);
 
     // untagged: no tags
     assert!(fields[2].tags().is_empty());
@@ -189,8 +192,8 @@ fn ignored_fields_excluded_from_descriptor() {
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
 
-    assert_eq!(desc.get().fields().len(), 1);
-    assert_eq!(desc.get().fields()[0].name(), "Visible");
+    assert_eq!(desc.fields_len(), 1);
+    assert_eq!(desc.fields().collect::<Vec<_>>()[0].base_name(), "Visible");
 }
 
 #[test]
@@ -227,7 +230,7 @@ fn boxentry_forwards_descriptor() {
         .descriptors()
         .next()
         .expect("BoxEntry should forward descriptor");
-    assert_eq!(desc.get().name(), "BasicMetrics");
+    assert_eq!(desc.name(), "BasicMetrics");
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -243,7 +246,10 @@ fn field_name_override_in_descriptor() {
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
 
-    assert_eq!(desc.get().fields()[0].name(), "CustomName");
+    assert_eq!(
+        desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "CustomName"
+    );
 }
 
 #[metrics(prefix = "api_", rename_all = "PascalCase")]
@@ -258,7 +264,10 @@ fn prefix_applied_in_descriptor() {
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
 
-    assert_eq!(desc.get().fields()[0].name(), "ApiLatency");
+    assert_eq!(
+        desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "ApiLatency"
+    );
 }
 
 #[metrics(rename_all = "PascalCase", subfield)]
@@ -291,20 +300,29 @@ fn flatten_child_descriptors_chained() {
     assert_eq!(descriptors.len(), 2, "parent + flattened child");
 
     // First descriptor: parent's own fields
-    let parent_desc = descriptors[0].get();
+    let parent_desc = &descriptors[0];
     assert_eq!(parent_desc.name(), "ParentWithFlatten");
-    assert_eq!(parent_desc.fields().len(), 1);
-    assert_eq!(parent_desc.fields()[0].name(), "OwnField");
+    assert_eq!(parent_desc.fields_len(), 1);
+    assert_eq!(
+        parent_desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "OwnField"
+    );
 
     // Second descriptor: child's fields
-    let child_desc = descriptors[1].get();
+    let child_desc = &descriptors[1];
     assert_eq!(child_desc.name(), "SubMetrics");
-    assert_eq!(child_desc.fields().len(), 2);
-    assert_eq!(child_desc.fields()[0].name(), "SubValue");
-    assert_eq!(child_desc.fields()[1].name(), "Other");
+    assert_eq!(child_desc.fields_len(), 2);
+    assert_eq!(
+        child_desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "SubValue"
+    );
+    assert_eq!(
+        child_desc.fields().collect::<Vec<_>>()[1].base_name(),
+        "Other"
+    );
 
     // Child's field_tag is preserved
-    let sub_value_tags = child_desc.fields()[0].tags();
+    let sub_value_tags = child_desc.fields().collect::<Vec<_>>()[0].tags();
     assert_eq!(sub_value_tags.len(), 1);
     assert_eq!(sub_value_tags[0].tag_id(), TypeId::of::<AuditExport>());
     assert_eq!(sub_value_tags[0].state(), FieldTagState::Present);
@@ -337,17 +355,17 @@ fn flatten_child_default_field_tag_resolved() {
     let descriptors: Vec<_> = entry.descriptors().collect();
     assert_eq!(descriptors.len(), 2);
 
-    let child_desc = descriptors[1].get();
+    let child_desc = &descriptors[1];
     let dial9_id = TypeId::of::<Dial9Emit>();
 
     // alpha inherits default_field_tag(Dial9Emit) -> Present
-    let alpha_tags = child_desc.fields()[0].tags();
+    let alpha_tags = child_desc.fields().collect::<Vec<_>>()[0].tags();
     assert_eq!(alpha_tags.len(), 1);
     assert_eq!(alpha_tags[0].tag_id(), dial9_id);
     assert_eq!(alpha_tags[0].state(), FieldTagState::Present);
 
     // beta has field_tag(skip(Dial9Emit)) -> Absent
-    let beta_tags = child_desc.fields()[1].tags();
+    let beta_tags = child_desc.fields().collect::<Vec<_>>()[1].tags();
     assert_eq!(beta_tags.len(), 1);
     assert_eq!(beta_tags[0].tag_id(), dial9_id);
     assert_eq!(beta_tags[0].state(), FieldTagState::Absent);

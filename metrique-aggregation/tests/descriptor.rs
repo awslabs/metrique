@@ -45,19 +45,25 @@ fn aggregation_result_yields_two_descriptors() {
     );
 
     // First descriptor: key fields
-    let key_desc = descriptors[0].get();
-    assert_eq!(key_desc.fields().len(), 1);
-    assert_eq!(key_desc.fields()[0].name(), "Operation");
-    let key_tags = key_desc.fields()[0].tags();
+    let key_desc = &descriptors[0];
+    assert_eq!(key_desc.fields_len(), 1);
+    assert_eq!(
+        key_desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "Operation"
+    );
+    let key_tags = key_desc.fields().collect::<Vec<_>>()[0].tags();
     assert_eq!(key_tags.len(), 1);
     assert_eq!(key_tags[0].tag_id(), TypeId::of::<Export>());
     assert_eq!(key_tags[0].state(), FieldTagState::Absent);
 
     // Second descriptor: aggregated fields
-    let agg_desc = descriptors[1].get();
-    assert_eq!(agg_desc.fields().len(), 1);
-    assert_eq!(agg_desc.fields()[0].name(), "Count");
-    let agg_tags = agg_desc.fields()[0].tags();
+    let agg_desc = &descriptors[1];
+    assert_eq!(agg_desc.fields_len(), 1);
+    assert_eq!(
+        agg_desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "Count"
+    );
+    let agg_tags = agg_desc.fields().collect::<Vec<_>>()[0].tags();
     assert_eq!(agg_tags.len(), 1);
     assert_eq!(agg_tags[0].tag_id(), TypeId::of::<Export>());
     assert_eq!(agg_tags[0].state(), FieldTagState::Present);
@@ -78,10 +84,15 @@ fn key_struct_inherits_parent_rename_all_and_default_field_tag() {
     let key_desc = entries[0].descriptors().next().expect("key descriptor");
 
     // rename_all = "PascalCase" propagated to key struct
-    assert_eq!(key_desc.get().fields()[0].name(), "Operation");
+    assert_eq!(
+        key_desc.fields().collect::<Vec<_>>()[0].base_name(),
+        "Operation"
+    );
 
     // default_field_tag(Export) propagated, then field_tag(skip(Export)) applied
-    let tag = &key_desc.get().fields()[0].tags()[0];
+    let tag = &key_desc.fields().collect::<Vec<_>>()[0]
+        .tags()
+        .collect::<Vec<_>>()[0];
     assert_eq!(tag.tag_id(), TypeId::of::<Export>());
     assert_eq!(tag.state(), FieldTagState::Absent);
 }

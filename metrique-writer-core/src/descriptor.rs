@@ -9,6 +9,7 @@
 //! [`DescriptorRef`] and [`FieldView`] accessors.
 
 use std::any::TypeId;
+use std::hash::{Hash, Hasher};
 
 use smallvec::SmallVec;
 
@@ -490,8 +491,8 @@ mod tests {
         let d = DescriptorRef::from_static(&DESC);
         let fields: Vec<_> = d.fields().collect();
         assert_eq!(fields.len(), 2);
-        assert_eq!(fields[0].name(), "Alpha");
-        assert_eq!(fields[1].name(), "Beta");
+        assert_eq!(fields[0].base_name(), "Alpha");
+        assert_eq!(fields[1].base_name(), "Beta");
         assert_eq!(fields[1].unit(), Some(Unit::Count));
     }
 

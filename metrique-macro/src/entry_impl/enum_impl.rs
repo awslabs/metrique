@@ -66,7 +66,7 @@ pub(crate) fn generate_enum_entry_impl(
         }
     };
 
-    let descriptor = generate_enum_descriptor(entry_name, variants, root_attrs);
+    let descriptor = generate_enum_descriptor(entry_name, generics, variants, root_attrs);
     let descriptor_trait_impls = &descriptor.trait_impls;
     let descriptors_method = &descriptor.method;
 
@@ -330,6 +330,7 @@ fn collect_tuple_sample_group(
 
 fn generate_enum_descriptor(
     entry_name: &Ident,
+    generics: &syn::Generics,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
@@ -467,8 +468,10 @@ fn generate_enum_descriptor(
         }
     }).collect();
 
+    let (impl_generics_desc, ty_generics_desc, where_clause_desc) = generics.split_for_impl();
+
     let descriptor_impl = quote! {
-        impl #entry_name {
+        impl #impl_generics_desc #entry_name #ty_generics_desc #where_clause_desc {
             #[doc(hidden)]
             fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
                 match __style {
