@@ -260,3 +260,95 @@ fn prefix_applied_in_descriptor() {
 
     assert_eq!(desc.get().fields()[0].name(), "ApiLatency");
 }
+
+#[metrics(rename_all = "PascalCase", subfield)]
+struct SubMetrics {
+    #[metrics(field_tag(AuditExport))]
+    sub_value: u64,
+    other: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct ParentWithFlatten {
+    own_field: u64,
+    #[metrics(flatten)]
+    child: SubMetrics,
+}
+
+#[test]
+fn flatten_child_descriptors_chained() {
+    let m = ParentWithFlatten {
+        own_field: 1,
+        child: SubMetrics {
+            sub_value: 2,
+            other: 3,
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    assert_eq!(descriptors.len(), 2, "parent + flattened child");
+
+    // First descriptor: parent's own fields
+    let parent_desc = descriptors[0].get();
+    assert_eq!(parent_desc.name(), "ParentWithFlatten");
+    assert_eq!(parent_desc.fields().len(), 1);
+    assert_eq!(parent_desc.fields()[0].name(), "OwnField");
+
+    // Second descriptor: child's fields
+    let child_desc = descriptors[1].get();
+    assert_eq!(child_desc.name(), "SubMetrics");
+    assert_eq!(child_desc.fields().len(), 2);
+    assert_eq!(child_desc.fields()[0].name(), "SubValue");
+    assert_eq!(child_desc.fields()[1].name(), "Other");
+
+    // Child's field_tag is preserved
+    let sub_value_tags = child_desc.fields()[0].tags();
+    assert_eq!(sub_value_tags.len(), 1);
+    assert_eq!(sub_value_tags[0].tag_id(), TypeId::of::<AuditExport>());
+    assert_eq!(sub_value_tags[0].state(), FieldTagState::Present);
+}
+
+#[metrics(rename_all = "PascalCase", subfield)]
+struct TaggedSubMetrics {
+    #[metrics(field_tag(Dial9Emit))]
+    alpha: u64,
+    #[metrics(field_tag(skip(Dial9Emit)))]
+    beta: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct ParentWithTaggedFlatten {
+    top: u64,
+    #[metrics(flatten)]
+    inner: TaggedSubMetrics,
+}
+
+#[test]
+fn flatten_child_default_field_tag_resolved() {
+    let m = ParentWithTaggedFlatten {
+        top: 1,
+        inner: TaggedSubMetrics { alpha: 2, beta: 3 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    assert_eq!(descriptors.len(), 2);
+
+    let child_desc = descriptors[1].get();
+    let dial9_id = TypeId::of::<Dial9Emit>();
+
+    // alpha inherits default_field_tag(Dial9Emit) -> Present
+    let alpha_tags = child_desc.fields()[0].tags();
+    assert_eq!(alpha_tags.len(), 1);
+    assert_eq!(alpha_tags[0].tag_id(), dial9_id);
+    assert_eq!(alpha_tags[0].state(), FieldTagState::Present);
+
+    // beta has field_tag(skip(Dial9Emit)) -> Absent
+    let beta_tags = child_desc.fields()[1].tags();
+    assert_eq!(beta_tags.len(), 1);
+    assert_eq!(beta_tags[0].tag_id(), dial9_id);
+    assert_eq!(beta_tags[0].state(), FieldTagState::Absent);
+}

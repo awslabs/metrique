@@ -255,7 +255,7 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 - **`prefix` / `exact_prefix`**: applied to field names before they land in the descriptor.
 - **`#[metrics(timestamp)]`**: timestamp fields are excluded from `fields()` and exposed via `EntryDescriptor::timestamp()`. They emit via `EntryWriter::timestamp`, not `EntryWriter::value`, so they are correctly not part of the `fields()` walk.
 - **`#[metrics(ignore)]`**: fields are excluded from the descriptor entirely. No `Entry::write` callback, no `FieldDescriptor`.
-- **`#[metrics(subfield)]` / `#[metrics(subfield_owned)]`**: subfield structs do not implement `Entry` directly (they are only usable via flatten in a parent). The metrique macro does not emit a descriptor for subfield structs; their fields appear in the parent's descriptor via the flatten flow.
+- **`#[metrics(subfield)]` / `#[metrics(subfield_owned)]`**: subfield structs get their own descriptor. When flattened into a parent, the parent's `descriptors()` chains the subfield's descriptor after its own, matching write order.
 - **`flatten` vs `flatten_entry`**: both produce flattened fields in the parent descriptor identically. The distinction is about how metrique resolves the nested struct internally (inflection, prefixes).
 - **`#[metrics(value)]` newtypes**: lower to their wrapped type's shape when macro-known. See "Shape mapping" above.
 

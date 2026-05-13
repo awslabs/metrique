@@ -64,6 +64,7 @@ fn generate_descriptor(
     let mut field_descriptors = Vec::new();
     let mut timestamp_descriptor = quote! { None };
     let mut field_idx = 0usize;
+    let mut flatten_chains = Vec::new();
 
     for field in fields {
         match &field.attrs.kind {
@@ -74,10 +75,17 @@ fn generate_descriptor(
                     Some(::metrique::writer::core::TimestampDescriptor::__metrique_private_new(#name))
                 };
             }
-            MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_) => {
-                // Flattened fields are not directly in this descriptor;
-                // they appear in the child's descriptor.
-                continue;
+            MetricsFieldKind::Flatten { .. } => {
+                let field_ident = &field.ident;
+                flatten_chains.push(quote! {
+                    .chain(::metrique::InflectableEntry::<NS>::descriptors(&self.#field_ident))
+                });
+            }
+            MetricsFieldKind::FlattenEntry(_) => {
+                let field_ident = &field.ident;
+                flatten_chains.push(quote! {
+                    .chain(::metrique::writer::Entry::descriptors(&self.#field_ident))
+                });
             }
             MetricsFieldKind::Field { unit, .. } => {
                 let field_name = metric_name(root_attrs, root_attrs.rename_all, field);
@@ -129,6 +137,7 @@ fn generate_descriptor(
                     #timestamp_descriptor,
                 );
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&__METRIQUE_DESCRIPTOR))
+                #(#flatten_chains)*
         }
     }
 }
