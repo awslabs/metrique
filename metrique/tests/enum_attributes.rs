@@ -241,3 +241,59 @@ fn test_multi_field_tuple_variant() {
     assert!(!entry.metrics.contains_key("999"));
     assert!(!entry.values.contains_key("ignored"));
 }
+
+#[metrics(subfield)]
+struct CfgTupleA {
+    a_val: u64,
+}
+#[metrics(subfield)]
+struct CfgTupleB {
+    b_val: u64,
+}
+#[metrics(subfield)]
+struct CfgTupleC {
+    c_val: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+enum CfgTupleWriteEnum {
+    V(
+        #[metrics(flatten)] CfgTupleA,
+        #[cfg(test)]
+        #[metrics(flatten)]
+        CfgTupleB,
+        #[metrics(flatten)] CfgTupleC,
+    ),
+}
+
+#[test]
+fn tuple_variant_cfg_flatten_write_ordering() {
+    use metrique::writer::{Entry, EntryWriter};
+    use std::borrow::Cow;
+    use std::time::SystemTime;
+
+    struct NameCollector(Vec<String>);
+    impl<'a> EntryWriter<'a> for NameCollector {
+        fn timestamp(&mut self, _: SystemTime) {}
+        fn value(
+            &mut self,
+            name: impl Into<Cow<'a, str>>,
+            _: &(impl metrique::writer::Value + ?Sized),
+        ) {
+            self.0.push(name.into().into_owned());
+        }
+        fn config(&mut self, _: &'a dyn metrique::writer::EntryConfig) {}
+    }
+
+    let m = CfgTupleWriteEnum::V(
+        CfgTupleA { a_val: 1 },
+        CfgTupleB { b_val: 2 },
+        CfgTupleC { c_val: 3 },
+    );
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let mut collector = NameCollector(vec![]);
+    entry.write(&mut collector);
+    // Write order matches declaration order even with cfg-gated middle field
+    assert_eq!(collector.0, vec!["AVal", "BVal", "CVal"]);
+}

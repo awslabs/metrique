@@ -1,3 +1,4 @@
+#![expect(unexpected_cfgs)]
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -565,7 +566,7 @@ fn all_ignored_fields_produces_empty_descriptor() {
 }
 
 #[metrics(subfield)]
-struct EnumChild {
+pub struct EnumChild {
     child_val: u64,
 }
 
@@ -646,15 +647,15 @@ fn enum_variants_have_different_descriptor_ids() {
 }
 
 #[metrics(subfield)]
-struct OrderChildA {
+pub struct OrderChildA {
     a_val: u64,
 }
 #[metrics(subfield)]
-struct OrderChildB {
+pub struct OrderChildB {
     b_val: u64,
 }
 #[metrics(subfield)]
-struct OrderChildC {
+pub struct OrderChildC {
     c_val: u64,
 }
 
@@ -760,5 +761,43 @@ fn enum_cfg_flatten_ordering_preserved() {
     let d3: Vec<_> = descriptors[3].fields().collect();
     assert_eq!(d1[0].base_name(), "a_val");
     assert_eq!(d2[0].base_name(), "b_val");
+    assert_eq!(d3[0].base_name(), "c_val");
+}
+
+#[metrics(subfield)]
+pub struct TupleCfgChild {
+    tc_val: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+enum TupleCfgEnum {
+    Variant(
+        #[metrics(flatten)] OrderChildA,
+        #[cfg(test)]
+        #[metrics(flatten)]
+        TupleCfgChild,
+        #[metrics(flatten)] OrderChildC,
+    ),
+}
+
+#[test]
+fn tuple_variant_cfg_flatten_descriptor_ordering() {
+    use metrique::writer::Entry;
+
+    let m = TupleCfgEnum::Variant(
+        OrderChildA { a_val: 1 },
+        TupleCfgChild { tc_val: 2 },
+        OrderChildC { c_val: 3 },
+    );
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // base (0 fields) + A + TupleCfgChild (cfg=test active) + C
+    assert_eq!(descriptors.len(), 4);
+    let d1: Vec<_> = descriptors[1].fields().collect();
+    let d2: Vec<_> = descriptors[2].fields().collect();
+    let d3: Vec<_> = descriptors[3].fields().collect();
+    assert_eq!(d1[0].base_name(), "a_val");
+    assert_eq!(d2[0].base_name(), "tc_val");
     assert_eq!(d3[0].base_name(), "c_val");
 }
