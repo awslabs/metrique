@@ -290,6 +290,16 @@ impl<NS: crate::NameStyle, T: InflectableEntry<NS>, F: FlagConstructor> Inflecta
             },
         );
     }
+
+    fn sample_group(
+        &self,
+    ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
+        <T as InflectableEntry<NS>>::sample_group(self)
+    }
+
+    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
+        <T as InflectableEntry<NS>>::descriptors(self)
+    }
 }
 
 #[diagnostic::do_not_recommend]

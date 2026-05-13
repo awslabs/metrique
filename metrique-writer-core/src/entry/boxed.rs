@@ -6,8 +6,8 @@ use std::{any::Any, borrow::Cow, time::SystemTime};
 use smallvec::SmallVec;
 
 use crate::{
-    Descriptors, Entry, EntryWriter, Observation, Unit, ValidationError, Value,
-    ValueWriter, value::MetricFlags,
+    Descriptors, Entry, EntryWriter, Observation, Unit, ValidationError, Value, ValueWriter,
+    value::MetricFlags,
 };
 
 use super::EntryConfig;

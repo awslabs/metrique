@@ -337,3 +337,27 @@ fn flags_write_path_enum_variant() {
             || latency_metric2["StorageResolution"] == 60
     );
 }
+
+#[test]
+fn force_flag_forwards_descriptors() {
+    use metrique::writer::Entry;
+    use metrique_writer_core::value::{FlagConstructor, ForceFlag};
+
+    // HighResMetrics has descriptors (macro-derived)
+    let m = HighResMetrics {
+        timestamp: std::time::UNIX_EPOCH,
+        operation: "test".into(),
+        event_count: 1,
+        low_res_count: 2,
+    };
+    let closed = metrique::CloseValue::close(m);
+
+    // Wrap in ForceFlag (simulating ForceFlag<ClosedType, SomeCtor>)
+    let wrapped = ForceFlag::<_, metrique::emf::HighStorageResolutionCtor>::from(closed);
+    let entry = metrique::RootEntry::new(wrapped);
+
+    // Descriptors should forward through ForceFlag
+    let descs = entry.descriptors().unwrap();
+    assert!(!descs.is_empty());
+    assert_eq!(descs[0].name(), "HighResMetrics");
+}

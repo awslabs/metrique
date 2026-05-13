@@ -526,8 +526,6 @@ enum EnumWithFlatten {
 
 #[test]
 fn enum_variant_with_flatten_chains_child_descriptor() {
-    use metrique::writer::Entry;
-
     let m = EnumWithFlatten::WithChild {
         count: 1,
         child: EnumChild { child_val: 2 },
@@ -550,8 +548,6 @@ fn enum_variant_with_flatten_chains_child_descriptor() {
 
 #[test]
 fn enum_variant_without_flatten_yields_one_descriptor() {
-    use metrique::writer::Entry;
-
     let m = EnumWithFlatten::Simple { count: 1 };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
@@ -563,8 +559,6 @@ fn enum_variant_without_flatten_yields_one_descriptor() {
 
 #[test]
 fn enum_variants_have_different_descriptor_ids() {
-    use metrique::writer::Entry;
-
     let simple = EnumWithFlatten::Simple { count: 1 };
     let with_child = EnumWithFlatten::WithChild {
         count: 1,
@@ -645,8 +639,6 @@ enum EnumFieldOrder {
 
 #[test]
 fn enum_variant_field_order_matches_declaration() {
-    use metrique::writer::Entry;
-
     let m = EnumFieldOrder::Multi {
         alpha: 1,
         beta: 2,
@@ -686,8 +678,6 @@ enum EnumCfgFlatten {
 
 #[test]
 fn enum_cfg_flatten_ordering_preserved() {
-    use metrique::writer::Entry;
-
     let m = EnumCfgFlatten::WithCfg {
         first: OrderChildA { a_val: 1 },
         middle: OrderChildB { b_val: 2 },
@@ -724,8 +714,6 @@ enum TupleCfgEnum {
 
 #[test]
 fn tuple_variant_cfg_flatten_descriptor_ordering() {
-    use metrique::writer::Entry;
-
     let m = TupleCfgEnum::Variant(
         OrderChildA { a_val: 1 },
         TupleCfgChild { tc_val: 2 },
@@ -746,8 +734,6 @@ fn tuple_variant_cfg_flatten_descriptor_ordering() {
 
 #[test]
 fn descriptors_forward_through_option_and_box() {
-    use metrique::writer::Entry;
-
     // Use BasicMetrics which has a known descriptor
     let m = BasicMetrics {
         request_id: String::new(),

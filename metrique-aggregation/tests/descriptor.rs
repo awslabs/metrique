@@ -8,7 +8,6 @@ use metrique_aggregation::traits::{AggregateSink, FlushableSink};
 use metrique_aggregation::{aggregate, value::Sum};
 use metrique_writer::sink::VecEntrySink;
 use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
-use std::any::TypeId;
 
 #[derive(Debug)]
 struct ExportOpt;
