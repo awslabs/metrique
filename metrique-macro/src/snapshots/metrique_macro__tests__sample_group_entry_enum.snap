@@ -106,6 +106,7 @@ pub struct MetadataEntry {
 const _: () = {
     impl MetadataEntry {
         #[doc(hidden)]
+        #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
@@ -441,6 +442,7 @@ const _: () = {
     }
     impl RequestResultEntry {
         #[doc(hidden)]
+        #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {

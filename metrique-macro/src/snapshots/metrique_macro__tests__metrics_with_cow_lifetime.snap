@@ -23,6 +23,7 @@ pub struct FooEntry<'a> {
 const _: () = {
     impl<'a> FooEntry<'a> {
         #[doc(hidden)]
+        #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {

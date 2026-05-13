@@ -118,6 +118,7 @@ pub(crate) fn generate_descriptor_impl(
     quote! {
         impl #impl_generics #entry_name #ty_generics #where_clause {
             #[doc(hidden)]
+            #[inline(always)]
             fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
                 #(#tag_statics)*
                 match __style {

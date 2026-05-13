@@ -17,6 +17,7 @@ pub struct NestedMetricsEntry {
 const _: () = {
     impl NestedMetricsEntry {
         #[doc(hidden)]
+        #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {

@@ -31,6 +31,7 @@ pub struct RequestMetricsEntry {
 const _: () = {
     impl RequestMetricsEntry {
         #[doc(hidden)]
+        #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {

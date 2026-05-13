@@ -40,6 +40,7 @@ const _: () = {
     }
     impl OperationEntry {
         #[doc(hidden)]
+        #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
