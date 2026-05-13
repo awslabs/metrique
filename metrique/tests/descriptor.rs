@@ -518,3 +518,28 @@ fn cfg_gated_flatten_included_in_test() {
     assert_eq!(descriptors[0].fields_len(), 1); // parent's own field
     assert_eq!(descriptors[1].fields_len(), 1); // child's field
 }
+
+#[metrics(subfield)]
+struct NeverChild {
+    never_value: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct CfgDisabledFlatten {
+    own: u64,
+    #[cfg(feature = "__metrique_nonexistent_feature")]
+    #[metrics(flatten)]
+    never: NeverChild,
+}
+
+#[test]
+fn cfg_disabled_flatten_excluded() {
+    let m = CfgDisabledFlatten { own: 1 };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // Only parent's own descriptor, child is cfg-disabled
+    assert_eq!(descriptors.len(), 1);
+    assert_eq!(descriptors[0].fields_len(), 1);
+}
