@@ -16,6 +16,15 @@ mod namestyle;
 pub use atomics::{Counter, CounterGuard, OwnedCounterGuard};
 pub use namestyle::{DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, SnakeCase};
 
+/// Hidden trait for compile-time name style dispatch in descriptors.
+/// The `#[metrics]` macro generates impls of this for each entry type,
+/// mapping each NameStyle to the corresponding static descriptor.
+#[doc(hidden)]
+pub trait __StaticStyledDescriptor<E: ?Sized> {
+    /// Returns the static descriptor with field names resolved for this name style.
+    fn descriptor() -> &'static metrique_writer_core::EntryDescriptor;
+}
+
 /// Close a given value
 ///
 /// This gives an opportunity do things like stopping timers, collecting fanned-in data, etc.

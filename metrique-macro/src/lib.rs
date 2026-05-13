@@ -1317,6 +1317,17 @@ impl Prefix {
         }
     }
 
+    /// Returns just the inflected prefix string for use in descriptor modifiers.
+    /// For exact prefixes, returns the prefix as-is.
+    /// For inflectable prefixes, returns the prefix inflected to the given style
+    /// with the appropriate delimiter.
+    pub(crate) fn apply_prefix_only(&self, name_style: NameStyle) -> String {
+        match self {
+            Prefix::Exact(exact_prefix) => exact_prefix.clone(),
+            Prefix::Inflectable { prefix } => name_style.apply_prefix(prefix),
+        }
+    }
+
     fn inflected_prefix_message(prefix: &str, c: char) -> String {
         let warning_text = if name_contains_dot(prefix) {
             " '.' used to be allowed in `prefix` but is now forbidden."

@@ -3,16 +3,20 @@
 
 //! Entry descriptors: compile-time structural metadata for macro-derived entries.
 //!
-//! Sinks that call [`Entry::descriptor()`](crate::Entry::descriptor) can introspect
-//! the complete set of fields an entry emits, their tags, units, and (in a future
-//! release) their closed shapes. Sinks that never call `descriptor()` pay nothing.
+//! Sinks interact with [`DescriptorRef`], which provides resolved field names,
+//! tags, shapes, and units. The underlying storage types ([`EntryDescriptor`],
+//! [`FieldDescriptor`]) are public for macro construction but sinks should use
+//! [`DescriptorRef`] and [`FieldView`] accessors.
 
 use std::any::TypeId;
+use std::borrow::Cow;
+use std::hash::{Hash, Hasher};
 
 use crate::Unit;
 
-/// Describes the closed shape of a macro-derived entry: ordered fields, their tags,
-/// units, and canonical entry name.
+// ─── Internal storage types (pub for macro, sinks use DescriptorRef) ────────
+
+/// Static descriptor storage for a macro-derived entry.
 pub struct EntryDescriptor {
     name: &'static str,
     fields: &'static [FieldDescriptor],
@@ -20,22 +24,6 @@ pub struct EntryDescriptor {
 }
 
 impl EntryDescriptor {
-    /// Canonical name of this entry type (the Rust struct name).
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Ordered fields the entry emits via `Entry::write`. Order matches
-    /// `Entry::write` callback order. Does not include timestamp or ignored fields.
-    pub fn fields(&self) -> &[FieldDescriptor] {
-        self.fields
-    }
-
-    /// The canonical timestamp field, if the entry has one.
-    pub fn timestamp(&self) -> Option<&TimestampDescriptor> {
-        self.timestamp.as_ref()
-    }
-
     /// Hidden constructor for use by the metrique macro only.
     #[doc(hidden)]
     pub const fn __metrique_private_new(
@@ -51,7 +39,7 @@ impl EntryDescriptor {
     }
 }
 
-/// Describes a single field within an entry's descriptor.
+/// Static field storage. Stores a single resolved name for one name style.
 pub struct FieldDescriptor {
     name: &'static str,
     tags: &'static [ResolvedFieldTag],
@@ -60,26 +48,6 @@ pub struct FieldDescriptor {
 }
 
 impl FieldDescriptor {
-    /// Field name as it appears in `Entry::write` callbacks (post rename/prefix).
-    pub fn name(&self) -> &str {
-        self.name
-    }
-
-    /// Resolved tags for this field.
-    pub fn tags(&self) -> &[ResolvedFieldTag] {
-        self.tags
-    }
-
-    /// The closed shape of this field.
-    pub fn shape(&self) -> FieldShape<'_> {
-        self.shape
-    }
-
-    /// The unit attached to this field, if any.
-    pub fn unit(&self) -> Option<Unit> {
-        self.unit
-    }
-
     /// Hidden constructor for use by the metrique macro only.
     #[doc(hidden)]
     pub const fn __metrique_private_new(
@@ -115,10 +83,156 @@ impl TimestampDescriptor {
     }
 }
 
-/// The closed/emitted shape of a field.
+// ─── Public API ─────────────────────────────────────────────────────────────
+
+/// The primary interface for sinks to read descriptor metadata.
 ///
-/// In the initial release, all fields are emitted as [`FieldShape::Opaque`].
-/// Future releases will populate known shapes based on the field's type.
+/// Carries a reference to the underlying static descriptor plus optional
+/// modifiers (prefix, default tags) applied transparently when reading.
+#[derive(Clone)]
+pub struct DescriptorRef<'a> {
+    descriptor: &'a EntryDescriptor,
+    id: DescriptorId,
+    prefix: Option<&'static str>,
+    default_tags: &'static [ResolvedFieldTag],
+}
+
+impl<'a> DescriptorRef<'a> {
+    /// Create a `DescriptorRef` from a `&'static EntryDescriptor`.
+    pub fn from_static(descriptor: &'static EntryDescriptor) -> DescriptorRef<'static> {
+        static EMPTY_TAGS: [ResolvedFieldTag; 0] = [];
+        let id = DescriptorId::compute(descriptor, None, &EMPTY_TAGS);
+        DescriptorRef {
+            descriptor,
+            id,
+            prefix: None,
+            default_tags: &EMPTY_TAGS,
+        }
+    }
+
+    /// Add a prefix prepended to all field names (already inflected).
+    pub fn with_prefix(mut self, prefix: &'static str) -> Self {
+        self.prefix = Some(prefix);
+        self.id = DescriptorId::compute(self.descriptor, self.prefix, self.default_tags);
+        self
+    }
+
+    /// Add default tags applied to fields that don't already have them.
+    pub fn with_default_tags(mut self, tags: &'static [ResolvedFieldTag]) -> Self {
+        self.default_tags = tags;
+        self.id = DescriptorId::compute(self.descriptor, self.prefix, self.default_tags);
+        self
+    }
+
+    /// Stable identity for caching (incorporates base descriptor + modifiers).
+    pub fn id(&self) -> DescriptorId {
+        self.id
+    }
+
+    /// Canonical name of this entry type.
+    pub fn name(&self) -> &str {
+        self.descriptor.name
+    }
+
+    /// Number of fields in this descriptor segment.
+    pub fn fields_len(&self) -> usize {
+        self.descriptor.fields.len()
+    }
+
+    /// Resolved field name at the given index (with prefix applied).
+    pub fn field_name(&self, idx: usize) -> Cow<'static, str> {
+        let base = self.descriptor.fields[idx].name;
+        match self.prefix {
+            None => Cow::Borrowed(base),
+            Some(prefix) => Cow::Owned(format!("{}{}", prefix, base)),
+        }
+    }
+
+    /// Resolved tags for the field at the given index.
+    /// Field-level tags win; default tags fill in for tag ids not already present.
+    pub fn field_tags(&self, idx: usize) -> impl Iterator<Item = &ResolvedFieldTag> {
+        let field_tags = self.descriptor.fields[idx].tags;
+        let defaults = self.default_tags;
+        field_tags.iter().chain(
+            defaults
+                .iter()
+                .filter(move |dt| !field_tags.iter().any(|ft| ft.tag_id == dt.tag_id)),
+        )
+    }
+
+    /// Shape of the field at the given index.
+    pub fn field_shape(&self, idx: usize) -> FieldShape<'_> {
+        self.descriptor.fields[idx].shape
+    }
+
+    /// Unit of the field at the given index.
+    pub fn field_unit(&self, idx: usize) -> Option<Unit> {
+        self.descriptor.fields[idx].unit
+    }
+
+    /// The canonical timestamp field, if the entry has one.
+    pub fn timestamp(&self) -> Option<&TimestampDescriptor> {
+        self.descriptor.timestamp.as_ref()
+    }
+
+    /// Iterate over fields as [`FieldView`]s.
+    pub fn fields(&self) -> impl Iterator<Item = FieldView<'_>> {
+        (0..self.descriptor.fields.len()).map(move |i| FieldView { desc: self, idx: i })
+    }
+}
+
+/// A view of a single field with modifiers applied.
+#[derive(Clone)]
+pub struct FieldView<'a> {
+    desc: &'a DescriptorRef<'a>,
+    idx: usize,
+}
+
+impl<'a> FieldView<'a> {
+    /// Resolved field name (with prefix applied).
+    pub fn name(&self) -> Cow<'static, str> {
+        self.desc.field_name(self.idx)
+    }
+
+    /// Resolved tags (with defaults applied).
+    pub fn tags(&self) -> impl Iterator<Item = &'a ResolvedFieldTag> {
+        self.desc.field_tags(self.idx)
+    }
+
+    /// Shape of this field.
+    pub fn shape(&self) -> FieldShape<'a> {
+        self.desc.field_shape(self.idx)
+    }
+
+    /// Unit of this field.
+    pub fn unit(&self) -> Option<Unit> {
+        self.desc.field_unit(self.idx)
+    }
+}
+
+/// Opaque identifier for a descriptor (including modifiers).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DescriptorId(u64);
+
+impl DescriptorId {
+    fn compute(
+        descriptor: &EntryDescriptor,
+        prefix: Option<&'static str>,
+        default_tags: &'static [ResolvedFieldTag],
+    ) -> Self {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        (descriptor as *const EntryDescriptor as usize).hash(&mut hasher);
+        prefix
+            .map_or(0usize, |p| p.as_ptr() as usize)
+            .hash(&mut hasher);
+        (default_tags.as_ptr() as usize).hash(&mut hasher);
+        DescriptorId(hasher.finish())
+    }
+}
+
+// ─── Shape types ────────────────────────────────────────────────────────────
+
+/// The closed/emitted shape of a field.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FieldShape<'a> {
@@ -126,20 +240,20 @@ pub enum FieldShape<'a> {
     Known(KnownShape),
     /// An optional wrapper around an inner shape.
     Optional(ShapeRef<'a>),
-    /// A dynamic-key map (e.g. `Flex<(String, T)>`).
+    /// A dynamic-key map.
     Flex {
-        /// The key shape (always string-typed currently).
+        /// The key shape.
         key: StringShape,
         /// The value shape.
         value: ShapeRef<'a>,
     },
-    /// A list/sequence of values.
+    /// A list/sequence.
     List(ShapeRef<'a>),
-    /// Shape is not statically known. The field still works through `Entry::write`.
+    /// Shape not statically known.
     Opaque,
 }
 
-/// Known scalar shapes that a field can emit.
+/// Known scalar shapes.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KnownShape {
@@ -179,7 +293,7 @@ pub enum StringShape {
     String,
 }
 
-/// Opaque handle to a nested [`FieldShape`]. Lifetime-tied to its parent descriptor.
+/// Opaque handle to a nested [`FieldShape`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShapeRef<'a> {
     inner: &'a FieldShape<'a>,
@@ -198,8 +312,9 @@ impl<'a> ShapeRef<'a> {
     }
 }
 
-/// A resolved field tag: records whether a specific tag type is present or absent
-/// for a given field.
+// ─── Tag types ──────────────────────────────────────────────────────────────
+
+/// A resolved field tag.
 pub struct ResolvedFieldTag {
     tag_id: TypeId,
     state: FieldTagState,
@@ -211,7 +326,7 @@ impl ResolvedFieldTag {
         self.tag_id
     }
 
-    /// Whether this tag is present or explicitly absent for the field.
+    /// Whether this tag is present or explicitly absent.
     pub fn state(&self) -> FieldTagState {
         self.state
     }
@@ -229,170 +344,179 @@ impl ResolvedFieldTag {
 pub enum FieldTagState {
     /// The tag is present on this field.
     Present,
-    /// The tag is explicitly absent on this field (via `skip(T)`).
+    /// The tag is explicitly absent (via `skip(T)`).
     Absent,
 }
 
-/// Opaque handle returned by [`Entry::descriptor()`](crate::Entry::descriptor).
-///
-/// Carries a stable [`DescriptorId`] for cache keying and a borrow of the
-/// underlying [`EntryDescriptor`].
-pub struct DescriptorRef<'a> {
-    descriptor: &'a EntryDescriptor,
-    id: DescriptorId,
-}
-
-impl<'a> DescriptorRef<'a> {
-    /// Borrow the underlying descriptor.
-    pub fn get(&self) -> &EntryDescriptor {
-        self.descriptor
-    }
-
-    /// A stable identity for this descriptor, suitable for use as a cache key.
-    pub fn id(&self) -> DescriptorId {
-        self.id
-    }
-
-    /// Create a `DescriptorRef` from a `&'static EntryDescriptor`.
-    ///
-    /// The `DescriptorId` is derived from the pointer address of the static.
-    pub fn from_static(descriptor: &'static EntryDescriptor) -> DescriptorRef<'static> {
-        let id = DescriptorId(descriptor as *const EntryDescriptor as usize);
-        DescriptorRef { descriptor, id }
-    }
-}
-
-/// Opaque identifier for a descriptor, stable within a single process lifetime.
-///
-/// Two calls to `descriptor()` on the same entry type return equal ids.
-/// Cross-process stability is not guaranteed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DescriptorId(usize);
+// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn descriptor_ref_from_static_has_stable_id() {
+    fn descriptor_ref_stable_id() {
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("Test", &[], None);
-        let ref1 = DescriptorRef::from_static(&DESC);
-        let ref2 = DescriptorRef::from_static(&DESC);
-        assert_eq!(ref1.id(), ref2.id());
-        assert_eq!(ref1.get().name(), "Test");
+        let r1 = DescriptorRef::from_static(&DESC);
+        let r2 = DescriptorRef::from_static(&DESC);
+        assert_eq!(r1.id(), r2.id());
+        assert_eq!(r1.name(), "Test");
     }
 
     #[test]
-    fn different_descriptors_have_different_ids() {
-        static DESC_A: EntryDescriptor = EntryDescriptor::__metrique_private_new("A", &[], None);
-        static DESC_B: EntryDescriptor = EntryDescriptor::__metrique_private_new("B", &[], None);
-        let ref_a = DescriptorRef::from_static(&DESC_A);
-        let ref_b = DescriptorRef::from_static(&DESC_B);
-        assert_ne!(ref_a.id(), ref_b.id());
-    }
-
-    #[test]
-    fn field_descriptor_accessors() {
-        static TAGS: [ResolvedFieldTag; 0] = [];
-        static FIELD: FieldDescriptor =
-            FieldDescriptor::__metrique_private_new("my_field", &TAGS, FieldShape::Opaque, None);
-        assert_eq!(FIELD.name(), "my_field");
-        assert!(FIELD.tags().is_empty());
-        assert_eq!(FIELD.shape(), FieldShape::Opaque);
-        assert_eq!(FIELD.unit(), None);
-    }
-
-    #[test]
-    fn timestamp_descriptor_accessors() {
-        let ts = TimestampDescriptor::__metrique_private_new("request_start");
-        assert_eq!(ts.name(), "request_start");
-    }
-
-    #[test]
-    fn field_shape_variants() {
-        assert_eq!(FieldShape::Opaque, FieldShape::Opaque);
-        assert_eq!(
-            FieldShape::Known(KnownShape::U64),
-            FieldShape::Known(KnownShape::U64)
-        );
+    fn different_descriptors_different_ids() {
+        static A: EntryDescriptor = EntryDescriptor::__metrique_private_new("A", &[], None);
+        static B: EntryDescriptor = EntryDescriptor::__metrique_private_new("B", &[], None);
         assert_ne!(
-            FieldShape::Known(KnownShape::U64),
-            FieldShape::Known(KnownShape::String)
+            DescriptorRef::from_static(&A).id(),
+            DescriptorRef::from_static(&B).id()
         );
     }
 
     #[test]
-    fn field_descriptor_with_unit() {
+    fn prefix_changes_id() {
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &[], None);
+        let plain = DescriptorRef::from_static(&DESC);
+        let prefixed = DescriptorRef::from_static(&DESC).with_prefix("Api");
+        assert_ne!(plain.id(), prefixed.id());
+    }
+
+    #[test]
+    fn field_name_no_prefix() {
         static TAGS: [ResolvedFieldTag; 0] = [];
-        static FIELD: FieldDescriptor = FieldDescriptor::__metrique_private_new(
-            "latency",
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
+            "MyField",
             &TAGS,
             FieldShape::Opaque,
-            Some(Unit::Second(crate::unit::NegativeScale::Milli)),
-        );
-        assert_eq!(FIELD.name(), "latency");
-        assert_eq!(
-            FIELD.unit(),
-            Some(Unit::Second(crate::unit::NegativeScale::Milli))
-        );
+            None,
+        )];
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+
+        let d = DescriptorRef::from_static(&DESC);
+        assert_eq!(d.field_name(0), "MyField");
     }
 
     #[test]
-    fn entry_descriptor_with_timestamp() {
+    fn field_name_with_prefix() {
+        static TAGS: [ResolvedFieldTag; 0] = [];
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
+            "Latency",
+            &TAGS,
+            FieldShape::Opaque,
+            None,
+        )];
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+
+        let d = DescriptorRef::from_static(&DESC).with_prefix("Api");
+        assert_eq!(d.field_name(0), "ApiLatency");
+    }
+
+    #[test]
+    fn field_tags_with_defaults() {
+        static FIELD_TAGS: [ResolvedFieldTag; 0] = [];
+        static DEFAULT_TAGS: [ResolvedFieldTag; 1] = [ResolvedFieldTag::__metrique_private_new(
+            TypeId::of::<u8>(),
+            FieldTagState::Present,
+        )];
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
+            "f",
+            &FIELD_TAGS,
+            FieldShape::Opaque,
+            None,
+        )];
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+
+        // Without defaults: no tags
+        let d = DescriptorRef::from_static(&DESC);
+        assert_eq!(d.field_tags(0).count(), 0);
+
+        // With defaults: one tag
+        let d = DescriptorRef::from_static(&DESC).with_default_tags(&DEFAULT_TAGS);
+        assert_eq!(d.field_tags(0).count(), 1);
+    }
+
+    #[test]
+    fn field_tags_field_level_wins() {
+        static FIELD_TAGS: [ResolvedFieldTag; 1] = [ResolvedFieldTag::__metrique_private_new(
+            TypeId::of::<u8>(),
+            FieldTagState::Absent,
+        )];
+        static DEFAULT_TAGS: [ResolvedFieldTag; 1] = [ResolvedFieldTag::__metrique_private_new(
+            TypeId::of::<u8>(),
+            FieldTagState::Present,
+        )];
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
+            "f",
+            &FIELD_TAGS,
+            FieldShape::Opaque,
+            None,
+        )];
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+
+        let d = DescriptorRef::from_static(&DESC).with_default_tags(&DEFAULT_TAGS);
+        let tags: Vec<_> = d.field_tags(0).collect();
+        // Field-level Absent wins, default Present is not added
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].state(), FieldTagState::Absent);
+    }
+
+    #[test]
+    fn field_view_iteration() {
+        static TAGS: [ResolvedFieldTag; 0] = [];
+        static FIELDS: [FieldDescriptor; 2] = [
+            FieldDescriptor::__metrique_private_new("Alpha", &TAGS, FieldShape::Opaque, None),
+            FieldDescriptor::__metrique_private_new(
+                "Beta",
+                &TAGS,
+                FieldShape::Opaque,
+                Some(Unit::Count),
+            ),
+        ];
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+
+        let d = DescriptorRef::from_static(&DESC);
+        let fields: Vec<_> = d.fields().collect();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].name(), "Alpha");
+        assert_eq!(fields[1].name(), "Beta");
+        assert_eq!(fields[1].unit(), Some(Unit::Count));
+    }
+
+    #[test]
+    fn timestamp() {
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new(
-            "MyEntry",
+            "E",
             &[],
             Some(TimestampDescriptor::__metrique_private_new("ts")),
         );
-        assert_eq!(DESC.name(), "MyEntry");
-        assert_eq!(DESC.timestamp().unwrap().name(), "ts");
+        let d = DescriptorRef::from_static(&DESC);
+        assert_eq!(d.timestamp().unwrap().name(), "ts");
     }
 
     #[test]
-    fn entry_descriptor_without_timestamp() {
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("NoTs", &[], None);
-        assert!(DESC.timestamp().is_none());
-    }
-
-    #[test]
-    fn hand_written_entry_returns_none() {
+    fn hand_written_entry_empty() {
         use crate::{Entry, EntryWriter};
         struct HandWritten;
         impl Entry for HandWritten {
-            fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+            fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
         }
-        assert!(HandWritten.descriptors().next().is_none());
+        assert_eq!(HandWritten.descriptors().count(), 0);
     }
 
     #[test]
-    fn boxentry_forwards_none_descriptor() {
+    fn boxentry_forwards() {
         use crate::{BoxEntry, Entry, EntryWriter};
-        struct HandWritten;
-        impl Entry for HandWritten {
-            fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
-        }
-        let boxed = BoxEntry::new(HandWritten);
-        assert!(boxed.descriptors().next().is_none());
-    }
-
-    #[test]
-    fn boxentry_forwards_some_descriptor() {
-        use crate::{BoxEntry, Entry, EntryWriter};
-
-        static DESC: EntryDescriptor =
-            EntryDescriptor::__metrique_private_new("WithDesc", &[], None);
-
-        struct WithDescriptor;
-        impl Entry for WithDescriptor {
-            fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("X", &[], None);
+        struct WithDesc;
+        impl Entry for WithDesc {
+            fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
             fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
                 std::iter::once(DescriptorRef::from_static(&DESC))
             }
         }
-
-        let boxed = BoxEntry::new(WithDescriptor);
-        let desc = boxed.descriptors().next().expect("should forward Some");
-        assert_eq!(desc.get().name(), "WithDesc");
-        assert_eq!(desc.id(), DescriptorRef::from_static(&DESC).id());
+        let boxed = BoxEntry::new(WithDesc);
+        let descs: Vec<_> = boxed.descriptors().collect();
+        assert_eq!(descs.len(), 1);
+        assert_eq!(descs[0].name(), "X");
     }
 }
