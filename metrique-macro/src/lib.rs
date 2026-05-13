@@ -1739,7 +1739,9 @@ mod tests {
         let input = quote! {
             struct RequestMetrics {
                 operation: &'static str,
-                number_of_ducks: usize
+                number_of_ducks: usize,
+                #[metrics(unit = Millisecond)]
+                latency: std::time::Duration
             }
         };
 

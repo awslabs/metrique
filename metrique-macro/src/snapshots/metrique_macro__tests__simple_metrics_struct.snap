@@ -5,6 +5,7 @@ expression: parsed_file
 struct RequestMetrics {
     operation: &'static str,
     number_of_ducks: usize,
+    latency: std::time::Duration,
 }
 #[doc(hidden)]
 #[allow(clippy::type_complexity)]
@@ -19,6 +20,13 @@ pub struct RequestMetricsEntry {
     )]
     #[doc(hidden)]
     number_of_ducks: <usize as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    latency: <<std::time::Duration as metrique::CloseValue>::Closed as ::metrique::unit::AttachUnit>::Output<
+        Millisecond,
+    >,
 }
 const _: () = {
     #[expect(deprecated)]
@@ -89,6 +97,36 @@ const _: () = {
                 },
                 &__metrique_self.number_of_ducks,
             );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct LatencyPreserve;
+                    impl ::metrique::concat::ConstStr for LatencyPreserve {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyKebab;
+                    impl ::metrique::concat::ConstStr for LatencyKebab {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyPascal;
+                    impl ::metrique::concat::ConstStr for LatencyPascal {
+                        const VAL: &'static str = "Latency";
+                    }
+                    struct LatencySnake;
+                    impl ::metrique::concat::ConstStr for LatencySnake {
+                        const VAL: &'static str = "latency";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            LatencyPreserve,
+                            LatencyPascal,
+                            LatencySnake,
+                            LatencyKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.latency,
+            );
         }
         fn sample_group(
             &self,
@@ -101,7 +139,8 @@ const _: () = {
         fn descriptor(&self) -> Option<::metrique::writer::core::DescriptorRef<'_>> {
             static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
             static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+            static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                 ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                     "operation",
                     &__METRIQUE_TAGS_0,
@@ -113,6 +152,12 @@ const _: () = {
                     &__METRIQUE_TAGS_1,
                     ::metrique::writer::core::FieldShape::Opaque,
                     None,
+                ),
+                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                    "latency",
+                    &__METRIQUE_TAGS_2,
+                    ::metrique::writer::core::FieldShape::Opaque,
+                    Some(<Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT),
                 ),
             ];
             static __METRIQUE_DESCRIPTOR: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
@@ -142,6 +187,7 @@ impl metrique::CloseValue for RequestMetrics {
             number_of_ducks: metrique::CloseValue::close(
                 __metrique_self_expr!().number_of_ducks,
             ),
+            latency: metrique::CloseValue::close(__metrique_self_expr!().latency).into(),
         }
     }
 }
