@@ -727,3 +727,38 @@ fn enum_variant_field_order_matches_declaration() {
     let child_fields: Vec<_> = descriptors[1].fields().collect();
     assert_eq!(child_fields[0].base_name(), "a_val");
 }
+
+#[metrics(rename_all = "PascalCase")]
+enum EnumCfgFlatten {
+    WithCfg {
+        #[metrics(flatten)]
+        first: OrderChildA,
+        #[cfg(test)]
+        #[metrics(flatten)]
+        middle: OrderChildB,
+        #[metrics(flatten)]
+        last: OrderChildC,
+    },
+}
+
+#[test]
+fn enum_cfg_flatten_ordering_preserved() {
+    use metrique::writer::Entry;
+
+    let m = EnumCfgFlatten::WithCfg {
+        first: OrderChildA { a_val: 1 },
+        middle: OrderChildB { b_val: 2 },
+        last: OrderChildC { c_val: 3 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    // base (0 fields) + first + middle + last
+    assert_eq!(descriptors.len(), 4);
+    let d1: Vec<_> = descriptors[1].fields().collect();
+    let d2: Vec<_> = descriptors[2].fields().collect();
+    let d3: Vec<_> = descriptors[3].fields().collect();
+    assert_eq!(d1[0].base_name(), "a_val");
+    assert_eq!(d2[0].base_name(), "b_val");
+    assert_eq!(d3[0].base_name(), "c_val");
+}

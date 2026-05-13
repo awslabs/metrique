@@ -420,19 +420,15 @@ fn generate_field_writes(
     writes
 }
 
-/// Return an iterator that chains flattened children for a descriptor.
-///
-/// This calls `chain` in a binary tree fashion to avoid problems with the recursion limit,
-/// e.g. `I1.chain(I2).chain(I3.chain(I4))`
-/// Chains iterator expressions into a balanced binary tree of `.chain()` calls.
-/// Reduces type nesting depth from O(n) to O(log n). Returns `::std::iter::empty()` for empty input.
-/// Combines a base iterator expression with child iterator expressions into one.
+/// Return an iterator that chains flattened children for a descriptor, handling
+/// conditional inclusion of cfg-gated fields.
 ///
 /// `children` is a list of `(is_cfg_gated, iterator_expression)` pairs in declaration order.
 /// Non-cfg children are full iterator expressions (e.g., `child.descriptors()`).
 /// Cfg-gated children are let-rebinding statements (e.g., `#[cfg(test)] let __desc = ...`).
 ///
-/// When no cfg children exist, uses binary tree chaining for balanced type nesting.
+/// When no cfg children exist, uses binary tree chaining for balanced type nesting that
+/// avoid recursion limit issues.
 /// When cfg children exist, uses linear let-rebinding to preserve interleaved order.
 pub(crate) fn combine_descriptor_chains(base_expr: Ts2, children: &[(bool, Ts2)]) -> Ts2 {
     let has_cfg = children.iter().any(|(cfg, _)| *cfg);
