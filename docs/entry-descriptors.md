@@ -144,9 +144,9 @@ Extending `Entry` rather than introducing a separate trait keeps descriptor look
 
 ### Entry enums
 
-For enums without flatten fields in any variant, `descriptors()` yields a single descriptor containing the union of all variant fields (deduplicated by name) plus the tag field.
+Each enum variant gets its own static descriptor containing only that variant's fields (plus the tag field if present). The `descriptors()` method matches on self and yields the active variant's descriptor. Different variants produce different `DescriptorId`s. The descriptor name includes the variant (e.g., `"MyEnum::Read"`).
 
-For enums with flatten fields, `descriptors()` dispatches per-variant: each variant yields the shared base descriptor (union of non-flatten fields) followed by that variant's flatten children's descriptors. An enum iterator type (generated per entry, same pattern as sample_group) unifies the different return types across variants.
+For variants with flatten fields, the variant's base descriptor is followed by the flatten children's descriptors (same chaining pattern as structs). A generated enum iterator type (same pattern as sample_group) unifies the different return types across match arms.
 
 Sinks see different descriptor sequences depending on which variant is active. Each segment has its own `DescriptorId`, so per-segment caching works naturally. Sinks that want a single cache key for the whole entry can hash the sequence of ids.
 
