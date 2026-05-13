@@ -464,8 +464,6 @@ fn generate_descriptor_iter_enum(
     (iter_variants, iter_enum_def)
 }
 
-/// Generates a match arm for one enum variant's descriptor chain.
-/// Returns the pattern and the iterator expression (base descriptor + flatten chains).
 fn is_flatten(kind: &MetricsFieldKind) -> bool {
     matches!(
         kind,
@@ -488,8 +486,10 @@ fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) ->
 
 /// Generates a match arm pattern and iterator expression for one enum variant's descriptors.
 ///
-/// For variants without flatten fields: pattern matches everything, expression is just the base.
-/// For variants with flatten fields: pattern binds the flatten fields, expression chains them.
+/// Generates a match arm pattern and iterator expression for one enum variant.
+///
+/// Takes the base iterator and appends flatten children's descriptors if the variant has them.
+/// Returns (pattern, chain_expr) for use in the generated match.
 fn build_variant_descriptor_arm(
     entry_name: &Ident,
     variant: &MetricsVariant,
