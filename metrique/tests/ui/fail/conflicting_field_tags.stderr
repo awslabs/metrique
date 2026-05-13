@@ -1,0 +1,11 @@
+error: conflicting `field_tag`: `MyTag` is both present and skipped
+  --> tests/ui/fail/conflicting_field_tags.rs:11:33
+   |
+11 |     #[metrics(field_tag(MyTag), field_tag(skip(MyTag)))]
+   |                                 ^^^^^^^^^
+
+error: conflicting `default_field_tag`: `MyTag` is both present and skipped
+  --> tests/ui/fail/conflicting_field_tags.rs:16:37
+   |
+16 | #[metrics(default_field_tag(MyTag), default_field_tag(skip(MyTag)))]
+   |                                     ^^^^^^^^^^^^^^^^^
