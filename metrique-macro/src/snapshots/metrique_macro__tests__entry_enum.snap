@@ -22,14 +22,12 @@ const _: () = {
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
             static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-            static __METRIQUE_SUPPRESSED_0: [::std::any::TypeId; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "value",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -46,7 +44,6 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "Value",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -63,7 +60,6 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "value",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -80,7 +76,6 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "value",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -389,21 +384,17 @@ const _: () = {
                 StatusEntry::Active { .. } => {
                     StatusEntryDescIter::V0({
                         static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VSUPPRESSED_0_0: [::std::any::TypeId; 0usize] = [];
                         static __METRIQUE_VFLAGS_0_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VSUPPRESSED_0_1: [::std::any::TypeId; 0usize] = [];
                         static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "count",
                                 &__METRIQUE_VFLAGS_0_0,
-                                &__METRIQUE_VSUPPRESSED_0_0,
                                 ::metrique::writer::core::FieldShape::Opaque,
                                 None,
                             ),
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "latency",
                                 &__METRIQUE_VFLAGS_0_1,
-                                &__METRIQUE_VSUPPRESSED_0_1,
                                 ::metrique::writer::core::FieldShape::Opaque,
                                 Some(
                                     <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
@@ -663,12 +654,10 @@ const _: () = {
                 OperationEntry::Read { .. } => {
                     OperationEntryDescIter::V0({
                         static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VSUPPRESSED_0_0: [::std::any::TypeId; 0usize] = [];
                         static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "bytes",
                                 &__METRIQUE_VFLAGS_0_0,
-                                &__METRIQUE_VSUPPRESSED_0_0,
                                 ::metrique::writer::core::FieldShape::Opaque,
                                 None,
                             ),

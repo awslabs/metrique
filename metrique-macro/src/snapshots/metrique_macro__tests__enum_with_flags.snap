@@ -186,12 +186,10 @@ const _: () = {
                                 ::std::any::TypeId::of::<MyFlag>(),
                             ),
                         ];
-                        static __METRIQUE_VSUPPRESSED_0_0: [::std::any::TypeId; 0usize] = [];
                         static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "Value",
                                 &__METRIQUE_VFLAGS_0_0,
-                                &__METRIQUE_VSUPPRESSED_0_0,
                                 ::metrique::writer::core::FieldShape::Opaque,
                                 None,
                             ),
@@ -211,14 +209,10 @@ const _: () = {
                 FlaggedEnumEntry::Beta { .. } => {
                     FlaggedEnumEntryDescIter::V1({
                         static __METRIQUE_VFLAGS_1_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VSUPPRESSED_1_0: [::std::any::TypeId; 1usize] = [
-                            ::std::any::TypeId::of::<MyFlag>(),
-                        ];
                         static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "Skipped",
                                 &__METRIQUE_VFLAGS_1_0,
-                                &__METRIQUE_VSUPPRESSED_1_0,
                                 ::metrique::writer::core::FieldShape::Opaque,
                                 None,
                             ),

@@ -36,32 +36,26 @@ const _: () = {
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
             static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-            static __METRIQUE_SUPPRESSED_0: [::std::any::TypeId; 0usize] = [];
             static __METRIQUE_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
-            static __METRIQUE_SUPPRESSED_1: [::std::any::TypeId; 0usize] = [];
             static __METRIQUE_FLAGS_2: [::metrique::writer::core::FieldFlag; 0usize] = [];
-            static __METRIQUE_SUPPRESSED_2: [::std::any::TypeId; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "operation",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "number_of_ducks",
                             &__METRIQUE_FLAGS_1,
-                            &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "latency",
                             &__METRIQUE_FLAGS_2,
-                            &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
                             Some(
                                 <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
@@ -80,21 +74,18 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "Operation",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "NumberOfDucks",
                             &__METRIQUE_FLAGS_1,
-                            &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "Latency",
                             &__METRIQUE_FLAGS_2,
-                            &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
                             Some(
                                 <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
@@ -113,21 +104,18 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "operation",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "number_of_ducks",
                             &__METRIQUE_FLAGS_1,
-                            &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "latency",
                             &__METRIQUE_FLAGS_2,
-                            &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
                             Some(
                                 <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
@@ -146,21 +134,18 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "operation",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "number-of-ducks",
                             &__METRIQUE_FLAGS_1,
-                            &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "latency",
                             &__METRIQUE_FLAGS_2,
-                            &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
                             Some(
                                 <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,

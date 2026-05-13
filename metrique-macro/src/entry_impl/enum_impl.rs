@@ -367,10 +367,10 @@ fn generate_enum_descriptor(
             let variant_ident = &variant.ident;
 
             // Collect this variant's non-flatten fields
-            let mut v_field_metas = Vec::new();
+            let mut v_field_metas: Vec<super::DescriptorFieldMeta> = Vec::new();
             if let Some(tag) = &root_attrs.tag {
                 let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
-                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], suppressed: vec![], unit_expr: quote! { None } });
+                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], unit_expr: quote! { None } });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
@@ -381,7 +381,7 @@ fn generate_enum_descriptor(
                                 Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },
                                 None => quote! { None },
                             };
-                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, suppressed: resolved.suppressed, unit_expr });
+                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, unit_expr });
                     }
                 }
             }
@@ -394,14 +394,10 @@ fn generate_enum_descriptor(
 
             let v_flag_statics: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
                 let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
-                let suppressed_ident = format_ident!("__METRIQUE_VSUPPRESSED_{}_{}", v_idx, i);
                 let flags = &f.flags;
-                let suppressed = &f.suppressed;
                 let num_flags = flags.len();
-                let num_suppressed = suppressed.len();
                 quote! {
                     static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [#(#flags),*];
-                    static #suppressed_ident: [::std::any::TypeId; #num_suppressed] = [#(#suppressed),*];
                 }
             }).collect();
 
@@ -409,11 +405,10 @@ fn generate_enum_descriptor(
             let v_field_exprs: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
                 let name = &f.names[style_idx];
                 let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
-                let suppressed_ident = format_ident!("__METRIQUE_VSUPPRESSED_{}_{}", v_idx, i);
                 let unit_expr = &f.unit_expr;
                 quote! {
                     ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                        #name, &#flags_ident, &#suppressed_ident, ::metrique::writer::core::FieldShape::Opaque, #unit_expr,
+                        #name, &#flags_ident, ::metrique::writer::core::FieldShape::Opaque, #unit_expr,
                     )
                 }
             }).collect();

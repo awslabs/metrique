@@ -67,19 +67,13 @@ pub(crate) fn generate_struct_entry_impl(
 /// - A normal chain (`.chain(child.descriptors())`) for non-cfg fields
 /// - A cfg-gated let-rebinding (`#[cfg(...)] let __desc = __desc.chain(...)`) for cfg fields
 ///
-/// Returns `(flatten_tag_statics, flatten_chains)` where each chain is `(is_cfg_gated, tokens)`.
 /// Builds flatten chain entries for the descriptors() method.
 ///
-/// Returns (flatten_tag_statics, flatten_chains) where each non-cfg chain is a full
+/// Returns flatten_chains where each non-cfg chain is a full
 /// iterator expression (used with make_binary_tree_chain for balanced type nesting).
 /// Cfg-gated chains use let-rebinding and are applied after the tree.
-fn build_flatten_chains(
-    fields: &[MetricsField],
-    root_attrs: &RootAttributes,
-) -> (Vec<Ts2>, Vec<(bool, Ts2)>) {
-    let mut flatten_tag_statics = Vec::new();
+fn build_flatten_chains(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<(bool, Ts2)> {
     let mut flatten_chains: Vec<(bool, Ts2)> = Vec::new();
-    let mut flatten_idx = 0usize;
 
     for field in fields {
         match &field.attrs.kind {
@@ -88,34 +82,15 @@ fn build_flatten_chains(
                 let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
                 let ns = make_ns(root_attrs.rename_all, field.span);
 
-                let merged_defaults =
-                    resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
-
                 let prefix_expr = prefix.as_ref().map(|pfx| {
                     let inflected = pfx.apply_prefix_only(root_attrs.rename_all);
                     quote! { .with_prefix(#inflected) }
                 });
 
-                let flags_expr = if !merged_defaults.flags.is_empty() {
-                    let num_defaults = merged_defaults.flags.len();
-                    let defaults_ident =
-                        format_ident!("__METRIQUE_FLATTEN_DEFAULTS_{}", flatten_idx);
-                    let flags = &merged_defaults.flags;
-                    flatten_idx += 1;
-                    flatten_tag_statics.push(quote! {
-                        static #defaults_ident: [::metrique::writer::core::FieldFlag; #num_defaults] = [
-                            #(#flags),*
-                        ];
-                    });
-                    Some(quote! { .with_default_flags(&#defaults_ident) })
-                } else {
-                    None
-                };
-
-                let child_expr = if prefix_expr.is_some() || flags_expr.is_some() {
+                let child_expr = if prefix_expr.is_some() {
                     quote! {
                         ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                            .map(|d| d #prefix_expr #flags_expr)
+                            .map(|d| d #prefix_expr)
                     }
                 } else {
                     quote! {
@@ -155,7 +130,7 @@ fn build_flatten_chains(
         }
     }
 
-    (flatten_tag_statics, flatten_chains)
+    flatten_chains
 }
 
 /// Assembles the `descriptors()` method body from the entry's own descriptor
@@ -167,7 +142,6 @@ fn build_flatten_chains(
 fn assemble_descriptors_method(
     entry_name: &Ident,
     own_style: &Ts2,
-    flatten_tag_statics: &[Ts2],
     flatten_chains: &[(bool, Ts2)],
 ) -> Ts2 {
     let base_expr = quote! {
@@ -180,7 +154,6 @@ fn assemble_descriptors_method(
 
     quote! {
         fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-            #(#flatten_tag_statics)*
             #body
         }
     }
@@ -227,7 +200,6 @@ fn generate_descriptor(
                 field_metas.push(DescriptorFieldMeta {
                     names,
                     flags: resolved.flags,
-                    suppressed: resolved.suppressed,
                     unit_expr,
                 });
             }
@@ -243,13 +215,8 @@ fn generate_descriptor(
     );
 
     let own_style = style_const_for(root_attrs.rename_all);
-    let (flatten_tag_statics, flatten_chains) = build_flatten_chains(fields, root_attrs);
-    let descriptors_method = assemble_descriptors_method(
-        entry_name,
-        &own_style,
-        &flatten_tag_statics,
-        &flatten_chains,
-    );
+    let flatten_chains = build_flatten_chains(fields, root_attrs);
+    let descriptors_method = assemble_descriptors_method(entry_name, &own_style, &flatten_chains);
 
     super::DescriptorOutput {
         trait_impls: descriptor_impl,

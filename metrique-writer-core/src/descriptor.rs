@@ -43,7 +43,6 @@ impl EntryDescriptor {
 pub struct FieldDescriptor {
     name: &'static str,
     flags: &'static [FieldFlag],
-    suppressed: &'static [TypeId],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
@@ -54,14 +53,12 @@ impl FieldDescriptor {
     pub const fn __metrique_private_new(
         name: &'static str,
         flags: &'static [FieldFlag],
-        suppressed: &'static [TypeId],
         shape: FieldShape<'static>,
         unit: Option<Unit>,
     ) -> Self {
         Self {
             name,
             flags,
-            suppressed,
             shape,
             unit,
         }
@@ -112,19 +109,17 @@ pub struct DescriptorRef<'a> {
     descriptor: &'a EntryDescriptor,
     id: DescriptorId,
     prefixes: SmallVec<[&'static str; 1]>,
-    default_flag_layers: SmallVec<[&'static [FieldFlag]; 1]>,
 }
 
 impl<'a> DescriptorRef<'a> {
     /// Create a `DescriptorRef` from a `&'static EntryDescriptor`.
     #[doc(hidden)]
     pub fn from_static(descriptor: &'static EntryDescriptor) -> DescriptorRef<'static> {
-        let id = DescriptorId::compute(descriptor, &[], &[]);
+        let id = DescriptorId::compute(descriptor, &[]);
         DescriptorRef {
             descriptor,
             id,
             prefixes: SmallVec::new(),
-            default_flag_layers: SmallVec::new(),
         }
     }
 
@@ -133,16 +128,7 @@ impl<'a> DescriptorRef<'a> {
     #[doc(hidden)]
     pub fn with_prefix(mut self, prefix: &'static str) -> Self {
         self.prefixes.push(prefix);
-        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_flag_layers);
-        self
-    }
-
-    /// Add a layer of default flags. Field-level flags win; earlier layers win over later ones.
-    /// Multiple calls stack (innermost layer first).
-    #[doc(hidden)]
-    pub fn with_default_flags(mut self, flags: &'static [FieldFlag]) -> Self {
-        self.default_flag_layers.push(flags);
-        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_flag_layers);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes);
         self
     }
 
@@ -194,31 +180,9 @@ impl<'a> FieldView<'a> {
     pub fn base_name(&self) -> &'static str {
         self.desc.descriptor.fields[self.idx].name
     }
-    /// Resolved flags for this field. Only yields present flags (skipped flags are suppressed).
+    /// Flags applied to this field.
     pub fn flags(&self) -> impl Iterator<Item = &'a FieldFlag> {
-        let field = &self.desc.descriptor.fields[self.idx];
-        let layers = &self.desc.default_flag_layers;
-
-        // Fast path: no default layers, just return the field's own flags directly.
-        if layers.is_empty() {
-            let flags: SmallVec<[&'a FieldFlag; 4]> = field.flags.iter().collect();
-            return flags.into_iter();
-        }
-
-        // Merge path: field-level flags and suppressed ids take priority,
-        // then walk layers innermost-first, skipping already-present or suppressed ids.
-        let mut seen_ids: SmallVec<[TypeId; 4]> = field.flags.iter().map(|f| f.type_id).collect();
-        seen_ids.extend_from_slice(field.suppressed);
-        let mut all_flags: SmallVec<[&'a FieldFlag; 4]> = field.flags.iter().collect();
-        for layer in layers.iter() {
-            for flag in layer.iter() {
-                if !seen_ids.contains(&flag.type_id) {
-                    seen_ids.push(flag.type_id);
-                    all_flags.push(flag);
-                }
-            }
-        }
-        all_flags.into_iter()
+        self.desc.descriptor.fields[self.idx].flags.iter()
     }
 
     /// Shape of this field.
@@ -245,17 +209,10 @@ pub struct DescriptorId(u64);
 
 impl DescriptorId {
     // TODO: consider using fxhash instead to be a bit more collision resistant
-    fn compute(
-        descriptor: &EntryDescriptor,
-        prefixes: &[&'static str],
-        flag_layers: &[&'static [FieldFlag]],
-    ) -> Self {
+    fn compute(descriptor: &EntryDescriptor, prefixes: &[&'static str]) -> Self {
         let mut id = descriptor as *const EntryDescriptor as u64;
         for p in prefixes {
             id = id.wrapping_mul(31).wrapping_add(p.as_ptr() as u64);
-        }
-        for layer in flag_layers {
-            id = id.wrapping_mul(31).wrapping_add(layer.as_ptr() as u64);
         }
         DescriptorId(id)
     }
@@ -403,11 +360,9 @@ mod tests {
     #[test]
     fn field_name_no_prefix() {
         static FLAGS: [FieldFlag; 0] = [];
-        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "MyField",
             &FLAGS,
-            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
@@ -420,11 +375,9 @@ mod tests {
     #[test]
     fn field_name_with_prefix() {
         static FLAGS: [FieldFlag; 0] = [];
-        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "Latency",
             &FLAGS,
-            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
@@ -439,11 +392,9 @@ mod tests {
     #[test]
     fn field_name_with_nested_prefixes() {
         static FLAGS: [FieldFlag; 0] = [];
-        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "Latency",
             &FLAGS,
-            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
@@ -458,69 +409,13 @@ mod tests {
     }
 
     #[test]
-    fn field_flags_with_defaults() {
-        struct TestCtor;
-
-        static FIELD_FLAGS: [FieldFlag; 0] = [];
-        static SUPPRESSED: [TypeId; 0] = [];
-        static DEFAULT_FLAGS: [FieldFlag; 1] =
-            [FieldFlag::__metrique_private_new(TypeId::of::<TestCtor>())];
-        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
-            "f",
-            &FIELD_FLAGS,
-            &SUPPRESSED,
-            FieldShape::Opaque,
-            None,
-        )];
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
-
-        // Without defaults: no flags
-        let d = DescriptorRef::from_static(&DESC);
-        assert_eq!(d.fields().next().unwrap().flags().count(), 0);
-
-        // With defaults: one flag
-        let d = DescriptorRef::from_static(&DESC).with_default_flags(&DEFAULT_FLAGS);
-        assert_eq!(d.fields().next().unwrap().flags().count(), 1);
-    }
-
-    #[test]
-    fn field_flags_suppressed_blocks_default() {
-        struct TestCtor2;
-
-        static FIELD_FLAGS: [FieldFlag; 0] = [];
-        static SUPPRESSED: [TypeId; 1] = [TypeId::of::<TestCtor2>()];
-        static DEFAULT_FLAGS: [FieldFlag; 1] =
-            [FieldFlag::__metrique_private_new(TypeId::of::<TestCtor2>())];
-        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
-            "f",
-            &FIELD_FLAGS,
-            &SUPPRESSED,
-            FieldShape::Opaque,
-            None,
-        )];
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
-
-        let d = DescriptorRef::from_static(&DESC).with_default_flags(&DEFAULT_FLAGS);
-        // Suppressed blocks the default from being added
-        assert_eq!(d.fields().next().unwrap().flags().count(), 0);
-    }
-
-    #[test]
     fn field_view_iteration() {
         static FLAGS: [FieldFlag; 0] = [];
-        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 2] = [
-            FieldDescriptor::__metrique_private_new(
-                "Alpha",
-                &FLAGS,
-                &SUPPRESSED,
-                FieldShape::Opaque,
-                None,
-            ),
+            FieldDescriptor::__metrique_private_new("Alpha", &FLAGS, FieldShape::Opaque, None),
             FieldDescriptor::__metrique_private_new(
                 "Beta",
                 &FLAGS,
-                &SUPPRESSED,
                 FieldShape::Opaque,
                 Some(Unit::Count),
             ),

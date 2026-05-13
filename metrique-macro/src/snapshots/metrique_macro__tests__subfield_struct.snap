@@ -22,14 +22,12 @@ const _: () = {
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
             static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-            static __METRIQUE_SUPPRESSED_0: [::std::any::TypeId; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "counter",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -46,7 +44,6 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "Counter",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -63,7 +60,6 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "counter",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -80,7 +76,6 @@ const _: () = {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "counter",
                             &__METRIQUE_FLAGS_0,
-                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),

@@ -427,67 +427,6 @@ fn nested_flatten_prefix_stacking() {
     assert_eq!(mid_parts, vec!["Mid", "MiddleValue"]);
 }
 
-#[metrics(subfield, default_flags(Dial9Emit))]
-struct TaggedChild {
-    emitted: u64,
-    #[metrics(flags(skip(Dial9Emit)))]
-    skipped: u64,
-}
-
-#[metrics(rename_all = "PascalCase", default_flags(AuditExport))]
-struct TagPropagationParent {
-    own_field: u64,
-    #[metrics(flatten)]
-    child: TaggedChild,
-}
-
-#[test]
-fn flatten_flag_propagation_with_parent_default() {
-    let m = TagPropagationParent {
-        own_field: 1,
-        child: TaggedChild {
-            emitted: 2,
-            skipped: 3,
-        },
-    };
-    let closed = metrique::CloseValue::close(m);
-    let entry = metrique::RootEntry::new(closed);
-
-    let descriptors: Vec<_> = entry.descriptors().collect();
-    assert_eq!(descriptors.len(), 2);
-
-    // Parent's own field has AuditExport (from default_field_tag)
-    let parent_fields: Vec<_> = descriptors[0].fields().collect();
-    let parent_tags: Vec<_> = parent_fields[0].flags().collect();
-    assert!(
-        parent_tags
-            .iter()
-            .any(|t| t.type_id() == TypeId::of::<AuditExport>())
-    );
-
-    // Child's "emitted" field: has Dial9Emit (child's own default), plus AuditExport from parent default propagation
-    let child_fields: Vec<_> = descriptors[1].fields().collect();
-    let emitted_tags: Vec<_> = child_fields[0].flags().collect();
-    // Child's own Dial9Emit is present (baked)
-    assert!(
-        emitted_tags
-            .iter()
-            .any(|t| t.type_id() == TypeId::of::<Dial9Emit>())
-    );
-    // Parent's AuditExport propagates as default (fills gap)
-    assert!(
-        emitted_tags
-            .iter()
-            .any(|t| t.type_id() == TypeId::of::<AuditExport>())
-    );
-
-    // Child's second field has skip(Dial9Emit), so Dial9Emit is suppressed.
-    // AuditExport from parent default still propagates.
-    let second_field_flags: Vec<_> = child_fields[1].flags().collect();
-    assert!(!second_field_flags.iter().any(|t| t.is::<Dial9Emit>()));
-    assert!(second_field_flags.iter().any(|t| t.is::<AuditExport>()));
-}
-
 #[metrics(subfield)]
 struct CfgChild {
     cfg_value: u64,

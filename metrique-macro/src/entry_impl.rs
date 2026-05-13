@@ -34,8 +34,7 @@ pub(crate) struct DescriptorFieldMeta {
     pub(crate) names: [String; 4],
     /// Resolved flag token streams for this field
     pub(crate) flags: Vec<Ts2>,
-    /// Suppressed TypeId token streams for this field
-    pub(crate) suppressed: Vec<Ts2>,
+
     /// Unit expression (None or Some(<Unit>::UNIT))
     pub(crate) unit_expr: Ts2,
 }
@@ -61,17 +60,11 @@ pub(crate) fn generate_descriptor_impl(
         .enumerate()
         .map(|(i, f)| {
             let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
-            let suppressed_ident = format_ident!("__METRIQUE_SUPPRESSED_{}", i);
             let flags = &f.flags;
-            let suppressed = &f.suppressed;
             let num_flags = flags.len();
-            let num_suppressed = suppressed.len();
             quote! {
                 static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [
                     #(#flags),*
-                ];
-                static #suppressed_ident: [::std::any::TypeId; #num_suppressed] = [
-                    #(#suppressed),*
                 ];
             }
         })
@@ -97,13 +90,11 @@ pub(crate) fn generate_descriptor_impl(
                 .map(|(i, f)| {
                     let name = &f.names[style_idx];
                     let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
-                    let suppressed_ident = format_ident!("__METRIQUE_SUPPRESSED_{}", i);
                     let unit_expr = &f.unit_expr;
                     quote! {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             #name,
                             &#flags_ident,
-                            &#suppressed_ident,
                             ::metrique::writer::core::FieldShape::Opaque,
                             #unit_expr,
                         )
@@ -157,7 +148,6 @@ pub(crate) fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
 /// Resolved flags and suppressed type ids for a field.
 pub(crate) struct ResolvedFlags {
     pub(crate) flags: Vec<Ts2>,
-    pub(crate) suppressed: Vec<Ts2>,
 }
 
 pub(crate) fn resolve_field_flags(
@@ -165,13 +155,12 @@ pub(crate) fn resolve_field_flags(
     default_flags: &[FieldTagAttr],
 ) -> ResolvedFlags {
     let mut flags = Vec::new();
-    let mut suppressed = Vec::new();
 
-    // Field-level flags: present ones go to flags, skipped ones go to suppressed
+    // Field-level flags: present ones go to flags, skipped ones are just not emitted
     for flag in field_flags {
         let path = &flag.path;
         if flag.skip {
-            suppressed.push(quote! { ::std::any::TypeId::of::<#path>() });
+            // skip: don't emit this flag (it suppresses the default within this struct)
         } else {
             flags.push(quote! {
                 ::metrique::writer::core::FieldFlag::__metrique_private_new(
@@ -189,7 +178,7 @@ pub(crate) fn resolve_field_flags(
             continue;
         }
         if default_flag.skip {
-            suppressed.push(quote! { ::std::any::TypeId::of::<#path>() });
+            // skip on a default: don't emit
         } else {
             flags.push(quote! {
                 ::metrique::writer::core::FieldFlag::__metrique_private_new(
@@ -199,7 +188,7 @@ pub(crate) fn resolve_field_flags(
         }
     }
 
-    ResolvedFlags { flags, suppressed }
+    ResolvedFlags { flags }
 }
 
 /// Hygiene helper for generated method-local identifiers.
