@@ -701,51 +701,75 @@ pub(crate) struct FieldTagAttr {
     pub(crate) span: Span,
 }
 
-impl FromMeta for FieldTagAttr {
+/// Wrapper for parsing `flags(X, Y, skip(Z))` as a single darling field.
+///
+/// We implement `FromMeta` by handling `Meta::List` and parsing the comma-separated
+/// token stream ourselves. This works around a darling limitation where custom
+/// `FromMeta` types using `from_list` are silently dropped when they appear alongside
+/// darling `Flag` fields (like `flatten`, `no_close`) in the same attribute.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FlagsList(pub(crate) Vec<FieldTagAttr>);
+
+impl FromMeta for FlagsList {
+    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
+        let mut flags = Vec::new();
+        for item in items {
+            match item {
+                darling::ast::NestedMeta::Meta(meta) => {
+                    flags.push(parse_single_flag(meta)?);
+                }
+                darling::ast::NestedMeta::Lit(lit) => {
+                    return Err(darling::Error::custom(
+                        "expected a path or skip(Path) in flags(...)",
+                    )
+                    .with_span(lit));
+                }
+            }
+        }
+        Ok(FlagsList(flags))
+    }
+
     fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
-        // flags(Path) or flags(skip(Path))
+        // Handle Meta::List by parsing tokens directly as comma-separated items.
+        // This bypasses darling's NestedMeta parsing which fails alongside Flag fields.
         match item {
             syn::Meta::List(list) => {
-                let tokens = &list.tokens;
-                // Try parsing as skip(Path) first
-                let parsed: std::result::Result<syn::ExprCall, _> = syn::parse2(tokens.clone());
-                if let Ok(call) = parsed {
-                    if let syn::Expr::Path(func) = &*call.func
-                        && func.path.is_ident("skip")
-                        && call.args.len() == 1
-                        && let syn::Expr::Path(inner) = &call.args[0]
-                    {
-                        return Ok(FieldTagAttr {
-                            path: inner.path.clone(),
-                            skip: true,
-                            span: list.span(),
-                        });
-                    }
-                    return Err(darling::Error::custom(
-                        "expected `flags(Path)` or `flags(skip(Path))`",
-                    )
-                    .with_span(item));
+                let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
+                    .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+                    .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
+                let mut flags = Vec::new();
+                for meta in &parsed {
+                    flags.push(parse_single_flag(meta)?);
                 }
-                // Try parsing as a plain Path
-                let path: syn::Path = syn::parse2(tokens.clone()).map_err(|_| {
-                    darling::Error::custom("expected `flags(Path)` or `flags(skip(Path))`")
-                        .with_span(item)
-                })?;
-                Ok(FieldTagAttr {
-                    path,
-                    skip: false,
-                    span: list.span(),
-                })
+                Ok(FlagsList(flags))
             }
-            syn::Meta::Path(_) => Err(darling::Error::custom(
-                "flags requires a path argument: `flags(my_crate::MyFlag)`",
-            )
-            .with_span(item)),
-            syn::Meta::NameValue(_) => Err(darling::Error::custom(
-                "flags requires a path argument: `flags(my_crate::MyFlag)`",
-            )
-            .with_span(item)),
+            _ => Err(
+                darling::Error::custom("expected flags(Path, ...) or flags(skip(Path), ...)")
+                    .with_span(item),
+            ),
         }
+    }
+}
+
+fn parse_single_flag(meta: &syn::Meta) -> darling::Result<FieldTagAttr> {
+    match meta {
+        syn::Meta::Path(path) => Ok(FieldTagAttr {
+            path: path.clone(),
+            skip: false,
+            span: path.span(),
+        }),
+        syn::Meta::List(list) if list.path.is_ident("skip") => {
+            let inner: syn::Path = syn::parse2(list.tokens.clone())
+                .map_err(|_| darling::Error::custom("expected skip(Path)").with_span(list))?;
+            Ok(FieldTagAttr {
+                path: inner,
+                skip: true,
+                span: list.span(),
+            })
+        }
+        _ => Err(
+            darling::Error::custom("expected a path or skip(Path) in flags(...)").with_span(meta),
+        ),
     }
 }
 
@@ -769,8 +793,8 @@ struct RawRootAttributes {
     sample_group: Flag,
     value: Option<ValueAttributes>,
 
-    #[darling(multiple)]
-    default_flags: Vec<FieldTagAttr>,
+    #[darling(default)]
+    default_flags: FlagsList,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -855,7 +879,17 @@ impl RawRootAttributes {
             .transpose()?;
 
         // Validate default_flags: no conflicting present+skip for the same path
-        validate_flags_conflicts(&self.default_flags, "default_flags")?;
+        validate_flags_conflicts(&self.default_flags.0, "default_flags")?;
+        // skip(...) is not allowed in default_flags: just don't list the flag.
+        for flag in &self.default_flags.0 {
+            if flag.skip {
+                return Err(darling::Error::custom(
+                    "skip(...) is not allowed in default_flags. \
+                     To exclude a flag from a specific field, use flags(skip(T)) on that field.",
+                )
+                .with_span(&flag.span));
+            }
+        }
 
         Ok(RootAttributes {
             prefix: Prefix::from_inflectable_and_exact(
@@ -869,7 +903,7 @@ impl RawRootAttributes {
             tag,
             sample_group,
             mode,
-            default_flags: self.default_flags,
+            default_flags: self.default_flags.0,
         })
     }
 }
@@ -946,8 +980,8 @@ struct RawMetricsFieldAttrs {
     #[darling(default)]
     exact_prefix: Option<SpannedKv<String>>,
 
-    #[darling(multiple)]
-    flags: Vec<FieldTagAttr>,
+    #[darling(default)]
+    flags: FlagsList,
 }
 
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
@@ -1127,6 +1161,20 @@ impl RawMetricsFieldAttrs {
             }
         }
 
+        // flags(...) is not allowed on flatten/flatten_entry fields.
+        // Each struct manages its own flags independently.
+        if !self.flags.0.is_empty() {
+            if let Some((MetricsFieldKind::Flatten { span, .. }, _))
+            | Some((MetricsFieldKind::FlattenEntry(span), _)) = &out
+            {
+                return Err(darling::Error::custom(
+                    "flags(...) cannot be used on flatten or flatten_entry fields. \
+                     Apply flags on the child struct directly with default_flags(...).",
+                )
+                .with_span(span));
+            }
+        }
+
         Ok(MetricsFieldAttrs {
             close,
             kind: match out {
@@ -1139,8 +1187,8 @@ impl RawMetricsFieldAttrs {
                 },
             },
             flags: {
-                validate_flags_conflicts(&self.flags, "flags")?;
-                self.flags
+                validate_flags_conflicts(&self.flags.0, "flags")?;
+                self.flags.0
             },
         })
     }

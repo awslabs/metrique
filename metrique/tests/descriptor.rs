@@ -150,7 +150,7 @@ fn flag_resolution_default_and_skip() {
 
 #[metrics(rename_all = "PascalCase")]
 struct MultiTagMetrics {
-    #[metrics(flags(AuditExport), flags(Dial9Emit))]
+    #[metrics(flags(AuditExport, Dial9Emit))]
     important: u64,
     #[metrics(flags(Dial9Emit))]
     trace_only: u64,
@@ -747,7 +747,6 @@ fn tuple_variant_cfg_flatten_descriptor_ordering() {
 #[test]
 fn descriptors_forward_through_option_and_box() {
     use metrique::writer::Entry;
-    use std::sync::Arc;
 
     // Use BasicMetrics which has a known descriptor
     let m = BasicMetrics {

@@ -233,8 +233,10 @@ struct MultiFlagMetrics {
     #[metrics(timestamp)]
     timestamp: SystemTime,
     operation: String,
-    #[metrics(flags(metrique::emf::flags::HighStorageResolution))]
-    #[metrics(flags(metrique::emf::flags::NoMetric))]
+    #[metrics(flags(
+        metrique::emf::flags::HighStorageResolution,
+        metrique::emf::flags::NoMetric
+    ))]
     debug_value: u64,
     normal_count: u64,
 }
