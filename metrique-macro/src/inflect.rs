@@ -31,28 +31,23 @@ pub(crate) enum NameStyle {
 }
 
 impl NameStyle {
-    /// Ordered array matching the `STYLE_*` index constants in `metrique-core`.
-    /// Index 0 = Preserve, 1 = PascalCase, 2 = SnakeCase, 3 = KebabCase.
-    /// See also: `metrique-core/src/namestyle.rs` STYLE_* constants.
-    pub(crate) const DESCRIPTOR_STYLES: [NameStyle; 4] = [
-        NameStyle::Preserve,
-        NameStyle::PascalCase,
-        NameStyle::SnakeCase,
-        NameStyle::KebabCase,
-    ];
+    /// All styles in index order (matching `metrique_core::STYLE_*` constants).
+    pub(crate) const ALL: [NameStyle; metrique_core::STYLE_COUNT] = {
+        let mut arr = [NameStyle::Preserve; metrique_core::STYLE_COUNT];
+        arr[metrique_core::STYLE_PRESERVE as usize] = NameStyle::Preserve;
+        arr[metrique_core::STYLE_PASCAL as usize] = NameStyle::PascalCase;
+        arr[metrique_core::STYLE_SNAKE as usize] = NameStyle::SnakeCase;
+        arr[metrique_core::STYLE_KEBAB as usize] = NameStyle::KebabCase;
+        arr
+    };
 
-    /// Suffix names for generated statics, matching `DESCRIPTOR_STYLES` order.
-    pub(crate) const DESCRIPTOR_STYLE_NAMES: [&'static str; 4] =
-        ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
-
-    /// Returns the index of this style in `DESCRIPTOR_STYLES`.
-    /// Used to hardcode the struct's own style at macro time.
+    /// Returns the index of this style (matches `metrique_core::STYLE_*` constants).
     pub(crate) fn descriptor_index(self) -> usize {
         match self {
-            NameStyle::Preserve => 0,
-            NameStyle::PascalCase => 1,
-            NameStyle::SnakeCase => 2,
-            NameStyle::KebabCase => 3,
+            NameStyle::Preserve => metrique_core::STYLE_PRESERVE as usize,
+            NameStyle::PascalCase => metrique_core::STYLE_PASCAL as usize,
+            NameStyle::SnakeCase => metrique_core::STYLE_SNAKE as usize,
+            NameStyle::KebabCase => metrique_core::STYLE_KEBAB as usize,
         }
     }
 
@@ -165,37 +160,9 @@ mod test {
     use crate::{NameStyle, inflect::name_ends_with_delimiter};
 
     #[test]
-    fn descriptor_styles_ordering_is_consistent() {
-        // Validates that DESCRIPTOR_STYLES, DESCRIPTOR_STYLE_NAMES, and descriptor_index()
-        // all agree. If any of these drift, this test fails.
-        let expected: &[(NameStyle, &str, usize)] = &[
-            (NameStyle::Preserve, "PRESERVE", 0),
-            (NameStyle::PascalCase, "PASCAL", 1),
-            (NameStyle::SnakeCase, "SNAKE", 2),
-            (NameStyle::KebabCase, "KEBAB", 3),
-        ];
-        assert_eq!(NameStyle::DESCRIPTOR_STYLES.len(), expected.len());
-        assert_eq!(NameStyle::DESCRIPTOR_STYLE_NAMES.len(), expected.len());
-        for (i, (style, name, idx)) in expected.iter().enumerate() {
-            assert_eq!(
-                NameStyle::DESCRIPTOR_STYLES[i],
-                *style,
-                "DESCRIPTOR_STYLES[{i}] mismatch"
-            );
-            assert_eq!(
-                NameStyle::DESCRIPTOR_STYLE_NAMES[i],
-                *name,
-                "DESCRIPTOR_STYLE_NAMES[{i}] mismatch"
-            );
-            assert_eq!(
-                style.descriptor_index(),
-                *idx,
-                "descriptor_index() mismatch for {name}"
-            );
-        }
-
+    fn descriptor_styles_exhaustive() {
         // Exhaustive match: adding a new NameStyle variant causes a compile error here,
-        // forcing you to update DESCRIPTOR_STYLES, DESCRIPTOR_STYLE_NAMES, and this test.
+        // forcing you to update NameStyle::ALL and descriptor_index().
         fn _assert_exhaustive(s: NameStyle) -> usize {
             match s {
                 NameStyle::Preserve => 0,

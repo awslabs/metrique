@@ -41,7 +41,7 @@ pub trait NameStyle: private::NameStyleInternal {
 
 // Style index constants used by descriptor codegen to select the right static.
 // The macro crate mirrors these in `metrique-macro/src/inflect.rs` (DESCRIPTOR_STYLES
-// and DESCRIPTOR_STYLE_NAMES). Both must stay in sync.
+// The macro crate imports these directly via `metrique-core` dependency.
 #[doc(hidden)]
 pub const STYLE_PRESERVE: u8 = 0;
 #[doc(hidden)]
@@ -51,15 +51,13 @@ pub const STYLE_SNAKE: u8 = 2;
 #[doc(hidden)]
 pub const STYLE_KEBAB: u8 = 3;
 
-// Compile-time assertion: style constants must be sequential starting from 0.
-// If you add or reorder styles, update metrique-macro/src/inflect.rs
-// (DESCRIPTOR_STYLES, DESCRIPTOR_STYLE_NAMES, descriptor_index) to match.
-const _: () = {
-    assert!(STYLE_PRESERVE == 0);
-    assert!(STYLE_PASCAL == 1);
-    assert!(STYLE_SNAKE == 2);
-    assert!(STYLE_KEBAB == 3);
-};
+/// Number of descriptor name styles.
+#[doc(hidden)]
+pub const STYLE_COUNT: usize = 4;
+
+/// Suffix names for generated descriptor statics, indexed by STYLE_* constants.
+#[doc(hidden)]
+pub const STYLE_NAMES: [&str; STYLE_COUNT] = ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
 
 /// Inflects names to the identity case
 pub struct Identity<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);

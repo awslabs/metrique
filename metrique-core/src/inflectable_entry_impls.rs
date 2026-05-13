@@ -31,19 +31,11 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for Option<T> 
     }
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
-        if let Some(entry) = self.as_ref() {
-            itertools::Either::Left(entry.sample_group())
-        } else {
-            itertools::Either::Right([].into_iter())
-        }
+        self.as_ref().into_iter().flat_map(|e| e.sample_group())
     }
 
     fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
-        if let Some(entry) = self.as_ref() {
-            itertools::Either::Left(entry.descriptors())
-        } else {
-            itertools::Either::Right(std::iter::empty())
-        }
+        self.as_ref().into_iter().flat_map(|e| e.descriptors())
     }
 }
 

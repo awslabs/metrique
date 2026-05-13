@@ -73,12 +73,12 @@ pub(crate) fn generate_descriptor_impl(
     // Generate one match arm per name style. Each arm contains a static EntryDescriptor
     // with field names resolved for that style. The match selects the right static based
     // on the style index passed by the caller (hardcoded at macro time from rename_all).
-    let style_names = crate::inflect::NameStyle::DESCRIPTOR_STYLE_NAMES;
+    let style_names = metrique_core::STYLE_NAMES;
     let style_arms: Vec<Ts2> = (0..style_names.len())
         .map(|style_idx| {
             // Map the array index to the corresponding runtime STYLE_* constant.
             let style_const = style_const_for(
-                crate::inflect::NameStyle::DESCRIPTOR_STYLES[style_idx],
+                crate::inflect::NameStyle::ALL[style_idx],
             );
             let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
             let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);

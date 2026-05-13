@@ -173,7 +173,7 @@ fn generate_descriptor(
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
     let mut timestamp_descriptor = quote! { None };
     let mut field_metas = Vec::new();
-    let styles = NameStyle::DESCRIPTOR_STYLES;
+    let styles = NameStyle::ALL;
 
     // Collect field metadata and timestamp
     for field in fields {

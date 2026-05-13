@@ -349,7 +349,7 @@ fn generate_enum_descriptor(
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
-    let styles = NameStyle::DESCRIPTOR_STYLES;
+    let styles = NameStyle::ALL;
     let ns = make_ns(root_attrs.rename_all, entry_name.span());
 
     // Per-variant descriptors: each variant yields its own descriptor containing only
