@@ -363,13 +363,120 @@ impl FieldFlag {
     }
 }
 
+// ─── Builders ────────────────────────────────────────────────────────────────
+
+/// Create an [`EntryDescriptor`] with the given name and fields.
+///
+/// ```ignore
+/// use metrique_writer_core::descriptor::*;
+///
+/// static FIELDS: [FieldDescriptor; 1] = [
+///     field("request_count").unit(Unit::Count).build(),
+/// ];
+/// static DESC: EntryDescriptor = entry("MyMetrics", &FIELDS).build();
+/// ```
+pub const fn entry(
+    name: &'static str,
+    fields: &'static [FieldDescriptor],
+) -> EntryDescriptorBuilder {
+    EntryDescriptorBuilder {
+        name,
+        fields,
+        timestamp: None,
+    }
+}
+
+/// Builder for [`EntryDescriptor`].
+pub struct EntryDescriptorBuilder {
+    name: &'static str,
+    fields: &'static [FieldDescriptor],
+    timestamp: Option<TimestampDescriptor>,
+}
+
+impl EntryDescriptorBuilder {
+    /// Set the timestamp descriptor.
+    pub const fn timestamp(mut self, ts: TimestampDescriptor) -> Self {
+        self.timestamp = Some(ts);
+        self
+    }
+
+    /// Build the [`EntryDescriptor`].
+    pub const fn build(self) -> EntryDescriptor {
+        EntryDescriptor {
+            name: self.name,
+            fields: self.fields,
+            timestamp: self.timestamp,
+        }
+    }
+}
+
+/// Create a [`FieldDescriptor`] with the given name.
+///
+/// ```ignore
+/// static FIELD: FieldDescriptor = field("latency")
+///     .flags(&MY_FLAGS)
+///     .unit(Unit::Milliseconds)
+///     .build();
+/// ```
+pub const fn field(name: &'static str) -> FieldDescriptorBuilder {
+    FieldDescriptorBuilder {
+        name,
+        flags: &[],
+        shape: FieldShape::Opaque,
+        unit: None,
+    }
+}
+
+/// Builder for [`FieldDescriptor`].
+pub struct FieldDescriptorBuilder {
+    name: &'static str,
+    flags: &'static [FieldFlag],
+    shape: FieldShape<'static>,
+    unit: Option<Unit>,
+}
+
+impl FieldDescriptorBuilder {
+    /// Set the flags for this field.
+    pub const fn flags(mut self, flags: &'static [FieldFlag]) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    /// Set the shape for this field.
+    pub const fn shape(mut self, shape: FieldShape<'static>) -> Self {
+        self.shape = shape;
+        self
+    }
+
+    /// Set the unit for this field.
+    pub const fn unit(mut self, unit: Unit) -> Self {
+        self.unit = Some(unit);
+        self
+    }
+
+    /// Build the [`FieldDescriptor`].
+    pub const fn build(self) -> FieldDescriptor {
+        FieldDescriptor {
+            name: self.name,
+            flags: self.flags,
+            shape: self.shape,
+            unit: self.unit,
+        }
+    }
+}
+
+/// Create a [`TimestampDescriptor`] with the given name.
+pub const fn timestamp(name: &'static str) -> TimestampDescriptor {
+    TimestampDescriptor { name }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn descriptor_ref_stable_id() {
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("Test", &[], None);
+        static DESC: EntryDescriptor = entry("Test", &[]).build();
         let r1 = DescriptorRef::from_static(&DESC);
         let r2 = DescriptorRef::from_static(&DESC);
         assert_eq!(r1.id(), r2.id());
@@ -378,8 +485,8 @@ mod tests {
 
     #[test]
     fn different_descriptors_different_ids() {
-        static A: EntryDescriptor = EntryDescriptor::__metrique_private_new("A", &[], None);
-        static B: EntryDescriptor = EntryDescriptor::__metrique_private_new("B", &[], None);
+        static A: EntryDescriptor = entry("A", &[]).build();
+        static B: EntryDescriptor = entry("B", &[]).build();
         assert_ne!(
             DescriptorRef::from_static(&A).id(),
             DescriptorRef::from_static(&B).id()
@@ -388,7 +495,7 @@ mod tests {
 
     #[test]
     fn prefix_changes_id() {
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &[], None);
+        static DESC: EntryDescriptor = entry("T", &[]).build();
         let plain = DescriptorRef::from_static(&DESC);
         let prefixed = DescriptorRef::from_static(&DESC).with_prefix("Api");
         assert_ne!(plain.id(), prefixed.id());
@@ -396,14 +503,8 @@ mod tests {
 
     #[test]
     fn field_name_no_prefix() {
-        static FLAGS: [FieldFlag; 0] = [];
-        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
-            "MyField",
-            &FLAGS,
-            FieldShape::Opaque,
-            None,
-        )];
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+        static FIELDS: [FieldDescriptor; 1] = [field("MyField").build()];
+        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC);
         assert_eq!(d.fields().next().unwrap().base_name(), "MyField");
@@ -411,14 +512,8 @@ mod tests {
 
     #[test]
     fn field_name_with_prefix() {
-        static FLAGS: [FieldFlag; 0] = [];
-        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
-            "Latency",
-            &FLAGS,
-            FieldShape::Opaque,
-            None,
-        )];
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+        static FIELDS: [FieldDescriptor; 1] = [field("Latency").build()];
+        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC).with_prefix("Api");
         let fields: Vec<_> = d.fields().collect();
@@ -428,14 +523,8 @@ mod tests {
 
     #[test]
     fn field_name_with_nested_prefixes() {
-        static FLAGS: [FieldFlag; 0] = [];
-        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
-            "Latency",
-            &FLAGS,
-            FieldShape::Opaque,
-            None,
-        )];
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+        static FIELDS: [FieldDescriptor; 1] = [field("Latency").build()];
+        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC)
             .with_prefix("Http")
@@ -447,17 +536,11 @@ mod tests {
 
     #[test]
     fn field_view_iteration() {
-        static FLAGS: [FieldFlag; 0] = [];
         static FIELDS: [FieldDescriptor; 2] = [
-            FieldDescriptor::__metrique_private_new("Alpha", &FLAGS, FieldShape::Opaque, None),
-            FieldDescriptor::__metrique_private_new(
-                "Beta",
-                &FLAGS,
-                FieldShape::Opaque,
-                Some(Unit::Count),
-            ),
+            field("Alpha").build(),
+            field("Beta").unit(Unit::Count).build(),
         ];
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC);
         let fields: Vec<_> = d.fields().collect();
@@ -491,7 +574,7 @@ mod tests {
     #[test]
     fn boxentry_forwards() {
         use crate::{BoxEntry, Entry, EntryWriter};
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("X", &[], None);
+        static DESC: EntryDescriptor = entry("X", &[]).build();
         struct WithDesc;
         impl Entry for WithDesc {
             fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
