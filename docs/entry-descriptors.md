@@ -347,7 +347,6 @@ Short list of things explicitly left out of the initial design that fit the syst
 
 - **Typed source extraction.** See the appendix below. Would let sinks pull a typed structural snapshot (timestamp, task id, correlation id, ...) out of the closed entry before encoding fields. Deferred pending a concrete second consumer (OTEL, a richer dial9 integration).
 - **Hand-written `Entry` impls opting into descriptors** via a `DescribeEntry` trait users implement by hand; same mechanism macro-derived entries use internally. Would require promoting metrique's hidden macro-only constructors to a public surface.
-- **Per-variant descriptors for entry enums.** A future `Entry::descriptors()` impl on an enum could yield a different `DescriptorRef` per variant. `DescriptorRef` is opaque today specifically to leave this open; a `Shared(Arc<..>)`-backed variant of the handle would ship with that work.
 - **`FieldShape::Distribution(KnownShape)`** for distribution-typed fields (`Histogram<T>`, `SharedHistogram<T>`, and user types that emit many `Observation`s). Depends on a `DescribeValue` trait so value types can self-describe as distribution-shaped.
 - **Nested container recognition beyond one optional layer.** `Vec<Vec<T>>`, `Vec<Flex<..>>`, `Flex<(String, Vec<T>)>`, and double-optional all fall through to `Opaque` today; the descriptor enum accepts them, the macro's syntactic recognition just does not. Relaxing is an additive macro change.
 - **`#[metrics(entry_name = "...")]`** attribute for overriding the canonical entry name.
