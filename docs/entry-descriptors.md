@@ -67,13 +67,13 @@ An audit sink reads the descriptor at first-use per entry type, walks `Entry::wr
 The descriptor types live in `metrique_writer_core::descriptor`. The module defines:
 
 - `EntryDescriptor` with accessors: `name() -> &str`, `fields() -> &[FieldDescriptor]`, `timestamp() -> Option<&TimestampDescriptor>`
-- `FieldDescriptor` with accessors: `name() -> &str`, `tags() -> &[ResolvedFieldTag]`, `shape() -> FieldShape<'_>`, `unit() -> Option<Unit>`
+- `FieldDescriptor` with accessors: `name() -> &str`, `tags() -> &[FieldTag]`, `shape() -> FieldShape<'_>`, `unit() -> Option<Unit>`
 - `TimestampDescriptor` with accessor: `name() -> &str`
 - `FieldShape<'a>` enum: `Known(KnownShape)`, `Optional(ShapeRef<'a>)`, `Flex { key: StringShape, value: ShapeRef<'a> }`, `List(ShapeRef<'a>)`, `Opaque`
 - `KnownShape` enum: `Bool`, `U8`..`U64`, `I8`..`I64`, `F32`, `F64`, `String`, `Bytes`
 - `StringShape` enum: `String`
 - `ShapeRef<'a>` with accessor: `get() -> &FieldShape<'a>`
-- `ResolvedFieldTag` with accessors: `tag_id() -> TypeId`, `state() -> FieldTagState`
+- `FieldTag` with accessors: `tag_id() -> TypeId`, `state() -> FieldTagState`
 - `FieldTagState` enum: `Present`, `Absent`
 - `DescriptorRef<'a>` with accessors: `get() -> &EntryDescriptor`, `id() -> DescriptorId`
 - `DescriptorId`: opaque, `Copy + Eq + Hash`, stable within a process lifetime
@@ -82,7 +82,7 @@ The descriptor types live in `metrique_writer_core::descriptor`. The module defi
 
 Descriptor enums (`FieldShape`, `KnownShape`, `StringShape`, `FieldTagState`) are `#[non_exhaustive]`. Consumers matching on them need a `_` arm; new variants are additive. Metrique can add variants in a minor version without breaking existing match sites, but consumers that want to *use* a new variant will need to update their code. This is by design: wire encoders (the dominant consumer) must explicitly opt into encoding new shapes.
 
-Descriptor structs (`EntryDescriptor`, `FieldDescriptor`, `TimestampDescriptor`, `ResolvedFieldTag`, `DescriptorRef`) have private fields and accessor methods. Metrique can add fields to the structs across minor versions without breaking consumer code.
+Descriptor structs (`EntryDescriptor`, `FieldDescriptor`, `TimestampDescriptor`, `FieldTag`, `DescriptorRef`) have private fields and accessor methods. Metrique can add fields to the structs across minor versions without breaking consumer code.
 
 All accessor methods return borrows tied to `&self`, not `&'static`. This lets metrique change internal storage (e.g. from `&'static` slices today to `Arc`-owned data in a future enum-per-variant release) without breaking consumers. Consumers that need a longer-lived copy of a name or slice allocate from the borrow as needed.
 
@@ -178,7 +178,7 @@ Sinks define tag types in their own crate. Any type works as a tag; the macro do
 #[metrics(field_tag(skip(audit::Export)))]
 ```
 
-Each field/tag pair resolves to one of `present`, `absent`, or `unspecified`. Only `present` and `absent` (explicit user decisions) appear in the descriptor's `ResolvedFieldTag` list; `unspecified` is the absence of any entry.
+Each field/tag pair resolves to one of `present`, `absent`, or `unspecified`. Only `present` and `absent` (explicit user decisions) appear in the descriptor's `FieldTag` list; `unspecified` is the absence of any entry.
 
 ### Resolution order
 
@@ -306,7 +306,7 @@ The first time a descriptor-aware sink encounters a given descriptor (keyed on `
 Per macro-derived struct entry type:
 
 - 4 static `EntryDescriptor`s (one per name style), each with a slice of `FieldDescriptor`s.
-- One slice of `ResolvedFieldTag` per field (shared across all 4 styles, since tags don't vary by name style).
+- One slice of `FieldTag` per field (shared across all 4 styles, since tags don't vary by name style).
 - Per-field name strings (one per style, so 4x the name storage).
 
 Per enum entry type: 4 statics per variant (not per enum).

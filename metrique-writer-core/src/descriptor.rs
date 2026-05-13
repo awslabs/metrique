@@ -44,7 +44,7 @@ impl EntryDescriptor {
 #[derive(Debug)]
 pub struct FieldDescriptor {
     name: &'static str,
-    tags: &'static [ResolvedFieldTag],
+    tags: &'static [FieldTag],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
@@ -54,7 +54,7 @@ impl FieldDescriptor {
     #[doc(hidden)]
     pub const fn __metrique_private_new(
         name: &'static str,
-        tags: &'static [ResolvedFieldTag],
+        tags: &'static [FieldTag],
         shape: FieldShape<'static>,
         unit: Option<Unit>,
     ) -> Self {
@@ -104,6 +104,7 @@ impl TimestampDescriptor {
 ///         let base = field.base_name();        // just the field name
 ///         let tags = field.tags();             // resolved tags
 ///         let shape = field.shape();
+///         let unit = field.unit();
 ///     }
 /// }
 /// ```
@@ -112,7 +113,7 @@ pub struct DescriptorRef<'a> {
     descriptor: &'a EntryDescriptor,
     id: DescriptorId,
     prefixes: SmallVec<[&'static str; 1]>,
-    default_tag_layers: SmallVec<[&'static [ResolvedFieldTag]; 1]>,
+    default_tag_layers: SmallVec<[&'static [FieldTag]; 1]>,
 }
 
 impl<'a> DescriptorRef<'a> {
@@ -140,7 +141,7 @@ impl<'a> DescriptorRef<'a> {
     /// Add a layer of default tags. Field-level tags win; earlier layers win over later ones.
     /// Multiple calls stack (innermost layer first).
     #[doc(hidden)]
-    pub fn with_default_tags(mut self, tags: &'static [ResolvedFieldTag]) -> Self {
+    pub fn with_default_tags(mut self, tags: &'static [FieldTag]) -> Self {
         self.default_tag_layers.push(tags);
         self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_tag_layers);
         self
@@ -195,20 +196,20 @@ impl<'a> FieldView<'a> {
         self.desc.descriptor.fields[self.idx].name
     }
     /// Resolved tags for this field.
-    pub fn tags(&self) -> impl Iterator<Item = &'a ResolvedFieldTag> {
+    pub fn tags(&self) -> impl Iterator<Item = &'a FieldTag> {
         let field_tags = self.desc.descriptor.fields[self.idx].tags;
         let layers = &self.desc.default_tag_layers;
 
         // Fast path: no default layers, just return the field's own tags directly.
         if layers.is_empty() {
-            let tags: SmallVec<[&'a ResolvedFieldTag; 4]> = field_tags.iter().collect();
+            let tags: SmallVec<[&'a FieldTag; 4]> = field_tags.iter().collect();
             return tags.into_iter();
         }
 
         // Merge path: field-level tags win, then walk layers innermost-first,
         // skipping tag ids already present.
         let mut seen_ids: SmallVec<[TypeId; 4]> = field_tags.iter().map(|t| t.tag_id).collect();
-        let mut all_tags: SmallVec<[&'a ResolvedFieldTag; 4]> = field_tags.iter().collect();
+        let mut all_tags: SmallVec<[&'a FieldTag; 4]> = field_tags.iter().collect();
         for layer in layers.iter() {
             for tag in layer.iter() {
                 if !seen_ids.contains(&tag.tag_id) {
@@ -247,7 +248,7 @@ impl DescriptorId {
     fn compute(
         descriptor: &EntryDescriptor,
         prefixes: &[&'static str],
-        tag_layers: &[&'static [ResolvedFieldTag]],
+        tag_layers: &[&'static [FieldTag]],
     ) -> Self {
         let mut id = descriptor as *const EntryDescriptor as u64;
         for p in prefixes {
@@ -346,12 +347,12 @@ impl<'a> ShapeRef<'a> {
 
 /// A resolved field tag.
 #[derive(Debug)]
-pub struct ResolvedFieldTag {
+pub struct FieldTag {
     tag_id: TypeId,
     state: FieldTagState,
 }
 
-impl ResolvedFieldTag {
+impl FieldTag {
     /// The [`TypeId`] of the tag marker type.
     pub fn tag_id(&self) -> TypeId {
         self.tag_id
@@ -414,7 +415,7 @@ mod tests {
 
     #[test]
     fn field_name_no_prefix() {
-        static TAGS: [ResolvedFieldTag; 0] = [];
+        static TAGS: [FieldTag; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "MyField",
             &TAGS,
@@ -429,7 +430,7 @@ mod tests {
 
     #[test]
     fn field_name_with_prefix() {
-        static TAGS: [ResolvedFieldTag; 0] = [];
+        static TAGS: [FieldTag; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "Latency",
             &TAGS,
@@ -446,8 +447,8 @@ mod tests {
 
     #[test]
     fn field_tags_with_defaults() {
-        static FIELD_TAGS: [ResolvedFieldTag; 0] = [];
-        static DEFAULT_TAGS: [ResolvedFieldTag; 1] = [ResolvedFieldTag::__metrique_private_new(
+        static FIELD_TAGS: [FieldTag; 0] = [];
+        static DEFAULT_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
             TypeId::of::<u8>(),
             FieldTagState::Present,
         )];
@@ -470,11 +471,11 @@ mod tests {
 
     #[test]
     fn field_tags_field_level_wins() {
-        static FIELD_TAGS: [ResolvedFieldTag; 1] = [ResolvedFieldTag::__metrique_private_new(
+        static FIELD_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
             TypeId::of::<u8>(),
             FieldTagState::Absent,
         )];
-        static DEFAULT_TAGS: [ResolvedFieldTag; 1] = [ResolvedFieldTag::__metrique_private_new(
+        static DEFAULT_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
             TypeId::of::<u8>(),
             FieldTagState::Present,
         )];
@@ -495,7 +496,7 @@ mod tests {
 
     #[test]
     fn field_view_iteration() {
-        static TAGS: [ResolvedFieldTag; 0] = [];
+        static TAGS: [FieldTag; 0] = [];
         static FIELDS: [FieldDescriptor; 2] = [
             FieldDescriptor::__metrique_private_new("Alpha", &TAGS, FieldShape::Opaque, None),
             FieldDescriptor::__metrique_private_new(

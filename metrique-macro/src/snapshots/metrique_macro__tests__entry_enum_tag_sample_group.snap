@@ -176,8 +176,8 @@ const _: () = {
             match self {
                 OperationEntry::Read { .. } => {
                     OperationEntryDescIter::V0({
-                        static __METRIQUE_VTAGS_0_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                        static __METRIQUE_VTAGS_0_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                        static __METRIQUE_VTAGS_0_0: [::metrique::writer::core::FieldTag; 0usize] = [];
+                        static __METRIQUE_VTAGS_0_1: [::metrique::writer::core::FieldTag; 0usize] = [];
                         static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "operation",

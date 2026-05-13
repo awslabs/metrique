@@ -53,7 +53,7 @@ pub(crate) fn generate_descriptor_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     // Tag statics are shared across all 4 style arms because tags don't vary by name style.
-    // Each field gets one static array of ResolvedFieldTag.
+    // Each field gets one static array of FieldTag.
     let tag_statics: Vec<Ts2> = fields
         .iter()
         .enumerate()
@@ -62,7 +62,7 @@ pub(crate) fn generate_descriptor_impl(
             let tags = &f.tags;
             let num_tags = tags.len();
             quote! {
-                static #ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [
+                static #ident: [::metrique::writer::core::FieldTag; #num_tags] = [
                     #(#tags),*
                 ];
             }
@@ -159,7 +159,7 @@ pub(crate) fn resolve_field_tags(
             quote! { ::metrique::writer::core::FieldTagState::Present }
         };
         resolved.push(quote! {
-            ::metrique::writer::core::ResolvedFieldTag::__metrique_private_new(
+            ::metrique::writer::core::FieldTag::__metrique_private_new(
                 ::std::any::TypeId::of::<#path>(),
                 #state,
             )
@@ -179,7 +179,7 @@ pub(crate) fn resolve_field_tags(
             quote! { ::metrique::writer::core::FieldTagState::Present }
         };
         resolved.push(quote! {
-            ::metrique::writer::core::ResolvedFieldTag::__metrique_private_new(
+            ::metrique::writer::core::FieldTag::__metrique_private_new(
                 ::std::any::TypeId::of::<#path>(),
                 #state,
             )

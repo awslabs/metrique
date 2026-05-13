@@ -710,16 +710,16 @@ impl FromMeta for FieldTagAttr {
                 // Try parsing as skip(Path) first
                 let parsed: std::result::Result<syn::ExprCall, _> = syn::parse2(tokens.clone());
                 if let Ok(call) = parsed {
-                    if let syn::Expr::Path(func) = &*call.func {
-                        if func.path.is_ident("skip") && call.args.len() == 1 {
-                            if let syn::Expr::Path(inner) = &call.args[0] {
-                                return Ok(FieldTagAttr {
-                                    path: inner.path.clone(),
-                                    skip: true,
-                                    span: list.span(),
-                                });
-                            }
-                        }
+                    if let syn::Expr::Path(func) = &*call.func
+                        && func.path.is_ident("skip")
+                        && call.args.len() == 1
+                        && let syn::Expr::Path(inner) = &call.args[0]
+                    {
+                        return Ok(FieldTagAttr {
+                            path: inner.path.clone(),
+                            skip: true,
+                            span: list.span(),
+                        });
                     }
                     return Err(darling::Error::custom(
                         "expected `field_tag(Path)` or `field_tag(skip(Path))`",

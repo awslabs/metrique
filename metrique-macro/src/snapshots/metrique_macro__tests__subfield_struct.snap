@@ -21,7 +21,7 @@ const _: () = {
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_TAGS_0: [::metrique::writer::core::FieldTag; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [

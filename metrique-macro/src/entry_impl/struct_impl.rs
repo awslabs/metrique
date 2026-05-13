@@ -1,5 +1,7 @@
 use super::resolve_field_tags;
 use super::*;
+use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
+use crate::inflect::NameStyle;
 use crate::inflect::metric_name;
 
 pub(crate) fn generate_struct_entry_impl(
@@ -95,7 +97,7 @@ fn build_flatten_chains(
                         format_ident!("__METRIQUE_FLATTEN_DEFAULTS_{}", flatten_idx);
                     flatten_idx += 1;
                     flatten_tag_statics.push(quote! {
-                        static #defaults_ident: [::metrique::writer::core::ResolvedFieldTag; #num_defaults] = [
+                        static #defaults_ident: [::metrique::writer::core::FieldTag; #num_defaults] = [
                             #(#merged_defaults),*
                         ];
                     });
@@ -209,9 +211,6 @@ fn generate_descriptor(
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
-    use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
-    use crate::inflect::NameStyle;
-
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
     let mut timestamp_descriptor = quote! { None };
     let mut field_metas = Vec::new();

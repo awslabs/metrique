@@ -21,7 +21,7 @@ const _: () = {
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+            static __METRIQUE_TAGS_0: [::metrique::writer::core::FieldTag; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
@@ -372,8 +372,8 @@ const _: () = {
             match self {
                 OperationEntry::Read { .. } => {
                     OperationEntryDescIter::V0({
-                        static __METRIQUE_VTAGS_0_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-                        static __METRIQUE_VTAGS_0_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                        static __METRIQUE_VTAGS_0_0: [::metrique::writer::core::FieldTag; 0usize] = [];
+                        static __METRIQUE_VTAGS_0_1: [::metrique::writer::core::FieldTag; 0usize] = [];
                         static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
                             ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                 "operation",
@@ -403,7 +403,7 @@ const _: () = {
                 OperationEntry::Write(__v0) => {
                     OperationEntryDescIter::V1(
                         {
-                            static __METRIQUE_VTAGS_1_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                            static __METRIQUE_VTAGS_1_0: [::metrique::writer::core::FieldTag; 0usize] = [];
                             static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                                 ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                                     "operation",

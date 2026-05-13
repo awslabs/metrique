@@ -1,6 +1,8 @@
+use super::DescriptorFieldMeta;
 use super::resolve_field_tags;
 use super::*;
 use crate::enums::{MetricsVariant, VariantData};
+use crate::inflect::NameStyle;
 use crate::inflect::metric_name;
 
 /// Build a struct variant pattern from field identifiers.
@@ -66,7 +68,7 @@ pub(crate) fn generate_enum_entry_impl(
         }
     };
 
-    let descriptor = generate_enum_descriptor(entry_name, generics, variants, root_attrs);
+    let descriptor = generate_enum_descriptor(entry_name, variants, root_attrs);
     let descriptor_trait_impls = &descriptor.trait_impls;
     let descriptors_method = &descriptor.method;
 
@@ -332,16 +334,11 @@ fn collect_tuple_sample_group(
 /// Same pattern as sample_group: one variant per enum arm, unified via Iterator impl.
 fn generate_enum_descriptor(
     entry_name: &Ident,
-    generics: &syn::Generics,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
-    use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
-    use crate::inflect::NameStyle;
-
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
     let styles = NameStyle::DESCRIPTOR_STYLES;
-    let own_style = style_const_for(root_attrs.rename_all);
     let ns = make_ns(root_attrs.rename_all, entry_name.span());
 
     // Per-variant descriptors: each variant yields its own descriptor containing only
@@ -366,8 +363,7 @@ fn generate_enum_descriptor(
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
-                    match &field.attrs.kind {
-                        MetricsFieldKind::Field { unit, .. } => {
+                    if let MetricsFieldKind::Field { unit, .. } = &field.attrs.kind {
                             let names: [String; 4] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                             let tags = resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
                             let unit_expr = match unit {
@@ -375,8 +371,6 @@ fn generate_enum_descriptor(
                                 None => quote! { None },
                             };
                             v_field_metas.push(DescriptorFieldMeta { names, tags, unit_expr });
-                        }
-                        _ => {}
                     }
                 }
             }
@@ -391,7 +385,7 @@ fn generate_enum_descriptor(
                 let ident = format_ident!("__METRIQUE_VTAGS_{}_{}", v_idx, i);
                 let tags = &f.tags;
                 let num_tags = tags.len();
-                quote! { static #ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [#(#tags),*]; }
+                quote! { static #ident: [::metrique::writer::core::FieldTag; #num_tags] = [#(#tags),*]; }
             }).collect();
 
             let style_idx = root_attrs.rename_all.descriptor_index();
@@ -434,61 +428,6 @@ fn generate_enum_descriptor(
         trait_impls: quote! { #iter_enum_def },
         method: descriptors_method,
     }
-}
-
-fn collect_enum_field_metas(
-    variants: &[MetricsVariant],
-    root_attrs: &RootAttributes,
-    styles: &[crate::inflect::NameStyle; 4],
-) -> Vec<super::DescriptorFieldMeta> {
-    use super::DescriptorFieldMeta;
-    use crate::inflect::NameStyle;
-    let mut field_metas = Vec::new();
-    let mut seen_names = std::collections::BTreeSet::new();
-
-    if let Some(tag) = &root_attrs.tag {
-        let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
-        field_metas.push(DescriptorFieldMeta {
-            names,
-            tags: vec![],
-            unit_expr: quote! { None },
-        });
-    }
-
-    for variant in variants {
-        let fields = match &variant.data {
-            Some(VariantData::Struct(fields)) => fields.as_slice(),
-            _ => continue,
-        };
-        for field in fields {
-            match &field.attrs.kind {
-                MetricsFieldKind::Ignore(_) | MetricsFieldKind::Timestamp(_) => continue,
-                MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_) => continue,
-                MetricsFieldKind::Field { unit, .. } => {
-                    let preserve_name = metric_name(root_attrs, NameStyle::Preserve, field);
-                    if !seen_names.insert(preserve_name) {
-                        continue;
-                    }
-                    let names: [String; 4] =
-                        std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
-                    let tags =
-                        resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
-                    let unit_expr = match unit {
-                        Some(u) => {
-                            quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) }
-                        }
-                        None => quote! { None },
-                    };
-                    field_metas.push(DescriptorFieldMeta {
-                        names,
-                        tags,
-                        unit_expr,
-                    });
-                }
-            }
-        }
-    }
-    field_metas
 }
 
 fn generate_descriptor_iter_enum(
