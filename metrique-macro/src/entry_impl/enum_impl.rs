@@ -342,12 +342,7 @@ fn generate_enum_descriptor(
     let mut field_metas = Vec::new();
     let mut seen_names = BTreeSet::new();
 
-    let styles = [
-        NameStyle::Preserve,
-        NameStyle::PascalCase,
-        NameStyle::SnakeCase,
-        NameStyle::KebabCase,
-    ];
+    let styles = NameStyle::DESCRIPTOR_STYLES;
 
     // Tag field comes first (if present)
     if let Some(tag) = &root_attrs.tag {

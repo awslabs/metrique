@@ -31,6 +31,20 @@ pub(crate) enum NameStyle {
 }
 
 impl NameStyle {
+    /// Ordered array matching the `STYLE_*` index constants in `metrique-core`.
+    /// Index 0 = Preserve, 1 = PascalCase, 2 = SnakeCase, 3 = KebabCase.
+    /// See also: `metrique-core/src/namestyle.rs` STYLE_* constants.
+    pub(crate) const DESCRIPTOR_STYLES: [NameStyle; 4] = [
+        NameStyle::Preserve,
+        NameStyle::PascalCase,
+        NameStyle::SnakeCase,
+        NameStyle::KebabCase,
+    ];
+
+    /// Suffix names for generated statics, matching `DESCRIPTOR_STYLES` order.
+    pub(crate) const DESCRIPTOR_STYLE_NAMES: [&'static str; 4] =
+        ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
+
     pub(crate) fn apply(self, name: &str) -> String {
         use inflector::Inflector;
         match self {

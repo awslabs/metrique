@@ -40,7 +40,9 @@ pub trait NameStyle: private::NameStyleInternal {
     type InflectAffix<ID: MaybeConstStr, PASCAL: MaybeConstStr, SNAKE: MaybeConstStr, KEBAB: MaybeConstStr>: MaybeConstStr;
 }
 
-// Style index constants. Used by descriptor codegen to select the right static.
+// Style index constants used by descriptor codegen to select the right static.
+// The macro crate mirrors these in `metrique-macro/src/inflect.rs` (DESCRIPTOR_STYLES
+// and DESCRIPTOR_STYLE_NAMES). Both must stay in sync.
 #[doc(hidden)]
 pub const STYLE_PRESERVE: u8 = 0;
 #[doc(hidden)]

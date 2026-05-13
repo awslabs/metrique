@@ -68,8 +68,8 @@ pub(crate) fn generate_descriptor_impl(
         })
         .collect();
 
-    let style_names = ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
-    let style_arms: Vec<Ts2> = (0..4)
+    let style_names = crate::inflect::NameStyle::DESCRIPTOR_STYLE_NAMES;
+    let style_arms: Vec<Ts2> = (0..style_names.len())
         .map(|style_idx| {
             let style_const = match style_idx {
                 0 => quote! { ::metrique::STYLE_PRESERVE },
@@ -130,6 +130,7 @@ pub(crate) fn generate_descriptor_impl(
 }
 
 /// Returns the style constant token stream for a given `NameStyle`.
+/// Maps the macro-internal `NameStyle` enum to the runtime `::metrique::STYLE_*` constants.
 pub(crate) fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
     match style {
         crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },

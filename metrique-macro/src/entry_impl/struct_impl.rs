@@ -79,12 +79,7 @@ fn generate_descriptor(
     let mut flatten_idx = 0usize;
     let mut field_metas = Vec::new();
 
-    let styles = [
-        NameStyle::Preserve,
-        NameStyle::PascalCase,
-        NameStyle::SnakeCase,
-        NameStyle::KebabCase,
-    ];
+    let styles = NameStyle::DESCRIPTOR_STYLES;
 
     for field in fields {
         match &field.attrs.kind {
