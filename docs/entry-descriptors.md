@@ -303,14 +303,15 @@ The first time a descriptor-aware sink encounters a given descriptor (keyed on `
 
 ## Binary cost
 
-The initial release adds, per macro-derived entry type:
+Per macro-derived struct entry type:
 
-- One `static EntryDescriptor` in `.rodata`.
-- One slice of `FieldDescriptor`s (one per emitted field).
-- One or more slices of `ResolvedFieldTag` per field (only for tags that resolved to `Present` or `Absent` explicitly).
-- Small per-field constants for names, shapes, and units.
+- 4 static `EntryDescriptor`s (one per name style), each with a slice of `FieldDescriptor`s.
+- One slice of `ResolvedFieldTag` per field (shared across all 4 styles, since tags don't vary by name style).
+- Per-field name strings (one per style, so 4x the name storage).
 
-Ballpark: a ten-field entry with a couple of tags per field and some nested shapes fits in about 500-1500 bytes of `.rodata`. One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `Entry::descriptors()` pay nothing beyond their existing costs.
+Per enum entry type: 4 statics per variant (not per enum).
+
+Ballpark: a ten-field struct with a couple of tags per field is roughly 2 KB of `.rodata` (4x the single-style cost). One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `descriptors()` pay nothing beyond their existing costs.
 
 ## Future evolution
 
