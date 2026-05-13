@@ -196,6 +196,16 @@ fn generate_tuple_writes(
                     )
                 }
             };
+            let cfg_attrs: Vec<_> = td
+                .attrs
+                .iter()
+                .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
+                .collect();
+            let write = if cfg_attrs.is_empty() {
+                write
+            } else {
+                quote! { #(#cfg_attrs)* { #write } }
+            };
             (binding, write)
         })
         .unzip()

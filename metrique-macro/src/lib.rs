@@ -1280,6 +1280,7 @@ impl MetricsField {
 }
 
 pub(crate) struct TupleData {
+    pub(crate) attrs: Vec<syn::Attribute>,
     pub(crate) ty: syn::Type,
     pub(crate) kind: MetricsFieldKind,
     pub(crate) close: bool,

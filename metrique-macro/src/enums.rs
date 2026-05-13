@@ -136,7 +136,7 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
                         }
                     };
 
-                    Ok(TupleData {
+                    Ok(TupleData { attrs: crate::clean_attrs(&field.attrs),
                         ty: field.ty.clone(),
                         kind: attrs.kind,
                         close: attrs.close,
