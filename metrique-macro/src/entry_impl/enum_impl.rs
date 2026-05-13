@@ -1,5 +1,5 @@
 use super::DescriptorFieldMeta;
-use super::resolve_field_tags;
+use super::resolve_field_flags;
 use super::*;
 use crate::enums::{MetricsVariant, VariantData};
 use crate::inflect::NameStyle;
@@ -370,18 +370,18 @@ fn generate_enum_descriptor(
             let mut v_field_metas = Vec::new();
             if let Some(tag) = &root_attrs.tag {
                 let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
-                v_field_metas.push(DescriptorFieldMeta { names, tags: vec![], unit_expr: quote! { None } });
+                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], suppressed: vec![], unit_expr: quote! { None } });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
                     if let MetricsFieldKind::Field { unit, .. } = &field.attrs.kind {
                             let names: [String; 4] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
-                            let tags = resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
+                            let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
                             let unit_expr = match unit {
                                 Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },
                                 None => quote! { None },
                             };
-                            v_field_metas.push(DescriptorFieldMeta { names, tags, unit_expr });
+                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, suppressed: resolved.suppressed, unit_expr });
                     }
                 }
             }
@@ -392,28 +392,35 @@ fn generate_enum_descriptor(
             let variant_name = format!("{}::{}", struct_name, variant_ident);
             let num_v_fields = v_field_metas.len();
 
-            let v_tag_statics: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
-                let ident = format_ident!("__METRIQUE_VTAGS_{}_{}", v_idx, i);
-                let tags = &f.tags;
-                let num_tags = tags.len();
-                quote! { static #ident: [::metrique::writer::core::FieldTag; #num_tags] = [#(#tags),*]; }
+            let v_flag_statics: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
+                let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
+                let suppressed_ident = format_ident!("__METRIQUE_VSUPPRESSED_{}_{}", v_idx, i);
+                let flags = &f.flags;
+                let suppressed = &f.suppressed;
+                let num_flags = flags.len();
+                let num_suppressed = suppressed.len();
+                quote! {
+                    static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [#(#flags),*];
+                    static #suppressed_ident: [::std::any::TypeId; #num_suppressed] = [#(#suppressed),*];
+                }
             }).collect();
 
             let style_idx = root_attrs.rename_all.descriptor_index();
             let v_field_exprs: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
                 let name = &f.names[style_idx];
-                let tags_ident = format_ident!("__METRIQUE_VTAGS_{}_{}", v_idx, i);
+                let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
+                let suppressed_ident = format_ident!("__METRIQUE_VSUPPRESSED_{}_{}", v_idx, i);
                 let unit_expr = &f.unit_expr;
                 quote! {
                     ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                        #name, &#tags_ident, ::metrique::writer::core::FieldShape::Opaque, #unit_expr,
+                        #name, &#flags_ident, &#suppressed_ident, ::metrique::writer::core::FieldShape::Opaque, #unit_expr,
                     )
                 }
             }).collect();
 
             let base = quote! {
                 {
-                    #(#v_tag_statics)*
+                    #(#v_flag_statics)*
                     static #v_fields_ident: [::metrique::writer::core::FieldDescriptor; #num_v_fields] = [#(#v_field_exprs),*];
                     static #v_desc_ident: ::metrique::writer::core::EntryDescriptor =
                         ::metrique::writer::core::EntryDescriptor::__metrique_private_new(#variant_name, &#v_fields_ident, None);

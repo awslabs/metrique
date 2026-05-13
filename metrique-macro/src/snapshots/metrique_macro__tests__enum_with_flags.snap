@@ -1,0 +1,308 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+enum FlaggedEnum {
+    Alpha { value: u64 },
+    Beta { skipped: u64 },
+}
+#[doc(hidden)]
+pub enum FlaggedEnumEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Alpha {
+        #[deprecated(
+            note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+        )]
+        #[doc(hidden)]
+        value: <u64 as metrique::CloseValue>::Closed,
+    },
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Beta {
+        #[deprecated(
+            note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+        )]
+        #[doc(hidden)]
+        skipped: <u64 as metrique::CloseValue>::Closed,
+    },
+}
+const _: () = {
+    enum FlaggedEnumEntrySampleGroupIter<V0, V1> {
+        V0(V0),
+        V1(V1),
+    }
+    impl<
+        V0: ::std::iter::Iterator<
+                Item = (
+                    ::std::borrow::Cow<'static, str>,
+                    ::std::borrow::Cow<'static, str>,
+                ),
+            >,
+        V1: ::std::iter::Iterator<
+                Item = (
+                    ::std::borrow::Cow<'static, str>,
+                    ::std::borrow::Cow<'static, str>,
+                ),
+            >,
+    > ::std::iter::Iterator for FlaggedEnumEntrySampleGroupIter<V0, V1> {
+        type Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>);
+        fn next(&mut self) -> ::std::option::Option<Self::Item> {
+            match self {
+                FlaggedEnumEntrySampleGroupIter::V0(iter) => iter.next(),
+                FlaggedEnumEntrySampleGroupIter::V1(iter) => iter.next(),
+            }
+        }
+    }
+    enum FlaggedEnumEntryDescIter<'__metrique_lt, V0, V1> {
+        V0(V0),
+        V1(V1),
+        __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
+    }
+    impl<
+        '__metrique_lt,
+        V0: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+        V1: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+    > ::std::iter::Iterator for FlaggedEnumEntryDescIter<'__metrique_lt, V0, V1> {
+        type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
+        fn next(&mut self) -> ::std::option::Option<Self::Item> {
+            match self {
+                FlaggedEnumEntryDescIter::V0(iter) => iter.next(),
+                FlaggedEnumEntryDescIter::V1(iter) => iter.next(),
+                FlaggedEnumEntryDescIter::__Phantom(_) => None,
+            }
+        }
+    }
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for FlaggedEnumEntry {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
+            let __metrique_self = self;
+            #[allow(deprecated)]
+            match __metrique_self {
+                FlaggedEnumEntry::Alpha { value } => {
+                    ::metrique::writer::EntryWriter::value(
+                        writer,
+                        {
+                            struct ValuePreserve;
+                            impl ::metrique::concat::ConstStr for ValuePreserve {
+                                const VAL: &'static str = "value";
+                            }
+                            struct ValueKebab;
+                            impl ::metrique::concat::ConstStr for ValueKebab {
+                                const VAL: &'static str = "value";
+                            }
+                            struct ValuePascal;
+                            impl ::metrique::concat::ConstStr for ValuePascal {
+                                const VAL: &'static str = "Value";
+                            }
+                            struct ValueSnake;
+                            impl ::metrique::concat::ConstStr for ValueSnake {
+                                const VAL: &'static str = "value";
+                            }
+                            ::metrique::concat::const_str_value::<
+                                <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                                    ValuePreserve,
+                                    ValuePascal,
+                                    ValueSnake,
+                                    ValueKebab,
+                                >,
+                            >()
+                        },
+                        value,
+                    );
+                }
+                FlaggedEnumEntry::Beta { skipped } => {
+                    ::metrique::writer::EntryWriter::value(
+                        writer,
+                        {
+                            struct SkippedPreserve;
+                            impl ::metrique::concat::ConstStr for SkippedPreserve {
+                                const VAL: &'static str = "skipped";
+                            }
+                            struct SkippedKebab;
+                            impl ::metrique::concat::ConstStr for SkippedKebab {
+                                const VAL: &'static str = "skipped";
+                            }
+                            struct SkippedPascal;
+                            impl ::metrique::concat::ConstStr for SkippedPascal {
+                                const VAL: &'static str = "Skipped";
+                            }
+                            struct SkippedSnake;
+                            impl ::metrique::concat::ConstStr for SkippedSnake {
+                                const VAL: &'static str = "skipped";
+                            }
+                            ::metrique::concat::const_str_value::<
+                                <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                                    SkippedPreserve,
+                                    SkippedPascal,
+                                    SkippedSnake,
+                                    SkippedKebab,
+                                >,
+                            >()
+                        },
+                        skipped,
+                    );
+                }
+            }
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            let __metrique_self = self;
+            match __metrique_self {
+                FlaggedEnumEntry::Alpha { .. } => {
+                    FlaggedEnumEntrySampleGroupIter::V0(::std::iter::empty())
+                }
+                FlaggedEnumEntry::Beta { .. } => {
+                    FlaggedEnumEntrySampleGroupIter::V1(::std::iter::empty())
+                }
+            }
+        }
+        fn descriptors(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = ::metrique::writer::core::DescriptorRef<'_>,
+        > {
+            #[allow(deprecated)]
+            match self {
+                FlaggedEnumEntry::Alpha { .. } => {
+                    FlaggedEnumEntryDescIter::V0({
+                        static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 1usize] = [
+                            ::metrique::writer::core::FieldFlag::__metrique_private_new(
+                                ::std::any::TypeId::of::<MyFlag>(),
+                            ),
+                        ];
+                        static __METRIQUE_VSUPPRESSED_0_0: [::std::any::TypeId; 0usize] = [];
+                        static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                                "Value",
+                                &__METRIQUE_VFLAGS_0_0,
+                                &__METRIQUE_VSUPPRESSED_0_0,
+                                ::metrique::writer::core::FieldShape::Opaque,
+                                None,
+                            ),
+                        ];
+                        static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            "FlaggedEnum::Alpha",
+                            &__METRIQUE_VFIELDS_0,
+                            None,
+                        );
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                &__METRIQUE_VDESC_0,
+                            ),
+                        )
+                    })
+                }
+                FlaggedEnumEntry::Beta { .. } => {
+                    FlaggedEnumEntryDescIter::V1({
+                        static __METRIQUE_VFLAGS_1_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                        static __METRIQUE_VSUPPRESSED_1_0: [::std::any::TypeId; 1usize] = [
+                            ::std::any::TypeId::of::<MyFlag>(),
+                        ];
+                        static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                                "Skipped",
+                                &__METRIQUE_VFLAGS_1_0,
+                                &__METRIQUE_VSUPPRESSED_1_0,
+                                ::metrique::writer::core::FieldShape::Opaque,
+                                None,
+                            ),
+                        ];
+                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            "FlaggedEnum::Beta",
+                            &__METRIQUE_VFIELDS_1,
+                            None,
+                        );
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                &__METRIQUE_VDESC_1,
+                            ),
+                        )
+                    })
+                }
+            }
+        }
+    }
+};
+impl metrique::CloseValue for FlaggedEnum {
+    type Closed = FlaggedEnumEntry;
+    fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
+        #[allow(deprecated)]
+        match __metrique_self_expr!() {
+            FlaggedEnum::Alpha { value } => {
+                FlaggedEnumEntry::Alpha {
+                    value: metrique::CloseValue::close(value),
+                }
+            }
+            FlaggedEnum::Beta { skipped } => {
+                FlaggedEnumEntry::Beta {
+                    skipped: metrique::CloseValue::close(skipped),
+                }
+            }
+        }
+    }
+}
+impl ::std::convert::From<&'_ FlaggedEnum> for &'static str {
+    fn from(value: &FlaggedEnum) -> Self {
+        #[allow(deprecated)]
+        match value {
+            FlaggedEnum::Alpha { .. } => "Alpha",
+            FlaggedEnum::Beta { .. } => "Beta",
+        }
+    }
+}
+impl ::std::convert::From<FlaggedEnum> for &'static str {
+    fn from(value: FlaggedEnum) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for FlaggedEnum {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}
+#[doc = concat!(
+    "Metrics guard returned from [`", "FlaggedEnum",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type FlaggedEnumGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    FlaggedEnum,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "FlaggedEnumGuard",
+    "::handle`], similar to an `Arc<", "FlaggedEnumGuard", ">`."
+)]
+type FlaggedEnumHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    FlaggedEnum,
+    Q,
+>;
+impl FlaggedEnum {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<FlaggedEnumEntry>> + Send
+            + Sync + 'static,
+    >(self, sink: Q) -> FlaggedEnumGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

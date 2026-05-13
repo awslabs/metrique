@@ -32,8 +32,10 @@ pub(crate) struct DescriptorOutput {
 pub(crate) struct DescriptorFieldMeta {
     /// Field name in each style: [preserve, pascal, snake, kebab]
     pub(crate) names: [String; 4],
-    /// Resolved tag token streams for this field
-    pub(crate) tags: Vec<Ts2>,
+    /// Resolved flag token streams for this field
+    pub(crate) flags: Vec<Ts2>,
+    /// Suppressed TypeId token streams for this field
+    pub(crate) suppressed: Vec<Ts2>,
     /// Unit expression (None or Some(<Unit>::UNIT))
     pub(crate) unit_expr: Ts2,
 }
@@ -53,17 +55,23 @@ pub(crate) fn generate_descriptor_impl(
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     // Tag statics are shared across all 4 style arms because tags don't vary by name style.
-    // Each field gets one static array of FieldTag.
-    let tag_statics: Vec<Ts2> = fields
+    // Each field gets one static array of FieldFlag, plus a suppressed TypeId array.
+    let flag_statics: Vec<Ts2> = fields
         .iter()
         .enumerate()
         .map(|(i, f)| {
-            let ident = format_ident!("__METRIQUE_TAGS_{}", i);
-            let tags = &f.tags;
-            let num_tags = tags.len();
+            let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
+            let suppressed_ident = format_ident!("__METRIQUE_SUPPRESSED_{}", i);
+            let flags = &f.flags;
+            let suppressed = &f.suppressed;
+            let num_flags = flags.len();
+            let num_suppressed = suppressed.len();
             quote! {
-                static #ident: [::metrique::writer::core::FieldTag; #num_tags] = [
-                    #(#tags),*
+                static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [
+                    #(#flags),*
+                ];
+                static #suppressed_ident: [::std::any::TypeId; #num_suppressed] = [
+                    #(#suppressed),*
                 ];
             }
         })
@@ -88,12 +96,14 @@ pub(crate) fn generate_descriptor_impl(
                 .enumerate()
                 .map(|(i, f)| {
                     let name = &f.names[style_idx];
-                    let tags_ident = format_ident!("__METRIQUE_TAGS_{}", i);
+                    let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
+                    let suppressed_ident = format_ident!("__METRIQUE_SUPPRESSED_{}", i);
                     let unit_expr = &f.unit_expr;
                     quote! {
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             #name,
-                            &#tags_ident,
+                            &#flags_ident,
+                            &#suppressed_ident,
                             ::metrique::writer::core::FieldShape::Opaque,
                             #unit_expr,
                         )
@@ -123,7 +133,7 @@ pub(crate) fn generate_descriptor_impl(
             #[doc(hidden)]
             #[inline(always)]
             fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
-                #(#tag_statics)*
+                #(#flag_statics)*
                 match __style {
                     #(#style_arms)*
                     _ => unreachable!("unknown descriptor style index")
@@ -144,49 +154,52 @@ pub(crate) fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
     }
 }
 
-pub(crate) fn resolve_field_tags(
-    field_tags: &[FieldTagAttr],
-    default_tags: &[FieldTagAttr],
-) -> Vec<Ts2> {
-    let mut resolved = Vec::new();
+/// Resolved flags and suppressed type ids for a field.
+pub(crate) struct ResolvedFlags {
+    pub(crate) flags: Vec<Ts2>,
+    pub(crate) suppressed: Vec<Ts2>,
+}
 
-    // Field-level tags take priority
-    for tag in field_tags {
-        let path = &tag.path;
-        let state = if tag.skip {
-            quote! { ::metrique::writer::core::FieldTagState::Absent }
+pub(crate) fn resolve_field_flags(
+    field_flags: &[FieldTagAttr],
+    default_flags: &[FieldTagAttr],
+) -> ResolvedFlags {
+    let mut flags = Vec::new();
+    let mut suppressed = Vec::new();
+
+    // Field-level flags: present ones go to flags, skipped ones go to suppressed
+    for flag in field_flags {
+        let path = &flag.path;
+        if flag.skip {
+            suppressed.push(quote! { ::std::any::TypeId::of::<#path>() });
         } else {
-            quote! { ::metrique::writer::core::FieldTagState::Present }
-        };
-        resolved.push(quote! {
-            ::metrique::writer::core::FieldTag::__metrique_private_new(
-                ::std::any::TypeId::of::<#path>(),
-                #state,
-            )
-        });
+            flags.push(quote! {
+                ::metrique::writer::core::FieldFlag::__metrique_private_new(
+                    ::std::any::TypeId::of::<#path>(),
+                )
+            });
+        }
     }
 
-    // Default tags fill in for paths not already specified at field level
-    for default_tag in default_tags {
-        let path = &default_tag.path;
-        let already_specified = field_tags.iter().any(|ft| ft.path == *path);
+    // Default flags fill in for paths not already specified at field level
+    for default_flag in default_flags {
+        let path = &default_flag.path;
+        let already_specified = field_flags.iter().any(|ft| ft.path == *path);
         if already_specified {
             continue;
         }
-        let state = if default_tag.skip {
-            quote! { ::metrique::writer::core::FieldTagState::Absent }
+        if default_flag.skip {
+            suppressed.push(quote! { ::std::any::TypeId::of::<#path>() });
         } else {
-            quote! { ::metrique::writer::core::FieldTagState::Present }
-        };
-        resolved.push(quote! {
-            ::metrique::writer::core::FieldTag::__metrique_private_new(
-                ::std::any::TypeId::of::<#path>(),
-                #state,
-            )
-        });
+            flags.push(quote! {
+                ::metrique::writer::core::FieldFlag::__metrique_private_new(
+                    ::std::any::TypeId::of::<#path>(),
+                )
+            });
+        }
     }
 
-    resolved
+    ResolvedFlags { flags, suppressed }
 }
 
 /// Hygiene helper for generated method-local identifiers.

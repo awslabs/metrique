@@ -7,16 +7,24 @@ use metrique_aggregation::aggregator::KeyedAggregator;
 use metrique_aggregation::traits::{AggregateSink, FlushableSink};
 use metrique_aggregation::{aggregate, value::Sum};
 use metrique_writer::sink::VecEntrySink;
-use metrique_writer_core::FieldTagState;
+use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
 use std::any::TypeId;
 
+#[derive(Debug)]
+struct ExportOpt;
+impl MetricOptions for ExportOpt {}
 struct Export;
+impl FlagConstructor for Export {
+    fn construct() -> MetricFlags<'static> {
+        MetricFlags::upcast(&ExportOpt)
+    }
+}
 
 #[aggregate]
-#[metrics(rename_all = "PascalCase", default_field_tag(Export))]
+#[metrics(rename_all = "PascalCase", default_flags(Export))]
 struct RequestMetrics {
     #[aggregate(key)]
-    #[metrics(field_tag(skip(Export)))]
+    #[metrics(flags(skip(Export)))]
     operation: &'static str,
     #[aggregate(strategy = Sum)]
     count: u64,
@@ -51,12 +59,10 @@ fn aggregation_result_yields_two_descriptors() {
         key_desc.fields().collect::<Vec<_>>()[0].base_name(),
         "Operation"
     );
-    let key_tags = key_desc.fields().collect::<Vec<_>>()[0]
-        .tags()
+    let key_flags: Vec<_> = key_desc.fields().collect::<Vec<_>>()[0]
+        .flags()
         .collect::<Vec<_>>();
-    assert_eq!(key_tags.len(), 1);
-    assert_eq!(key_tags[0].tag_id(), TypeId::of::<Export>());
-    assert_eq!(key_tags[0].state(), FieldTagState::Absent);
+    assert_eq!(key_flags.len(), 0);
 
     // Second descriptor: aggregated fields
     let agg_desc = &descriptors[1];
@@ -65,16 +71,15 @@ fn aggregation_result_yields_two_descriptors() {
         agg_desc.fields().collect::<Vec<_>>()[0].base_name(),
         "Count"
     );
-    let agg_tags = agg_desc.fields().collect::<Vec<_>>()[0]
-        .tags()
+    let agg_flags = agg_desc.fields().collect::<Vec<_>>()[0]
+        .flags()
         .collect::<Vec<_>>();
-    assert_eq!(agg_tags.len(), 1);
-    assert_eq!(agg_tags[0].tag_id(), TypeId::of::<Export>());
-    assert_eq!(agg_tags[0].state(), FieldTagState::Present);
+    assert_eq!(agg_flags.len(), 1);
+    assert!(agg_flags[0].is::<Export>());
 }
 
 #[test]
-fn key_struct_inherits_parent_rename_all_and_default_field_tag() {
+fn key_struct_inherits_parent_rename_all_and_default_flags() {
     let sink = VecEntrySink::default();
     let mut aggregator: KeyedAggregator<RequestMetrics, _> = KeyedAggregator::new(sink.clone());
 
@@ -93,10 +98,8 @@ fn key_struct_inherits_parent_rename_all_and_default_field_tag() {
         "Operation"
     );
 
-    // default_field_tag(Export) propagated, then field_tag(skip(Export)) applied
-    let tag = &key_desc.fields().collect::<Vec<_>>()[0]
-        .tags()
-        .collect::<Vec<_>>()[0];
-    assert_eq!(tag.tag_id(), TypeId::of::<Export>());
-    assert_eq!(tag.state(), FieldTagState::Absent);
+    // default_flags(Export) propagated, then flags(skip(Export)) applied
+    // key field has skip(Export), so no flags
+    let key_flags2: Vec<_> = key_desc.fields().collect::<Vec<_>>()[0].flags().collect();
+    assert_eq!(key_flags2.len(), 0);
 }

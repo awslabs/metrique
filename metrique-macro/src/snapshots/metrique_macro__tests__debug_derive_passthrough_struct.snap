@@ -23,13 +23,15 @@ const _: () = {
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            static __METRIQUE_TAGS_0: [::metrique::writer::core::FieldTag; 0usize] = [];
+            static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+            static __METRIQUE_SUPPRESSED_0: [::std::any::TypeId; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "field",
-                            &__METRIQUE_TAGS_0,
+                            &__METRIQUE_FLAGS_0,
+                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -45,7 +47,8 @@ const _: () = {
                     static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "Field",
-                            &__METRIQUE_TAGS_0,
+                            &__METRIQUE_FLAGS_0,
+                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -61,7 +64,8 @@ const _: () = {
                     static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "field",
-                            &__METRIQUE_TAGS_0,
+                            &__METRIQUE_FLAGS_0,
+                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
@@ -77,7 +81,8 @@ const _: () = {
                     static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
                             "field",
-                            &__METRIQUE_TAGS_0,
+                            &__METRIQUE_FLAGS_0,
+                            &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),

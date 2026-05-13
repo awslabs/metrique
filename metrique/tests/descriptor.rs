@@ -6,13 +6,30 @@
 
 use metrique::unit_of_work::metrics;
 use metrique::writer::Entry;
-use metrique_writer_core::FieldTagState;
+use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
 use std::any::TypeId;
 use std::time::SystemTime;
 
-// Tag marker types for testing
+// Flag marker types for testing
+#[derive(Debug)]
+struct AuditExportOpt;
+impl MetricOptions for AuditExportOpt {}
 struct AuditExport;
+impl FlagConstructor for AuditExport {
+    fn construct() -> MetricFlags<'static> {
+        MetricFlags::upcast(&AuditExportOpt)
+    }
+}
+
+#[derive(Debug)]
+struct Dial9EmitOpt;
+impl MetricOptions for Dial9EmitOpt {}
 struct Dial9Emit;
+impl FlagConstructor for Dial9Emit {
+    fn construct() -> MetricFlags<'static> {
+        MetricFlags::upcast(&Dial9EmitOpt)
+    }
+}
 
 #[metrics(rename_all = "PascalCase")]
 struct BasicMetrics {
@@ -88,16 +105,16 @@ fn descriptor_with_unit() {
     assert!(field.unit().is_some());
 }
 
-#[metrics(rename_all = "PascalCase", default_field_tag(AuditExport))]
+#[metrics(rename_all = "PascalCase", default_flags(AuditExport))]
 struct TaggedMetrics {
     request_id: String,
     operation: &'static str,
-    #[metrics(field_tag(skip(AuditExport)))]
+    #[metrics(flags(skip(AuditExport)))]
     debug_blob: String,
 }
 
 #[test]
-fn tag_resolution_default_and_skip() {
+fn flag_resolution_default_and_skip() {
     let m = TaggedMetrics {
         request_id: String::new(),
         operation: "test",
@@ -110,36 +127,34 @@ fn tag_resolution_default_and_skip() {
 
     let audit_id = TypeId::of::<AuditExport>();
 
-    // request_id: inherits default_field_tag(AuditExport) -> Present
-    let request_id_tags = fields[0].tags().collect::<Vec<_>>();
-    assert_eq!(request_id_tags.len(), 1);
-    assert_eq!(request_id_tags[0].tag_id(), audit_id);
-    assert_eq!(request_id_tags[0].state(), FieldTagState::Present);
+    // request_id: inherits default_flags(AuditExport) -> Present
+    let request_id_flags = fields[0].flags().collect::<Vec<_>>();
+    assert_eq!(request_id_flags.len(), 1);
+    assert_eq!(request_id_flags[0].type_id(), audit_id);
+    // present (in the list)
 
-    // operation: inherits default_field_tag(AuditExport) -> Present
-    let op_tags = fields[1].tags().collect::<Vec<_>>();
-    assert_eq!(op_tags.len(), 1);
-    assert_eq!(op_tags[0].tag_id(), audit_id);
-    assert_eq!(op_tags[0].state(), FieldTagState::Present);
+    // operation: inherits default_flags(AuditExport) -> Present
+    let op_flags = fields[1].flags().collect::<Vec<_>>();
+    assert_eq!(op_flags.len(), 1);
+    assert_eq!(op_flags[0].type_id(), audit_id);
+    // present (in the list)
 
-    // debug_blob: field_tag(skip(AuditExport)) overrides default -> Absent
-    let debug_tags = fields[2].tags().collect::<Vec<_>>();
-    assert_eq!(debug_tags.len(), 1);
-    assert_eq!(debug_tags[0].tag_id(), audit_id);
-    assert_eq!(debug_tags[0].state(), FieldTagState::Absent);
+    // debug_blob: flags(skip(AuditExport)) suppresses default -> not present
+    let debug_flags = fields[2].flags().collect::<Vec<_>>();
+    assert_eq!(debug_flags.len(), 0);
 }
 
 #[metrics(rename_all = "PascalCase")]
 struct MultiTagMetrics {
-    #[metrics(field_tag(AuditExport), field_tag(Dial9Emit))]
+    #[metrics(flags(AuditExport), flags(Dial9Emit))]
     important: u64,
-    #[metrics(field_tag(Dial9Emit))]
+    #[metrics(flags(Dial9Emit))]
     trace_only: u64,
     untagged: u64,
 }
 
 #[test]
-fn multiple_tags_on_field() {
+fn multiple_flags_on_field() {
     let m = MultiTagMetrics {
         important: 1,
         trace_only: 2,
@@ -154,24 +169,16 @@ fn multiple_tags_on_field() {
     let dial9_id = TypeId::of::<Dial9Emit>();
 
     // important: both tags present
-    assert_eq!(fields[0].tags().count(), 2);
-    assert!(
-        fields[0]
-            .tags()
-            .any(|t| t.tag_id() == audit_id && t.state() == FieldTagState::Present)
-    );
-    assert!(
-        fields[0]
-            .tags()
-            .any(|t| t.tag_id() == dial9_id && t.state() == FieldTagState::Present)
-    );
+    assert_eq!(fields[0].flags().count(), 2);
+    assert!(fields[0].flags().any(|t| t.type_id() == audit_id));
+    assert!(fields[0].flags().any(|t| t.type_id() == dial9_id));
 
     // trace_only: only Dial9Emit
-    assert_eq!(fields[1].tags().count(), 1);
-    assert_eq!(fields[1].tags().collect::<Vec<_>>()[0].tag_id(), dial9_id);
+    assert_eq!(fields[1].flags().count(), 1);
+    assert_eq!(fields[1].flags().collect::<Vec<_>>()[0].type_id(), dial9_id);
 
     // untagged: no tags
-    assert!(fields[2].tags().next().is_none());
+    assert!(fields[2].flags().next().is_none());
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -271,7 +278,7 @@ fn prefix_applied_in_descriptor() {
 
 #[metrics(rename_all = "PascalCase", subfield)]
 struct SubMetrics {
-    #[metrics(field_tag(AuditExport))]
+    #[metrics(flags(AuditExport))]
     sub_value: u64,
     other: u64,
 }
@@ -321,19 +328,18 @@ fn flatten_child_descriptors_chained() {
     );
 
     // Child's field_tag is preserved
-    let sub_value_tags = child_desc.fields().collect::<Vec<_>>()[0]
-        .tags()
+    let sub_value_flags = child_desc.fields().collect::<Vec<_>>()[0]
+        .flags()
         .collect::<Vec<_>>();
-    assert_eq!(sub_value_tags.len(), 1);
-    assert_eq!(sub_value_tags[0].tag_id(), TypeId::of::<AuditExport>());
-    assert_eq!(sub_value_tags[0].state(), FieldTagState::Present);
+    assert_eq!(sub_value_flags.len(), 1);
+    assert_eq!(sub_value_flags[0].type_id(), TypeId::of::<AuditExport>());
 }
 
 #[metrics(rename_all = "PascalCase", subfield)]
 struct TaggedSubMetrics {
-    #[metrics(field_tag(Dial9Emit))]
+    #[metrics(flags(Dial9Emit))]
     alpha: u64,
-    #[metrics(field_tag(skip(Dial9Emit)))]
+    #[metrics(flags(skip(Dial9Emit)))]
     beta: u64,
 }
 
@@ -345,7 +351,7 @@ struct ParentWithTaggedFlatten {
 }
 
 #[test]
-fn flatten_child_default_field_tag_resolved() {
+fn flatten_child_default_flags_resolved() {
     let m = ParentWithTaggedFlatten {
         top: 1,
         inner: TaggedSubMetrics { alpha: 2, beta: 3 },
@@ -359,28 +365,25 @@ fn flatten_child_default_field_tag_resolved() {
     let child_desc = &descriptors[1];
     let dial9_id = TypeId::of::<Dial9Emit>();
 
-    // alpha inherits default_field_tag(Dial9Emit) -> Present
-    let alpha_tags = child_desc.fields().collect::<Vec<_>>()[0]
-        .tags()
+    // alpha inherits default_flags(Dial9Emit) -> Present
+    let alpha_flags = child_desc.fields().collect::<Vec<_>>()[0]
+        .flags()
         .collect::<Vec<_>>();
-    assert_eq!(alpha_tags.len(), 1);
-    assert_eq!(alpha_tags[0].tag_id(), dial9_id);
-    assert_eq!(alpha_tags[0].state(), FieldTagState::Present);
+    assert_eq!(alpha_flags.len(), 1);
+    assert_eq!(alpha_flags[0].type_id(), dial9_id);
 
-    // beta has field_tag(skip(Dial9Emit)) -> Absent
-    let beta_tags = child_desc.fields().collect::<Vec<_>>()[1]
-        .tags()
+    // beta has flags(skip(Dial9Emit)) -> suppressed, not present
+    let beta_flags = child_desc.fields().collect::<Vec<_>>()[1]
+        .flags()
         .collect::<Vec<_>>();
-    assert_eq!(beta_tags.len(), 1);
-    assert_eq!(beta_tags[0].tag_id(), dial9_id);
-    assert_eq!(beta_tags[0].state(), FieldTagState::Absent);
+    assert_eq!(beta_flags.len(), 0);
 }
 
 // ─── Multilayer flatten tests ───────────────────────────────────────────────
 
 #[metrics(subfield)]
 struct GrandChild {
-    #[metrics(field_tag(AuditExport))]
+    #[metrics(flags(AuditExport))]
     deep_value: u64,
 }
 
@@ -424,14 +427,14 @@ fn nested_flatten_prefix_stacking() {
     assert_eq!(mid_parts, vec!["Mid", "MiddleValue"]);
 }
 
-#[metrics(subfield, default_field_tag(Dial9Emit))]
+#[metrics(subfield, default_flags(Dial9Emit))]
 struct TaggedChild {
     emitted: u64,
-    #[metrics(field_tag(skip(Dial9Emit)))]
+    #[metrics(flags(skip(Dial9Emit)))]
     skipped: u64,
 }
 
-#[metrics(rename_all = "PascalCase", default_field_tag(AuditExport))]
+#[metrics(rename_all = "PascalCase", default_flags(AuditExport))]
 struct TagPropagationParent {
     own_field: u64,
     #[metrics(flatten)]
@@ -439,7 +442,7 @@ struct TagPropagationParent {
 }
 
 #[test]
-fn flatten_tag_propagation_with_parent_default() {
+fn flatten_flag_propagation_with_parent_default() {
     let m = TagPropagationParent {
         own_field: 1,
         child: TaggedChild {
@@ -455,40 +458,34 @@ fn flatten_tag_propagation_with_parent_default() {
 
     // Parent's own field has AuditExport (from default_field_tag)
     let parent_fields: Vec<_> = descriptors[0].fields().collect();
-    let parent_tags: Vec<_> = parent_fields[0].tags().collect();
+    let parent_tags: Vec<_> = parent_fields[0].flags().collect();
     assert!(
         parent_tags
             .iter()
-            .any(|t| t.tag_id() == TypeId::of::<AuditExport>()
-                && t.state() == FieldTagState::Present)
+            .any(|t| t.type_id() == TypeId::of::<AuditExport>())
     );
 
     // Child's "emitted" field: has Dial9Emit (child's own default), plus AuditExport from parent default propagation
     let child_fields: Vec<_> = descriptors[1].fields().collect();
-    let emitted_tags: Vec<_> = child_fields[0].tags().collect();
+    let emitted_tags: Vec<_> = child_fields[0].flags().collect();
     // Child's own Dial9Emit is present (baked)
-    assert!(emitted_tags.iter().any(|t| t.tag_id() == TypeId::of::<Dial9Emit>() && t.state() == FieldTagState::Present));
+    assert!(
+        emitted_tags
+            .iter()
+            .any(|t| t.type_id() == TypeId::of::<Dial9Emit>())
+    );
     // Parent's AuditExport propagates as default (fills gap)
     assert!(
         emitted_tags
             .iter()
-            .any(|t| t.tag_id() == TypeId::of::<AuditExport>()
-                && t.state() == FieldTagState::Present)
+            .any(|t| t.type_id() == TypeId::of::<AuditExport>())
     );
 
-    // Child's "skipped" field: has skip(Dial9Emit) (baked), plus AuditExport from parent default
-    let skipped_tags: Vec<_> = child_fields[1].tags().collect();
-    assert!(
-        skipped_tags
-            .iter()
-            .any(|t| t.tag_id() == TypeId::of::<Dial9Emit>() && t.state() == FieldTagState::Absent)
-    );
-    assert!(
-        skipped_tags
-            .iter()
-            .any(|t| t.tag_id() == TypeId::of::<AuditExport>()
-                && t.state() == FieldTagState::Present)
-    );
+    // Child's second field has skip(Dial9Emit), so Dial9Emit is suppressed.
+    // AuditExport from parent default still propagates.
+    let second_field_flags: Vec<_> = child_fields[1].flags().collect();
+    assert!(!second_field_flags.iter().any(|t| t.is::<Dial9Emit>()));
+    assert!(second_field_flags.iter().any(|t| t.is::<AuditExport>()));
 }
 
 #[metrics(subfield)]

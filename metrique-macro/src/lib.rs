@@ -50,7 +50,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
-/// | `default_field_tag` | Path | Applies a field tag to all fields by default. Fields can override with `field_tag(skip(T))`. | `#[metrics(default_field_tag(my_crate::Export))]` |
+/// | `default_flags` | Path | Applies a field tag to all fields by default. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::Export))]` |
 ///
 /// # Field Attributes
 ///
@@ -67,7 +67,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
-/// | `field_tag` | Path | Marks this field with a tag for descriptor-aware sinks. Use `skip(T)` to explicitly exclude. | `#[metrics(field_tag(my_crate::Export))]` |
+/// | `flags` | Path | Marks this field with a tag for descriptor-aware sinks. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::Export))]` |
 ///
 /// # Variant Attributes
 ///
@@ -693,7 +693,7 @@ impl From<RawTag> for Tag {
     }
 }
 
-/// A parsed `field_tag(Path)` or `field_tag(skip(Path))` attribute.
+/// A parsed `flags(Path)` or `flags(skip(Path))` attribute.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldTagAttr {
     pub(crate) path: syn::Path,
@@ -703,7 +703,7 @@ pub(crate) struct FieldTagAttr {
 
 impl FromMeta for FieldTagAttr {
     fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
-        // field_tag(Path) or field_tag(skip(Path))
+        // flags(Path) or flags(skip(Path))
         match item {
             syn::Meta::List(list) => {
                 let tokens = &list.tokens;
@@ -722,13 +722,13 @@ impl FromMeta for FieldTagAttr {
                         });
                     }
                     return Err(darling::Error::custom(
-                        "expected `field_tag(Path)` or `field_tag(skip(Path))`",
+                        "expected `flags(Path)` or `flags(skip(Path))`",
                     )
                     .with_span(item));
                 }
                 // Try parsing as a plain Path
                 let path: syn::Path = syn::parse2(tokens.clone()).map_err(|_| {
-                    darling::Error::custom("expected `field_tag(Path)` or `field_tag(skip(Path))`")
+                    darling::Error::custom("expected `flags(Path)` or `flags(skip(Path))`")
                         .with_span(item)
                 })?;
                 Ok(FieldTagAttr {
@@ -738,11 +738,11 @@ impl FromMeta for FieldTagAttr {
                 })
             }
             syn::Meta::Path(_) => Err(darling::Error::custom(
-                "field_tag requires a path argument: `field_tag(my_crate::MyTag)`",
+                "flags requires a path argument: `flags(my_crate::MyTag)`",
             )
             .with_span(item)),
             syn::Meta::NameValue(_) => Err(darling::Error::custom(
-                "field_tag requires a path argument: `field_tag(my_crate::MyTag)`",
+                "flags requires a path argument: `flags(my_crate::MyTag)`",
             )
             .with_span(item)),
         }
@@ -770,7 +770,7 @@ struct RawRootAttributes {
     value: Option<ValueAttributes>,
 
     #[darling(multiple)]
-    default_field_tag: Vec<FieldTagAttr>,
+    default_flags: Vec<FieldTagAttr>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -797,7 +797,7 @@ struct RootAttributes {
 
     mode: MetricMode,
 
-    default_field_tags: Vec<FieldTagAttr>,
+    default_flags: Vec<FieldTagAttr>,
 }
 
 impl RawRootAttributes {
@@ -854,8 +854,8 @@ impl RawRootAttributes {
             })
             .transpose()?;
 
-        // Validate default_field_tag: no conflicting present+skip for the same path
-        validate_field_tag_conflicts(&self.default_field_tag, "default_field_tag")?;
+        // Validate default_flags: no conflicting present+skip for the same path
+        validate_flags_conflicts(&self.default_flags, "default_flags")?;
 
         Ok(RootAttributes {
             prefix: Prefix::from_inflectable_and_exact(
@@ -869,7 +869,7 @@ impl RawRootAttributes {
             tag,
             sample_group,
             mode,
-            default_field_tags: self.default_field_tag,
+            default_flags: self.default_flags,
         })
     }
 }
@@ -947,7 +947,7 @@ struct RawMetricsFieldAttrs {
     exact_prefix: Option<SpannedKv<String>>,
 
     #[darling(multiple)]
-    field_tag: Vec<FieldTagAttr>,
+    flags: Vec<FieldTagAttr>,
 }
 
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
@@ -1060,7 +1060,7 @@ fn get_field_flag(
 }
 
 /// Validates that no tag path appears both as present and skipped in the same attribute list.
-fn validate_field_tag_conflicts(tags: &[FieldTagAttr], attr_name: &str) -> darling::Result<()> {
+fn validate_flags_conflicts(tags: &[FieldTagAttr], attr_name: &str) -> darling::Result<()> {
     for (i, tag) in tags.iter().enumerate() {
         for other in &tags[i + 1..] {
             if tag.path == other.path && tag.skip != other.skip {
@@ -1138,9 +1138,9 @@ impl RawMetricsFieldAttrs {
                     format: format.cloned(),
                 },
             },
-            field_tags: {
-                validate_field_tag_conflicts(&self.field_tag, "field_tag")?;
-                self.field_tag
+            flags: {
+                validate_flags_conflicts(&self.flags, "flags")?;
+                self.flags
             },
         })
     }
@@ -1168,7 +1168,7 @@ fn validate_name_inner(name: &str) -> std::result::Result<(), &'static str> {
 struct MetricsFieldAttrs {
     close: bool,
     kind: MetricsFieldKind,
-    field_tags: Vec<FieldTagAttr>,
+    flags: Vec<FieldTagAttr>,
 }
 
 pub(crate) struct MetricsField {
@@ -2093,5 +2093,45 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics(value(string))));
         assert_snapshot!("debug_derive_passthrough_enum", parsed_file);
+    }
+
+    #[test]
+    fn test_struct_with_flags() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase", default_flags(MyFlag))]
+            struct FlaggedMetrics {
+                count: u64,
+                #[metrics(flags(skip(MyFlag)))]
+                debug: String,
+                #[metrics(flags(OtherFlag))]
+                special: u64,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(
+            input,
+            quote!(metrics(rename_all = "PascalCase", default_flags(MyFlag))),
+        );
+        assert_snapshot!("struct_with_flags", parsed_file);
+    }
+
+    #[test]
+    fn test_enum_with_flags() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase", default_flags(MyFlag))]
+            enum FlaggedEnum {
+                Alpha { value: u64 },
+                Beta {
+                    #[metrics(flags(skip(MyFlag)))]
+                    skipped: u64,
+                },
+            }
+        };
+
+        let parsed_file = metrics_impl_string(
+            input,
+            quote!(metrics(rename_all = "PascalCase", default_flags(MyFlag))),
+        );
+        assert_snapshot!("enum_with_flags", parsed_file);
     }
 }

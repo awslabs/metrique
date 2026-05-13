@@ -42,7 +42,8 @@ impl EntryDescriptor {
 #[derive(Debug)]
 pub struct FieldDescriptor {
     name: &'static str,
-    tags: &'static [FieldTag],
+    flags: &'static [FieldFlag],
+    suppressed: &'static [TypeId],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
@@ -52,13 +53,15 @@ impl FieldDescriptor {
     #[doc(hidden)]
     pub const fn __metrique_private_new(
         name: &'static str,
-        tags: &'static [FieldTag],
+        flags: &'static [FieldFlag],
+        suppressed: &'static [TypeId],
         shape: FieldShape<'static>,
         unit: Option<Unit>,
     ) -> Self {
         Self {
             name,
-            tags,
+            flags,
+            suppressed,
             shape,
             unit,
         }
@@ -109,7 +112,7 @@ pub struct DescriptorRef<'a> {
     descriptor: &'a EntryDescriptor,
     id: DescriptorId,
     prefixes: SmallVec<[&'static str; 1]>,
-    default_tag_layers: SmallVec<[&'static [FieldTag]; 1]>,
+    default_flag_layers: SmallVec<[&'static [FieldFlag]; 1]>,
 }
 
 impl<'a> DescriptorRef<'a> {
@@ -121,7 +124,7 @@ impl<'a> DescriptorRef<'a> {
             descriptor,
             id,
             prefixes: SmallVec::new(),
-            default_tag_layers: SmallVec::new(),
+            default_flag_layers: SmallVec::new(),
         }
     }
 
@@ -130,16 +133,16 @@ impl<'a> DescriptorRef<'a> {
     #[doc(hidden)]
     pub fn with_prefix(mut self, prefix: &'static str) -> Self {
         self.prefixes.push(prefix);
-        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_tag_layers);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_flag_layers);
         self
     }
 
-    /// Add a layer of default tags. Field-level tags win; earlier layers win over later ones.
+    /// Add a layer of default flags. Field-level flags win; earlier layers win over later ones.
     /// Multiple calls stack (innermost layer first).
     #[doc(hidden)]
-    pub fn with_default_tags(mut self, tags: &'static [FieldTag]) -> Self {
-        self.default_tag_layers.push(tags);
-        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_tag_layers);
+    pub fn with_default_flags(mut self, flags: &'static [FieldFlag]) -> Self {
+        self.default_flag_layers.push(flags);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_flag_layers);
         self
     }
 
@@ -191,30 +194,31 @@ impl<'a> FieldView<'a> {
     pub fn base_name(&self) -> &'static str {
         self.desc.descriptor.fields[self.idx].name
     }
-    /// Resolved tags for this field.
-    pub fn tags(&self) -> impl Iterator<Item = &'a FieldTag> {
-        let field_tags = self.desc.descriptor.fields[self.idx].tags;
-        let layers = &self.desc.default_tag_layers;
+    /// Resolved flags for this field. Only yields present flags (skipped flags are suppressed).
+    pub fn flags(&self) -> impl Iterator<Item = &'a FieldFlag> {
+        let field = &self.desc.descriptor.fields[self.idx];
+        let layers = &self.desc.default_flag_layers;
 
-        // Fast path: no default layers, just return the field's own tags directly.
+        // Fast path: no default layers, just return the field's own flags directly.
         if layers.is_empty() {
-            let tags: SmallVec<[&'a FieldTag; 4]> = field_tags.iter().collect();
-            return tags.into_iter();
+            let flags: SmallVec<[&'a FieldFlag; 4]> = field.flags.iter().collect();
+            return flags.into_iter();
         }
 
-        // Merge path: field-level tags win, then walk layers innermost-first,
-        // skipping tag ids already present.
-        let mut seen_ids: SmallVec<[TypeId; 4]> = field_tags.iter().map(|t| t.tag_id).collect();
-        let mut all_tags: SmallVec<[&'a FieldTag; 4]> = field_tags.iter().collect();
+        // Merge path: field-level flags and suppressed ids take priority,
+        // then walk layers innermost-first, skipping already-present or suppressed ids.
+        let mut seen_ids: SmallVec<[TypeId; 4]> = field.flags.iter().map(|f| f.type_id).collect();
+        seen_ids.extend_from_slice(field.suppressed);
+        let mut all_flags: SmallVec<[&'a FieldFlag; 4]> = field.flags.iter().collect();
         for layer in layers.iter() {
-            for tag in layer.iter() {
-                if !seen_ids.contains(&tag.tag_id) {
-                    seen_ids.push(tag.tag_id);
-                    all_tags.push(tag);
+            for flag in layer.iter() {
+                if !seen_ids.contains(&flag.type_id) {
+                    seen_ids.push(flag.type_id);
+                    all_flags.push(flag);
                 }
             }
         }
-        all_tags.into_iter()
+        all_flags.into_iter()
     }
 
     /// Shape of this field.
@@ -244,13 +248,13 @@ impl DescriptorId {
     fn compute(
         descriptor: &EntryDescriptor,
         prefixes: &[&'static str],
-        tag_layers: &[&'static [FieldTag]],
+        flag_layers: &[&'static [FieldFlag]],
     ) -> Self {
         let mut id = descriptor as *const EntryDescriptor as u64;
         for p in prefixes {
             id = id.wrapping_mul(31).wrapping_add(p.as_ptr() as u64);
         }
-        for layer in tag_layers {
+        for layer in flag_layers {
             id = id.wrapping_mul(31).wrapping_add(layer.as_ptr() as u64);
         }
         DescriptorId(id)
@@ -337,39 +341,32 @@ impl<'a> ShapeRef<'a> {
     }
 }
 
-/// A resolved field tag.
+/// A resolved field flag representing a `FlagConstructor` applied to a field.
+///
+/// Stores the `TypeId` of the `FlagConstructor` type for identity comparison.
+/// Sinks that need the `MetricFlags` value call `FlagConstructor::construct()`
+/// on the type they're checking for.
 #[derive(Debug)]
-pub struct FieldTag {
-    tag_id: TypeId,
-    state: FieldTagState,
+pub struct FieldFlag {
+    type_id: TypeId,
 }
 
-impl FieldTag {
-    /// The [`TypeId`] of the tag marker type.
-    pub fn tag_id(&self) -> TypeId {
-        self.tag_id
+impl FieldFlag {
+    /// The [`TypeId`] of the `FlagConstructor` type.
+    pub fn type_id(&self) -> TypeId {
+        self.type_id
     }
 
-    /// Whether this tag is present or explicitly absent.
-    pub fn state(&self) -> FieldTagState {
-        self.state
+    /// Check if this flag matches a specific `FlagConstructor` type.
+    pub fn is<T: 'static>(&self) -> bool {
+        self.type_id == TypeId::of::<T>()
     }
 
     /// Hidden constructor for use by the metrique macro only.
     #[doc(hidden)]
-    pub const fn __metrique_private_new(tag_id: TypeId, state: FieldTagState) -> Self {
-        Self { tag_id, state }
+    pub const fn __metrique_private_new(type_id: TypeId) -> Self {
+        Self { type_id }
     }
-}
-
-/// Whether a field tag is present or explicitly absent.
-#[non_exhaustive]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FieldTagState {
-    /// The tag is present on this field.
-    Present,
-    /// The tag is explicitly absent (via `skip(T)`).
-    Absent,
 }
 
 #[cfg(test)]
@@ -405,10 +402,12 @@ mod tests {
 
     #[test]
     fn field_name_no_prefix() {
-        static TAGS: [FieldTag; 0] = [];
+        static FLAGS: [FieldFlag; 0] = [];
+        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "MyField",
-            &TAGS,
+            &FLAGS,
+            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
@@ -420,10 +419,12 @@ mod tests {
 
     #[test]
     fn field_name_with_prefix() {
-        static TAGS: [FieldTag; 0] = [];
+        static FLAGS: [FieldFlag; 0] = [];
+        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "Latency",
-            &TAGS,
+            &FLAGS,
+            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
@@ -437,10 +438,12 @@ mod tests {
 
     #[test]
     fn field_name_with_nested_prefixes() {
-        static TAGS: [FieldTag; 0] = [];
+        static FLAGS: [FieldFlag; 0] = [];
+        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "Latency",
-            &TAGS,
+            &FLAGS,
+            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
@@ -455,62 +458,69 @@ mod tests {
     }
 
     #[test]
-    fn field_tags_with_defaults() {
-        static FIELD_TAGS: [FieldTag; 0] = [];
-        static DEFAULT_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
-            TypeId::of::<u8>(),
-            FieldTagState::Present,
-        )];
+    fn field_flags_with_defaults() {
+        struct TestCtor;
+
+        static FIELD_FLAGS: [FieldFlag; 0] = [];
+        static SUPPRESSED: [TypeId; 0] = [];
+        static DEFAULT_FLAGS: [FieldFlag; 1] =
+            [FieldFlag::__metrique_private_new(TypeId::of::<TestCtor>())];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "f",
-            &FIELD_TAGS,
+            &FIELD_FLAGS,
+            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
 
-        // Without defaults: no tags
+        // Without defaults: no flags
         let d = DescriptorRef::from_static(&DESC);
-        assert_eq!(d.fields().next().unwrap().tags().count(), 0);
+        assert_eq!(d.fields().next().unwrap().flags().count(), 0);
 
-        // With defaults: one tag
-        let d = DescriptorRef::from_static(&DESC).with_default_tags(&DEFAULT_TAGS);
-        assert_eq!(d.fields().next().unwrap().tags().count(), 1);
+        // With defaults: one flag
+        let d = DescriptorRef::from_static(&DESC).with_default_flags(&DEFAULT_FLAGS);
+        assert_eq!(d.fields().next().unwrap().flags().count(), 1);
     }
 
     #[test]
-    fn field_tags_field_level_wins() {
-        static FIELD_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
-            TypeId::of::<u8>(),
-            FieldTagState::Absent,
-        )];
-        static DEFAULT_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
-            TypeId::of::<u8>(),
-            FieldTagState::Present,
-        )];
+    fn field_flags_suppressed_blocks_default() {
+        struct TestCtor2;
+
+        static FIELD_FLAGS: [FieldFlag; 0] = [];
+        static SUPPRESSED: [TypeId; 1] = [TypeId::of::<TestCtor2>()];
+        static DEFAULT_FLAGS: [FieldFlag; 1] =
+            [FieldFlag::__metrique_private_new(TypeId::of::<TestCtor2>())];
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
             "f",
-            &FIELD_TAGS,
+            &FIELD_FLAGS,
+            &SUPPRESSED,
             FieldShape::Opaque,
             None,
         )];
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
 
-        let d = DescriptorRef::from_static(&DESC).with_default_tags(&DEFAULT_TAGS);
-        let tags: Vec<_> = d.fields().next().unwrap().tags().collect();
-        // Field-level Absent wins, default Present is not added
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].state(), FieldTagState::Absent);
+        let d = DescriptorRef::from_static(&DESC).with_default_flags(&DEFAULT_FLAGS);
+        // Suppressed blocks the default from being added
+        assert_eq!(d.fields().next().unwrap().flags().count(), 0);
     }
 
     #[test]
     fn field_view_iteration() {
-        static TAGS: [FieldTag; 0] = [];
+        static FLAGS: [FieldFlag; 0] = [];
+        static SUPPRESSED: [TypeId; 0] = [];
         static FIELDS: [FieldDescriptor; 2] = [
-            FieldDescriptor::__metrique_private_new("Alpha", &TAGS, FieldShape::Opaque, None),
+            FieldDescriptor::__metrique_private_new(
+                "Alpha",
+                &FLAGS,
+                &SUPPRESSED,
+                FieldShape::Opaque,
+                None,
+            ),
             FieldDescriptor::__metrique_private_new(
                 "Beta",
-                &TAGS,
+                &FLAGS,
+                &SUPPRESSED,
                 FieldShape::Opaque,
                 Some(Unit::Count),
             ),

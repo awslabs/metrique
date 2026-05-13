@@ -1,4 +1,4 @@
-use super::resolve_field_tags;
+use super::resolve_field_flags;
 use super::*;
 use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
 use crate::inflect::NameStyle;
@@ -89,32 +89,33 @@ fn build_flatten_chains(
                 let ns = make_ns(root_attrs.rename_all, field.span);
 
                 let merged_defaults =
-                    resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
+                    resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
 
                 let prefix_expr = prefix.as_ref().map(|pfx| {
                     let inflected = pfx.apply_prefix_only(root_attrs.rename_all);
                     quote! { .with_prefix(#inflected) }
                 });
 
-                let tags_expr = if !merged_defaults.is_empty() {
-                    let num_defaults = merged_defaults.len();
+                let flags_expr = if !merged_defaults.flags.is_empty() {
+                    let num_defaults = merged_defaults.flags.len();
                     let defaults_ident =
                         format_ident!("__METRIQUE_FLATTEN_DEFAULTS_{}", flatten_idx);
+                    let flags = &merged_defaults.flags;
                     flatten_idx += 1;
                     flatten_tag_statics.push(quote! {
-                        static #defaults_ident: [::metrique::writer::core::FieldTag; #num_defaults] = [
-                            #(#merged_defaults),*
+                        static #defaults_ident: [::metrique::writer::core::FieldFlag; #num_defaults] = [
+                            #(#flags),*
                         ];
                     });
-                    Some(quote! { .with_default_tags(&#defaults_ident) })
+                    Some(quote! { .with_default_flags(&#defaults_ident) })
                 } else {
                     None
                 };
 
-                let child_expr = if prefix_expr.is_some() || tags_expr.is_some() {
+                let child_expr = if prefix_expr.is_some() || flags_expr.is_some() {
                     quote! {
                         ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                            .map(|d| d #prefix_expr #tags_expr)
+                            .map(|d| d #prefix_expr #flags_expr)
                     }
                 } else {
                     quote! {
@@ -216,8 +217,7 @@ fn generate_descriptor(
             MetricsFieldKind::Field { unit, .. } => {
                 let names: [String; 4] =
                     std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
-                let tags =
-                    resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
+                let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
                 let unit_expr = match unit {
                     Some(u) => {
                         quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) }
@@ -226,7 +226,8 @@ fn generate_descriptor(
                 };
                 field_metas.push(DescriptorFieldMeta {
                     names,
-                    tags,
+                    flags: resolved.flags,
+                    suppressed: resolved.suppressed,
                     unit_expr,
                 });
             }

@@ -2,74 +2,83 @@
 source: metrique-macro/src/lib.rs
 expression: parsed_file
 ---
-struct RequestMetrics {
-    operation: &'static str,
-    number_of_ducks: usize,
-    latency: std::time::Duration,
+struct FlaggedMetrics {
+    count: u64,
+    debug: String,
+    special: u64,
 }
 #[doc(hidden)]
 #[allow(clippy::type_complexity)]
-pub struct RequestMetricsEntry {
+pub struct FlaggedMetricsEntry {
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    operation: <&'static str as metrique::CloseValue>::Closed,
+    count: <u64 as metrique::CloseValue>::Closed,
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    number_of_ducks: <usize as metrique::CloseValue>::Closed,
+    debug: <String as metrique::CloseValue>::Closed,
     #[deprecated(
         note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
     )]
     #[doc(hidden)]
-    latency: <<std::time::Duration as metrique::CloseValue>::Closed as ::metrique::unit::AttachUnit>::Output<
-        Millisecond,
-    >,
+    special: <u64 as metrique::CloseValue>::Closed,
 }
 const _: () = {
-    impl RequestMetricsEntry {
+    impl FlaggedMetricsEntry {
         #[doc(hidden)]
         #[inline(always)]
         fn __metrique_descriptor(
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+            static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
+                ::metrique::writer::core::FieldFlag::__metrique_private_new(
+                    ::std::any::TypeId::of::<MyFlag>(),
+                ),
+            ];
             static __METRIQUE_SUPPRESSED_0: [::std::any::TypeId; 0usize] = [];
             static __METRIQUE_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
-            static __METRIQUE_SUPPRESSED_1: [::std::any::TypeId; 0usize] = [];
-            static __METRIQUE_FLAGS_2: [::metrique::writer::core::FieldFlag; 0usize] = [];
+            static __METRIQUE_SUPPRESSED_1: [::std::any::TypeId; 1usize] = [
+                ::std::any::TypeId::of::<MyFlag>(),
+            ];
+            static __METRIQUE_FLAGS_2: [::metrique::writer::core::FieldFlag; 2usize] = [
+                ::metrique::writer::core::FieldFlag::__metrique_private_new(
+                    ::std::any::TypeId::of::<OtherFlag>(),
+                ),
+                ::metrique::writer::core::FieldFlag::__metrique_private_new(
+                    ::std::any::TypeId::of::<MyFlag>(),
+                ),
+            ];
             static __METRIQUE_SUPPRESSED_2: [::std::any::TypeId; 0usize] = [];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
+                            "count",
                             &__METRIQUE_FLAGS_0,
                             &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "number_of_ducks",
+                            "debug",
                             &__METRIQUE_FLAGS_1,
                             &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "latency",
+                            "special",
                             &__METRIQUE_FLAGS_2,
                             &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
-                            Some(
-                                <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                            ),
+                            None,
                         ),
                     ];
                     static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "RequestMetrics",
+                        "FlaggedMetrics",
                         &__METRIQUE_FIELDS_PRESERVE,
                         None,
                     );
@@ -78,31 +87,29 @@ const _: () = {
                 ::metrique::STYLE_PASCAL => {
                     static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Operation",
+                            "Count",
                             &__METRIQUE_FLAGS_0,
                             &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "NumberOfDucks",
+                            "Debug",
                             &__METRIQUE_FLAGS_1,
                             &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Latency",
+                            "Special",
                             &__METRIQUE_FLAGS_2,
                             &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
-                            Some(
-                                <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                            ),
+                            None,
                         ),
                     ];
                     static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "RequestMetrics",
+                        "FlaggedMetrics",
                         &__METRIQUE_FIELDS_PASCAL,
                         None,
                     );
@@ -111,31 +118,29 @@ const _: () = {
                 ::metrique::STYLE_SNAKE => {
                     static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
+                            "count",
                             &__METRIQUE_FLAGS_0,
                             &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "number_of_ducks",
+                            "debug",
                             &__METRIQUE_FLAGS_1,
                             &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "latency",
+                            "special",
                             &__METRIQUE_FLAGS_2,
                             &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
-                            Some(
-                                <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                            ),
+                            None,
                         ),
                     ];
                     static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "RequestMetrics",
+                        "FlaggedMetrics",
                         &__METRIQUE_FIELDS_SNAKE,
                         None,
                     );
@@ -144,31 +149,29 @@ const _: () = {
                 ::metrique::STYLE_KEBAB => {
                     static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
+                            "count",
                             &__METRIQUE_FLAGS_0,
                             &__METRIQUE_SUPPRESSED_0,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "number-of-ducks",
+                            "debug",
                             &__METRIQUE_FLAGS_1,
                             &__METRIQUE_SUPPRESSED_1,
                             ::metrique::writer::core::FieldShape::Opaque,
                             None,
                         ),
                         ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "latency",
+                            "special",
                             &__METRIQUE_FLAGS_2,
                             &__METRIQUE_SUPPRESSED_2,
                             ::metrique::writer::core::FieldShape::Opaque,
-                            Some(
-                                <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                            ),
+                            None,
                         ),
                     ];
                     static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "RequestMetrics",
+                        "FlaggedMetrics",
                         &__METRIQUE_FIELDS_KEBAB,
                         None,
                     );
@@ -180,7 +183,7 @@ const _: () = {
     }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
-    for RequestMetricsEntry {
+    for FlaggedMetricsEntry {
         fn write<'__metrique_write>(
             &'__metrique_write self,
             writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
@@ -189,92 +192,92 @@ const _: () = {
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    struct OperationPreserve;
-                    impl ::metrique::concat::ConstStr for OperationPreserve {
-                        const VAL: &'static str = "operation";
+                    struct CountPreserve;
+                    impl ::metrique::concat::ConstStr for CountPreserve {
+                        const VAL: &'static str = "count";
                     }
-                    struct OperationKebab;
-                    impl ::metrique::concat::ConstStr for OperationKebab {
-                        const VAL: &'static str = "operation";
+                    struct CountKebab;
+                    impl ::metrique::concat::ConstStr for CountKebab {
+                        const VAL: &'static str = "count";
                     }
-                    struct OperationPascal;
-                    impl ::metrique::concat::ConstStr for OperationPascal {
-                        const VAL: &'static str = "Operation";
+                    struct CountPascal;
+                    impl ::metrique::concat::ConstStr for CountPascal {
+                        const VAL: &'static str = "Count";
                     }
-                    struct OperationSnake;
-                    impl ::metrique::concat::ConstStr for OperationSnake {
-                        const VAL: &'static str = "operation";
+                    struct CountSnake;
+                    impl ::metrique::concat::ConstStr for CountSnake {
+                        const VAL: &'static str = "count";
                     }
                     ::metrique::concat::const_str_value::<
-                        <NS as ::metrique::NameStyle>::Inflect<
-                            OperationPreserve,
-                            OperationPascal,
-                            OperationSnake,
-                            OperationKebab,
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            CountPreserve,
+                            CountPascal,
+                            CountSnake,
+                            CountKebab,
                         >,
                     >()
                 },
-                &__metrique_self.operation,
+                &__metrique_self.count,
             );
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    struct NumberOfDucksPreserve;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksPreserve {
-                        const VAL: &'static str = "number_of_ducks";
+                    struct DebugPreserve;
+                    impl ::metrique::concat::ConstStr for DebugPreserve {
+                        const VAL: &'static str = "debug";
                     }
-                    struct NumberOfDucksKebab;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksKebab {
-                        const VAL: &'static str = "number-of-ducks";
+                    struct DebugKebab;
+                    impl ::metrique::concat::ConstStr for DebugKebab {
+                        const VAL: &'static str = "debug";
                     }
-                    struct NumberOfDucksPascal;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksPascal {
-                        const VAL: &'static str = "NumberOfDucks";
+                    struct DebugPascal;
+                    impl ::metrique::concat::ConstStr for DebugPascal {
+                        const VAL: &'static str = "Debug";
                     }
-                    struct NumberOfDucksSnake;
-                    impl ::metrique::concat::ConstStr for NumberOfDucksSnake {
-                        const VAL: &'static str = "number_of_ducks";
+                    struct DebugSnake;
+                    impl ::metrique::concat::ConstStr for DebugSnake {
+                        const VAL: &'static str = "debug";
                     }
                     ::metrique::concat::const_str_value::<
-                        <NS as ::metrique::NameStyle>::Inflect<
-                            NumberOfDucksPreserve,
-                            NumberOfDucksPascal,
-                            NumberOfDucksSnake,
-                            NumberOfDucksKebab,
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            DebugPreserve,
+                            DebugPascal,
+                            DebugSnake,
+                            DebugKebab,
                         >,
                     >()
                 },
-                &__metrique_self.number_of_ducks,
+                &__metrique_self.debug,
             );
             ::metrique::writer::EntryWriter::value(
                 writer,
                 {
-                    struct LatencyPreserve;
-                    impl ::metrique::concat::ConstStr for LatencyPreserve {
-                        const VAL: &'static str = "latency";
+                    struct SpecialPreserve;
+                    impl ::metrique::concat::ConstStr for SpecialPreserve {
+                        const VAL: &'static str = "special";
                     }
-                    struct LatencyKebab;
-                    impl ::metrique::concat::ConstStr for LatencyKebab {
-                        const VAL: &'static str = "latency";
+                    struct SpecialKebab;
+                    impl ::metrique::concat::ConstStr for SpecialKebab {
+                        const VAL: &'static str = "special";
                     }
-                    struct LatencyPascal;
-                    impl ::metrique::concat::ConstStr for LatencyPascal {
-                        const VAL: &'static str = "Latency";
+                    struct SpecialPascal;
+                    impl ::metrique::concat::ConstStr for SpecialPascal {
+                        const VAL: &'static str = "Special";
                     }
-                    struct LatencySnake;
-                    impl ::metrique::concat::ConstStr for LatencySnake {
-                        const VAL: &'static str = "latency";
+                    struct SpecialSnake;
+                    impl ::metrique::concat::ConstStr for SpecialSnake {
+                        const VAL: &'static str = "special";
                     }
                     ::metrique::concat::const_str_value::<
-                        <NS as ::metrique::NameStyle>::Inflect<
-                            LatencyPreserve,
-                            LatencyPascal,
-                            LatencySnake,
-                            LatencyKebab,
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            SpecialPreserve,
+                            SpecialPascal,
+                            SpecialSnake,
+                            SpecialKebab,
                         >,
                     >()
                 },
-                &__metrique_self.latency,
+                &__metrique_self.special,
             );
         }
         fn sample_group(
@@ -292,16 +295,14 @@ const _: () = {
         > {
             ::std::iter::once(
                 ::metrique::writer::core::DescriptorRef::from_static(
-                    RequestMetricsEntry::__metrique_descriptor(
-                        ::metrique::STYLE_PRESERVE,
-                    ),
+                    FlaggedMetricsEntry::__metrique_descriptor(::metrique::STYLE_PASCAL),
                 ),
             )
         }
     }
 };
-impl metrique::CloseValue for RequestMetrics {
-    type Closed = RequestMetricsEntry;
+impl metrique::CloseValue for FlaggedMetrics {
+    type Closed = FlaggedMetricsEntry;
     fn close(self) -> Self::Closed {
         macro_rules! __metrique_self_expr {
             () => {
@@ -309,37 +310,35 @@ impl metrique::CloseValue for RequestMetrics {
             };
         }
         #[allow(deprecated)]
-        RequestMetricsEntry {
-            operation: metrique::CloseValue::close(__metrique_self_expr!().operation),
-            number_of_ducks: metrique::CloseValue::close(
-                __metrique_self_expr!().number_of_ducks,
-            ),
-            latency: metrique::CloseValue::close(__metrique_self_expr!().latency).into(),
+        FlaggedMetricsEntry {
+            count: metrique::CloseValue::close(__metrique_self_expr!().count),
+            debug: metrique::CloseValue::close(__metrique_self_expr!().debug),
+            special: metrique::CloseValue::close(__metrique_self_expr!().special),
         }
     }
 }
 #[doc = concat!(
-    "Metrics guard returned from [`", "RequestMetrics",
+    "Metrics guard returned from [`", "FlaggedMetrics",
     "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
 )]
-type RequestMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
-    RequestMetrics,
+type FlaggedMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    FlaggedMetrics,
     Q,
 >;
 #[doc = concat!(
-    "Metrics handle returned from [`", "RequestMetricsGuard",
-    "::handle`], similar to an `Arc<", "RequestMetricsGuard", ">`."
+    "Metrics handle returned from [`", "FlaggedMetricsGuard",
+    "::handle`], similar to an `Arc<", "FlaggedMetricsGuard", ">`."
 )]
-type RequestMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
-    RequestMetrics,
+type FlaggedMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    FlaggedMetrics,
     Q,
 >;
-impl RequestMetrics {
+impl FlaggedMetrics {
     ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
     fn append_on_drop<
-        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<RequestMetricsEntry>>
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<FlaggedMetricsEntry>>
             + Send + Sync + 'static,
-    >(self, sink: Q) -> RequestMetricsGuard<Q> {
+    >(self, sink: Q) -> FlaggedMetricsGuard<Q> {
         ::metrique::append_and_close(self, sink)
     }
 }
