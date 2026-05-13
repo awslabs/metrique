@@ -123,9 +123,23 @@ impl<'a> std::ops::Index<usize> for AvailableDescriptors<'a> {
 
 impl<'a> IntoIterator for AvailableDescriptors<'a> {
     type Item = DescriptorRef<'a>;
-    type IntoIter = smallvec::IntoIter<[DescriptorRef<'a>; 2]>;
+    type IntoIter = DescriptorIter<'a>;
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        DescriptorIter(self.0.into_iter())
+    }
+}
+
+/// Owned iterator over descriptor segments. Returned by `AvailableDescriptors::into_iter()`.
+pub struct DescriptorIter<'a>(smallvec::IntoIter<[DescriptorRef<'a>; 2]>);
+
+impl<'a> Iterator for DescriptorIter<'a> {
+    type Item = DescriptorRef<'a>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
     }
 }
 

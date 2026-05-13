@@ -44,6 +44,27 @@ where
             }
         }
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        // Each InflectableEntry::<NS>::descriptors() returns a different opaque type,
+        // so we collect per arm to unify.
+        let descs: Vec<_> = match self.name_style {
+            DynamicNameStyle::Identity => {
+                InflectableEntry::<Identity>::descriptors(&self.entry).collect()
+            }
+            DynamicNameStyle::PascalCase => {
+                InflectableEntry::<PascalCase>::descriptors(&self.entry).collect()
+            }
+            DynamicNameStyle::SnakeCase => {
+                InflectableEntry::<SnakeCase>::descriptors(&self.entry).collect()
+            }
+            DynamicNameStyle::KebabCase => {
+                InflectableEntry::<KebabCase>::descriptors(&self.entry).collect()
+            }
+            _ => InflectableEntry::<Identity>::descriptors(&self.entry).collect(),
+        };
+        metrique_writer_core::Descriptors::available(descs)
+    }
 }
 
 #[cfg(test)]

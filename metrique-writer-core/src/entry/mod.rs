@@ -216,6 +216,10 @@ pub struct EmptyEntry;
 
 impl Entry for EmptyEntry {
     fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        Descriptors::available(std::iter::empty())
+    }
 }
 
 /// Trait for format-specific Entry configuration, formats will downcast this to the specific config
@@ -267,6 +271,10 @@ impl<T: Entry + ?Sized> Entry for &T {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<T: Entry> Entry for Option<T> {
@@ -277,10 +285,13 @@ impl<T: Entry> Entry for Option<T> {
     }
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
-        if let Some(entry) = self.as_ref() {
-            itertools::Either::Left(entry.sample_group())
-        } else {
-            itertools::Either::Right([].into_iter())
+        self.as_ref().into_iter().flat_map(|e| e.sample_group())
+    }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        match self.as_ref() {
+            Some(entry) => entry.descriptors(),
+            None => Descriptors::available(std::iter::empty()),
         }
     }
 }
@@ -293,6 +304,10 @@ impl<T: Entry + ?Sized> Entry for Box<T> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<T: Entry + ?Sized> Entry for Arc<T> {
@@ -302,6 +317,10 @@ impl<T: Entry + ?Sized> Entry for Arc<T> {
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
     }
 }
 

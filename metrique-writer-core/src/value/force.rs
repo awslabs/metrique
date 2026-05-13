@@ -189,6 +189,10 @@ impl<E: Entry, FLAGS: FlagConstructor> Entry for ForceFlag<E, FLAGS> {
             phantom: self.1,
         })
     }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        self.0.descriptors()
+    }
 }
 
 impl<S: EntryIoStream, FLAGS: FlagConstructor> EntryIoStream for ForceFlag<S, FLAGS> {
