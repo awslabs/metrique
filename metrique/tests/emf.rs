@@ -149,8 +149,6 @@ struct HighResMetrics {
 
 #[test]
 fn flags_descriptor_with_emf_high_resolution() {
-    use metrique::writer::Entry;
-
     let m = HighResMetrics {
         timestamp: UNIX_EPOCH,
         operation: "test".into(),
@@ -187,8 +185,6 @@ fn flags_descriptor_with_emf_high_resolution() {
 
 #[test]
 fn flags_write_path_emf_high_resolution() {
-    use metrique::writer::format::Format;
-
     let m = HighResMetrics {
         timestamp: UNIX_EPOCH,
         operation: "test".into(),
@@ -244,8 +240,6 @@ struct MultiFlagMetrics {
 
 #[test]
 fn flags_write_path_multiple_flags_on_field() {
-    use metrique::writer::format::Format;
-
     let m = MultiFlagMetrics {
         timestamp: UNIX_EPOCH,
         operation: "test".into(),
@@ -300,6 +294,14 @@ fn flags_write_path_enum_variant() {
     };
     let closed_fast = metrique::CloseValue::close(fast);
     let entry_fast = metrique::RootEntry::new(closed_fast);
+
+    // Verify timestamp is in the descriptor
+    let descs = entry_fast.descriptors().unwrap();
+    assert!(
+        descs[0].timestamp().is_some(),
+        "enum variant should have timestamp in descriptor"
+    );
+    assert_eq!(descs[0].timestamp().unwrap().name(), "ts");
 
     let mut emf = Emf::all_validations("Test".to_string(), vec![vec!["Op".to_string()]]);
     let mut output = vec![];

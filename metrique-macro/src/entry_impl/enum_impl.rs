@@ -368,13 +368,15 @@ fn generate_enum_descriptor(
 
             // Collect this variant's non-flatten fields
             let mut v_field_metas: Vec<super::DescriptorFieldMeta> = Vec::new();
+            let mut v_timestamp_expr = quote! { None };
             if let Some(tag) = &root_attrs.tag {
                 let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
                 v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], unit_expr: quote! { None } });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
-                    if let MetricsFieldKind::Field { unit, .. } = &field.attrs.kind {
+                    match &field.attrs.kind {
+                        MetricsFieldKind::Field { unit, .. } => {
                             let names: [String; 4] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                             let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
                             let unit_expr = match unit {
@@ -382,6 +384,14 @@ fn generate_enum_descriptor(
                                 None => quote! { None },
                             };
                             v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, unit_expr });
+                        }
+                        MetricsFieldKind::Timestamp(_) => {
+                            let ts_name = field.name.as_deref().unwrap_or("timestamp");
+                            v_timestamp_expr = quote! {
+                                Some(::metrique::writer::core::TimestampDescriptor::__metrique_private_new(#ts_name))
+                            };
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -418,7 +428,7 @@ fn generate_enum_descriptor(
                     #(#v_flag_statics)*
                     static #v_fields_ident: [::metrique::writer::core::FieldDescriptor; #num_v_fields] = [#(#v_field_exprs),*];
                     static #v_desc_ident: ::metrique::writer::core::EntryDescriptor =
-                        ::metrique::writer::core::EntryDescriptor::__metrique_private_new(#variant_name, &#v_fields_ident, None);
+                        ::metrique::writer::core::EntryDescriptor::__metrique_private_new(#variant_name, &#v_fields_ident, #v_timestamp_expr);
                     ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&#v_desc_ident))
                 }
             };
