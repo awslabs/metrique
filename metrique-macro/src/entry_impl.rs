@@ -71,12 +71,9 @@ pub(crate) fn generate_descriptor_impl(
     let style_names = crate::inflect::NameStyle::DESCRIPTOR_STYLE_NAMES;
     let style_arms: Vec<Ts2> = (0..style_names.len())
         .map(|style_idx| {
-            let style_const = match style_idx {
-                0 => quote! { ::metrique::STYLE_PRESERVE },
-                1 => quote! { ::metrique::STYLE_PASCAL },
-                2 => quote! { ::metrique::STYLE_SNAKE },
-                _ => quote! { ::metrique::STYLE_KEBAB },
-            };
+            let style_const = style_const_for(
+                crate::inflect::NameStyle::DESCRIPTOR_STYLES[style_idx],
+            );
             let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
             let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
 

@@ -19,7 +19,6 @@ pub(crate) mod private {
 /// [`InflectableEntry`]: crate::InflectableEntry
 pub trait NameStyle: private::NameStyleInternal {
     #[doc(hidden)]
-    #[doc(hidden)]
     type KebabCase: NameStyle;
 
     #[doc(hidden)]
@@ -51,6 +50,16 @@ pub const STYLE_PASCAL: u8 = 1;
 pub const STYLE_SNAKE: u8 = 2;
 #[doc(hidden)]
 pub const STYLE_KEBAB: u8 = 3;
+
+// Compile-time assertion: style constants must be sequential starting from 0.
+// If you add or reorder styles, update metrique-macro/src/inflect.rs
+// (DESCRIPTOR_STYLES, DESCRIPTOR_STYLE_NAMES, descriptor_index) to match.
+const _: () = {
+    assert!(STYLE_PRESERVE == 0);
+    assert!(STYLE_PASCAL == 1);
+    assert!(STYLE_SNAKE == 2);
+    assert!(STYLE_KEBAB == 3);
+};
 
 /// Inflects names to the identity case
 pub struct Identity<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);

@@ -543,3 +543,23 @@ fn cfg_disabled_flatten_excluded() {
     assert_eq!(descriptors.len(), 1);
     assert_eq!(descriptors[0].fields_len(), 1);
 }
+
+#[metrics]
+struct AllIgnored {
+    #[metrics(ignore)]
+    #[allow(dead_code)]
+    _a: u64,
+    #[metrics(ignore)]
+    #[allow(dead_code)]
+    _b: u64,
+}
+
+#[test]
+fn all_ignored_fields_produces_empty_descriptor() {
+    let m = AllIgnored { _a: 1, _b: 2 };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors: Vec<_> = entry.descriptors().collect();
+    assert_eq!(descriptors.len(), 1);
+    assert_eq!(descriptors[0].fields_len(), 0);
+}

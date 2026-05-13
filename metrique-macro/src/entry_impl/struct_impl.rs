@@ -74,7 +74,7 @@ fn generate_descriptor(
 
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
     let mut timestamp_descriptor = quote! { None };
-    let mut flatten_chains = Vec::new();
+    let mut flatten_chains: Vec<(bool, Ts2)> = Vec::new(); // (is_cfg_gated, tokens)
     let mut flatten_tag_statics = Vec::new();
     let mut flatten_idx = 0usize;
     let mut field_metas = Vec::new();
@@ -126,16 +126,16 @@ fn generate_descriptor(
 
                 if cfg_attrs.is_empty() {
                     if prefix_expr.is_some() || tags_expr.is_some() {
-                        flatten_chains.push(quote! {
+                        flatten_chains.push((false, quote! {
                             .chain(
                                 ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
                                     .map(|d| d #prefix_expr #tags_expr)
                             )
-                        });
+                        }));
                     } else {
-                        flatten_chains.push(quote! {
+                        flatten_chains.push((false, quote! {
                             .chain(::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident))
-                        });
+                        }));
                     }
                 } else {
                     // cfg-gated flatten: use let-rebinding so the chain only exists when cfg is active.
@@ -151,16 +151,22 @@ fn generate_descriptor(
                         }
                     };
                     // This gets emitted as a let-rebinding statement AFTER the initial chain
-                    flatten_chains.push(quote! {
-                        #(#cfg_attrs)* let __desc = __desc.chain(#chain_expr);
-                    });
+                    flatten_chains.push((
+                        true,
+                        quote! {
+                            #(#cfg_attrs)* let __desc = __desc.chain(#chain_expr);
+                        },
+                    ));
                 }
             }
             MetricsFieldKind::FlattenEntry(_) => {
                 let field_ident = &field.ident;
-                flatten_chains.push(quote! {
-                    .chain(::metrique::writer::Entry::descriptors(&self.#field_ident))
-                });
+                flatten_chains.push((
+                    false,
+                    quote! {
+                        .chain(::metrique::writer::Entry::descriptors(&self.#field_ident))
+                    },
+                ));
             }
             MetricsFieldKind::Field { unit, .. } => {
                 let names: [String; 4] =
@@ -194,18 +200,19 @@ fn generate_descriptor(
     let own_style = style_const_for(root_attrs.rename_all);
 
     // Split flatten chains: normal chains go in the expression, cfg-gated ones use let-rebinding.
-    let has_cfg_chains = flatten_chains
-        .iter()
-        .any(|c| c.to_string().contains("let __desc"));
+    let has_cfg_chains = flatten_chains.iter().any(|(cfg, _)| *cfg);
+
+    let all_chain_tokens: Vec<_> = flatten_chains.iter().map(|(_, t)| t).collect();
+
     let descriptors_method = if has_cfg_chains {
         // Use let-rebinding pattern for cfg support
         let normal_chains: Vec<_> = flatten_chains
             .iter()
-            .filter(|c| !c.to_string().contains("let __desc"))
+            .filter_map(|(cfg, t)| if !cfg { Some(t) } else { None })
             .collect();
         let cfg_rebindings: Vec<_> = flatten_chains
             .iter()
-            .filter(|c| c.to_string().contains("let __desc"))
+            .filter_map(|(cfg, t)| if *cfg { Some(t) } else { None })
             .collect();
         quote! {
             fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
@@ -225,7 +232,7 @@ fn generate_descriptor(
                 ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
                     #entry_name::__metrique_descriptor(#own_style)
                 ))
-                #(#flatten_chains)*
+                #(#all_chain_tokens)*
             }
         }
     };
