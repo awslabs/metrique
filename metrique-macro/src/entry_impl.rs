@@ -402,13 +402,47 @@ fn generate_field_writes(
                 let (extra, name) = make_inflect_metric_name(root_attrs, field);
                 let field_access = field_access(&field.ident);
                 let value = crate::value_impl::format_value(format, field_span, field_access);
+
+                // Wrap value in ForceFlag for each present flag (non-skip field-level
+                // and non-skip defaults not overridden at field level)
+                let present_flags: Vec<_> =
+                    resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags).flags;
+                let wrapped_value = if present_flags.is_empty() {
+                    quote! { #value }
+                } else {
+                    // Collect the FlagConstructor paths (non-skip)
+                    let flag_paths: Vec<_> = field
+                        .attrs
+                        .flags
+                        .iter()
+                        .filter(|f| !f.skip)
+                        .map(|f| &f.path)
+                        .chain(
+                            root_attrs
+                                .default_flags
+                                .iter()
+                                .filter(|d| {
+                                    !d.skip && !field.attrs.flags.iter().any(|ft| ft.path == d.path)
+                                })
+                                .map(|d| &d.path),
+                        )
+                        .collect();
+                    let mut expr = quote! { #value };
+                    for path in &flag_paths {
+                        expr = quote! {
+                            ::metrique::writer::value::ForceFlag::<_, #path>::from(#expr)
+                        };
+                    }
+                    quote! { &#expr }
+                };
+
                 quote_spanned! {field_span=>
                     ::metrique::writer::EntryWriter::value(#writer_ident,
                         {
                             #extra
                             ::metrique::concat::const_str_value::<#name>()
                         }
-                        , #value);
+                        , #wrapped_value);
                 }
             }
         };

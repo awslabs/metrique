@@ -120,7 +120,7 @@ const _: () = {
                                 >,
                             >()
                         },
-                        value,
+                        &::metrique::writer::value::ForceFlag::<_, MyFlag>::from(value),
                     );
                 }
                 FlaggedEnumEntry::Beta { skipped } => {

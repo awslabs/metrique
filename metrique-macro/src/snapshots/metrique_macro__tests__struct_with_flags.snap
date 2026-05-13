@@ -200,7 +200,10 @@ const _: () = {
                         >,
                     >()
                 },
-                &__metrique_self.count,
+                &::metrique::writer::value::ForceFlag::<
+                    _,
+                    MyFlag,
+                >::from(&__metrique_self.count),
             );
             ::metrique::writer::EntryWriter::value(
                 writer,
@@ -260,7 +263,15 @@ const _: () = {
                         >,
                     >()
                 },
-                &__metrique_self.special,
+                &::metrique::writer::value::ForceFlag::<
+                    _,
+                    MyFlag,
+                >::from(
+                    ::metrique::writer::value::ForceFlag::<
+                        _,
+                        OtherFlag,
+                    >::from(&__metrique_self.special),
+                ),
             );
         }
         fn sample_group(

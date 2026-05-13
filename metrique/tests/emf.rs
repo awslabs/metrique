@@ -182,3 +182,155 @@ fn flags_descriptor_with_emf_high_resolution() {
             .any(|f| f.is::<metrique::emf::HighStorageResolutionCtor>())
     );
 }
+
+#[test]
+fn flags_write_path_emf_high_resolution() {
+    use metrique::writer::format::Format;
+
+    let m = HighResMetrics {
+        timestamp: UNIX_EPOCH,
+        operation: "test".into(),
+        event_count: 42,
+        low_res_count: 7,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let mut emf = Emf::all_validations("Test".to_string(), vec![vec!["Operation".to_string()]]);
+    let mut output = vec![];
+    emf.format(&entry, &mut output).unwrap();
+    let json: Value = serde_json::from_slice(&output).unwrap();
+
+    // event_count has HighStorageResolution flag -> StorageResolution: 1
+    let metrics = &json["_aws"]["CloudWatchMetrics"][0]["Metrics"];
+    let event_metric = metrics
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["Name"] == "EventCount")
+        .expect("EventCount metric not found");
+    assert_eq!(event_metric["StorageResolution"], 1);
+
+    // low_res_count has skip(HighStorageResolution) -> no StorageResolution field
+    let low_res_metric = metrics
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["Name"] == "LowResCount")
+        .expect("LowResCount metric not found");
+    assert!(
+        low_res_metric.get("StorageResolution").is_none()
+            || low_res_metric["StorageResolution"] == 60
+    );
+}
+
+#[metrics(
+    rename_all = "PascalCase",
+    emf::dimension_sets = [["Operation"]],
+)]
+struct MultiFlagMetrics {
+    #[metrics(timestamp)]
+    timestamp: SystemTime,
+    operation: String,
+    #[metrics(flags(metrique::emf::flags::HighStorageResolution))]
+    #[metrics(flags(metrique::emf::flags::NoMetric))]
+    debug_value: u64,
+    normal_count: u64,
+}
+
+#[test]
+fn flags_write_path_multiple_flags_on_field() {
+    use metrique::writer::format::Format;
+
+    let m = MultiFlagMetrics {
+        timestamp: UNIX_EPOCH,
+        operation: "test".into(),
+        debug_value: 99,
+        normal_count: 5,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let mut emf = Emf::all_validations("Test".to_string(), vec![vec!["Operation".to_string()]]);
+    let mut output = vec![];
+    emf.format(&entry, &mut output).unwrap();
+    let json: Value = serde_json::from_slice(&output).unwrap();
+
+    // debug_value has NoMetric flag: value in JSON but NOT in Metrics array
+    assert_eq!(json["DebugValue"], 99);
+    let metrics = json["_aws"]["CloudWatchMetrics"][0]["Metrics"]
+        .as_array()
+        .unwrap();
+    assert!(!metrics.iter().any(|m| m["Name"] == "DebugValue"));
+
+    // normal_count has no flags: appears in Metrics array normally
+    assert!(metrics.iter().any(|m| m["Name"] == "NormalCount"));
+}
+
+#[metrics(
+    rename_all = "PascalCase",
+    emf::dimension_sets = [["Op"]],
+)]
+enum EnumFlagWrite {
+    Fast {
+        #[metrics(timestamp)]
+        ts: SystemTime,
+        op: String,
+        #[metrics(flags(metrique::emf::flags::HighStorageResolution))]
+        latency: u64,
+    },
+    Slow {
+        #[metrics(timestamp)]
+        ts: SystemTime,
+        op: String,
+        latency: u64,
+    },
+}
+
+#[test]
+fn flags_write_path_enum_variant() {
+    use metrique::writer::format::Format;
+
+    let fast = EnumFlagWrite::Fast {
+        ts: UNIX_EPOCH,
+        op: "read".into(),
+        latency: 5,
+    };
+    let closed_fast = metrique::CloseValue::close(fast);
+    let entry_fast = metrique::RootEntry::new(closed_fast);
+
+    let mut emf = Emf::all_validations("Test".to_string(), vec![vec!["Op".to_string()]]);
+    let mut output = vec![];
+    emf.format(&entry_fast, &mut output).unwrap();
+    let json: Value = serde_json::from_slice(&output).unwrap();
+
+    // Fast variant: latency has HighStorageResolution
+    let metrics = json["_aws"]["CloudWatchMetrics"][0]["Metrics"]
+        .as_array()
+        .unwrap();
+    let latency_metric = metrics.iter().find(|m| m["Name"] == "Latency").unwrap();
+    assert_eq!(latency_metric["StorageResolution"], 1);
+
+    // Slow variant: latency has no flags
+    let slow = EnumFlagWrite::Slow {
+        ts: UNIX_EPOCH,
+        op: "write".into(),
+        latency: 100,
+    };
+    let closed_slow = metrique::CloseValue::close(slow);
+    let entry_slow = metrique::RootEntry::new(closed_slow);
+
+    let mut output2 = vec![];
+    emf.format(&entry_slow, &mut output2).unwrap();
+    let json2: Value = serde_json::from_slice(&output2).unwrap();
+
+    let metrics2 = json2["_aws"]["CloudWatchMetrics"][0]["Metrics"]
+        .as_array()
+        .unwrap();
+    let latency_metric2 = metrics2.iter().find(|m| m["Name"] == "Latency").unwrap();
+    // No StorageResolution field (or default 60)
+    assert!(
+        latency_metric2.get("StorageResolution").is_none()
+            || latency_metric2["StorageResolution"] == 60
+    );
+}
