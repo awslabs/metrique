@@ -1,29 +1,41 @@
-# Entry descriptors and field tags
+# Entry descriptors and field flags
 
-> **Status: partially implemented.** Field tags, descriptors, and flatten chaining are implemented. Field shapes are deferred (all Opaque).
+> **Status: partially implemented.** Field flags, descriptors, and flatten chaining are implemented. Field shapes are deferred (all Opaque).
 
 A small system on top of metrique's existing `Entry` / `Value` / `CloseValue` traits that lets sinks introspect the structure of macro-derived entries.
 
 Two pieces, both opt-in for sinks:
 
-- An **entry descriptor** that describes a macro-derived entry's closed shape: ordered fields, their tags, optionality, lists, dynamic-key maps, units, canonical entry name, and an optional timestamp field.
+- An **entry descriptor** that describes a macro-derived entry's closed shape: ordered fields, their flags, optionality, lists, dynamic-key maps, units, canonical entry name, and an optional timestamp field.
 - A **field tag** system that lets sinks define their own static opt-in markers and lets users apply them at struct or field scope.
 
 None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sinks that do not call `Entry::descriptors()` pay nothing.
 
 ## Glossary
 
-- **Entry descriptor** (`EntryDescriptor`): a metrique-emitted description of a macro-derived entry's closed shape. Sinks read it to learn what fields the entry can emit, in what order, with what tags and units, and what the entry is canonically called.
-- **Field tag**: a user-defined marker type (e.g. `audit::Export`, `dial9::Emit`) that a sink crate declares and that users apply to fields via `#[metrics(field_tag(T))]`. Sinks read tags off the descriptor to decide per-field behaviour. Metrique does not interpret tag identity.
-- **`default_field_tag` / `field_tag`**: struct-level and field-level attributes for applying tags. `skip(T)` is an argument form that inverts a default. Flatten sites may carry `field_tag(...)` that propagates to flattened children as a default.
+- **Entry descriptor** (`EntryDescriptor`): a metrique-emitted description of a macro-derived entry's closed shape. Sinks read it to learn what fields the entry can emit, in what order, with what flags and units, and what the entry is canonically called.
+- **Field flag**: a `FlagConstructor` type (e.g. `emf::flags::HighStorageResolution`, `dial9::flags::Export`) that a format or sink crate declares and that users apply to fields via `#[metrics(flags(T))]`. Flags appear in the descriptor for sink introspection and are applied at write time for format behavior.
+- **`default_flags` / `flags`**: struct-level and field-level attributes for applying flags. `skip(T)` suppresses a default. `default_flags` applies to direct fields only and does not propagate to flattened children.
 - **`FieldShape`**: the closed/emitted shape of a field (scalar, optional, list, dynamic-key map, or opaque). Describes what the sink will see, not the raw Rust type.
 - **`DescriptorRef`**: the handle yielded by `Entry::descriptors()`. Provides field access via `FieldView`, carries a stable `DescriptorId` for cache keying.
 - **`DescriptorId`**: an opaque identifier for a descriptor, stable within a single process lifetime. Used by sinks to cache derived data.
 
+### Relationship between flags, FlagConstructor, ForceFlag, and MetricFlags
+
+A **`FlagConstructor`** is a type whose `construct()` method returns a `MetricFlags<'static>` value. Format crates (like EMF) define these to represent format-specific options (e.g. `HighStorageResolutionCtor`). They also provide a `flags` module re-exporting the constructor under a user-friendly name (e.g. `emf::flags::HighStorageResolution`).
+
+**`#[metrics(flags(T))]`** where `T: FlagConstructor` does two things:
+1. Records `T`'s `TypeId` in the field's descriptor (so sinks can introspect it via `FieldView::flags()`)
+2. Wraps the field's value in `ForceFlag<_, T>` at write time (so the flag flows through `ValueWriter::metric()` to the format)
+
+**`ForceFlag<V, T>`** is the write-path mechanism. It intercepts `Value::write` and injects `T::construct()` into the `MetricFlags` parameter of `ValueWriter::metric()`. Using `ForceFlag<V, T>` as a field type directly only affects the write path; the descriptor is unaware of it. Prefer `#[metrics(flags(T))]` to get both.
+
+**`MetricFlags`** is the runtime payload that formats receive in `ValueWriter::metric()`. Formats downcast it to check for specific options (e.g. `flags.downcast::<EmfOptions>()`).
+
 ## What it enables
 
 - Sinks can inspect the complete set of fields an entry can emit, including optional fields and dynamic maps, without observing multiple live emissions.
-- Sinks can declare per-field opt-in via tags users apply to their entries without sink-specific newtypes on field values.
+- Sinks and formats can declare per-field opt-in via flags users apply to their entries without sink-specific newtypes on field values.
 - First-class units in the descriptor, surfaced however each sink prefers.
 - All of the above after `BoxEntry` erasure.
 
@@ -36,7 +48,7 @@ Here is the end-to-end shape from a user's perspective. The example uses a made-
 ```rust
 // --- in the `audit` sink crate ---
 
-// The audit sink defines a static marker type. Users tag fields with it
+// The audit sink defines a FlagConstructor. Users apply it via flags(...)
 // to opt them into the audit stream.
 pub struct Export;
 
@@ -45,20 +57,20 @@ pub struct Export;
 use audit::Export;
 
 // The struct declares `Export` as the default for all its fields; individual
-// fields can override with `field_tag(skip(Export))`.
-#[metrics(default_field_tag(Export))]
+// fields can override with `flags(skip(Export))`.
+#[metrics(default_flags(Export))]
 struct RequestMetrics {
     // `request_id` inherits the struct default: tagged Export.
     request_id: String,
     // `operation` also inherits the struct default.
     operation: &'static str,
     // `debug_blob` opts out: not in the audit payload.
-    #[metrics(field_tag(skip(Export)))]
+    #[metrics(flags(skip(Export)))]
     debug_blob: String,
 }
 ```
 
-The macro generates (in addition to the existing `Entry` impl) an `EntryDescriptor` describing three fields: `request_id` (tag: present(Export), shape: String), `operation` (tag: present(Export), shape: String), `debug_blob` (tag: absent(Export), shape: String). The descriptor's canonical name is `"RequestMetrics"`.
+The macro generates (in addition to the existing `Entry` impl) an `EntryDescriptor` describing three fields: `request_id` (flag: Export, shape: String), `operation` (flag: Export, shape: String), `debug_blob` (no flags, shape: String). The descriptor's canonical name is `"RequestMetrics"`.
 
 An audit sink reads the descriptor at first-use per entry type, walks `Entry::write` in descriptor order, and for each value consults the tag map on the descriptor to decide whether to emit that field to its wire format.
 
@@ -158,30 +170,27 @@ Sinks define tag types in their own crate. Any type works as a tag; the macro do
 
 ```rust
 // Struct-scope default:
-#[metrics(default_field_tag(audit::Export))]
-#[metrics(default_field_tag(skip(audit::Export)))]
+#[metrics(default_flags(audit::Export))]
+#[metrics(default_flags(skip(audit::Export)))]
 
 // Field override:
-#[metrics(field_tag(audit::Export))]
-#[metrics(field_tag(skip(audit::Export)))]
+#[metrics(flags(audit::Export))]
+#[metrics(flags(skip(audit::Export)))]
 ```
 
-Each field/tag pair resolves to one of `present`, `absent`, or `unspecified`. Only `present` and `absent` (explicit user decisions) appear in the descriptor's `FieldTag` list; `unspecified` is the absence of any entry.
+Each field's flags list contains only the flags that are present. `skip(T)` suppresses a default, resulting in T not appearing in the list.
 
 ### Resolution order
 
-From most-specific to least-specific:
+Flags are resolved within a single struct. They do not propagate to flattened children.
 
-1. **Field-level `field_tag(T)` on the child field** wins.
-2. **Struct-level `default_field_tag(T)` on the child struct** wins over a flatten-site tag.
-3. **`field_tag(T)` on a flatten site** propagates to the flattened children as a default, overriding the grandparent default.
-4. **Parent struct-level `default_field_tag(T)`** fills anything still unspecified.
+1. **Field-level `flags(T)`**: applies T to this field.
+2. **Field-level `flags(skip(T))`**: suppresses T from the struct's `default_flags`.
+3. **Struct-level `default_flags(T)`**: applies T to all direct fields that don't mention T.
 
-`skip(T)` is an argument form, not a separate attribute.
+Flattened children manage their own flags independently. This matches the scoping of container-level `prefix`, which also does not propagate to flattened children.
 
 `#[metrics(tag(...))]` on entry enums (the entry-enum variant tag) is unchanged and unrelated.
-
-Full resolution rules including worked inheritance and flatten cases are documented alongside the macro's other field attributes.
 
 ## Architecture
 
@@ -246,15 +255,15 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 
 When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default tags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
 
-### How flatten propagates naming and tags
+### How flatten propagates naming
 
-When a parent flattens a child, three things propagate to the child's descriptor:
+When a parent flattens a child, two things propagate to the child's descriptor:
 
 **Name style.** The parent's `rename_all` determines which of the child's pre-computed name variants is used. Each entry has a static descriptor per name style; the parent selects the one matching its own convention.
 
 **Prefix.** A flatten-site prefix (e.g., `#[metrics(flatten, prefix = "http_")]`) is prepended to the child's field names. Nested prefixes stack. Container-level prefixes do not propagate ([#160](https://github.com/awslabs/metrique/issues/160)).
 
-**Tags.** The parent's `default_field_tag` and any flatten-site `field_tag` are merged into a defaults layer. At read time, the child's own tags always win; defaults only fill in for tag ids the child didn't specify. Parents cannot override a child's explicit tag decisions.
+**Flags do not propagate.** Each struct manages its own flags via `default_flags` and per-field `flags(...)`. Container-level `default_flags` does not propagate to flattened children, matching the scoping of container-level `prefix`.
 
 ## Validation
 
@@ -265,13 +274,13 @@ Validation happens in two places.
 Intrinsic to the system and independent of any specific sink:
 
 ```rust
-// field_tag(T) and field_tag(skip(T)) on the same field
-#[metrics(field_tag(audit::Export), field_tag(skip(audit::Export)))]
+// flags(T) and flags(skip(T)) on the same field
+#[metrics(flags(audit::Export), flags(skip(audit::Export)))]
 request_id: String,
 // -> error: conflicting field tags
 
-// default_field_tag(T) and default_field_tag(skip(T)) on the same struct
-#[metrics(default_field_tag(audit::Export), default_field_tag(skip(audit::Export)))]
+// default_flags(T) and default_flags(skip(T)) on the same struct
+#[metrics(default_flags(audit::Export), default_flags(skip(audit::Export)))]
 struct Bad;
 // -> error: conflicting defaults
 ```
@@ -293,7 +302,7 @@ The first time a descriptor-aware sink encounters a given descriptor (keyed on `
 Per macro-derived struct entry type:
 
 - 4 static `EntryDescriptor`s (one per name style), each with a slice of `FieldDescriptor`s.
-- One slice of `FieldTag` per field (shared across all 4 styles, since tags don't vary by name style).
+- One slice of `FieldFlag` per field (shared across all 4 styles, since flags don't vary by name style).
 - Per-field name strings (one per style, so 4x the name storage).
 
 Per enum entry type: 4 statics per variant (not per enum).

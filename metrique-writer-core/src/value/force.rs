@@ -155,10 +155,22 @@ impl<T: MetricValue, FLAGS: FlagConstructor> MetricValue for ForceFlag<T, FLAGS>
     type Unit = T::Unit;
 }
 
-// This one is private for now since there is no obvious use for it.
-struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
+// Used by the macro to wrap writers for flatten fields with flags.
+#[doc(hidden)]
+pub struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
     writer: &'a mut W,
     phantom: PhantomData<FLAGS>,
+}
+
+impl<'a, W, FLAGS: FlagConstructor> ForceFlagEntryWriter<'a, W, FLAGS> {
+    /// Hidden constructor for use by the metrique macro only.
+    #[doc(hidden)]
+    pub fn new(writer: &'a mut W) -> Self {
+        Self {
+            writer,
+            phantom: PhantomData,
+        }
+    }
 }
 
 impl<'a, W: EntryWriter<'a>, FLAGS: FlagConstructor> EntryWriter<'a>

@@ -38,7 +38,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | Attribute | Type | Description | Example |
 /// |-----------|------|-------------|---------|
 /// | `rename_all` | String | Changes the case style of all field names | `#[metrics(rename_all = "PascalCase")]` |
-/// | `prefix` | String | Adds a prefix to all field names (prefix gets inflected) | `#[metrics(prefix = "api_")]` |
+/// | `prefix` | String | Adds a prefix to all direct field names (prefix gets inflected). Does not propagate to flattened children. | `#[metrics(prefix = "api_")]` |
 /// | `exact_prefix` | String | Adds a prefix to all field names without inflection | `#[metrics(exact_prefix = "API_")]` |
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
 /// | `tag` | Nested | On entry enums, adds a tag field with the variant name. Tag value respects `rename_all` and variant `name`, but not `prefix`. | |
@@ -50,7 +50,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
-/// | `default_flags` | Path | Applies a flag to all fields by default for format and sink usage. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::Export))]` |
+/// | `default_flags` | Path | Applies a flag to all direct fields in this struct for format and sink usage. Does not propagate to flattened children. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::flags::MyFlag))]` |
 ///
 /// # Field Attributes
 ///
