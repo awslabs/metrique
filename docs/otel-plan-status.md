@@ -1,9 +1,11 @@
-# `metrique-otel` — current status and plan
+# `metrique-otel` —
+
+current status and plan
 
 Follow-up to the [original design comment](https://github.com/awslabs/metrique/issues/110#issuecomment-4400001687)
 and both [Jess's](https://github.com/awslabs/metrique/issues/110#issuecomment-4422783595) and [Russell's](https://github.com/awslabs/metrique/issues/110#issuecomment-4412942585) feedback.
-Captures where the `otel-integration` branch landed, what's intentionally deferred,
-and what changes once [#282 (Entry Descriptors)](https://github.com/awslabs/metrique/pull/282)
+Captures where the `otel-integration` branch landed after [#282 (Entry Descriptors)](https://github.com/awslabs/metrique/pull/282),
+what's intentionally deferred, and what changes once [#289 (field shape lowering)](https://github.com/awslabs/metrique/pull/289)
 ships.
 
 ## What's implemented
@@ -15,17 +17,17 @@ use std::time::Duration;
 use metrique::{ServiceMetrics, timers::Timer, unit_of_work::metrics};
 use metrique::writer::AttachGlobalEntrySink;
 use metrique_otel::OtelSink;
-use metrique_otel::flags::{Counter, UpDownCounter, Histogram, Gauge};
+use metrique_otel::tags::{Counter, UpDownCounter, Histogram, Gauge};
 
-#[metrics]
+#[metrics(rename_all = "PascalCase")]
 #[derive(Default)]
 struct RequestMetrics {
     time: Timer,
-    operation: String,                  // metric attribute on every observation
-    request_count: Counter<u64>,        // OTel Counter::add
-    queue_depth:   UpDownCounter<i64>,  // OTel UpDownCounter::add
-    latency_ms:    Histogram<Duration>, // OTel Histogram::record
-    cpu_usage:     Gauge<f64>,          // OTel Gauge::record
+    operation: String,                                                  // metric attribute on every observation
+    #[metrics(field_tag(Counter))]       request_count: u64,            // OTel Counter::add
+    #[metrics(field_tag(UpDownCounter))] queue_depth:   i64,            // OTel UpDownCounter::add
+    #[metrics(field_tag(Histogram), unit = Millisecond)] latency: Duration, // OTel Histogram::record
+    #[metrics(field_tag(Gauge))]         cpu_usage:     f64,            // OTel Gauge::record
 }
 
 #[tokio::main]
@@ -60,28 +62,17 @@ This approach comes from both feedbacks and the concern that metadata next to me
 
 ### Translator behavior
 
-For each closed `Entry`, the translator walks it once and produces:
+The translator runs in two stages:
 
-1. A bag of **entry-wide attributes** built from every string field encountered
-   during the walk. These attributes get attached to every metric observation
-   produced by the same entry, so saying "operation = GetBook" labels every counter,
-   histogram and gauge from that request.
-2. A list of **pending observations**, one per numeric field carrying an
-   instrument-kind hint. The kind is selected from:
-   - an explicit aggregation-hint flag (`Counter<T>` / `UpDownCounter<T>` /
-     `Histogram<T>` / `Gauge<T>`), implemented today as `ForceFlag`-wrapped
-     values that round-trip through metrique's existing `MetricFlags` mechanism;
-     or
-   - the `Distribution` flag emitted by `metrique-aggregation`'s histogram
-     strategy.
+1. **Plan build (once per descriptor shape).** `OtelSink` owns an `EntryPlan` cache. On first sight of a shape it walks `entry.descriptors()`, resolves each field's `tags()` to an `InstrumentKind`, derives the `InstrumentationScope` as `metrique/{desc.name()}`, and stores the plan keyed by a composite hash of descriptor segment ids. Misconfigured numeric fields (a numeric field with no recognised instrument-kind tag) trigger a single `tracing::warn!` per shape, never per write, in `OtelSink::plan_for` at `metrique-otel/src/lib.rs`. Different entry types produce different OTel `InstrumentationScope`s.
 
-   Fields with no kind hint are dropped silently, intended for now, worth to discuss if we want to surface it as a warning/error or tackle down now.
+2. **Hot path (per entry).** The translator consults the cached plan via one read-lock per append and classifies fields through a `HashMap<String, FieldKind>`. For each closed `Entry` it produces:
+   - a bag of **entry-wide attributes** built from every string field encountered during the walk. These attributes get attached to every metric observation produced by the same entry, so saying `operation = GetBook` labels every counter, histogram and gauge from that request;
+   - a list of **pending observations**, one per numeric field whose tag resolved to an instrument kind (`Counter` / `UpDownCounter` / `Histogram` / `Gauge`).
 
-At `finish()`, each pending observation is dispatched against an
-`InstrumentCache` that lazily creates the right OTel instrument (`u64_counter`,
-`i64_up_down_counter`, `f64_histogram`, `f64_gauge`) by `(name, kind)` and feeds
-it the observation plus the merged attribute set (entry-wide + per-metric
-dimensions). Units round-trip via a UCUM mapping (`ms`, `us`, `By`, `KBy`, …).
+**Aggregation fallback.** `metrique-aggregation`'s `Distribution` `MetricFlags` is still recognised in the translator as a runtime fallback. This is what keeps the `#[aggregate(strategy = Histogram<T>)]` path working without anybody having to tag the underlying value.
+
+**Dispatch.** At `finish()`, each pending observation is dispatched against an `InstrumentCache` that lazily creates the right OTel instrument (`u64_counter`, `i64_up_down_counter`, `f64_histogram`, `f64_gauge`) by `(name, kind)` and feeds it the observation plus the merged attribute set (entry-wide + per-metric dimensions). Units round-trip via a UCUM mapping (`ms`, `us`, `By`, `KBy`, etc).
 
 ### Built on the full OTel SDK
 
@@ -90,40 +81,25 @@ The current implementation depends on `opentelemetry`, `opentelemetry_sdk`, and
 `opentelemetry-proto` + direct tonic exporter is valid and pretty interesting. Some analysis is available at[`docs/minimal-exporter-comparison.md`](../../code/wye/metrique/docs/minimal-exporter-comparison.md).
 I would keep working on the full OTel SDK until we have a clear idea what's the best approach for the long term and when we fine, start working on the minimal path, which makes total sense for long term.
 
-## Pending on #282 (Entry Descriptors)
+## Landed with #282 (Yet in progress)
 
-Once it lands the OTel sink can take the following start using the static tag system and avoid the flags (current approach).
+The pieces that were blocked on Entry Descriptors are now in:
 
-- **Instrument-kind selection moves from `ForceFlag` wrappers to field tags.**
-  Users would `#[metrics(field_tag(Counter))]` or struct-level
-  `default_field_tag(..)` instead of typing `Counter<u64>`. The
-  `AddAssign` / `SubAssign` impls added to `ForceFlag` on this branch become
-  unnecessary and can be reverted.
-- **Per-entry-type plan instead of per-entry walk.** With
-  `EntryDescriptor::name()`, `fields()`, units, and resolved tags available
-  ahead of time, the sink builds one plan per `DescriptorId` describing which
-  fields are attributes, which are observations, what kind, what unit. The hot
-  path becomes a fixed traversal over that plan instead of inferring per call.
-  This is also a precondition for the minimal exporter path: the encoder needs
-  to know shape/kind/unit once per descriptor, not per observation.
-- **Eliminates the silent-drop class of bugs.** Misconfigured numeric fields are
-  caught at descriptor inspection (or first emission), not dropped at runtime.
-- **Clean attribute/observation separation.** `default_field_tag(skip(Emit))`
-  and per-field tags would give users and the sink explicit control over which fields
-  are dimensions vs measurements, instead of inferring "string > attribute" by
-  walking values.
-- **Stable entry name for OTel scope/instrument-name composition.**
-  `EntryDescriptor::name()` provides a canonical identifier. Nowadays the sink
-  relies on per-field naming.
+- **Instrument-kind selection via field tags.** `#[metrics(field_tag(Counter))]`
+  (and friends) replaced the `ForceFlag` wrapper API (`Counter<T>` / `UpDownCounter<T>` / `Histogram<T>` / `Gauge<T>`). The zero-sized tag markers live at `metrique_otel::tags::*`. The `AddAssign` / `SubAssign` impls that had been added to `ForceFlag` to keep `Counter<u64>` usable inside `Sum` strategies were reverted, that need disappears once the type is plain `u64`.
+- **Per-`DescriptorId` `EntryPlan` cache** replacing the per-entry walk. The hot path is now a fixed traversal over the cached plan instead of re-inferring kinds per call. This is also a precondition for the minimal exporter path: the encoder needs to know shape/kind/unit once per descriptor, not per observation.
+- **Silent-drop surfaced** as a one-shot `tracing::warn!` per descriptor shape, listing the offending fields and the instrumentation scope and hinting at the correct attribute. No more silent drops at runtime.
+- **`InstrumentationScope` from `desc.name()`.** `Meter::name` is now derived per entry shape (`metrique {desc.name()}`), so different entry types produce different OTel scopes that the exporter sees as separate `InstrumentationScope`s.
 
 ## Still TBD / Questions
 
-- **Setup**: took the easy path which is configuring OTel's collector by env vars as the SDK proposes, we probably want differently or in a standard way.
-- **Delta vs cumulative temporality.** Descriptors describe shape, not
-  aggregation policy. I think that a builder option (likely `with_temporality(..)`)
-  and a story for cumulative state alongside `metrique-aggregation` is the way. This is pretty much the reason to keep the SDK for a first iteration: cumulative is free there, and we'd
-  have to reimplement the accumulator on the minimal path.
-- **Surface the silent-drop case** as a `tracing::warn!` + a counter on
-  `OtelSink`, so misuse is visible even before #282 lands.
-- **Decide when to swap to the minimal exporter path** (see the comparison
-  doc).
+- **Field shape lowering (#289).** Every `FieldView::shape()` returns `FieldShape::Opaque` today. Without scalar-distribution shape info we cannot preclassify "this field will emit a scalar or a histogram" at plan-build time, so we still rely on the `Distribution` runtime flag for the aggregation path. Once #289 ships, the plan can be richer and the runtime fallback can shrink.
+- **`FieldShape::Distribution` variant.** Not in #289 yet. Same impact as above, preserves the `Distribution` flag fallback.
+- **Custom entry names.** `EntryDescriptor::name()` exists but there is no `entry_name` attribute override yet. Scope name is always the Rust struct name; users who want a different OTel scope name must wait.
+- **`default_field_tag` ergonomics for OTel.** I considered adding an `Emit` tag with `default_field_tag(Emit)` + `skip(Emit)` to let users explicitly opt fields out of OTel emission. Deferred to a later iteration, the current heuristic (string > attribute, kind-tagged > observation) covers the common case.
+- **Setup**: took the easy path which is configuring OTel's collector by env
+  vars as the SDK proposes, we probably want differently or in a standard
+  way.
+- **Delta vs cumulative temporality.** Descriptors describe shape, notaggregation policy. I think that a builder option (likely`with_temporality(..)`) and a story for cumulative state alongside`metrique-aggregation` is the way. This is pretty much the reason to keepthe SDK for a first iteration: cumulative is free there, and we'd have toreimplement the accumulator on the minimal path.
+- **Decide when to swap to the minimal exporter path** (see
+  [`docs/minimal-exporter-comparison.md`](./minimal-exporter-comparison.md)).
