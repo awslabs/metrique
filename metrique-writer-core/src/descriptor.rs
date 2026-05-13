@@ -446,6 +446,25 @@ mod tests {
     }
 
     #[test]
+    fn field_name_with_nested_prefixes() {
+        static TAGS: [FieldTag; 0] = [];
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::__metrique_private_new(
+            "Latency",
+            &TAGS,
+            FieldShape::Opaque,
+            None,
+        )];
+        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
+
+        let d = DescriptorRef::from_static(&DESC)
+            .with_prefix("Http")
+            .with_prefix("Api");
+        let fields: Vec<_> = d.fields().collect();
+        let parts: Vec<&str> = fields[0].name_parts().collect();
+        assert_eq!(parts, vec!["Http", "Api", "Latency"]);
+    }
+
+    #[test]
     fn field_tags_with_defaults() {
         static FIELD_TAGS: [FieldTag; 0] = [];
         static DEFAULT_TAGS: [FieldTag; 1] = [FieldTag::__metrique_private_new(
