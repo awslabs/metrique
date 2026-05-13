@@ -1163,8 +1163,8 @@ impl RawMetricsFieldAttrs {
 
         // flags(...) is not allowed on flatten/flatten_entry fields.
         // Each struct manages its own flags independently.
-        if !self.flags.0.is_empty() {
-            if let Some((MetricsFieldKind::Flatten { span, .. }, _))
+        if !self.flags.0.is_empty()
+            && let Some((MetricsFieldKind::Flatten { span, .. }, _))
             | Some((MetricsFieldKind::FlattenEntry(span), _)) = &out
             {
                 return Err(darling::Error::custom(
@@ -1173,7 +1173,6 @@ impl RawMetricsFieldAttrs {
                 )
                 .with_span(span));
             }
-        }
 
         Ok(MetricsFieldAttrs {
             close,
