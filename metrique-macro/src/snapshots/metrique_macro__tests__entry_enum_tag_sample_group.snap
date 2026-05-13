@@ -38,104 +38,21 @@ const _: () = {
             }
         }
     }
-    impl OperationEntry {
-        #[doc(hidden)]
-        #[inline(always)]
-        fn __metrique_descriptor(
-            __style: u8,
-        ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            match __style {
-                ::metrique::STYLE_PRESERVE => {
-                    static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
-                            &__METRIQUE_TAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "bytes",
-                            &__METRIQUE_TAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                    ];
-                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Operation",
-                        &__METRIQUE_FIELDS_PRESERVE,
-                        None,
-                    );
-                    &__METRIQUE_DESC_PRESERVE
-                }
-                ::metrique::STYLE_PASCAL => {
-                    static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
-                            &__METRIQUE_TAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Bytes",
-                            &__METRIQUE_TAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                    ];
-                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Operation",
-                        &__METRIQUE_FIELDS_PASCAL,
-                        None,
-                    );
-                    &__METRIQUE_DESC_PASCAL
-                }
-                ::metrique::STYLE_SNAKE => {
-                    static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
-                            &__METRIQUE_TAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "bytes",
-                            &__METRIQUE_TAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                    ];
-                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Operation",
-                        &__METRIQUE_FIELDS_SNAKE,
-                        None,
-                    );
-                    &__METRIQUE_DESC_SNAKE
-                }
-                ::metrique::STYLE_KEBAB => {
-                    static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
-                            &__METRIQUE_TAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "bytes",
-                            &__METRIQUE_TAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                    ];
-                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Operation",
-                        &__METRIQUE_FIELDS_KEBAB,
-                        None,
-                    );
-                    &__METRIQUE_DESC_KEBAB
-                }
-                _ => unreachable!("unknown descriptor style index"),
+    enum OperationEntryDescIter<'__metrique_lt, V0> {
+        V0(V0),
+        __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
+    }
+    impl<
+        '__metrique_lt,
+        V0: ::std::iter::Iterator<
+                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
+            >,
+    > ::std::iter::Iterator for OperationEntryDescIter<'__metrique_lt, V0> {
+        type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
+        fn next(&mut self) -> ::std::option::Option<Self::Item> {
+            match self {
+                OperationEntryDescIter::V0(iter) => iter.next(),
+                OperationEntryDescIter::__Phantom(_) => None,
             }
         }
     }
@@ -255,11 +172,39 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = ::metrique::writer::core::DescriptorRef<'_>,
         > {
-            ::std::iter::once(
-                ::metrique::writer::core::DescriptorRef::from_static(
-                    OperationEntry::__metrique_descriptor(::metrique::STYLE_PRESERVE),
-                ),
-            )
+            #[allow(deprecated)]
+            match self {
+                OperationEntry::Read { .. } => {
+                    OperationEntryDescIter::V0({
+                        static __METRIQUE_VTAGS_0_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                        static __METRIQUE_VTAGS_0_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                        static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                                "operation",
+                                &__METRIQUE_VTAGS_0_0,
+                                ::metrique::writer::core::FieldShape::Opaque,
+                                None,
+                            ),
+                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                                "bytes",
+                                &__METRIQUE_VTAGS_0_1,
+                                ::metrique::writer::core::FieldShape::Opaque,
+                                None,
+                            ),
+                        ];
+                        static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            "Operation::Read",
+                            &__METRIQUE_VFIELDS_0,
+                            None,
+                        );
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                &__METRIQUE_VDESC_0,
+                            ),
+                        )
+                    })
+                }
+            }
         }
     }
 };

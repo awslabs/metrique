@@ -617,3 +617,30 @@ fn enum_variant_without_flatten_yields_one_descriptor() {
     // Only the base descriptor, no flatten children
     assert_eq!(descriptors.len(), 1);
 }
+
+#[test]
+fn enum_variants_have_different_descriptor_ids() {
+    use metrique::writer::Entry;
+
+    let simple = EnumWithFlatten::Simple { count: 1 };
+    let with_child = EnumWithFlatten::WithChild {
+        count: 1,
+        child: EnumChild { child_val: 2 },
+    };
+
+    let closed_simple = metrique::CloseValue::close(simple);
+    let closed_child = metrique::CloseValue::close(with_child);
+    let entry_simple = metrique::RootEntry::new(closed_simple);
+    let entry_child = metrique::RootEntry::new(closed_child);
+
+    let descs_simple: Vec<_> = entry_simple.descriptors().collect();
+    let descs_child: Vec<_> = entry_child.descriptors().collect();
+
+    // Different variants produce different base descriptor ids
+    // (each variant has its own static with only its fields)
+    assert_ne!(descs_simple[0].id(), descs_child[0].id());
+
+    // Each variant's descriptor name includes the variant
+    assert!(descs_simple[0].name().contains("Simple"));
+    assert!(descs_child[0].name().contains("WithChild"));
+}
