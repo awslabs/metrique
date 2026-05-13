@@ -6,7 +6,8 @@ use std::{any::Any, borrow::Cow, time::SystemTime};
 use smallvec::SmallVec;
 
 use crate::{
-    Entry, EntryWriter, Observation, Unit, ValidationError, Value, ValueWriter, value::MetricFlags,
+    DescriptorRef, Entry, EntryWriter, Observation, Unit, ValidationError, Value, ValueWriter,
+    value::MetricFlags,
 };
 
 use super::EntryConfig;
@@ -48,6 +49,10 @@ impl Entry for BoxEntry {
     fn sample_group(&self) -> impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)> {
         self.0.sample_group().into_iter()
     }
+
+    fn descriptor(&self) -> Option<DescriptorRef<'_>> {
+        self.0.descriptor()
+    }
 }
 
 // Each Dyn* trait is the object-safe equivalent of its partner
@@ -55,6 +60,7 @@ impl Entry for BoxEntry {
 trait DynEntry: Any + Send + 'static {
     fn write<'a>(&'a self, writer: &mut dyn DynEntryWriter<'a>);
     fn sample_group(&self) -> SmallVec<[(Cow<'static, str>, Cow<'static, str>); 2]>;
+    fn descriptor(&self) -> Option<DescriptorRef<'_>>;
 }
 
 trait DynEntryWriter<'a> {
@@ -90,6 +96,10 @@ impl<E: Entry + Send + 'static> DynEntry for E {
 
     fn sample_group(&self) -> SmallVec<[(Cow<'static, str>, Cow<'static, str>); 2]> {
         Entry::sample_group(self).collect()
+    }
+
+    fn descriptor(&self) -> Option<DescriptorRef<'_>> {
+        Entry::descriptor(self)
     }
 }
 
