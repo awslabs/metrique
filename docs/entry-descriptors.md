@@ -119,7 +119,7 @@ Users who want custom types to flow through descriptor-aware sinks should use `#
 The `Entry` trait has a defaulted method:
 
 ```rust
-fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> { std::iter::empty() }
+fn descriptors(&self) -> Descriptors<'_> { Descriptors::Unavailable }
 ```
 
 Macro-derived entries override this to yield one or more descriptors. Composed entries (like `AggregationResult`) yield multiple descriptors in write order, one per logical segment. Hand-written entries keep the default (empty iterator). `BoxEntry` forwards the call through its dynamic dispatch layer.
