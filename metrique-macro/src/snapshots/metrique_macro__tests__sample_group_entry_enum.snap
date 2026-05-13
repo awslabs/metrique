@@ -104,6 +104,112 @@ pub struct MetadataEntry {
     request_id: <String as metrique::CloseValue>::Closed,
 }
 const _: () = {
+    impl MetadataEntry {
+        #[doc(hidden)]
+        fn __metrique_descriptor(
+            __style: u8,
+        ) -> &'static ::metrique::writer::core::EntryDescriptor {
+            match __style {
+                0u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "request_id",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "Metadata",
+                        &__METRIQUE_FIELDS_PRESERVE,
+                        None,
+                    );
+                    &__METRIQUE_DESC_PRESERVE
+                }
+                1u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "Operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "RequestId",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "Metadata",
+                        &__METRIQUE_FIELDS_PASCAL,
+                        None,
+                    );
+                    &__METRIQUE_DESC_PASCAL
+                }
+                2u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "request_id",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "Metadata",
+                        &__METRIQUE_FIELDS_SNAKE,
+                        None,
+                    );
+                    &__METRIQUE_DESC_SNAKE
+                }
+                3u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "request-id",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "Metadata",
+                        &__METRIQUE_FIELDS_KEBAB,
+                        None,
+                    );
+                    &__METRIQUE_DESC_KEBAB
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for MetadataEntry {
         fn write<'__metrique_write>(
@@ -215,30 +321,9 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = ::metrique::writer::core::DescriptorRef<'_>,
         > {
-            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    "operation",
-                    &__METRIQUE_TAGS_0,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    None,
-                ),
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    "request_id",
-                    &__METRIQUE_TAGS_1,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    None,
-                ),
-            ];
-            static __METRIQUE_DESCRIPTOR: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                "Metadata",
-                &__METRIQUE_FIELDS,
-                None,
-            );
             ::std::iter::once(
                 ::metrique::writer::core::DescriptorRef::from_static(
-                    &__METRIQUE_DESCRIPTOR,
+                    MetadataEntry::__metrique_descriptor(0u8),
                 ),
             )
         }
@@ -357,6 +442,140 @@ const _: () = {
                 RequestResultEntrySampleGroupIter::V1(iter) => iter.next(),
                 RequestResultEntrySampleGroupIter::V2(iter) => iter.next(),
                 RequestResultEntrySampleGroupIter::V3(iter) => iter.next(),
+            }
+        }
+    }
+    impl RequestResultEntry {
+        #[doc(hidden)]
+        fn __metrique_descriptor(
+            __style: u8,
+        ) -> &'static ::metrique::writer::core::EntryDescriptor {
+            match __style {
+                0u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "bytes",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "error_code",
+                            &__METRIQUE_TAGS_2,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "RequestResult",
+                        &__METRIQUE_FIELDS_PRESERVE,
+                        None,
+                    );
+                    &__METRIQUE_DESC_PRESERVE
+                }
+                1u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "Operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "Bytes",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "ErrorCode",
+                            &__METRIQUE_TAGS_2,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "RequestResult",
+                        &__METRIQUE_FIELDS_PASCAL,
+                        None,
+                    );
+                    &__METRIQUE_DESC_PASCAL
+                }
+                2u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "bytes",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "error_code",
+                            &__METRIQUE_TAGS_2,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "RequestResult",
+                        &__METRIQUE_FIELDS_SNAKE,
+                        None,
+                    );
+                    &__METRIQUE_DESC_SNAKE
+                }
+                3u8 => {
+                    static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
+                    static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "operation",
+                            &__METRIQUE_TAGS_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "bytes",
+                            &__METRIQUE_TAGS_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "error-code",
+                            &__METRIQUE_TAGS_2,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            None,
+                        ),
+                    ];
+                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "RequestResult",
+                        &__METRIQUE_FIELDS_KEBAB,
+                        None,
+                    );
+                    &__METRIQUE_DESC_KEBAB
+                }
+                _ => unreachable!(),
             }
         }
     }
@@ -594,37 +813,9 @@ const _: () = {
         ) -> impl ::std::iter::Iterator<
             Item = ::metrique::writer::core::DescriptorRef<'_>,
         > {
-            static __METRIQUE_TAGS_0: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_TAGS_1: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_TAGS_2: [::metrique::writer::core::ResolvedFieldTag; 0usize] = [];
-            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    "operation",
-                    &__METRIQUE_TAGS_0,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    None,
-                ),
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    "bytes",
-                    &__METRIQUE_TAGS_1,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    None,
-                ),
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    "error_code",
-                    &__METRIQUE_TAGS_2,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    None,
-                ),
-            ];
-            static __METRIQUE_DESCRIPTOR: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                "RequestResult",
-                &__METRIQUE_FIELDS,
-                None,
-            );
             ::std::iter::once(
                 ::metrique::writer::core::DescriptorRef::from_static(
-                    &__METRIQUE_DESCRIPTOR,
+                    RequestResultEntry::__metrique_descriptor(NS::__STYLE_INDEX),
                 ),
             )
         }

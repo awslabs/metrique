@@ -64,7 +64,7 @@ fn descriptor_with_timestamp() {
     assert_eq!(desc.fields().collect::<Vec<_>>()[0].base_name(), "Value");
     // but available via timestamp()
     let ts = desc.timestamp().unwrap();
-    assert_eq!(ts.base_name(), "start");
+    assert_eq!(ts.name(), "start");
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -105,24 +105,24 @@ fn tag_resolution_default_and_skip() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
-    let fields = desc.fields();
+    let fields: Vec<_> = desc.fields().collect();
 
     let audit_id = TypeId::of::<AuditExport>();
 
     // request_id: inherits default_field_tag(AuditExport) -> Present
-    let request_id_tags = fields[0].tags();
+    let request_id_tags = fields[0].tags().collect::<Vec<_>>();
     assert_eq!(request_id_tags.len(), 1);
     assert_eq!(request_id_tags[0].tag_id(), audit_id);
     assert_eq!(request_id_tags[0].state(), FieldTagState::Present);
 
     // operation: inherits default_field_tag(AuditExport) -> Present
-    let op_tags = fields[1].tags();
+    let op_tags = fields[1].tags().collect::<Vec<_>>();
     assert_eq!(op_tags.len(), 1);
     assert_eq!(op_tags[0].tag_id(), audit_id);
     assert_eq!(op_tags[0].state(), FieldTagState::Present);
 
     // debug_blob: field_tag(skip(AuditExport)) overrides default -> Absent
-    let debug_tags = fields[2].tags();
+    let debug_tags = fields[2].tags().collect::<Vec<_>>();
     assert_eq!(debug_tags.len(), 1);
     assert_eq!(debug_tags[0].tag_id(), audit_id);
     assert_eq!(debug_tags[0].state(), FieldTagState::Absent);
@@ -147,7 +147,7 @@ fn multiple_tags_on_field() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
     let desc = entry.descriptors().next().unwrap();
-    let fields = desc.fields();
+    let fields: Vec<_> = desc.fields().collect();
 
     let audit_id = TypeId::of::<AuditExport>();
     let dial9_id = TypeId::of::<Dial9Emit>();
@@ -157,13 +157,11 @@ fn multiple_tags_on_field() {
     assert!(
         fields[0]
             .tags()
-            .iter()
             .any(|t| t.tag_id() == audit_id && t.state() == FieldTagState::Present)
     );
     assert!(
         fields[0]
             .tags()
-            .iter()
             .any(|t| t.tag_id() == dial9_id && t.state() == FieldTagState::Present)
     );
 
@@ -172,7 +170,7 @@ fn multiple_tags_on_field() {
     assert_eq!(fields[1].tags().collect::<Vec<_>>()[0].tag_id(), dial9_id);
 
     // untagged: no tags
-    assert!(fields[2].tags().is_empty());
+    assert!(fields[2].tags().next().is_none());
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -322,7 +320,9 @@ fn flatten_child_descriptors_chained() {
     );
 
     // Child's field_tag is preserved
-    let sub_value_tags = child_desc.fields().collect::<Vec<_>>()[0].tags();
+    let sub_value_tags = child_desc.fields().collect::<Vec<_>>()[0]
+        .tags()
+        .collect::<Vec<_>>();
     assert_eq!(sub_value_tags.len(), 1);
     assert_eq!(sub_value_tags[0].tag_id(), TypeId::of::<AuditExport>());
     assert_eq!(sub_value_tags[0].state(), FieldTagState::Present);
@@ -359,13 +359,17 @@ fn flatten_child_default_field_tag_resolved() {
     let dial9_id = TypeId::of::<Dial9Emit>();
 
     // alpha inherits default_field_tag(Dial9Emit) -> Present
-    let alpha_tags = child_desc.fields().collect::<Vec<_>>()[0].tags();
+    let alpha_tags = child_desc.fields().collect::<Vec<_>>()[0]
+        .tags()
+        .collect::<Vec<_>>();
     assert_eq!(alpha_tags.len(), 1);
     assert_eq!(alpha_tags[0].tag_id(), dial9_id);
     assert_eq!(alpha_tags[0].state(), FieldTagState::Present);
 
     // beta has field_tag(skip(Dial9Emit)) -> Absent
-    let beta_tags = child_desc.fields().collect::<Vec<_>>()[1].tags();
+    let beta_tags = child_desc.fields().collect::<Vec<_>>()[1]
+        .tags()
+        .collect::<Vec<_>>();
     assert_eq!(beta_tags.len(), 1);
     assert_eq!(beta_tags[0].tag_id(), dial9_id);
     assert_eq!(beta_tags[0].state(), FieldTagState::Absent);

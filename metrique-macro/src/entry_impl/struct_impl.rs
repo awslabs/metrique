@@ -292,13 +292,22 @@ fn generate_descriptor(
         }
     };
 
-    // Use an inner function to isolate the __StaticStyledDescriptor bound from the
-    // InflectableEntry impl. This avoids bound propagation through associated types
-    // (e.g., NS::PascalCase) which would make the impl unsatisfiable.
+    // The struct's own descriptor uses its own rename_all (hardcoded at macro time).
+    // NS::__STYLE_INDEX is only used when a parent calls this struct's descriptors()
+    // via flatten (to propagate the parent's name style to this struct's fields).
+    // But for the struct's own fields, the write path always uses make_ns(rename_all),
+    // so the descriptor must match.
+    let own_style_index = match root_attrs.rename_all {
+        crate::inflect::NameStyle::Preserve => 0u8,
+        crate::inflect::NameStyle::PascalCase => 1u8,
+        crate::inflect::NameStyle::SnakeCase => 2u8,
+        crate::inflect::NameStyle::KebabCase => 3u8,
+    };
+
     let descriptors_method = quote! {
         fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(NS::__STYLE_INDEX)
+                #entry_name::__metrique_descriptor(#own_style_index)
             ))
             #(#flatten_chains)*
         }

@@ -51,7 +51,9 @@ fn aggregation_result_yields_two_descriptors() {
         key_desc.fields().collect::<Vec<_>>()[0].base_name(),
         "Operation"
     );
-    let key_tags = key_desc.fields().collect::<Vec<_>>()[0].tags();
+    let key_tags = key_desc.fields().collect::<Vec<_>>()[0]
+        .tags()
+        .collect::<Vec<_>>();
     assert_eq!(key_tags.len(), 1);
     assert_eq!(key_tags[0].tag_id(), TypeId::of::<Export>());
     assert_eq!(key_tags[0].state(), FieldTagState::Absent);
@@ -63,7 +65,9 @@ fn aggregation_result_yields_two_descriptors() {
         agg_desc.fields().collect::<Vec<_>>()[0].base_name(),
         "Count"
     );
-    let agg_tags = agg_desc.fields().collect::<Vec<_>>()[0].tags();
+    let agg_tags = agg_desc.fields().collect::<Vec<_>>()[0]
+        .tags()
+        .collect::<Vec<_>>();
     assert_eq!(agg_tags.len(), 1);
     assert_eq!(agg_tags[0].tag_id(), TypeId::of::<Export>());
     assert_eq!(agg_tags[0].state(), FieldTagState::Present);

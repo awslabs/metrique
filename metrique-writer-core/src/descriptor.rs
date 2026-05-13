@@ -9,7 +9,6 @@
 //! [`DescriptorRef`] and [`FieldView`] accessors.
 
 use std::any::TypeId;
-use std::hash::{Hash, Hasher};
 
 use smallvec::SmallVec;
 
@@ -407,7 +406,7 @@ mod tests {
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
 
         let d = DescriptorRef::from_static(&DESC);
-        assert_eq!(d.field_name(0), "MyField");
+        assert_eq!(d.fields().next().unwrap().base_name(), "MyField");
     }
 
     #[test]
@@ -422,7 +421,9 @@ mod tests {
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
 
         let d = DescriptorRef::from_static(&DESC).with_prefix("Api");
-        assert_eq!(d.field_name(0), "ApiLatency");
+        let fields: Vec<_> = d.fields().collect();
+        let parts: Vec<&str> = fields[0].name_parts().collect();
+        assert_eq!(parts, vec!["Api", "Latency"]);
     }
 
     #[test]
@@ -442,11 +443,11 @@ mod tests {
 
         // Without defaults: no tags
         let d = DescriptorRef::from_static(&DESC);
-        assert_eq!(d.field_tags(0).count(), 0);
+        assert_eq!(d.fields().next().unwrap().tags().count(), 0);
 
         // With defaults: one tag
         let d = DescriptorRef::from_static(&DESC).with_default_tags(&DEFAULT_TAGS);
-        assert_eq!(d.field_tags(0).count(), 1);
+        assert_eq!(d.fields().next().unwrap().tags().count(), 1);
     }
 
     #[test]
@@ -468,7 +469,7 @@ mod tests {
         static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new("T", &FIELDS, None);
 
         let d = DescriptorRef::from_static(&DESC).with_default_tags(&DEFAULT_TAGS);
-        let tags: Vec<_> = d.field_tags(0).collect();
+        let tags: Vec<_> = d.fields().next().unwrap().tags().collect();
         // Field-level Absent wins, default Present is not added
         assert_eq!(tags.len(), 1);
         assert_eq!(tags[0].state(), FieldTagState::Absent);
