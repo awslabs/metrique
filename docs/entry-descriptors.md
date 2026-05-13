@@ -64,27 +64,15 @@ An audit sink reads the descriptor at first-use per entry type, walks `Entry::wr
 
 ## The descriptor model
 
-The descriptor types live in `metrique_writer_core::descriptor`. The module defines:
-
-- `EntryDescriptor` with accessors: `name() -> &str`, `fields() -> &[FieldDescriptor]`, `timestamp() -> Option<&TimestampDescriptor>`
-- `FieldDescriptor` with accessors: `name() -> &str`, `tags() -> &[FieldTag]`, `shape() -> FieldShape<'_>`, `unit() -> Option<Unit>`
-- `TimestampDescriptor` with accessor: `name() -> &str`
-- `FieldShape<'a>` enum: `Known(KnownShape)`, `Optional(ShapeRef<'a>)`, `Flex { key: StringShape, value: ShapeRef<'a> }`, `List(ShapeRef<'a>)`, `Opaque`
-- `KnownShape` enum: `Bool`, `U8`..`U64`, `I8`..`I64`, `F32`, `F64`, `String`, `Bytes`
-- `StringShape` enum: `String`
-- `ShapeRef<'a>` with accessor: `get() -> &FieldShape<'a>`
-- `FieldTag` with accessors: `tag_id() -> TypeId`, `state() -> FieldTagState`
-- `FieldTagState` enum: `Present`, `Absent`
-- `DescriptorRef<'a>` with accessors: `get() -> &EntryDescriptor`, `id() -> DescriptorId`
-- `DescriptorId`: opaque, `Copy + Eq + Hash`, stable within a process lifetime
+The descriptor types live in `metrique_writer_core::descriptor`. Sinks interact with `DescriptorRef` (yielded by `Entry::descriptors()`) and `FieldView` (yielded by iterating a descriptor's fields). Internal storage types are pub for macro construction but not intended for direct sink use. See the module rustdoc for the full API.
 
 ### Forward compatibility
 
-Descriptor enums (`FieldShape`, `KnownShape`, `StringShape`, `FieldTagState`) are `#[non_exhaustive]`. Consumers matching on them need a `_` arm; new variants are additive. Metrique can add variants in a minor version without breaking existing match sites, but consumers that want to *use* a new variant will need to update their code. This is by design: wire encoders (the dominant consumer) must explicitly opt into encoding new shapes.
+All public enums in the descriptor module are `#[non_exhaustive]`. Consumers must include a wildcard arm when matching; new variants are additive in minor versions.
 
-Descriptor structs (`EntryDescriptor`, `FieldDescriptor`, `TimestampDescriptor`, `FieldTag`, `DescriptorRef`) have private fields and accessor methods. Metrique can add fields to the structs across minor versions without breaking consumer code.
+All public structs have private fields. New fields can be added in minor versions without breaking consumers.
 
-All accessor methods return borrows tied to `&self`, not `&'static`. This lets metrique change internal storage (e.g. from `&'static` slices today to `Arc`-owned data in a future enum-per-variant release) without breaking consumers. Consumers that need a longer-lived copy of a name or slice allocate from the borrow as needed.
+Accessor return types are conservative (borrows tied to the handle, not `&'static`). This allows internal storage changes (e.g. switching from static slices to `Arc`-backed data) without breaking the public API.
 
 ### Shape mapping
 
@@ -106,7 +94,7 @@ Flattening an `Option<SubEntry>` into a parent entry propagates optionality to e
 
 `#[metrics(ignore)]` fields are not part of the descriptor. They do not emit, do not close, and do not appear in `fields()`.
 
-### The Opaque escape hatch
+### The Opaque shape
 
 A field whose closed shape is `FieldShape::Opaque` is fully functional through `Entry::write` (every `Value` impl works; EMF and JSON handle it fine), but descriptor-aware sinks that selected it via a tag have no wire-level shape guarantee for it. Typical sinks skip opaque fields with a diagnostic and continue.
 
@@ -233,7 +221,7 @@ Full resolution rules including worked inheritance and flatten cases are documen
 
 ## Units
 
-Sinks decide how to surface units: a field-name suffix, a schema-level annotation, a separate metadata stream, whatever fits the wire format. Metrique reports units once, structurally, via `FieldDescriptor::unit()`, so sinks do not have to infer them.
+Sinks decide how to surface units: a field-name suffix, a schema-level annotation, a separate metadata stream, whatever fits the wire format. Metrique reports units once, structurally, in the descriptor, so sinks do not have to infer them.
 
 ## Flex and List
 
@@ -247,13 +235,12 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 
 ## Interaction with existing `#[metrics(..)]` attributes
 
-- **`rename_all` and `name` / `name_exact`**: `FieldDescriptor::name()` returns the post-rename, post-override name that `Entry::write` emits. `EntryDescriptor::name()` returns the raw Rust struct name (a future `#[metrics(entry_name = "...")]` attribute will let users override).
-- **`prefix` / `exact_prefix`**: applied to field names before they land in the descriptor.
-- **`#[metrics(timestamp)]`**: timestamp fields are excluded from `fields()` and exposed via `EntryDescriptor::timestamp()`. They emit via `EntryWriter::timestamp`, not `EntryWriter::value`, so they are correctly not part of the `fields()` walk.
-- **`#[metrics(ignore)]`**: fields are excluded from the descriptor entirely. No `Entry::write` callback, no `FieldDescriptor`.
-- **`#[metrics(subfield)]` / `#[metrics(subfield_owned)]`**: subfield structs get their own descriptor. When flattened into a parent, the parent's `descriptors()` chains the subfield's descriptor after its own, matching write order.
-- **`flatten` vs `flatten_entry`**: both produce flattened fields in the parent descriptor identically. The distinction is about how metrique resolves the nested struct internally (inflection, prefixes).
-- **`#[metrics(value)]` newtypes**: lower to their wrapped type's shape when macro-known. See "Shape mapping" above.
+- **`rename_all`, `name`, `prefix`**: descriptor field names reflect the post-rename, post-prefix name that `Entry::write` emits.
+- **`#[metrics(timestamp)]`**: timestamp fields are excluded from the field list and exposed separately.
+- **`#[metrics(ignore)]`**: excluded from the descriptor entirely.
+- **`#[metrics(subfield)]`**: subfield structs get their own descriptor, chained by the parent.
+- **`flatten` / `flatten_entry`**: both chain the child's descriptor segments after the parent's own.
+- **`#[metrics(value)]` newtypes**: lower to their wrapped type's shape when macro-known.
 
 ## Flatten descriptor mechanics
 
