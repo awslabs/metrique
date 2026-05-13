@@ -84,24 +84,55 @@ impl TimestampDescriptor {
     }
 }
 
-/// Result of calling `Entry::descriptors()`. Forces callers to handle the case
-/// where an entry has not implemented descriptor support.
+/// Result of calling `Entry::descriptors()`.
 #[derive(Debug)]
 pub enum Descriptors<'a> {
     /// Descriptors are available for this entry.
-    Available(SmallVec<[DescriptorRef<'a>; 2]>),
+    Available(AvailableDescriptors<'a>),
     /// This entry has not implemented descriptor support.
     Unavailable,
 }
 
-impl<'a> Descriptors<'a> {
-    /// Iterate over available descriptors. Returns an empty iterator if unavailable.
-    /// Prefer matching on the enum directly to handle the unavailable case explicitly.
+/// Opaque container of available descriptor segments.
+#[derive(Debug)]
+pub struct AvailableDescriptors<'a>(SmallVec<[DescriptorRef<'a>; 2]>);
+
+impl<'a> AvailableDescriptors<'a> {
+    /// Iterate over the descriptor segments in write order.
     pub fn iter(&self) -> impl Iterator<Item = &DescriptorRef<'a>> {
-        match self {
-            Descriptors::Available(v) => v.iter(),
-            Descriptors::Unavailable => [].iter(),
-        }
+        self.0.iter()
+    }
+
+    /// Number of descriptor segments.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Whether there are no descriptor segments.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl<'a> std::ops::Index<usize> for AvailableDescriptors<'a> {
+    type Output = DescriptorRef<'a>;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl<'a> IntoIterator for AvailableDescriptors<'a> {
+    type Item = DescriptorRef<'a>;
+    type IntoIter = smallvec::IntoIter<[DescriptorRef<'a>; 2]>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> Descriptors<'a> {
+    /// Create an `Available` result from an iterator of descriptors.
+    pub fn available(iter: impl IntoIterator<Item = DescriptorRef<'a>>) -> Self {
+        Descriptors::Available(AvailableDescriptors(iter.into_iter().collect()))
     }
 
     /// Returns true if descriptors are available.
@@ -113,7 +144,7 @@ impl<'a> Descriptors<'a> {
     ///
     /// # Panics
     /// Panics if `self` is `Unavailable`.
-    pub fn unwrap(self) -> SmallVec<[DescriptorRef<'a>; 2]> {
+    pub fn unwrap(self) -> AvailableDescriptors<'a> {
         match self {
             Descriptors::Available(v) => v,
             Descriptors::Unavailable => panic!("called unwrap() on Descriptors::Unavailable"),
@@ -122,7 +153,7 @@ impl<'a> Descriptors<'a> {
 }
 
 /// A descriptor segment describing a contiguous group of fields in an entry's
-/// write output. Provides resolved field names, tags, shapes, and units.
+/// write output. Provides resolved field names, flags, shapes, and units.
 ///
 /// Sinks obtain these by calling [`Entry::descriptors()`](crate::Entry::descriptors).
 /// Simple entries yield one segment; composed entries (aggregation results,
@@ -135,7 +166,7 @@ impl<'a> Descriptors<'a> {
 ///     for field in desc.fields() {
 ///         let name_parts = field.name_parts(); // prefixes then base name
 ///         let base = field.base_name();        // just the field name
-///         let tags = field.tags();             // resolved tags
+///         let flags = field.flags();             // resolved flags
 ///         let shape = field.shape();
 ///         let unit = field.unit();
 ///     }
@@ -579,7 +610,7 @@ mod tests {
         impl Entry for WithDesc {
             fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
             fn descriptors(&self) -> Descriptors<'_> {
-                Descriptors::Available(smallvec::smallvec![DescriptorRef::from_static(&DESC)])
+                Descriptors::available(std::iter::once(DescriptorRef::from_static(&DESC)))
             }
         }
         let boxed = BoxEntry::new(WithDesc);

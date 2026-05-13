@@ -6,9 +6,9 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub use crate::descriptor::{
-    DescriptorId, DescriptorRef, Descriptors, EntryDescriptor, EntryDescriptorBuilder,
-    FieldDescriptor, FieldDescriptorBuilder, FieldFlag, FieldShape, FieldView, KnownShape,
-    ShapeRef, StringShape, TimestampDescriptor, entry, field, timestamp,
+    AvailableDescriptors, DescriptorId, DescriptorRef, Descriptors, EntryDescriptor,
+    EntryDescriptorBuilder, FieldDescriptor, FieldDescriptorBuilder, FieldFlag, FieldShape,
+    FieldView, KnownShape, ShapeRef, StringShape, TimestampDescriptor, entry, field, timestamp,
 };
 pub use crate::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use crate::global::GlobalEntrySink;

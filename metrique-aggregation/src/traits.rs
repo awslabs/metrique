@@ -342,11 +342,8 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
     }
 
     fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
-        metrique_writer_core::Descriptors::Available(
-            self.key
-                .descriptors()
-                .chain(self.aggregated.descriptors())
-                .collect(),
+        metrique_writer_core::Descriptors::available(
+            self.key.descriptors().chain(self.aggregated.descriptors()),
         )
     }
 }
