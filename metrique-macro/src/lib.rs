@@ -691,6 +691,62 @@ impl From<RawTag> for Tag {
     }
 }
 
+/// A parsed `field_tag(Path)` or `field_tag(skip(Path))` attribute.
+#[derive(Debug, Clone)]
+pub(crate) struct FieldTagAttr {
+    pub(crate) path: syn::Path,
+    pub(crate) skip: bool,
+    pub(crate) span: Span,
+}
+
+impl FromMeta for FieldTagAttr {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+        // field_tag(Path) or field_tag(skip(Path))
+        match item {
+            syn::Meta::List(list) => {
+                let tokens = &list.tokens;
+                // Try parsing as skip(Path) first
+                let parsed: std::result::Result<syn::ExprCall, _> = syn::parse2(tokens.clone());
+                if let Ok(call) = parsed {
+                    if let syn::Expr::Path(func) = &*call.func {
+                        if func.path.is_ident("skip") && call.args.len() == 1 {
+                            if let syn::Expr::Path(inner) = &call.args[0] {
+                                return Ok(FieldTagAttr {
+                                    path: inner.path.clone(),
+                                    skip: true,
+                                    span: list.span(),
+                                });
+                            }
+                        }
+                    }
+                    return Err(darling::Error::custom(
+                        "expected `field_tag(Path)` or `field_tag(skip(Path))`",
+                    )
+                    .with_span(item));
+                }
+                // Try parsing as a plain Path
+                let path: syn::Path = syn::parse2(tokens.clone()).map_err(|_| {
+                    darling::Error::custom("expected `field_tag(Path)` or `field_tag(skip(Path))`")
+                        .with_span(item)
+                })?;
+                Ok(FieldTagAttr {
+                    path,
+                    skip: false,
+                    span: list.span(),
+                })
+            }
+            syn::Meta::Path(_) => Err(darling::Error::custom(
+                "field_tag requires a path argument: `field_tag(my_crate::MyTag)`",
+            )
+            .with_span(item)),
+            syn::Meta::NameValue(_) => Err(darling::Error::custom(
+                "field_tag requires a path argument: `field_tag(my_crate::MyTag)`",
+            )
+            .with_span(item)),
+        }
+    }
+}
+
 #[derive(Debug, Default, FromMeta)]
 struct RawRootAttributes {
     prefix: Option<SpannedKv<String>>,
@@ -710,6 +766,9 @@ struct RawRootAttributes {
     #[darling(rename = "sample_group")]
     sample_group: Flag,
     value: Option<ValueAttributes>,
+
+    #[darling(multiple)]
+    default_field_tag: Vec<FieldTagAttr>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -735,6 +794,8 @@ struct RootAttributes {
     sample_group: bool,
 
     mode: MetricMode,
+
+    default_field_tags: Vec<FieldTagAttr>,
 }
 
 impl RawRootAttributes {
@@ -791,6 +852,9 @@ impl RawRootAttributes {
             })
             .transpose()?;
 
+        // Validate default_field_tag: no conflicting present+skip for the same path
+        validate_field_tag_conflicts(&self.default_field_tag, "default_field_tag")?;
+
         Ok(RootAttributes {
             prefix: Prefix::from_inflectable_and_exact(
                 &self.prefix,
@@ -803,6 +867,7 @@ impl RawRootAttributes {
             tag,
             sample_group,
             mode,
+            default_field_tags: self.default_field_tag,
         })
     }
 }
@@ -878,6 +943,9 @@ struct RawMetricsFieldAttrs {
 
     #[darling(default)]
     exact_prefix: Option<SpannedKv<String>>,
+
+    #[darling(multiple)]
+    field_tag: Vec<FieldTagAttr>,
 }
 
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
@@ -989,6 +1057,22 @@ fn get_field_flag(
     }
 }
 
+/// Validates that no tag path appears both as present and skipped in the same attribute list.
+fn validate_field_tag_conflicts(tags: &[FieldTagAttr], attr_name: &str) -> darling::Result<()> {
+    for (i, tag) in tags.iter().enumerate() {
+        for other in &tags[i + 1..] {
+            if tag.path == other.path && tag.skip != other.skip {
+                return Err(darling::Error::custom(format!(
+                    "conflicting `{attr_name}`: `{}` is both present and skipped",
+                    tag.path.to_token_stream()
+                ))
+                .with_span(&other.span));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl RawMetricsFieldAttrs {
     fn validate(self) -> darling::Result<MetricsFieldAttrs> {
         let mut out: Option<(MetricsFieldKind, &'static str)> = None;
@@ -1052,6 +1136,10 @@ impl RawMetricsFieldAttrs {
                     format: format.cloned(),
                 },
             },
+            field_tags: {
+                validate_field_tag_conflicts(&self.field_tag, "field_tag")?;
+                self.field_tag
+            },
         })
     }
 }
@@ -1078,6 +1166,7 @@ fn validate_name_inner(name: &str) -> std::result::Result<(), &'static str> {
 struct MetricsFieldAttrs {
     close: bool,
     kind: MetricsFieldKind,
+    field_tags: Vec<FieldTagAttr>,
 }
 
 pub(crate) struct MetricsField {
