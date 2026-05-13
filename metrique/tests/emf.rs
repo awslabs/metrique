@@ -131,3 +131,54 @@ fn test_vec_property_emits_json_array_in_emf() {
     assert_eq!(json["Plugins"], serde_json::json!(["auth", "cache"]));
     assert_eq!(json["RequestCount"], 5);
 }
+
+#[metrics(
+    rename_all = "PascalCase",
+    emf::dimension_sets = [["Operation"]],
+    default_flags(metrique::emf::flags::HighStorageResolution),
+)]
+struct HighResMetrics {
+    #[metrics(timestamp)]
+    timestamp: SystemTime,
+    operation: String,
+    event_count: u64,
+    #[metrics(flags(skip(metrique::emf::flags::HighStorageResolution)))]
+    low_res_count: u64,
+}
+
+#[test]
+fn flags_descriptor_with_emf_high_resolution() {
+    use metrique::writer::Entry;
+
+    let m = HighResMetrics {
+        timestamp: UNIX_EPOCH,
+        operation: "test".into(),
+        event_count: 42,
+        low_res_count: 7,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let desc = entry.descriptors().next().unwrap();
+    let fields: Vec<_> = desc.fields().collect();
+
+    // operation: inherits HighStorageResolutionCtor from default_flags
+    assert!(
+        fields[0]
+            .flags()
+            .any(|f| f.is::<metrique::emf::HighStorageResolutionCtor>())
+    );
+
+    // event_count: inherits HighStorageResolutionCtor from default_flags
+    assert!(
+        fields[1]
+            .flags()
+            .any(|f| f.is::<metrique::emf::HighStorageResolutionCtor>())
+    );
+
+    // low_res_count: skip(HighStorageResolutionCtor) suppresses it
+    assert!(
+        !fields[2]
+            .flags()
+            .any(|f| f.is::<metrique::emf::HighStorageResolutionCtor>())
+    );
+}

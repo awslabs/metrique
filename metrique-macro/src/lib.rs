@@ -50,7 +50,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
-/// | `default_flags` | Path | Applies a field tag to all fields by default. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::Export))]` |
+/// | `default_flags` | Path | Applies a flag to all fields by default for format and sink usage. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::Export))]` |
 ///
 /// # Field Attributes
 ///
@@ -67,7 +67,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
-/// | `flags` | Path | Marks this field with a tag for descriptor-aware sinks. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::Export))]` |
+/// | `flags` | Path | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::Export))]` |
 ///
 /// # Variant Attributes
 ///
@@ -738,11 +738,11 @@ impl FromMeta for FieldTagAttr {
                 })
             }
             syn::Meta::Path(_) => Err(darling::Error::custom(
-                "flags requires a path argument: `flags(my_crate::MyTag)`",
+                "flags requires a path argument: `flags(my_crate::MyFlag)`",
             )
             .with_span(item)),
             syn::Meta::NameValue(_) => Err(darling::Error::custom(
-                "flags requires a path argument: `flags(my_crate::MyTag)`",
+                "flags requires a path argument: `flags(my_crate::MyFlag)`",
             )
             .with_span(item)),
         }
