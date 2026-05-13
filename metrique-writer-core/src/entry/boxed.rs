@@ -6,7 +6,7 @@ use std::{any::Any, borrow::Cow, time::SystemTime};
 use smallvec::SmallVec;
 
 use crate::{
-    DescriptorRef, Descriptors, Entry, EntryWriter, Observation, Unit, ValidationError, Value,
+    Descriptors, Entry, EntryWriter, Observation, Unit, ValidationError, Value,
     ValueWriter, value::MetricFlags,
 };
 

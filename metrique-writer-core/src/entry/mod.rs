@@ -14,7 +14,7 @@ mod map;
 mod merged;
 pub use merged::{Merged, MergedRef};
 
-use crate::{DescriptorRef, Descriptors, Value};
+use crate::{Descriptors, Value};
 
 /// The core trait to be implemented by application data structures holding metric values.
 ///

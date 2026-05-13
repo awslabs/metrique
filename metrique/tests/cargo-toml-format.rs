@@ -111,7 +111,7 @@ fn test_cargo_toml_format(
     }
 
     // Check that each package has docs.rs metadata
-    if let Some(package) = package {
+    if package.is_some() {
         let metadata = toml
             .get("package")
             .and_then(|p| p.get("metadata"))
