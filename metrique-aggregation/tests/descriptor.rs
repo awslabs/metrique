@@ -45,7 +45,7 @@ fn aggregation_result_yields_two_descriptors() {
     let entries = sink.drain();
     assert_eq!(entries.len(), 1);
 
-    let descriptors: Vec<_> = entries[0].descriptors().collect();
+    let descriptors = entries[0].descriptors().unwrap();
     assert_eq!(
         descriptors.len(),
         2,
@@ -90,7 +90,8 @@ fn key_struct_inherits_parent_rename_all_and_default_flags() {
     aggregator.flush();
 
     let entries = sink.drain();
-    let key_desc = entries[0].descriptors().next().expect("key descriptor");
+    let key_descs = entries[0].descriptors().unwrap();
+    let key_desc = &key_descs[0];
 
     // rename_all = "PascalCase" propagated to key struct
     assert_eq!(

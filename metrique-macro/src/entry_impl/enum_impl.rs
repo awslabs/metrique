@@ -491,7 +491,7 @@ fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) ->
             quote! { ::metrique::InflectableEntry::<#ns>::descriptors(#binding) }
         }
         MetricsFieldKind::FlattenEntry(_) => {
-            quote! { ::metrique::writer::Entry::descriptors(#binding) }
+            quote! { ::metrique::writer::Entry::descriptors(#binding).unwrap().into_iter() }
         }
         _ => unreachable!("flatten_chain_expr is only called for flatten/flatten_entry"),
     }

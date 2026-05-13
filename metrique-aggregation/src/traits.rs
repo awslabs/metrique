@@ -341,8 +341,13 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
             .chain(self.aggregated.sample_group())
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
-        self.key.descriptors().chain(self.aggregated.descriptors())
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::Available(
+            self.key
+                .descriptors()
+                .chain(self.aggregated.descriptors())
+                .collect(),
+        )
     }
 }
 

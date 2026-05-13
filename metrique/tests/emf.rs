@@ -158,7 +158,8 @@ fn flags_descriptor_with_emf_high_resolution() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
     let fields: Vec<_> = desc.fields().collect();
 
     // operation: inherits HighStorageResolutionCtor from default_flags

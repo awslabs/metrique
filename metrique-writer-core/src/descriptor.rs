@@ -84,6 +84,43 @@ impl TimestampDescriptor {
     }
 }
 
+/// Result of calling `Entry::descriptors()`. Forces callers to handle the case
+/// where an entry has not implemented descriptor support.
+#[derive(Debug)]
+pub enum Descriptors<'a> {
+    /// Descriptors are available for this entry.
+    Available(SmallVec<[DescriptorRef<'a>; 2]>),
+    /// This entry has not implemented descriptor support.
+    Unavailable,
+}
+
+impl<'a> Descriptors<'a> {
+    /// Iterate over available descriptors. Returns an empty iterator if unavailable.
+    /// Prefer matching on the enum directly to handle the unavailable case explicitly.
+    pub fn iter(&self) -> impl Iterator<Item = &DescriptorRef<'a>> {
+        match self {
+            Descriptors::Available(v) => v.iter(),
+            Descriptors::Unavailable => [].iter(),
+        }
+    }
+
+    /// Returns true if descriptors are available.
+    pub fn is_available(&self) -> bool {
+        matches!(self, Descriptors::Available(_))
+    }
+
+    /// Returns the available descriptors, panicking if unavailable.
+    ///
+    /// # Panics
+    /// Panics if `self` is `Unavailable`.
+    pub fn unwrap(self) -> SmallVec<[DescriptorRef<'a>; 2]> {
+        match self {
+            Descriptors::Available(v) => v,
+            Descriptors::Unavailable => panic!("called unwrap() on Descriptors::Unavailable"),
+        }
+    }
+}
+
 /// A descriptor segment describing a contiguous group of fields in an entry's
 /// write output. Provides resolved field names, tags, shapes, and units.
 ///
@@ -448,7 +485,7 @@ mod tests {
         impl Entry for HandWritten {
             fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
         }
-        assert_eq!(HandWritten.descriptors().count(), 0);
+        assert_eq!(HandWritten.descriptors().is_available(), false);
     }
 
     #[test]
@@ -458,12 +495,12 @@ mod tests {
         struct WithDesc;
         impl Entry for WithDesc {
             fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
-            fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
-                std::iter::once(DescriptorRef::from_static(&DESC))
+            fn descriptors(&self) -> Descriptors<'_> {
+                Descriptors::Available(smallvec::smallvec![DescriptorRef::from_static(&DESC)])
             }
         }
         let boxed = BoxEntry::new(WithDesc);
-        let descs: Vec<_> = boxed.descriptors().collect();
+        let descs = boxed.descriptors().unwrap();
         assert_eq!(descs.len(), 1);
         assert_eq!(descs[0].name(), "X");
     }

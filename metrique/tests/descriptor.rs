@@ -45,7 +45,8 @@ fn basic_descriptor_fields() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc_ref = entry.descriptors().next().expect("should have descriptor");
+    let __descs = entry.descriptors().unwrap();
+    let desc_ref = &__descs[0];
     let desc = desc_ref;
 
     assert_eq!(desc.name(), "BasicMetrics");
@@ -73,7 +74,8 @@ fn descriptor_with_timestamp() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc_ref = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc_ref = &__descs[0];
     let desc = desc_ref;
 
     assert_eq!(desc.name(), "WithTimestamp");
@@ -98,7 +100,8 @@ fn descriptor_with_unit() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
     let field = &desc.fields().collect::<Vec<_>>()[0];
 
     assert_eq!(field.base_name(), "Latency");
@@ -122,7 +125,8 @@ fn flag_resolution_default_and_skip() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
     let fields: Vec<_> = desc.fields().collect();
 
     let audit_id = TypeId::of::<AuditExport>();
@@ -162,7 +166,8 @@ fn multiple_flags_on_field() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
     let fields: Vec<_> = desc.fields().collect();
 
     let audit_id = TypeId::of::<AuditExport>();
@@ -196,7 +201,8 @@ fn ignored_fields_excluded_from_descriptor() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
 
     assert_eq!(desc.fields_len(), 1);
     assert_eq!(desc.fields().collect::<Vec<_>>()[0].base_name(), "Visible");
@@ -217,8 +223,8 @@ fn descriptor_id_stable_across_calls() {
     let e1 = metrique::RootEntry::new(c1);
     let e2 = metrique::RootEntry::new(c2);
 
-    let id1 = e1.descriptors().next().unwrap().id();
-    let id2 = e2.descriptors().next().unwrap().id();
+    let id1 = e1.descriptors().unwrap()[0].id();
+    let id2 = e2.descriptors().unwrap()[0].id();
     assert_eq!(id1, id2);
 }
 
@@ -232,10 +238,8 @@ fn boxentry_forwards_descriptor() {
     let entry = metrique::RootEntry::new(closed);
     let boxed = entry.boxed();
 
-    let desc = boxed
-        .descriptors()
-        .next()
-        .expect("BoxEntry should forward descriptor");
+    let __descs = boxed.descriptors().unwrap();
+    let desc = &__descs[0];
     assert_eq!(desc.name(), "BasicMetrics");
 }
 
@@ -250,7 +254,8 @@ fn field_name_override_in_descriptor() {
     let m = FieldNameOverride { original: 1 };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
 
     assert_eq!(
         desc.fields().collect::<Vec<_>>()[0].base_name(),
@@ -268,7 +273,8 @@ fn prefix_applied_in_descriptor() {
     let m = PrefixedMetrics { latency: 100 };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let desc = entry.descriptors().next().unwrap();
+    let __descs = entry.descriptors().unwrap();
+    let desc = &__descs[0];
 
     assert_eq!(
         desc.fields().collect::<Vec<_>>()[0].base_name(),
@@ -302,7 +308,7 @@ fn flatten_child_descriptors_chained() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     assert_eq!(descriptors.len(), 2, "parent + flattened child");
 
     // First descriptor: parent's own fields
@@ -359,7 +365,7 @@ fn flatten_child_default_flags_resolved() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     assert_eq!(descriptors.len(), 2);
 
     let child_desc = &descriptors[1];
@@ -413,7 +419,7 @@ fn nested_flatten_prefix_stacking() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // Parent's own fields + middle's descriptor + grandchild's descriptor
     assert!(descriptors.len() >= 2);
 
@@ -449,7 +455,7 @@ fn cfg_gated_flatten_included_in_test() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // In test cfg, child is included
     assert_eq!(descriptors.len(), 2);
     assert_eq!(descriptors[0].fields_len(), 1); // parent's own field
@@ -475,7 +481,7 @@ fn cfg_disabled_flatten_excluded() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // Only parent's own descriptor, child is cfg-disabled
     assert_eq!(descriptors.len(), 1);
     assert_eq!(descriptors[0].fields_len(), 1);
@@ -496,7 +502,7 @@ fn all_ignored_fields_produces_empty_descriptor() {
     let m = AllIgnored { _a: 1, _b: 2 };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     assert_eq!(descriptors.len(), 1);
     assert_eq!(descriptors[0].fields_len(), 0);
 }
@@ -529,7 +535,7 @@ fn enum_variant_with_flatten_chains_child_descriptor() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // Base descriptor (union of non-flatten fields) + child's descriptor
     assert!(
         descriptors.len() >= 2,
@@ -550,7 +556,7 @@ fn enum_variant_without_flatten_yields_one_descriptor() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // Only the base descriptor, no flatten children
     assert_eq!(descriptors.len(), 1);
 }
@@ -570,8 +576,8 @@ fn enum_variants_have_different_descriptor_ids() {
     let entry_simple = metrique::RootEntry::new(closed_simple);
     let entry_child = metrique::RootEntry::new(closed_child);
 
-    let descs_simple: Vec<_> = entry_simple.descriptors().collect();
-    let descs_child: Vec<_> = entry_child.descriptors().collect();
+    let descs_simple = entry_simple.descriptors().unwrap();
+    let descs_child = entry_child.descriptors().unwrap();
 
     // Different variants produce different base descriptor ids
     // (each variant has its own static with only its fields)
@@ -615,7 +621,7 @@ fn cfg_flatten_ordering_preserved() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     assert_eq!(descriptors.len(), 4);
     let d1: Vec<_> = descriptors[1].fields().collect();
     let d2: Vec<_> = descriptors[2].fields().collect();
@@ -650,7 +656,7 @@ fn enum_variant_field_order_matches_declaration() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
 
     // Base descriptor has non-flatten fields in declaration order
     let base_fields: Vec<_> = descriptors[0].fields().collect();
@@ -689,7 +695,7 @@ fn enum_cfg_flatten_ordering_preserved() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // base (0 fields) + first + middle + last
     assert_eq!(descriptors.len(), 4);
     let d1: Vec<_> = descriptors[1].fields().collect();
@@ -727,7 +733,7 @@ fn tuple_variant_cfg_flatten_descriptor_ordering() {
     );
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let descriptors: Vec<_> = entry.descriptors().collect();
+    let descriptors = entry.descriptors().unwrap();
     // base (0 fields) + A + TupleCfgChild (cfg=test active) + C
     assert_eq!(descriptors.len(), 4);
     let d1: Vec<_> = descriptors[1].fields().collect();
@@ -750,7 +756,7 @@ fn descriptors_forward_through_option_and_box() {
     };
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
-    let base_descs: Vec<_> = entry.descriptors().collect();
+    let base_descs = entry.descriptors().unwrap();
     assert!(!base_descs.is_empty());
 
     // Option<T> forwards when Some
@@ -759,13 +765,13 @@ fn descriptors_forward_through_option_and_box() {
         count: 0,
     }));
     let opt_entry = metrique::RootEntry::new(opt);
-    let opt_descs: Vec<_> = opt_entry.descriptors().collect();
+    let opt_descs = opt_entry.descriptors().unwrap();
     assert_eq!(opt_descs.len(), base_descs.len());
     assert_eq!(opt_descs[0].name(), base_descs[0].name());
 
     // Option<T> returns empty when None
     let none: Option<<BasicMetrics as metrique::CloseValue>::Closed> = None;
     let none_entry = metrique::RootEntry::new(none);
-    let none_descs: Vec<_> = none_entry.descriptors().collect();
+    let none_descs = none_entry.descriptors().unwrap();
     assert_eq!(none_descs.len(), 0);
 }

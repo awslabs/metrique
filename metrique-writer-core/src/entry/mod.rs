@@ -14,7 +14,7 @@ mod map;
 mod merged;
 pub use merged::{Merged, MergedRef};
 
-use crate::{DescriptorRef, Value};
+use crate::{DescriptorRef, Descriptors, Value};
 
 /// The core trait to be implemented by application data structures holding metric values.
 ///
@@ -190,8 +190,8 @@ pub trait Entry {
     /// Each descriptor covers a contiguous segment of the `Entry::write` output.
     /// Simple entries yield one descriptor. Composed entries (like aggregation results)
     /// yield multiple. Hand-written entries return an empty iterator by default.
-    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
-        std::iter::empty()
+    fn descriptors(&self) -> Descriptors<'_> {
+        Descriptors::Unavailable
     }
 
     /// Move the entry to the heap and rely on dynamic dispatch.
