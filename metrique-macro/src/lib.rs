@@ -1166,13 +1166,13 @@ impl RawMetricsFieldAttrs {
         if !self.flags.0.is_empty()
             && let Some((MetricsFieldKind::Flatten { span, .. }, _))
             | Some((MetricsFieldKind::FlattenEntry(span), _)) = &out
-            {
-                return Err(darling::Error::custom(
-                    "flags(...) cannot be used on flatten or flatten_entry fields. \
+        {
+            return Err(darling::Error::custom(
+                "flags(...) cannot be used on flatten or flatten_entry fields. \
                      Apply flags on the child struct directly with default_flags(...).",
-                )
-                .with_span(span));
-            }
+            )
+            .with_span(span));
+        }
 
         Ok(MetricsFieldAttrs {
             close,

@@ -45,7 +45,7 @@ where
         }
     }
 
-    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+    fn descriptors(&self) -> metrique::writer::core::Descriptors<'_> {
         // Each InflectableEntry::<NS>::descriptors() returns a different opaque type,
         // so we collect per arm to unify.
         let descs: Vec<_> = match self.name_style {
@@ -63,7 +63,7 @@ where
             }
             _ => InflectableEntry::<Identity>::descriptors(&self.entry).collect(),
         };
-        metrique_writer_core::Descriptors::available(descs)
+        metrique::writer::core::Descriptors::available(descs)
     }
 }
 

@@ -209,7 +209,7 @@ impl<'a> DescriptorRef<'a> {
     /// Multiple calls stack (outermost prefix first).
     #[doc(hidden)]
     pub fn with_prefix(mut self, prefix: &'static str) -> Self {
-        self.prefixes.push(prefix);
+        self.prefixes.insert(0, prefix);
         self.id = DescriptorId::compute(self.descriptor, &self.prefixes);
         self
     }
@@ -571,9 +571,10 @@ mod tests {
         static FIELDS: [FieldDescriptor; 1] = [field("Latency").build()];
         static DESC: EntryDescriptor = entry("T", &FIELDS).build();
 
+        // Simulates: inner child applies "Api", then outer parent applies "Http"
         let d = DescriptorRef::from_static(&DESC)
-            .with_prefix("Http")
-            .with_prefix("Api");
+            .with_prefix("Api")
+            .with_prefix("Http");
         let fields: Vec<_> = d.fields().collect();
         let parts: Vec<&str> = fields[0].name_parts().collect();
         assert_eq!(parts, vec!["Http", "Api", "Latency"]);

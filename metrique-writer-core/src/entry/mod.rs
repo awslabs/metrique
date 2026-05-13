@@ -332,4 +332,8 @@ impl<T: Entry + ToOwned + ?Sized> Entry for Cow<'_, T> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
+    }
 }

@@ -431,6 +431,14 @@ fn nested_flatten_prefix_stacking() {
     let middle_fields: Vec<_> = descriptors[1].fields().collect();
     let mid_parts: Vec<&str> = middle_fields[0].name_parts().collect();
     assert_eq!(mid_parts, vec!["Mid", "MiddleValue"]);
+
+    // Grandchild's descriptor (with both prefixes: parent's "Mid" then middle's "Inner")
+    assert!(descriptors.len() >= 3, "expected grandchild descriptor");
+    let grand_fields: Vec<_> = descriptors[2].fields().collect();
+    let grand_parts: Vec<&str> = grand_fields[0].name_parts().collect();
+    // Outermost prefix first: Mid, then Inner, then field name
+    // Note: GrandChild has no rename_all, so field name is preserve-style
+    assert_eq!(grand_parts, vec!["Mid", "Inner", "deep_value"]);
 }
 
 #[metrics(subfield)]
