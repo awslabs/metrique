@@ -52,7 +52,8 @@ pub(crate) fn generate_descriptor_impl(
     let num_fields = fields.len();
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    // Generate tag statics (shared across all 4 style arms)
+    // Tag statics are shared across all 4 style arms because tags don't vary by name style.
+    // Each field gets one static array of ResolvedFieldTag.
     let tag_statics: Vec<Ts2> = fields
         .iter()
         .enumerate()
@@ -68,15 +69,20 @@ pub(crate) fn generate_descriptor_impl(
         })
         .collect();
 
+    // Generate one match arm per name style. Each arm contains a static EntryDescriptor
+    // with field names resolved for that style. The match selects the right static based
+    // on the style index passed by the caller (hardcoded at macro time from rename_all).
     let style_names = crate::inflect::NameStyle::DESCRIPTOR_STYLE_NAMES;
     let style_arms: Vec<Ts2> = (0..style_names.len())
         .map(|style_idx| {
+            // Map the array index to the corresponding runtime STYLE_* constant.
             let style_const = style_const_for(
                 crate::inflect::NameStyle::DESCRIPTOR_STYLES[style_idx],
             );
             let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
             let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
 
+            // Each field's name is pre-resolved for this style at macro time.
             let field_exprs: Vec<Ts2> = fields
                 .iter()
                 .enumerate()
