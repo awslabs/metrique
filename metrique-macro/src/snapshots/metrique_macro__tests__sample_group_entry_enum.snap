@@ -807,8 +807,9 @@ const _: () = {
                                 ::metrique::InflectableEntry::<NS>::descriptors(__v0)
                                     .chain(
                                         ::metrique::writer::Entry::descriptors(__v1)
-                                            .unwrap()
-                                            .into_iter(),
+                                            .into_available()
+                                            .into_iter()
+                                            .flatten(),
                                     ),
                             ),
                     )

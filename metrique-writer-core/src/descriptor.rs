@@ -164,6 +164,14 @@ impl<'a> Descriptors<'a> {
             Descriptors::Unavailable => panic!("called unwrap() on Descriptors::Unavailable"),
         }
     }
+
+    /// Convert to `Option<AvailableDescriptors>`, returning `None` if unavailable.
+    pub fn into_available(self) -> Option<AvailableDescriptors<'a>> {
+        match self {
+            Descriptors::Available(v) => Some(v),
+            Descriptors::Unavailable => None,
+        }
+    }
 }
 
 /// A descriptor segment describing a contiguous group of fields in an entry's

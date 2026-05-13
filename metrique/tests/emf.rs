@@ -6,6 +6,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use metrique::emf::Emf;
 use metrique::writer::{
     Entry, EntryIoStreamExt, EntrySink, FormatExt, format::Format, sink::BackgroundQueueBuilder,
+    value::ForceFlag,
 };
 use metrique::{CloseValue, RootEntry, unit_of_work::metrics};
 use serde_json::Value;
@@ -292,8 +293,6 @@ enum EnumFlagWrite {
 
 #[test]
 fn flags_write_path_enum_variant() {
-    use metrique::writer::format::Format;
-
     let fast = EnumFlagWrite::Fast {
         ts: UNIX_EPOCH,
         op: "read".into(),
@@ -340,9 +339,6 @@ fn flags_write_path_enum_variant() {
 
 #[test]
 fn force_flag_forwards_descriptors() {
-    use metrique::writer::Entry;
-    use metrique_writer_core::value::{FlagConstructor, ForceFlag};
-
     // HighResMetrics has descriptors (macro-derived)
     let m = HighResMetrics {
         timestamp: std::time::UNIX_EPOCH,

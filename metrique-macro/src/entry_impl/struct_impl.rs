@@ -113,7 +113,7 @@ fn build_flatten_chains(fields: &[MetricsField], root_attrs: &RootAttributes) ->
                 let field_ident = &field.ident;
                 let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
                 let child_expr = quote! {
-                    ::metrique::writer::Entry::descriptors(&self.#field_ident).unwrap().into_iter()
+                    ::metrique::writer::Entry::descriptors(&self.#field_ident).into_available().into_iter().flatten()
                 };
                 if cfg_attrs.is_empty() {
                     flatten_chains.push((false, child_expr));
