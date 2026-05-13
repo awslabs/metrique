@@ -9,8 +9,8 @@
 //! [`DescriptorRef`] and [`FieldView`] accessors.
 
 use std::any::TypeId;
-use std::borrow::Cow;
-use std::hash::{Hash, Hasher};
+
+use smallvec::SmallVec;
 
 use crate::Unit;
 
@@ -85,46 +85,65 @@ impl TimestampDescriptor {
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
-/// The primary interface for sinks to read descriptor metadata.
+/// A descriptor segment describing a contiguous group of fields in an entry's
+/// write output. Provides resolved field names, tags, shapes, and units.
 ///
-/// Carries a reference to the underlying static descriptor plus optional
-/// modifiers (prefix, default tags) applied transparently when reading.
+/// Sinks obtain these by calling [`Entry::descriptors()`](crate::Entry::descriptors).
+/// Simple entries yield one segment; composed entries (aggregation results,
+/// entries with flattened children) yield multiple segments in write order.
+///
+/// # Example
+///
+/// ```ignore
+/// for desc in entry.descriptors() {
+///     for field in desc.fields() {
+///         let name_parts = field.name_parts(); // prefixes then base name
+///         let base = field.base_name();        // just the field name
+///         let tags = field.tags();             // resolved tags
+///         let shape = field.shape();
+///     }
+/// }
+/// ```
 #[derive(Clone)]
 pub struct DescriptorRef<'a> {
     descriptor: &'a EntryDescriptor,
     id: DescriptorId,
-    prefix: Option<&'static str>,
-    default_tags: &'static [ResolvedFieldTag],
+    prefixes: SmallVec<[&'static str; 1]>,
+    default_tag_layers: SmallVec<[&'static [ResolvedFieldTag]; 1]>,
 }
 
 impl<'a> DescriptorRef<'a> {
     /// Create a `DescriptorRef` from a `&'static EntryDescriptor`.
+    #[doc(hidden)]
     pub fn from_static(descriptor: &'static EntryDescriptor) -> DescriptorRef<'static> {
-        static EMPTY_TAGS: [ResolvedFieldTag; 0] = [];
-        let id = DescriptorId::compute(descriptor, None, &EMPTY_TAGS);
+        let id = DescriptorId::compute(descriptor, &[], &[]);
         DescriptorRef {
             descriptor,
             id,
-            prefix: None,
-            default_tags: &EMPTY_TAGS,
+            prefixes: SmallVec::new(),
+            default_tag_layers: SmallVec::new(),
         }
     }
 
-    /// Add a prefix prepended to all field names (already inflected).
+    /// Add a prefix to be prepended to all field names in this segment.
+    /// Multiple calls stack (outermost prefix first).
+    #[doc(hidden)]
     pub fn with_prefix(mut self, prefix: &'static str) -> Self {
-        self.prefix = Some(prefix);
-        self.id = DescriptorId::compute(self.descriptor, self.prefix, self.default_tags);
+        self.prefixes.push(prefix);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_tag_layers);
         self
     }
 
-    /// Add default tags applied to fields that don't already have them.
+    /// Add a layer of default tags. Field-level tags win; earlier layers win over later ones.
+    /// Multiple calls stack (innermost layer first).
+    #[doc(hidden)]
     pub fn with_default_tags(mut self, tags: &'static [ResolvedFieldTag]) -> Self {
-        self.default_tags = tags;
-        self.id = DescriptorId::compute(self.descriptor, self.prefix, self.default_tags);
+        self.default_tag_layers.push(tags);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.default_tag_layers);
         self
     }
 
-    /// Stable identity for caching (incorporates base descriptor + modifiers).
+    /// Stable identity for caching. Incorporates the base descriptor and any modifiers.
     pub fn id(&self) -> DescriptorId {
         self.id
     }
@@ -139,43 +158,12 @@ impl<'a> DescriptorRef<'a> {
         self.descriptor.fields.len()
     }
 
-    /// Resolved field name at the given index (with prefix applied).
-    pub fn field_name(&self, idx: usize) -> Cow<'static, str> {
-        let base = self.descriptor.fields[idx].name;
-        match self.prefix {
-            None => Cow::Borrowed(base),
-            Some(prefix) => Cow::Owned(format!("{}{}", prefix, base)),
-        }
-    }
-
-    /// Resolved tags for the field at the given index.
-    /// Field-level tags win; default tags fill in for tag ids not already present.
-    pub fn field_tags(&self, idx: usize) -> impl Iterator<Item = &ResolvedFieldTag> {
-        let field_tags = self.descriptor.fields[idx].tags;
-        let defaults = self.default_tags;
-        field_tags.iter().chain(
-            defaults
-                .iter()
-                .filter(move |dt| !field_tags.iter().any(|ft| ft.tag_id == dt.tag_id)),
-        )
-    }
-
-    /// Shape of the field at the given index.
-    pub fn field_shape(&self, idx: usize) -> FieldShape<'_> {
-        self.descriptor.fields[idx].shape
-    }
-
-    /// Unit of the field at the given index.
-    pub fn field_unit(&self, idx: usize) -> Option<Unit> {
-        self.descriptor.fields[idx].unit
-    }
-
     /// The canonical timestamp field, if the entry has one.
     pub fn timestamp(&self) -> Option<&TimestampDescriptor> {
         self.descriptor.timestamp.as_ref()
     }
 
-    /// Iterate over fields as [`FieldView`]s.
+    /// Iterate over fields as [`FieldView`]s with all modifiers applied.
     pub fn fields(&self) -> impl Iterator<Item = FieldView<'_>> {
         (0..self.descriptor.fields.len()).map(move |i| FieldView { desc: self, idx: i })
     }
@@ -189,24 +177,47 @@ pub struct FieldView<'a> {
 }
 
 impl<'a> FieldView<'a> {
-    /// Resolved field name (with prefix applied).
-    pub fn name(&self) -> Cow<'static, str> {
-        self.desc.field_name(self.idx)
+    /// Name parts in order: prefixes (outermost first) then base name.
+    /// Concatenate to get the full resolved field name.
+    pub fn name_parts(&self) -> impl Iterator<Item = &str> {
+        self.desc
+            .prefixes
+            .iter()
+            .copied()
+            .chain(std::iter::once(self.desc.descriptor.fields[self.idx].name))
     }
 
-    /// Resolved tags (with defaults applied).
+    /// Just the base field name without any prefixes.
+    pub fn base_name(&self) -> &'static str {
+        self.desc.descriptor.fields[self.idx].name
+    }
+    /// Resolved tags for this field.
     pub fn tags(&self) -> impl Iterator<Item = &'a ResolvedFieldTag> {
-        self.desc.field_tags(self.idx)
+        // Field-level tags (baked in static) win. Default tag layers fill in for
+        // tag ids not already present, with earlier layers taking priority.
+        let field_tags = self.desc.descriptor.fields[self.idx].tags;
+        let layers = &self.desc.default_tag_layers;
+        let mut seen_ids: SmallVec<[TypeId; 4]> = field_tags.iter().map(|t| t.tag_id).collect();
+        let mut all_tags: SmallVec<[&'a ResolvedFieldTag; 4]> = field_tags.iter().collect();
+        for layer in layers.iter() {
+            for tag in layer.iter() {
+                if !seen_ids.contains(&tag.tag_id) {
+                    seen_ids.push(tag.tag_id);
+                    all_tags.push(tag);
+                }
+            }
+        }
+        all_tags.into_iter()
     }
 
     /// Shape of this field.
     pub fn shape(&self) -> FieldShape<'a> {
-        self.desc.field_shape(self.idx)
+        self.desc.descriptor.fields[self.idx].shape
     }
 
     /// Unit of this field.
     pub fn unit(&self) -> Option<Unit> {
-        self.desc.field_unit(self.idx)
+        self.desc.descriptor.fields[self.idx].unit
     }
 }
 
@@ -215,18 +226,20 @@ impl<'a> FieldView<'a> {
 pub struct DescriptorId(u64);
 
 impl DescriptorId {
+    // TODO: consider using fxhash instead to be a bit more collision resistant
     fn compute(
         descriptor: &EntryDescriptor,
-        prefix: Option<&'static str>,
-        default_tags: &'static [ResolvedFieldTag],
+        prefixes: &[&'static str],
+        tag_layers: &[&'static [ResolvedFieldTag]],
     ) -> Self {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        (descriptor as *const EntryDescriptor as usize).hash(&mut hasher);
-        prefix
-            .map_or(0usize, |p| p.as_ptr() as usize)
-            .hash(&mut hasher);
-        (default_tags.as_ptr() as usize).hash(&mut hasher);
-        DescriptorId(hasher.finish())
+        let mut id = descriptor as *const EntryDescriptor as u64;
+        for p in prefixes {
+            id = id.wrapping_mul(31).wrapping_add(p.as_ptr() as u64);
+        }
+        for layer in tag_layers {
+            id = id.wrapping_mul(31).wrapping_add(layer.as_ptr() as u64);
+        }
+        DescriptorId(id)
     }
 }
 

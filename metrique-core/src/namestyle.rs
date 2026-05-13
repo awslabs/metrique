@@ -19,6 +19,9 @@ pub(crate) mod private {
 /// [`InflectableEntry`]: crate::InflectableEntry
 pub trait NameStyle: private::NameStyleInternal {
     #[doc(hidden)]
+    const __STYLE_INDEX: u8 = 0;
+
+    #[doc(hidden)]
     type KebabCase: NameStyle;
 
     #[doc(hidden)]
@@ -43,6 +46,7 @@ pub trait NameStyle: private::NameStyleInternal {
 pub struct Identity<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for Identity<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for Identity<PREFIX> {
+    const __STYLE_INDEX: u8 = 0;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;
@@ -65,6 +69,7 @@ impl<PREFIX: MaybeConstStr> NameStyle for Identity<PREFIX> {
 pub struct PascalCase<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for PascalCase<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for PascalCase<PREFIX> {
+    const __STYLE_INDEX: u8 = 1;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;
@@ -87,6 +92,7 @@ impl<PREFIX: MaybeConstStr> NameStyle for PascalCase<PREFIX> {
 pub struct SnakeCase<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for SnakeCase<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for SnakeCase<PREFIX> {
+    const __STYLE_INDEX: u8 = 2;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;
@@ -109,6 +115,7 @@ impl<PREFIX: MaybeConstStr> NameStyle for SnakeCase<PREFIX> {
 pub struct KebabCase<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for KebabCase<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for KebabCase<PREFIX> {
+    const __STYLE_INDEX: u8 = 3;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;

@@ -18,6 +18,16 @@ pub(crate) use struct_impl::generate_struct_entry_impl;
 
 use crate::FieldTagAttr;
 
+/// Output of descriptor generation for a struct or enum entry.
+pub(crate) struct DescriptorOutput {
+    /// Trait impls (`__StaticStyledDescriptor` for each name style).
+    /// These go outside the `InflectableEntry` impl block but inside `const _: ()`.
+    pub(crate) trait_impls: Ts2,
+    /// The `fn descriptors()` method body.
+    /// Goes inside the `InflectableEntry` impl block.
+    pub(crate) method: Ts2,
+}
+
 pub(crate) fn resolve_field_tags(
     field_tags: &[FieldTagAttr],
     default_tags: &[FieldTagAttr],

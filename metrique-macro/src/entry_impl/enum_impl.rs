@@ -66,17 +66,21 @@ pub(crate) fn generate_enum_entry_impl(
         }
     };
 
-    let descriptor_fn = generate_enum_descriptor(entry_name, variants, root_attrs);
+    let descriptor = generate_enum_descriptor(entry_name, variants, root_attrs);
+    let descriptor_trait_impls = &descriptor.trait_impls;
+    let descriptors_method = &descriptor.method;
 
     quote! {
         const _: () = {
             #iter_enum
 
+            #descriptor_trait_impls
+
             #[expect(deprecated)]
             impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
                 #write_fn
                 #sample_group_fn
-                #descriptor_fn
+                #descriptors_method
             }
         };
     }
@@ -328,37 +332,44 @@ fn generate_enum_descriptor(
     entry_name: &Ident,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
-) -> Ts2 {
+) -> super::DescriptorOutput {
+    // Returns (trait_impls, descriptors_method) same as struct version.
+    use crate::inflect::NameStyle;
     use std::collections::BTreeSet;
 
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
 
-    let mut tag_statics = Vec::new();
-    let mut field_descriptors = Vec::new();
+    struct FieldInfo {
+        names: [String; 4],
+        tags: Vec<Ts2>,
+        tags_ident: Ident,
+        unit_expr: Ts2,
+    }
+    let mut field_infos = Vec::new();
     let mut field_idx = 0usize;
-    let mut seen_names = BTreeSet::new();
+
+    let styles = [
+        NameStyle::Preserve,
+        NameStyle::PascalCase,
+        NameStyle::SnakeCase,
+        NameStyle::KebabCase,
+    ];
 
     // Tag field comes first (if present)
     if let Some(tag) = &root_attrs.tag {
-        let tag_field_name = tag.field_name(root_attrs);
-        if seen_names.insert(tag_field_name.clone()) {
-            let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
-            tag_statics.push(quote! {
-                static #tags_ident: [::metrique::writer::core::ResolvedFieldTag; 0] = [];
-            });
-            field_descriptors.push(quote! {
-                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                    #tag_field_name,
-                    &#tags_ident,
-                    ::metrique::writer::core::FieldShape::Opaque,
-                    None,
-                )
-            });
-            field_idx += 1;
-        }
+        let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
+        let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
+        field_infos.push(FieldInfo {
+            names,
+            tags: vec![],
+            tags_ident,
+            unit_expr: quote! { None },
+        });
+        field_idx += 1;
     }
 
-    // Union of all variant fields (deduplicated by name)
+    // Union of all variant fields (deduplicated by preserve-style name)
+    let mut seen_names = BTreeSet::new();
     for variant in variants {
         let fields = match &variant.data {
             Some(VariantData::Struct(fields)) => fields.as_slice(),
@@ -369,21 +380,17 @@ fn generate_enum_descriptor(
                 MetricsFieldKind::Ignore(_) | MetricsFieldKind::Timestamp(_) => continue,
                 MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_) => continue,
                 MetricsFieldKind::Field { unit, .. } => {
-                    let field_name = metric_name(root_attrs, root_attrs.rename_all, field);
-                    if !seen_names.insert(field_name.clone()) {
-                        continue; // already in descriptor from another variant
+                    let preserve_name = metric_name(root_attrs, NameStyle::Preserve, field);
+                    if !seen_names.insert(preserve_name) {
+                        continue;
                     }
+
+                    let names: [String; 4] =
+                        std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
 
                     let tags =
                         resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
-                    let num_tags = tags.len();
                     let tags_ident = format_ident!("__METRIQUE_TAGS_{}", field_idx);
-
-                    tag_statics.push(quote! {
-                        static #tags_ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [
-                            #(#tags),*
-                        ];
-                    });
 
                     let unit_expr = match unit {
                         Some(u) => {
@@ -392,36 +399,96 @@ fn generate_enum_descriptor(
                         None => quote! { None },
                     };
 
-                    field_descriptors.push(quote! {
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            #field_name,
-                            &#tags_ident,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            #unit_expr,
-                        )
+                    field_infos.push(FieldInfo {
+                        names,
+                        tags,
+                        tags_ident,
+                        unit_expr,
                     });
-
                     field_idx += 1;
                 }
             }
         }
     }
 
-    let num_fields = field_descriptors.len();
+    let num_fields = field_infos.len();
 
-    quote! {
-        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-            #(#tag_statics)*
-            static __METRIQUE_FIELDS: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
-                #(#field_descriptors),*
-            ];
-            static __METRIQUE_DESCRIPTOR: ::metrique::writer::core::EntryDescriptor =
-                ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                    #struct_name,
-                    &__METRIQUE_FIELDS,
-                    None,
-                );
-            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&__METRIQUE_DESCRIPTOR))
+    // Tag statics (shared across all 4 descriptors)
+    let tag_statics: Vec<Ts2> = field_infos
+        .iter()
+        .map(|fi| {
+            let ident = &fi.tags_ident;
+            let tags = &fi.tags;
+            let num_tags = tags.len();
+            quote! {
+                static #ident: [::metrique::writer::core::ResolvedFieldTag; #num_tags] = [
+                    #(#tags),*
+                ];
+            }
+        })
+        .collect();
+
+    // Generate 4 trait impls
+    let style_names = ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
+
+    let trait_impls: Vec<Ts2> = (0..4).map(|style_idx| {
+        let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
+        let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
+        let style_idx_u8 = style_idx as u8;
+
+        let field_exprs: Vec<Ts2> = field_infos.iter().map(|fi| {
+            let name = &fi.names[style_idx];
+            let tags_ident = &fi.tags_ident;
+            let unit_expr = &fi.unit_expr;
+            quote! {
+                ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                    #name,
+                    &#tags_ident,
+                    ::metrique::writer::core::FieldShape::Opaque,
+                    #unit_expr,
+                )
+            }
+        }).collect();
+
+        quote! {
+            #style_idx_u8 => {
+                #(#tag_statics)*
+                static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
+                    #(#field_exprs),*
+                ];
+                static #desc_ident: ::metrique::writer::core::EntryDescriptor =
+                    ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        #struct_name,
+                        &#fields_ident,
+                        None,
+                    );
+                &#desc_ident
+            }
         }
+    }).collect();
+
+    let descriptor_impl = quote! {
+        impl #entry_name {
+            #[doc(hidden)]
+            fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
+                match __style {
+                    #(#trait_impls)*
+                    _ => unreachable!()
+                }
+            }
+        }
+    };
+
+    let descriptors_method = quote! {
+        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                #entry_name::__metrique_descriptor(NS::__STYLE_INDEX)
+            ))
+        }
+    };
+
+    super::DescriptorOutput {
+        trait_impls: descriptor_impl,
+        method: descriptors_method,
     }
 }

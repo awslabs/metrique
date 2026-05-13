@@ -259,6 +259,31 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 - **`flatten` vs `flatten_entry`**: both produce flattened fields in the parent descriptor identically. The distinction is about how metrique resolves the nested struct internally (inflection, prefixes).
 - **`#[metrics(value)]` newtypes**: lower to their wrapped type's shape when macro-known. See "Shape mapping" above.
 
+## Flatten descriptor mechanics
+
+When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default tags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
+
+### Prefix handling
+
+Flatten-site prefixes (e.g., `#[metrics(flatten, prefix = "http_")]`) are precomputed at macro time in the parent's name style and applied via a modifier on the child's `DescriptorRef`. Nested flatten-site prefixes stack: if a grandparent and parent both have flatten-site prefixes, both appear in `FieldView::name_parts()` (outermost first, then base name). Sinks concatenate the parts to get the full field name.
+
+Container-level prefixes (on the struct itself) are baked into the struct's own static descriptor field names. They do NOT propagate to flattened children (see [#160](https://github.com/awslabs/metrique/issues/160)).
+
+### Tag propagation through flatten
+
+When a parent flattens a child, the macro merges the flatten-site `field_tag` attributes with the parent's `default_field_tag` into a single defaults slice (flatten-site wins over parent default for the same tag id). This slice is applied as a modifier on the child's `DescriptorRef`.
+
+At read time, `FieldView::tags()` resolves precedence: the child's own tags (baked in its static) win; the merged defaults fill in for tag ids not already present. This gives the full resolution order:
+
+1. Child field-level `field_tag` (baked) wins
+2. Child struct-level `default_field_tag` (baked) wins
+3. Flatten-site `field_tag` (in merged defaults) fills gaps
+4. Parent `default_field_tag` (in merged defaults, lowest priority) fills remaining gaps
+
+### Name style propagation
+
+The parent calls the child's `descriptors()` with a concrete name style (derived from the parent's `rename_all`). The child has 4 static descriptors (one per name style), and compile-time trait dispatch (`__StaticStyledDescriptor`) selects the correct one. This ensures the child's field names match what `Entry::write()` emits under the parent's name style.
+
 ## Validation
 
 Validation happens in two places.

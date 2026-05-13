@@ -97,6 +97,9 @@ pub use metrique_core::{
     OwnedCounterGuard,
 };
 
+#[doc(hidden)]
+pub use metrique_core::{Identity, KebabCase, PascalCase, SnakeCase};
+
 /// Unit types and utilities for metrics.
 ///
 /// This module provides various unit types for metrics, such as time units (Second, Millisecond),

@@ -17,8 +17,7 @@ pub(crate) fn generate_struct_entry_impl(
     //   This enables compile-time dispatch: when a parent calls descriptors() with a specific NS,
     //   the trait resolves to the correct static without runtime branching.
     // - The descriptors() method that uses the trait + chains flattened children with modifiers.
-    let (descriptor_trait_impls, descriptors_method) =
-        generate_descriptor(entry_name, fields, root_attrs);
+    let descriptor = generate_descriptor(entry_name, fields, root_attrs);
 
     // Add NS as an additional generic parameter
     let mut impl_generics = generics.clone();
@@ -46,6 +45,9 @@ pub(crate) fn generate_struct_entry_impl(
         }
     };
 
+    let descriptor_trait_impls = &descriptor.trait_impls;
+    let descriptors_method = &descriptor.method;
+
     quote! {
         const _: () = {
             // Descriptor trait impls: one per name style, each providing a static
@@ -67,18 +69,17 @@ pub(crate) fn generate_struct_entry_impl(
 
 /// Generates descriptor infrastructure for a struct entry.
 ///
-/// Returns `(trait_impls, descriptors_method)`:
+/// Returns a [`DescriptorOutput`] containing:
 /// - `trait_impls`: 4 `__StaticStyledDescriptor` impls (one per name style), each containing
-///   a static `EntryDescriptor` with field names resolved for that style. These go outside
-///   the `InflectableEntry` impl block.
-/// - `descriptors_method`: the `fn descriptors()` method body that uses compile-time trait
-///   dispatch to select the right static, then chains flattened children's descriptors
-///   with prefix/tag modifiers applied. This goes inside the `InflectableEntry` impl block.
+///   a static `EntryDescriptor` with field names resolved for that style.
+/// - `method`: the `fn descriptors()` method body that uses compile-time trait dispatch
+///   to select the right static, then chains flattened children's descriptors with
+///   prefix/tag modifiers applied.
 fn generate_descriptor(
     entry_name: &Ident,
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
-) -> (Ts2, Ts2) {
+) -> super::DescriptorOutput {
     use crate::inflect::NameStyle;
 
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
@@ -127,11 +128,14 @@ fn generate_descriptor(
                 let merged_defaults =
                     resolve_field_tags(&field.attrs.field_tags, &root_attrs.default_field_tags);
 
-                // Compute the inflected prefix at macro time. For inflectable prefixes,
-                // apply_prefix_only returns the prefix in the parent's name style with
-                // the appropriate delimiter (e.g., "api_" + PascalCase = "Api").
-                // This works because inflecting prefix+base separately gives the same
-                // result as inflecting them together (word boundaries are preserved).
+                // Compute the inflected prefix at macro time.
+                // - Exact prefix: used as-is (e.g., exact_prefix("api") stays "api",
+                //   prepended to the child's already-inflected field name).
+                // - Inflectable prefix: requires a trailing delimiter (e.g., "api_").
+                //   apply_prefix_only inflects it to the parent's style (e.g., PascalCase
+                //   turns "api_" into "Api"). This works because the delimiter marks a
+                //   word boundary, so inflecting prefix+base separately gives the same
+                //   result as inflecting them together.
                 let prefix_expr = prefix.as_ref().map(|pfx| {
                     let inflected = pfx.apply_prefix_only(root_attrs.rename_all);
                     quote! { .with_prefix(#inflected) }
@@ -225,12 +229,16 @@ fn generate_descriptor(
         ("KEBAB", quote! { ::metrique::KebabCase<__P> }),
     ];
 
-    let trait_impls: Vec<Ts2> = styles
+    // Generate an inherent method on the entry type that selects the right
+    // static descriptor based on the name style index. The compiler optimizes
+    // the match away when called with a const index (which it always is).
+    let style_arms: Vec<Ts2> = styles
         .iter()
         .enumerate()
-        .map(|(style_idx, (style_name, ns_type))| {
+        .map(|(style_idx, (style_name, _))| {
             let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_name);
             let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_name);
+            let style_idx_u8 = style_idx as u8;
 
             let field_exprs: Vec<Ts2> = field_infos
                 .iter()
@@ -251,30 +259,43 @@ fn generate_descriptor(
                 .collect();
 
             quote! {
-                impl<__P: ::metrique::concat::MaybeConstStr> ::metrique::__StaticStyledDescriptor<#entry_name> for #ns_type {
-                    fn descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
-                        #(#tag_statics)*
-                        #(#flatten_tag_statics)*
-                        static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
-                            #(#field_exprs),*
-                        ];
-                        static #desc_ident: ::metrique::writer::core::EntryDescriptor =
-                            ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                                #struct_name,
-                                &#fields_ident,
-                                #timestamp_descriptor,
-                            );
-                        &#desc_ident
-                    }
+                #style_idx_u8 => {
+                    #(#tag_statics)*
+                    #(#flatten_tag_statics)*
+                    static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
+                        #(#field_exprs),*
+                    ];
+                    static #desc_ident: ::metrique::writer::core::EntryDescriptor =
+                        ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            #struct_name,
+                            &#fields_ident,
+                            #timestamp_descriptor,
+                        );
+                    &#desc_ident
                 }
             }
         })
         .collect();
 
+    let descriptor_impl = quote! {
+        impl #entry_name {
+            #[doc(hidden)]
+            fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
+                match __style {
+                    #(#style_arms)*
+                    _ => unreachable!()
+                }
+            }
+        }
+    };
+
+    // Use an inner function to isolate the __StaticStyledDescriptor bound from the
+    // InflectableEntry impl. This avoids bound propagation through associated types
+    // (e.g., NS::PascalCase) which would make the impl unsatisfiable.
     let descriptors_method = quote! {
         fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                <NS as ::metrique::__StaticStyledDescriptor<#entry_name>>::descriptor()
+                #entry_name::__metrique_descriptor(NS::__STYLE_INDEX)
             ))
             #(#flatten_chains)*
         }
@@ -282,7 +303,10 @@ fn generate_descriptor(
 
     // Return trait impls (go outside InflectableEntry impl) and
     // descriptors method (goes inside InflectableEntry impl) separately.
-    (quote! { #(#trait_impls)* }, descriptors_method)
+    super::DescriptorOutput {
+        trait_impls: descriptor_impl,
+        method: descriptors_method,
+    }
 }
 
 fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<Ts2> {
