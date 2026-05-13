@@ -466,6 +466,30 @@ fn generate_descriptor_iter_enum(
 
 /// Generates a match arm for one enum variant's descriptor chain.
 /// Returns the pattern and the iterator expression (base descriptor + flatten chains).
+fn is_flatten(kind: &MetricsFieldKind) -> bool {
+    matches!(
+        kind,
+        MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
+    )
+}
+
+/// Generates a `.chain(child.descriptors())` expression for a flatten field.
+fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) -> Ts2 {
+    match field_kind {
+        MetricsFieldKind::Flatten { .. } => {
+            quote! { .chain(::metrique::InflectableEntry::<#ns>::descriptors(#binding)) }
+        }
+        MetricsFieldKind::FlattenEntry(_) => {
+            quote! { .chain(::metrique::writer::Entry::descriptors(#binding)) }
+        }
+        _ => unreachable!(),
+    }
+}
+
+/// Generates a match arm pattern and iterator expression for one enum variant's descriptors.
+///
+/// For variants without flatten fields: pattern matches everything, expression is just the base.
+/// For variants with flatten fields: pattern binds the flatten fields, expression chains them.
 fn build_variant_descriptor_arm(
     entry_name: &Ident,
     variant: &MetricsVariant,
@@ -478,25 +502,17 @@ fn build_variant_descriptor_arm(
         Some(VariantData::Struct(fields)) => {
             let flatten_fields: Vec<_> = fields
                 .iter()
-                .filter(|f| {
-                    matches!(
-                        f.attrs.kind,
-                        MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
-                    )
-                })
+                .filter(|f| is_flatten(&f.attrs.kind))
                 .collect();
+
             if flatten_fields.is_empty() {
                 (quote! { #entry_name::#variant_ident { .. } }, base.clone())
             } else {
                 let bindings: Vec<_> = flatten_fields.iter().map(|f| &f.ident).collect();
-                let chains: Vec<_> = flatten_fields.iter().map(|f| {
-                    let ident = &f.ident;
-                    match &f.attrs.kind {
-                        MetricsFieldKind::Flatten { .. } => quote! { .chain(::metrique::InflectableEntry::<#ns>::descriptors(#ident)) },
-                        MetricsFieldKind::FlattenEntry(_) => quote! { .chain(::metrique::writer::Entry::descriptors(#ident)) },
-                        _ => unreachable!()
-                    }
-                }).collect();
+                let chains: Vec<_> = flatten_fields
+                    .iter()
+                    .map(|f| flatten_chain_expr(&f.attrs.kind, &f.ident, ns))
+                    .collect();
                 (
                     quote! { #entry_name::#variant_ident { #(#bindings),*, .. } },
                     quote! { #base #(#chains)* },
@@ -504,48 +520,37 @@ fn build_variant_descriptor_arm(
             }
         }
         Some(VariantData::Tuple(tds)) => {
-            let has_flatten = tds.iter().any(|td| {
-                matches!(
-                    td.kind,
-                    MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
-                )
-            });
-            if !has_flatten {
-                (quote! { #entry_name::#variant_ident(..) }, base.clone())
-            } else {
-                let patterns: Vec<_> = tds
-                    .iter()
-                    .enumerate()
-                    .map(|(i, td)| {
-                        if matches!(
-                            td.kind,
-                            MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
-                        ) {
-                            let b = format_ident!("__v{}", i);
-                            quote! { #b }
-                        } else {
-                            quote! { _ }
-                        }
-                    })
-                    .collect();
-                let chains: Vec<_> = tds.iter().enumerate().filter_map(|(i, td)| {
-                    match &td.kind {
-                        MetricsFieldKind::Flatten { .. } => {
-                            let b = format_ident!("__v{}", i);
-                            Some(quote! { .chain(::metrique::InflectableEntry::<#ns>::descriptors(#b)) })
-                        }
-                        MetricsFieldKind::FlattenEntry(_) => {
-                            let b = format_ident!("__v{}", i);
-                            Some(quote! { .chain(::metrique::writer::Entry::descriptors(#b)) })
-                        }
-                        _ => None,
-                    }
-                }).collect();
-                (
-                    quote! { #entry_name::#variant_ident(#(#patterns),*) },
-                    quote! { #base #(#chains)* },
-                )
+            if !tds.iter().any(|td| is_flatten(&td.kind)) {
+                return (quote! { #entry_name::#variant_ident(..) }, base.clone());
             }
+
+            let patterns: Vec<_> = tds
+                .iter()
+                .enumerate()
+                .map(|(i, td)| {
+                    if is_flatten(&td.kind) {
+                        let b = format_ident!("__v{}", i);
+                        quote! { #b }
+                    } else {
+                        quote! { _ }
+                    }
+                })
+                .collect();
+
+            let chains: Vec<_> = tds
+                .iter()
+                .enumerate()
+                .filter(|(_, td)| is_flatten(&td.kind))
+                .map(|(i, td)| {
+                    let b = format_ident!("__v{}", i);
+                    flatten_chain_expr(&td.kind, &quote! { #b }, ns)
+                })
+                .collect();
+
+            (
+                quote! { #entry_name::#variant_ident(#(#patterns),*) },
+                quote! { #base #(#chains)* },
+            )
         }
         None => (quote! { #entry_name::#variant_ident }, base.clone()),
     }

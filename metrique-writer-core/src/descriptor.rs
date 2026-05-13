@@ -14,8 +14,6 @@ use smallvec::SmallVec;
 
 use crate::Unit;
 
-// ─── Internal storage types (pub for macro, sinks use DescriptorRef) ────────
-
 /// Static descriptor storage for a macro-derived entry.
 #[derive(Debug)]
 pub struct EntryDescriptor {
@@ -85,8 +83,6 @@ impl TimestampDescriptor {
         Self { name }
     }
 }
-
-// ─── Public API ─────────────────────────────────────────────────────────────
 
 /// A descriptor segment describing a contiguous group of fields in an entry's
 /// write output. Provides resolved field names, tags, shapes, and units.
@@ -261,8 +257,6 @@ impl DescriptorId {
     }
 }
 
-// ─── Shape types ────────────────────────────────────────────────────────────
-
 /// The closed/emitted shape of a field.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -343,8 +337,6 @@ impl<'a> ShapeRef<'a> {
     }
 }
 
-// ─── Tag types ──────────────────────────────────────────────────────────────
-
 /// A resolved field tag.
 #[derive(Debug)]
 pub struct FieldTag {
@@ -379,8 +371,6 @@ pub enum FieldTagState {
     /// The tag is explicitly absent (via `skip(T)`).
     Absent,
 }
-
-// ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
