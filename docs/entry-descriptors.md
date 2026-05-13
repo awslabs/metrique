@@ -64,98 +64,19 @@ An audit sink reads the descriptor at first-use per entry type, walks `Entry::wr
 
 ## The descriptor model
 
-```rust
-pub struct EntryDescriptor { /* opaque */ }
+The descriptor types live in `metrique_writer_core::descriptor`. The module defines:
 
-impl EntryDescriptor {
-    /// Canonical name of this entry type. In the initial release this is the
-    /// raw Rust struct name; a future `#[metrics(entry_name = "...")]` attribute
-    /// will let users override. Consumers that persist the name (e.g., for
-    /// cross-session correlation or schema registration) should be aware that
-    /// the name will change if the user renames the Rust struct; until the
-    /// `entry_name` attribute ships, there is no mechanism for decoupling the
-    /// on-wire entry identity from the Rust type name.
-    pub fn name(&self) -> &str;
-
-    /// Ordered fields the entry emits via `Entry::write`. Does not include
-    /// `#[metrics(timestamp)]` fields (see `.timestamp()`) or `#[metrics(ignore)]`
-    /// fields. Order matches `Entry::write` callback order; see the contract below.
-    pub fn fields(&self) -> &[FieldDescriptor];
-
-    /// The canonical timestamp field, if the entry has one.
-    pub fn timestamp(&self) -> Option<TimestampDescriptor>;
-}
-
-pub struct FieldDescriptor { /* opaque */ }
-
-impl FieldDescriptor {
-    /// Field name as it appears in `Entry::write` callbacks (post `rename_all`,
-    /// post `#[metrics(name = "...")]` / `name_exact` overrides).
-    pub fn name(&self) -> &str;
-
-    pub fn tags(&self) -> &[ResolvedFieldTag];
-    pub fn shape(&self) -> FieldShape<'_>;
-    pub fn unit(&self) -> Option<Unit>;
-}
-
-pub struct TimestampDescriptor { /* opaque */ }
-
-impl TimestampDescriptor {
-    /// Field name as emitted on the wire / through `EntryWriter::timestamp`.
-    pub fn name(&self) -> &str;
-}
-
-#[non_exhaustive]
-pub enum FieldShape<'a> {
-    Known(KnownShape),
-    Optional(ShapeRef<'a>),
-    Flex { key: StringShape, value: ShapeRef<'a> },
-    List(ShapeRef<'a>),
-    Opaque,
-}
-
-#[non_exhaustive]
-pub enum KnownShape {
-    Bool,
-    U8, U16, U32, U64,
-    I8, I16, I32, I64,
-    F32, F64,
-    String,
-    Bytes,
-    // future metrique scalars (Duration subtypes, timestamps, etc.) go here
-}
-
-#[non_exhaustive]
-pub enum StringShape {
-    String,
-    // future string variants (pooled, cow, etc.) go here
-}
-
-/// Opaque handle to a nested FieldShape. Lifetime-tied to its parent
-/// FieldDescriptor. Metrique controls the internal representation; consumers
-/// call .as_ref() to borrow the underlying FieldShape.
-pub struct ShapeRef<'a> { /* opaque */ }
-
-impl<'a> ShapeRef<'a> {
-    pub fn as_ref(&self) -> &FieldShape<'a>;
-}
-
-pub struct ResolvedFieldTag { /* opaque */ }
-
-impl ResolvedFieldTag {
-    /// Type id of the tag type this entry describes.
-    pub fn tag_id(&self) -> TypeId;
-
-    /// Whether this tag is present or explicitly absent for the field.
-    pub fn state(&self) -> FieldTagState;
-}
-
-#[non_exhaustive]
-pub enum FieldTagState {
-    Present,
-    Absent,
-}
-```
+- `EntryDescriptor` with accessors: `name() -> &str`, `fields() -> &[FieldDescriptor]`, `timestamp() -> Option<&TimestampDescriptor>`
+- `FieldDescriptor` with accessors: `name() -> &str`, `tags() -> &[ResolvedFieldTag]`, `shape() -> FieldShape<'_>`, `unit() -> Option<Unit>`
+- `TimestampDescriptor` with accessor: `name() -> &str`
+- `FieldShape<'a>` enum: `Known(KnownShape)`, `Optional(ShapeRef<'a>)`, `Flex { key: StringShape, value: ShapeRef<'a> }`, `List(ShapeRef<'a>)`, `Opaque`
+- `KnownShape` enum: `Bool`, `U8`..`U64`, `I8`..`I64`, `F32`, `F64`, `String`, `Bytes`
+- `StringShape` enum: `String`
+- `ShapeRef<'a>` with accessor: `get() -> &FieldShape<'a>`
+- `ResolvedFieldTag` with accessors: `tag_id() -> TypeId`, `state() -> FieldTagState`
+- `FieldTagState` enum: `Present`, `Absent`
+- `DescriptorRef<'a>` with accessors: `get() -> &EntryDescriptor`, `id() -> DescriptorId`
+- `DescriptorId`: opaque, `Copy + Eq + Hash`, stable within a process lifetime
 
 ### Forward compatibility
 
@@ -195,36 +116,13 @@ Users who want custom types to flow through descriptor-aware sinks should use `#
 
 ## Descriptor lookup
 
-The `Entry` trait gains a defaulted method:
+The `Entry` trait has a defaulted method:
 
 ```rust
-pub trait Entry {
-    // existing methods ...
-
-    /// Returns a handle to the descriptor for this entry type, if one exists.
-    /// Default returns None; macro-derived entries override.
-    fn descriptor(&self) -> Option<DescriptorRef<'_>> { None }
-}
+fn descriptor(&self) -> Option<DescriptorRef<'_>> { None }
 ```
 
-`DescriptorRef` is an opaque handle:
-
-```rust
-pub struct DescriptorRef<'a> { /* opaque */ }
-
-impl<'a> DescriptorRef<'a> {
-    pub fn as_ref(&self) -> &EntryDescriptor;
-    pub fn id(&self) -> DescriptorId;
-}
-
-/// Stable identity for caching within a process lifetime. Two `DescriptorRef`s
-/// obtained from calls to `descriptor()` on the same entry type return equal
-/// ids. Cross-process stability is not guaranteed; consumers requiring
-/// cross-process schema correlation should hash the descriptor's structural
-/// contents themselves.
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct DescriptorId(/* opaque */);
-```
+Macro-derived entries override this to return `Some`. Hand-written entries keep the default `None`. `BoxEntry` forwards the call through its dynamic dispatch layer.
 
 Sinks key their per-entry-type caches on `DescriptorId`. The initial release backs descriptors with `&'static EntryDescriptor` in macro-derived entries, so the id derivation is effectively a pointer-compare. That is an implementation detail; `DescriptorId` is opaque and free to change internal representation.
 
