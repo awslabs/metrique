@@ -39,13 +39,7 @@ pub(crate) struct DescriptorFieldMeta {
     pub(crate) unit_expr: Ts2,
 }
 
-/// Generates the `__metrique_descriptor(style: u8)` inherent impl from collected field metadata.
-///
-/// Produces a match with 4 arms, each containing a static `EntryDescriptor` with field names
-/// resolved for that style. The style constants from `metrique-core` are used as match patterns.
-
 /// Generate a block that selects one of 4 pre-computed EntryDescriptor statics based on a style u8.
-/// Used by both struct and enum descriptor generation.
 ///
 /// Returns a token stream like:
 /// ```ignore

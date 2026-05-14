@@ -327,7 +327,7 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
             (
                 metrique_writer_core::Descriptors::Available(a),
                 metrique_writer_core::Descriptors::Available(b),
-            ) => metrique_writer_core::Descriptors::available(a.into_iter().chain(b.into_iter())),
+            ) => metrique_writer_core::Descriptors::available(a.into_iter().chain(b)),
             _ => metrique_writer_core::Descriptors::Unavailable,
         }
     }

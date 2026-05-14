@@ -41,16 +41,6 @@ impl NameStyle {
         arr
     };
 
-    /// Returns the index of this style (matches `metrique_core::STYLE_*` constants).
-    pub(crate) fn descriptor_index(self) -> usize {
-        match self {
-            NameStyle::Preserve => metrique_core::STYLE_PRESERVE as usize,
-            NameStyle::PascalCase => metrique_core::STYLE_PASCAL as usize,
-            NameStyle::SnakeCase => metrique_core::STYLE_SNAKE as usize,
-            NameStyle::KebabCase => metrique_core::STYLE_KEBAB as usize,
-        }
-    }
-
     pub(crate) fn apply(self, name: &str) -> String {
         use inflector::Inflector;
         match self {

@@ -179,7 +179,7 @@ impl<'a> Descriptors<'a> {
     pub fn chain(self, other: Descriptors<'a>) -> Self {
         match (self, other) {
             (Descriptors::Available(mut a), Descriptors::Available(b)) => {
-                a.0.extend(b.0.into_iter());
+                a.0.extend(b.0);
                 Descriptors::Available(a)
             }
             _ => Descriptors::Unavailable,
