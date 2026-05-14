@@ -15,3 +15,16 @@ pub use emf::{
     HighStorageResolutionCtor, MetricDefinition, MetricDirective, NoMetric, NoMetricCtor,
     SampledEmf, StorageResolution,
 };
+
+/// Re-exports of `FlagConstructor` types for use in `#[metrics(flags(...))]` attributes.
+///
+/// ```ignore
+/// use metrique::emf::flags::HighStorageResolution;
+///
+/// #[metrics(flags(HighStorageResolution))]
+/// event_count: u64,
+/// ```
+pub mod flags {
+    pub use super::HighStorageResolutionCtor as HighStorageResolution;
+    pub use super::NoMetricCtor as NoMetric;
+}
