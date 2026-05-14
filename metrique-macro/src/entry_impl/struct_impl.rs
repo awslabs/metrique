@@ -209,7 +209,7 @@ fn generate_descriptor(
             MetricsFieldKind::Timestamp(_) => {
                 let name = field.name.as_deref().unwrap_or("timestamp");
                 timestamp_descriptor = quote! {
-                    Some(::metrique::writer::core::TimestampDescriptor::__metrique_private_new(#name))
+                    Some(::metrique::writer::core::TimestampDescriptor::new(#name))
                 };
             }
             MetricsFieldKind::Field { unit, .. } => {

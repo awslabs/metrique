@@ -7,9 +7,9 @@ A small system on top of metrique's existing `Entry` / `Value` / `CloseValue` tr
 Two pieces, both opt-in for sinks:
 
 - An **entry descriptor** that describes a macro-derived entry's closed shape: ordered fields, their flags, optionality, lists, dynamic-key maps, units, canonical entry name, and an optional timestamp field.
-- A **field tag** system that lets sinks define their own static opt-in markers and lets users apply them at struct or field scope.
+- A **field flag** system that lets sinks define their own static opt-in markers and lets users apply them at struct or field scope.
 
-None of this changes the existing `Entry`, `Value`, or `CloseValue` traits. Sinks that do not call `Entry::descriptors()` pay nothing.
+This adds `descriptors()` to the `Entry` and `InflectableEntry` traits (with defaulted impls). `Value` and `CloseValue` are unchanged. Sinks that do not call `Entry::descriptors()` pay nothing.
 
 ## Glossary
 
@@ -39,7 +39,7 @@ A **`FlagConstructor`** is a type whose `construct()` method returns a `MetricFl
 - First-class units in the descriptor, surfaced however each sink prefers.
 - All of the above after `BoxEntry` erasure.
 
-Sinks that do not call `Entry::descriptors()` pay nothing at runtime.
+Sinks that do not call `Entry::descriptors()` pay nothing at runtime. The statics are generated unconditionally but only occupy binary size.
 
 ## At a glance
 
@@ -72,11 +72,31 @@ struct RequestMetrics {
 
 The macro generates (in addition to the existing `Entry` impl) an `EntryDescriptor` describing three fields: `request_id` (flag: Export, shape: String), `operation` (flag: Export, shape: String), `debug_blob` (no flags, shape: String). The descriptor's canonical name is `"RequestMetrics"`.
 
-An audit sink reads the descriptor at first-use per entry type, walks `Entry::write` in descriptor order, and for each value consults the tag map on the descriptor to decide whether to emit that field to its wire format.
+An audit sink reads the descriptor at first-use per entry type, walks `Entry::write` in descriptor order, and for each value consults the flags on the descriptor to decide whether to emit that field to its wire format.
 
 ## The descriptor model
 
-The descriptor types live in `metrique_writer_core::descriptor`. `Entry::descriptors()` returns a `Descriptors` enum (`Available` or `Unavailable`), forcing callers to handle entries that haven't implemented descriptor support. When available, sinks interact with `DescriptorRef` and `FieldView`. For custom `Entry` implementations, the module provides const builder functions (`entry()`, `field()`, `timestamp()`) for constructing descriptors in statics. See the module rustdoc for the full API.
+The descriptor types live in `metrique_writer_core::descriptor`. `Entry::descriptors()` returns a `Descriptors` enum (`Available` or `Unavailable`), forcing callers to handle entries that haven't implemented descriptor support. When available, sinks interact with `DescriptorRef` and `FieldView`. For custom `Entry` implementations, the module provides const builder methods (`EntryDescriptor::builder()`, `FieldDescriptor::builder()`, `TimestampDescriptor::new()`) for constructing descriptors in statics. See the module rustdoc for the full API.
+
+```rust
+use metrique_writer_core::descriptor::*;
+use metrique_writer_core::{Unit, Descriptors};
+
+static FIELDS: [FieldDescriptor; 2] = [
+    FieldDescriptor::builder("latency_ms").unit(Unit::Milliseconds).build(),
+    FieldDescriptor::builder("count").unit(Unit::Count).build(),
+];
+static DESC: EntryDescriptor = EntryDescriptor::builder("MyMetrics", &FIELDS)
+    .timestamp(TimestampDescriptor::new("timestamp"))
+    .build();
+
+impl Entry for MyMetrics {
+    fn descriptors(&self) -> Descriptors<'_> {
+        Descriptors::available(std::iter::once(DescriptorRef::from_static(&DESC)))
+    }
+    // ...
+}
+```
 
 ### Forward compatibility
 
@@ -87,7 +107,6 @@ All public structs have private fields. New fields can be added in minor version
 Accessor return types are conservative (borrows tied to the handle, not `&'static`). This allows internal storage changes (e.g. switching from static slices to `Arc`-backed data) without breaking the public API.
 
 ### Shape mapping
-
 `FieldShape` describes the closed/emitted shape, not the raw Rust field type. Examples:
 
 - `bool` / `u64` / `i32` / `f64` / `String` / `Vec<u8>` lower to the corresponding `Known(KnownShape::..)` variant.
@@ -108,7 +127,7 @@ Flattening an `Option<SubEntry>` into a parent entry propagates optionality to e
 
 ### The Opaque shape
 
-A field whose closed shape is `FieldShape::Opaque` is fully functional through `Entry::write` (every `Value` impl works; EMF and JSON handle it fine), but descriptor-aware sinks that selected it via a tag have no wire-level shape guarantee for it. Typical sinks skip opaque fields with a diagnostic and continue.
+A field whose closed shape is `FieldShape::Opaque` is fully functional through `Entry::write` (every `Value` impl works; EMF and JSON handle it fine), but descriptor-aware sinks that selected it via a flag have no wire-level shape guarantee for it. Typical sinks skip opaque fields with a diagnostic and continue.
 
 The most common current Opaque case is distribution-typed fields: `metrique_aggregation::Histogram<T>`, `SharedHistogram<T>`, and user-defined types that emit multiple `Observation`s with the `Distribution` flag. The descriptor has no way to represent "this field emits 0..N observations of an inner scalar type." Such fields are safe to use on EMF/JSON sinks today. Tagging them for a descriptor-aware sink produces a diagnostic and skips the field on that sink; see "Future evolution" for the planned `FieldShape::Distribution` variant.
 
@@ -131,14 +150,14 @@ for desc in entry.descriptors() {
     for field in desc.fields() {
         let parts = field.name_parts();  // prefix chain + base name, zero allocation
         let base = field.base_name();    // just the field name
-        let tags = field.tags();         // resolved with defaults applied
+        let flags = field.flags();         // resolved with defaults applied
         let shape = field.shape();
         let unit = field.unit();
     }
 }
 ```
 
-Sinks key their per-segment caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. `DescriptorId` incorporates the base descriptor pointer plus any modifiers (prefix, default tags), so the same child struct with different flatten-site prefixes produces different ids.
+Sinks key their per-segment caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. `DescriptorId` incorporates the base descriptor pointer plus prefixes, so the same child struct with different flatten-site prefixes produces different ids.
 
 Extending `Entry` rather than introducing a separate trait keeps descriptor lookup on the path users already know, keeps `BoxEntry` forwarding natural, and avoids growing the object-safety surface.
 
@@ -154,7 +173,7 @@ Sinks see different descriptor sequences depending on which variant is active. E
 
 `AggregationResult` writes key fields then aggregated fields. Its `descriptors()` implementation chains the key entry's descriptor followed by the aggregated entry's descriptor. Both are generated by `#[metrics]` on the respective structs; no additional descriptor generation is needed in the aggregate macro.
 
-Sinks walking `descriptors()` see two segments in write order: key fields first, aggregated fields second. Each segment's descriptor carries its own tags, units, and field names. Flatten on key fields is rejected at compile time.
+Sinks walking `descriptors()` see two segments in write order: key fields first, aggregated fields second. Each segment's descriptor carries its own flags, units, and field names. Flatten on key fields is rejected at compile time.
 
 ### `Entry::write` order contract
 
@@ -164,9 +183,9 @@ Multi-element fields (`Vec<T>`, `Flex<(String, T)>`, and similar) still produce 
 
 The contract is guaranteed by construction for macro-derived entries (the macro emits both from the same iteration). A debug-mode check inside metrique's test harness validates correspondence; CI tests assert it on every release. Hand-written entries that ship a descriptor (a deferred feature) must uphold the same correspondence.
 
-## Field tags
+## Field flags
 
-Sinks define tag types in their own crate. Any type works as a tag; the macro does not interpret tag identity beyond equality.
+Sinks define flag types in their own crate. Any type works as a flag; the macro does not interpret flag identity beyond equality.
 
 ```rust
 // Struct-scope default:
@@ -223,7 +242,7 @@ Flattened children manage their own flags independently. This matches the scopin
 │                                                             │
 │  for desc in entry.descriptors():                           │
 │    for field in desc.fields():                              │
-│      check field.tags() -> encode or skip                   │
+│      check field.flags() -> encode or skip                   │
 │      consume next value from Entry::write stream            │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -253,7 +272,7 @@ The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release
 
 ## Flatten descriptor mechanics
 
-When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default tags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
+When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default flags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
 
 ### How flatten propagates naming
 
@@ -277,7 +296,7 @@ Intrinsic to the system and independent of any specific sink:
 // flags(T) and flags(skip(T)) on the same field
 #[metrics(flags(audit::Export), flags(skip(audit::Export)))]
 request_id: String,
-// -> error: conflicting field tags
+// -> error: conflicting flags
 
 // default_flags(T) and default_flags(skip(T)) on the same struct
 #[metrics(default_flags(audit::Export), default_flags(skip(audit::Export)))]
@@ -285,7 +304,7 @@ struct Bad;
 // -> error: conflicting defaults
 ```
 
-Sink-specific diagnostics (e.g. a sink-specific tag on an unsuitable `FieldShape`, an opaque value selected for a sink tag) are produced at runtime by the sink when it first sees a descriptor.
+Sink-specific diagnostics (e.g. a sink-specific flag on an unsuitable `FieldShape`, an opaque value selected for a sink flag) are produced at runtime by the sink when it first sees a descriptor.
 
 ### First-use (descriptor-local, per descriptor)
 
@@ -293,7 +312,7 @@ The first time a descriptor-aware sink encounters a given descriptor (keyed on `
 
 ### What is not validated
 
-- **Tag semantics across crates.** The macro cannot know that `alice::X` and `bob::X` in different crates "mean the same thing." Tag identity is nominal.
+- **Flag semantics across crates.** The macro cannot know that `alice::X` and `bob::X` in different crates "mean the same thing." Flag identity is nominal.
 - **Cross-entry invariants.** The descriptor describes one entry type.
 - **Value validity.** Whether a field's value is in range, non-empty, etc., is outside this system; metrique's normal value validation applies.
 
@@ -305,9 +324,9 @@ Per macro-derived struct entry type:
 - One slice of `FieldFlag` per field (shared across all 4 styles, since flags don't vary by name style).
 - Per-field name strings (one per style, so 4x the name storage).
 
-Per enum entry type: 4 statics per variant (not per enum).
+Per enum entry type: 1 static per variant, hardcoded to the enum's own rename_all style. (Struct entries have 4 statics for style propagation; enum variants do not yet support this.)
 
-Ballpark: a ten-field struct with a couple of tags per field is roughly 2 KB of `.rodata` (4x the single-style cost). One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `descriptors()` pay nothing beyond their existing costs.
+Ballpark: a ten-field struct with a couple of flags per field is roughly 2 KB of `.rodata` (4x the single-style cost). One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `descriptors()` pay nothing beyond their existing costs.
 
 ## Future evolution
 
@@ -353,8 +372,8 @@ Forward-compat: users of the V1 tag-based shape do not need to migrate when the 
 
 Very high level; each concrete sink has its own design.
 
-**dial9 (tracing sink).** Defines `dial9::Context` (field tag marking context fields), `dial9::Emit` (field tag), `dial9::Interned` (field tag). Reads context (worker id, task id, start and end monotonic timestamps) by walking the descriptor for fields tagged `Context`. See `dial9-tokio-telemetry/design/metrique-integration.md`.
+**dial9 (tracing sink).** Defines `dial9::Context` (field flag marking context fields), `dial9::Emit` (field tag), `dial9::Interned` (field tag). Reads context (worker id, task id, start and end monotonic timestamps) by walking the descriptor for fields tagged `Context`. See `dial9-tokio-telemetry/design/metrique-integration.md`.
 
 **OTEL sink (hypothetical).** Would define `otel::InSpan` (field tag) and mark context fields similarly, or push for the typed source-extraction appendix to move in-scope.
 
-**Custom user sinks.** Teams can add their own tag types in their own crates with no changes to metrique. Examples: a privacy-tiered export sink with `privacy::Public` / `privacy::Internal`, a metrics-rs bridge with `metricsrs::Export`.
+**Custom user sinks.** Teams can add their own flag types in their own crates with no changes to metrique. Examples: a privacy-tiered export sink with `privacy::Public` / `privacy::Internal`, a metrics-rs bridge with `metricsrs::Export`.

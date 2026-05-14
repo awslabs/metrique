@@ -25,66 +25,62 @@ const _: () = {
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "value",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("value")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Nested",
-                        &__METRIQUE_FIELDS_PRESERVE,
-                        None,
-                    );
+                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Nested",
+                            &__METRIQUE_FIELDS_PRESERVE,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_PRESERVE
                 }
                 ::metrique::STYLE_PASCAL => {
                     static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Value",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("Value")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Nested",
-                        &__METRIQUE_FIELDS_PASCAL,
-                        None,
-                    );
+                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Nested",
+                            &__METRIQUE_FIELDS_PASCAL,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_PASCAL
                 }
                 ::metrique::STYLE_SNAKE => {
                     static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "value",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("value")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Nested",
-                        &__METRIQUE_FIELDS_SNAKE,
-                        None,
-                    );
+                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Nested",
+                            &__METRIQUE_FIELDS_SNAKE,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_SNAKE
                 }
                 ::metrique::STYLE_KEBAB => {
                     static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "value",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("value")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Nested",
-                        &__METRIQUE_FIELDS_KEBAB,
-                        None,
-                    );
+                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Nested",
+                            &__METRIQUE_FIELDS_KEBAB,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_KEBAB
                 }
                 _ => unreachable!("unknown descriptor style index"),
@@ -353,26 +349,25 @@ const _: () = {
                     static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                     static __METRIQUE_VFLAGS_0_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
                     static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "count",
-                            &__METRIQUE_VFLAGS_0_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "latency",
-                            &__METRIQUE_VFLAGS_0_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            Some(
-                                <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                            ),
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("count")
+                            .flags(&__METRIQUE_VFLAGS_0_0)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("latency")
+                            .flags(&__METRIQUE_VFLAGS_0_1)
+                            .maybe_unit(
+                                Some(
+                                    <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                                ),
+                            )
+                            .build(),
                     ];
-                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Status::Active",
-                        &__METRIQUE_VFIELDS_0,
-                        None,
-                    );
+                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Status::Active",
+                            &__METRIQUE_VFIELDS_0,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
                             ::metrique::writer::core::DescriptorRef::from_static(
@@ -384,11 +379,12 @@ const _: () = {
                 StatusEntry::Pending(__v0) => {
                     {
                         static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
-                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                            "Status::Pending",
-                            &__METRIQUE_VFIELDS_1,
-                            None,
-                        );
+                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Status::Pending",
+                                &__METRIQUE_VFIELDS_1,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
                         ::metrique::writer::core::Descriptors::available(
                             ::std::iter::once(
                                 ::metrique::writer::core::DescriptorRef::from_static(
@@ -402,11 +398,12 @@ const _: () = {
                 StatusEntry::Multi(__v0, _) => {
                     {
                         static __METRIQUE_VFIELDS_2: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
-                        static __METRIQUE_VDESC_2: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                            "Status::Multi",
-                            &__METRIQUE_VFIELDS_2,
-                            None,
-                        );
+                        static __METRIQUE_VDESC_2: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Status::Multi",
+                                &__METRIQUE_VFIELDS_2,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
                         ::metrique::writer::core::Descriptors::available(
                             ::std::iter::once(
                                 ::metrique::writer::core::DescriptorRef::from_static(
@@ -595,18 +592,17 @@ const _: () = {
                 OperationEntry::Read { .. } => {
                     static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                     static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "bytes",
-                            &__METRIQUE_VFLAGS_0_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("bytes")
+                            .flags(&__METRIQUE_VFLAGS_0_0)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Operation::Read",
-                        &__METRIQUE_VFIELDS_0,
-                        None,
-                    );
+                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Operation::Read",
+                            &__METRIQUE_VFIELDS_0,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
                             ::metrique::writer::core::DescriptorRef::from_static(
@@ -618,11 +614,12 @@ const _: () = {
                 OperationEntry::Write(__v0) => {
                     {
                         static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
-                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                            "Operation::Write",
-                            &__METRIQUE_VFIELDS_1,
-                            None,
-                        );
+                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Operation::Write",
+                                &__METRIQUE_VFIELDS_1,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
                         ::metrique::writer::core::Descriptors::available(
                             ::std::iter::once(
                                 ::metrique::writer::core::DescriptorRef::from_static(

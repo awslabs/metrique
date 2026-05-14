@@ -156,24 +156,21 @@ const _: () = {
                     static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                     static __METRIQUE_VFLAGS_0_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
                     static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "operation",
-                            &__METRIQUE_VFLAGS_0_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "bytes",
-                            &__METRIQUE_VFLAGS_0_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("operation")
+                            .flags(&__METRIQUE_VFLAGS_0_0)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("bytes")
+                            .flags(&__METRIQUE_VFLAGS_0_1)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "Operation::Read",
-                        &__METRIQUE_VFIELDS_0,
-                        None,
-                    );
+                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "Operation::Read",
+                            &__METRIQUE_VFIELDS_0,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
                             ::metrique::writer::core::DescriptorRef::from_static(

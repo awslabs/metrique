@@ -382,7 +382,7 @@ fn generate_enum_descriptor(
                         MetricsFieldKind::Timestamp(_) => {
                             let ts_name = field.name.as_deref().unwrap_or("timestamp");
                             v_timestamp_expr = quote! {
-                                Some(::metrique::writer::core::TimestampDescriptor::__metrique_private_new(#ts_name))
+                                Some(::metrique::writer::core::TimestampDescriptor::new(#ts_name))
                             };
                         }
                         _ => {}
@@ -411,9 +411,10 @@ fn generate_enum_descriptor(
                 let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
                 let unit_expr = &f.unit_expr;
                 quote! {
-                    ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                        #name, &#flags_ident, ::metrique::writer::core::FieldShape::Opaque, #unit_expr,
-                    )
+                    ::metrique::writer::core::FieldDescriptor::builder(#name)
+                        .flags(&#flags_ident)
+                        .maybe_unit(#unit_expr)
+                        .build()
                 }
             }).collect();
 
@@ -422,7 +423,9 @@ fn generate_enum_descriptor(
                     #(#v_flag_statics)*
                     static #v_fields_ident: [::metrique::writer::core::FieldDescriptor; #num_v_fields] = [#(#v_field_exprs),*];
                     static #v_desc_ident: ::metrique::writer::core::EntryDescriptor =
-                        ::metrique::writer::core::EntryDescriptor::__metrique_private_new(#variant_name, &#v_fields_ident, #v_timestamp_expr);
+                        ::metrique::writer::core::EntryDescriptor::builder(#variant_name, &#v_fields_ident)
+                            .maybe_timestamp(#v_timestamp_expr)
+                            .build();
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&#v_desc_ident))
                     )

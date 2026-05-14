@@ -34,20 +34,6 @@ impl EntryDescriptor {
             timestamp: None,
         }
     }
-
-    /// Hidden constructor for use by the metrique macro only.
-    #[doc(hidden)]
-    pub const fn __metrique_private_new(
-        name: &'static str,
-        fields: &'static [FieldDescriptor],
-        timestamp: Option<TimestampDescriptor>,
-    ) -> Self {
-        Self {
-            name,
-            fields,
-            timestamp,
-        }
-    }
 }
 
 /// Static field storage. Stores a single resolved name for one name style.
@@ -69,22 +55,6 @@ impl FieldDescriptor {
             unit: None,
         }
     }
-
-    /// Hidden constructor for use by the metrique macro only.
-    #[doc(hidden)]
-    pub const fn __metrique_private_new(
-        name: &'static str,
-        flags: &'static [FieldFlag],
-        shape: FieldShape<'static>,
-        unit: Option<Unit>,
-    ) -> Self {
-        Self {
-            name,
-            flags,
-            shape,
-            unit,
-        }
-    }
 }
 
 /// Describes the timestamp field of an entry.
@@ -102,12 +72,6 @@ impl TimestampDescriptor {
     /// Field name as emitted through `EntryWriter::timestamp`.
     pub fn name(&self) -> &str {
         self.name
-    }
-
-    /// Hidden constructor for use by the metrique macro only.
-    #[doc(hidden)]
-    pub const fn __metrique_private_new(name: &'static str) -> Self {
-        Self { name }
     }
 }
 
@@ -237,7 +201,7 @@ impl<'a> Descriptors<'a> {
 ///     for field in desc.fields() {
 ///         let name_parts = field.name_parts(); // prefixes then base name
 ///         let base = field.base_name();        // just the field name
-///         let flags = field.flags();             // resolved flags
+///         let flags = field.flags();           // resolved flags
 ///         let shape = field.shape();
 ///         let unit = field.unit();
 ///     }
@@ -430,9 +394,8 @@ impl<'a> ShapeRef<'a> {
         self.inner
     }
 
-    /// Hidden constructor for use by the metrique macro only.
-    #[doc(hidden)]
-    pub const fn __metrique_private_new(inner: &'a FieldShape<'a>) -> Self {
+    /// Create a ShapeRef wrapping an inner FieldShape.
+    pub const fn new(inner: &'a FieldShape<'a>) -> Self {
         Self { inner }
     }
 }
@@ -440,14 +403,30 @@ impl<'a> ShapeRef<'a> {
 /// A resolved field flag representing a `FlagConstructor` applied to a field.
 ///
 /// Stores the `TypeId` of the `FlagConstructor` type for identity comparison.
-/// Sinks that need the `MetricFlags` value call `FlagConstructor::construct()`
-/// on the type they're checking for.
+/// Sinks check for specific flags using [`is`](Self::is):
+///
+/// ```ignore
+/// use my_format::flags::HighStorageResolution;
+///
+/// for field in descriptor.fields() {
+///     if field.flags().any(|f| f.is::<HighStorageResolution>()) {
+///         // this field has high storage resolution
+///     }
+/// }
+/// ```
 #[derive(Debug)]
 pub struct FieldFlag {
     type_id: TypeId,
 }
 
 impl FieldFlag {
+    /// Create a flag from a `FlagConstructor` type.
+    pub const fn new<T: 'static>() -> Self {
+        Self {
+            type_id: TypeId::of::<T>(),
+        }
+    }
+
     /// The [`TypeId`] of the `FlagConstructor` type.
     pub fn type_id(&self) -> TypeId {
         self.type_id
@@ -456,12 +435,6 @@ impl FieldFlag {
     /// Check if this flag matches a specific `FlagConstructor` type.
     pub fn is<T: 'static>(&self) -> bool {
         self.type_id == TypeId::of::<T>()
-    }
-
-    /// Hidden constructor for use by the metrique macro only.
-    #[doc(hidden)]
-    pub const fn __metrique_private_new(type_id: TypeId) -> Self {
-        Self { type_id }
     }
 }
 
@@ -476,6 +449,12 @@ impl EntryDescriptorBuilder {
     /// Set the timestamp descriptor.
     pub const fn timestamp(mut self, ts: TimestampDescriptor) -> Self {
         self.timestamp = Some(ts);
+        self
+    }
+
+    /// Set the timestamp from an Option
+    pub const fn maybe_timestamp(mut self, ts: Option<TimestampDescriptor>) -> Self {
+        self.timestamp = ts;
         self
     }
 
@@ -513,6 +492,12 @@ impl FieldDescriptorBuilder {
     /// Set the unit for this field.
     pub const fn unit(mut self, unit: Unit) -> Self {
         self.unit = Some(unit);
+        self
+    }
+
+    /// Set the unit from an Option
+    pub const fn maybe_unit(mut self, unit: Option<Unit>) -> Self {
+        self.unit = unit;
         self
     }
 
@@ -610,11 +595,9 @@ mod tests {
 
     #[test]
     fn timestamp() {
-        static DESC: EntryDescriptor = EntryDescriptor::__metrique_private_new(
-            "E",
-            &[],
-            Some(TimestampDescriptor::__metrique_private_new("ts")),
-        );
+        static DESC: EntryDescriptor = EntryDescriptor::builder("E", &[])
+            .timestamp(TimestampDescriptor::new("ts"))
+            .build();
         let d = DescriptorRef::from_static(&DESC);
         assert_eq!(d.timestamp().unwrap().name(), "ts");
     }

@@ -34,130 +34,104 @@ const _: () = {
             __style: u8,
         ) -> &'static ::metrique::writer::core::EntryDescriptor {
             static __METRIQUE_FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
-                ::metrique::writer::core::FieldFlag::__metrique_private_new(
-                    ::std::any::TypeId::of::<MyFlag>(),
-                ),
+                ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
             ];
             static __METRIQUE_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
             static __METRIQUE_FLAGS_2: [::metrique::writer::core::FieldFlag; 2usize] = [
-                ::metrique::writer::core::FieldFlag::__metrique_private_new(
-                    ::std::any::TypeId::of::<OtherFlag>(),
-                ),
-                ::metrique::writer::core::FieldFlag::__metrique_private_new(
-                    ::std::any::TypeId::of::<MyFlag>(),
-                ),
+                ::metrique::writer::core::FieldFlag::new::<OtherFlag>(),
+                ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
             ];
             match __style {
                 ::metrique::STYLE_PRESERVE => {
                     static __METRIQUE_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "count",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "debug",
-                            &__METRIQUE_FLAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "special",
-                            &__METRIQUE_FLAGS_2,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("count")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("debug")
+                            .flags(&__METRIQUE_FLAGS_1)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("special")
+                            .flags(&__METRIQUE_FLAGS_2)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "FlaggedMetrics",
-                        &__METRIQUE_FIELDS_PRESERVE,
-                        None,
-                    );
+                    static __METRIQUE_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "FlaggedMetrics",
+                            &__METRIQUE_FIELDS_PRESERVE,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_PRESERVE
                 }
                 ::metrique::STYLE_PASCAL => {
                     static __METRIQUE_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Count",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Debug",
-                            &__METRIQUE_FLAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "Special",
-                            &__METRIQUE_FLAGS_2,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("Count")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("Debug")
+                            .flags(&__METRIQUE_FLAGS_1)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("Special")
+                            .flags(&__METRIQUE_FLAGS_2)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "FlaggedMetrics",
-                        &__METRIQUE_FIELDS_PASCAL,
-                        None,
-                    );
+                    static __METRIQUE_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "FlaggedMetrics",
+                            &__METRIQUE_FIELDS_PASCAL,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_PASCAL
                 }
                 ::metrique::STYLE_SNAKE => {
                     static __METRIQUE_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "count",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "debug",
-                            &__METRIQUE_FLAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "special",
-                            &__METRIQUE_FLAGS_2,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("count")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("debug")
+                            .flags(&__METRIQUE_FLAGS_1)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("special")
+                            .flags(&__METRIQUE_FLAGS_2)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "FlaggedMetrics",
-                        &__METRIQUE_FIELDS_SNAKE,
-                        None,
-                    );
+                    static __METRIQUE_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "FlaggedMetrics",
+                            &__METRIQUE_FIELDS_SNAKE,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_SNAKE
                 }
                 ::metrique::STYLE_KEBAB => {
                     static __METRIQUE_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "count",
-                            &__METRIQUE_FLAGS_0,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "debug",
-                            &__METRIQUE_FLAGS_1,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            "special",
-                            &__METRIQUE_FLAGS_2,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            None,
-                        ),
+                        ::metrique::writer::core::FieldDescriptor::builder("count")
+                            .flags(&__METRIQUE_FLAGS_0)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("debug")
+                            .flags(&__METRIQUE_FLAGS_1)
+                            .maybe_unit(None)
+                            .build(),
+                        ::metrique::writer::core::FieldDescriptor::builder("special")
+                            .flags(&__METRIQUE_FLAGS_2)
+                            .maybe_unit(None)
+                            .build(),
                     ];
-                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                        "FlaggedMetrics",
-                        &__METRIQUE_FIELDS_KEBAB,
-                        None,
-                    );
+                    static __METRIQUE_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                            "FlaggedMetrics",
+                            &__METRIQUE_FIELDS_KEBAB,
+                        )
+                        .maybe_timestamp(None)
+                        .build();
                     &__METRIQUE_DESC_KEBAB
                 }
                 _ => unreachable!("unknown descriptor style index"),

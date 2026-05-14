@@ -92,12 +92,10 @@ pub(crate) fn generate_descriptor_impl(
                     let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
                     let unit_expr = &f.unit_expr;
                     quote! {
-                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                            #name,
-                            &#flags_ident,
-                            ::metrique::writer::core::FieldShape::Opaque,
-                            #unit_expr,
-                        )
+                        ::metrique::writer::core::FieldDescriptor::builder(#name)
+                            .flags(&#flags_ident)
+                            .maybe_unit(#unit_expr)
+                            .build()
                     }
                 })
                 .collect();
@@ -108,11 +106,9 @@ pub(crate) fn generate_descriptor_impl(
                         #(#field_exprs),*
                     ];
                     static #desc_ident: ::metrique::writer::core::EntryDescriptor =
-                        ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                            #struct_name,
-                            &#fields_ident,
-                            #timestamp_descriptor,
-                        );
+                        ::metrique::writer::core::EntryDescriptor::builder(#struct_name, &#fields_ident)
+                            .maybe_timestamp(#timestamp_descriptor)
+                            .build();
                     &#desc_ident
                 }
             }
@@ -163,9 +159,7 @@ pub(crate) fn resolve_field_flags(
             // skip: don't emit this flag (it suppresses the default within this struct)
         } else {
             flags.push(quote! {
-                ::metrique::writer::core::FieldFlag::__metrique_private_new(
-                    ::std::any::TypeId::of::<#path>(),
-                )
+                ::metrique::writer::core::FieldFlag::new::<#path>()
             });
         }
     }
@@ -181,9 +175,7 @@ pub(crate) fn resolve_field_flags(
             // skip on a default: don't emit
         } else {
             flags.push(quote! {
-                ::metrique::writer::core::FieldFlag::__metrique_private_new(
-                    ::std::any::TypeId::of::<#path>(),
-                )
+                ::metrique::writer::core::FieldFlag::new::<#path>()
             });
         }
     }
