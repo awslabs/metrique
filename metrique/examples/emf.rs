@@ -4,7 +4,8 @@
 use std::time::SystemTime;
 
 use metrique::ServiceMetrics;
-use metrique::emf::{Emf, HighStorageResolution, NoMetric};
+use metrique::emf::Emf;
+use metrique::emf::flags::{HighStorageResolution, NoMetric};
 use metrique::unit_of_work::metrics;
 use metrique::writer::{
     AttachGlobalEntrySinkExt, Entry, EntryIoStreamExt, FormatExt, GlobalEntrySink,
@@ -24,8 +25,10 @@ struct RequestMetrics {
     operation: &'static str,
     status: &'static str,
     number_of_ducks: usize,
-    no_metric: NoMetric<usize>,
-    high_storage_resolution: HighStorageResolution<usize>,
+    #[metrics(flags(NoMetric))]
+    no_metric: usize,
+    #[metrics(flags(HighStorageResolution))]
+    high_storage_resolution: usize,
     active_plugins: Vec<String>,
 }
 
@@ -36,8 +39,8 @@ impl RequestMetrics {
             operation,
             status: "INCOMPLETE",
             number_of_ducks: 0,
-            no_metric: (0).into(),
-            high_storage_resolution: (0).into(),
+            no_metric: 0,
+            high_storage_resolution: 0,
             active_plugins: vec!["auth".into(), "logging".into()],
         }
         .append_on_drop(ServiceMetrics::sink())
@@ -66,8 +69,8 @@ fn main() {
     );
     let mut request = RequestMetrics::init("CountDucks");
     request.number_of_ducks += 10;
-    *request.no_metric += 1;
-    *request.high_storage_resolution += 1;
+    request.no_metric += 1;
+    request.high_storage_resolution += 1;
     request.status = "SUCCESS";
 
     /*
