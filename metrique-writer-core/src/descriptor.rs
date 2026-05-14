@@ -23,6 +23,18 @@ pub struct EntryDescriptor {
 }
 
 impl EntryDescriptor {
+    /// Create a builder for an [`EntryDescriptor`] with the given name and fields.
+    pub const fn builder(
+        name: &'static str,
+        fields: &'static [FieldDescriptor],
+    ) -> EntryDescriptorBuilder {
+        EntryDescriptorBuilder {
+            name,
+            fields,
+            timestamp: None,
+        }
+    }
+
     /// Hidden constructor for use by the metrique macro only.
     #[doc(hidden)]
     pub const fn __metrique_private_new(
@@ -48,6 +60,16 @@ pub struct FieldDescriptor {
 }
 
 impl FieldDescriptor {
+    /// Create a builder for a [`FieldDescriptor`] with the given name.
+    pub const fn builder(name: &'static str) -> FieldDescriptorBuilder {
+        FieldDescriptorBuilder {
+            name,
+            flags: &[],
+            shape: FieldShape::Opaque,
+            unit: None,
+        }
+    }
+
     /// Hidden constructor for use by the metrique macro only.
     #[doc(hidden)]
     pub const fn __metrique_private_new(
@@ -72,6 +94,11 @@ pub struct TimestampDescriptor {
 }
 
 impl TimestampDescriptor {
+    /// Create a [`TimestampDescriptor`] with the given name.
+    pub const fn new(name: &'static str) -> Self {
+        Self { name }
+    }
+
     /// Field name as emitted through `EntryWriter::timestamp`.
     pub fn name(&self) -> &str {
         self.name
@@ -416,29 +443,6 @@ impl FieldFlag {
     }
 }
 
-// ─── Builders ────────────────────────────────────────────────────────────────
-
-/// Create an [`EntryDescriptor`] with the given name and fields.
-///
-/// ```ignore
-/// use metrique_writer_core::descriptor::*;
-///
-/// static FIELDS: [FieldDescriptor; 1] = [
-///     field("request_count").unit(Unit::Count).build(),
-/// ];
-/// static DESC: EntryDescriptor = entry("MyMetrics", &FIELDS).build();
-/// ```
-pub const fn entry(
-    name: &'static str,
-    fields: &'static [FieldDescriptor],
-) -> EntryDescriptorBuilder {
-    EntryDescriptorBuilder {
-        name,
-        fields,
-        timestamp: None,
-    }
-}
-
 /// Builder for [`EntryDescriptor`].
 pub struct EntryDescriptorBuilder {
     name: &'static str,
@@ -460,23 +464,6 @@ impl EntryDescriptorBuilder {
             fields: self.fields,
             timestamp: self.timestamp,
         }
-    }
-}
-
-/// Create a [`FieldDescriptor`] with the given name.
-///
-/// ```ignore
-/// static FIELD: FieldDescriptor = field("latency")
-///     .flags(&MY_FLAGS)
-///     .unit(Unit::Milliseconds)
-///     .build();
-/// ```
-pub const fn field(name: &'static str) -> FieldDescriptorBuilder {
-    FieldDescriptorBuilder {
-        name,
-        flags: &[],
-        shape: FieldShape::Opaque,
-        unit: None,
     }
 }
 
@@ -518,18 +505,13 @@ impl FieldDescriptorBuilder {
     }
 }
 
-/// Create a [`TimestampDescriptor`] with the given name.
-pub const fn timestamp(name: &'static str) -> TimestampDescriptor {
-    TimestampDescriptor { name }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn descriptor_ref_stable_id() {
-        static DESC: EntryDescriptor = entry("Test", &[]).build();
+        static DESC: EntryDescriptor = EntryDescriptor::builder("Test", &[]).build();
         let r1 = DescriptorRef::from_static(&DESC);
         let r2 = DescriptorRef::from_static(&DESC);
         assert_eq!(r1.id(), r2.id());
@@ -538,8 +520,8 @@ mod tests {
 
     #[test]
     fn different_descriptors_different_ids() {
-        static A: EntryDescriptor = entry("A", &[]).build();
-        static B: EntryDescriptor = entry("B", &[]).build();
+        static A: EntryDescriptor = EntryDescriptor::builder("A", &[]).build();
+        static B: EntryDescriptor = EntryDescriptor::builder("B", &[]).build();
         assert_ne!(
             DescriptorRef::from_static(&A).id(),
             DescriptorRef::from_static(&B).id()
@@ -548,7 +530,7 @@ mod tests {
 
     #[test]
     fn prefix_changes_id() {
-        static DESC: EntryDescriptor = entry("T", &[]).build();
+        static DESC: EntryDescriptor = EntryDescriptor::builder("T", &[]).build();
         let plain = DescriptorRef::from_static(&DESC);
         let prefixed = DescriptorRef::from_static(&DESC).with_prefix("Api");
         assert_ne!(plain.id(), prefixed.id());
@@ -556,8 +538,8 @@ mod tests {
 
     #[test]
     fn field_name_no_prefix() {
-        static FIELDS: [FieldDescriptor; 1] = [field("MyField").build()];
-        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::builder("MyField").build()];
+        static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC);
         assert_eq!(d.fields().next().unwrap().base_name(), "MyField");
@@ -565,8 +547,8 @@ mod tests {
 
     #[test]
     fn field_name_with_prefix() {
-        static FIELDS: [FieldDescriptor; 1] = [field("Latency").build()];
-        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::builder("Latency").build()];
+        static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC).with_prefix("Api");
         let fields: Vec<_> = d.fields().collect();
@@ -576,8 +558,8 @@ mod tests {
 
     #[test]
     fn field_name_with_nested_prefixes() {
-        static FIELDS: [FieldDescriptor; 1] = [field("Latency").build()];
-        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::builder("Latency").build()];
+        static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
         // Simulates: inner child applies "Api", then outer parent applies "Http"
         let d = DescriptorRef::from_static(&DESC)
@@ -591,10 +573,10 @@ mod tests {
     #[test]
     fn field_view_iteration() {
         static FIELDS: [FieldDescriptor; 2] = [
-            field("Alpha").build(),
-            field("Beta").unit(Unit::Count).build(),
+            FieldDescriptor::builder("Alpha").build(),
+            FieldDescriptor::builder("Beta").unit(Unit::Count).build(),
         ];
-        static DESC: EntryDescriptor = entry("T", &FIELDS).build();
+        static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
         let d = DescriptorRef::from_static(&DESC);
         let fields: Vec<_> = d.fields().collect();
@@ -628,7 +610,7 @@ mod tests {
     #[test]
     fn boxentry_forwards() {
         use crate::{BoxEntry, Entry, EntryWriter};
-        static DESC: EntryDescriptor = entry("X", &[]).build();
+        static DESC: EntryDescriptor = EntryDescriptor::builder("X", &[]).build();
         struct WithDesc;
         impl Entry for WithDesc {
             fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}

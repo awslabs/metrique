@@ -1,6 +1,6 @@
 use super::resolve_field_flags;
 use super::*;
-use super::{DescriptorFieldMeta, generate_descriptor_impl, style_const_for};
+use super::{DescriptorFieldMeta, generate_descriptor_impl};
 use crate::inflect::NameStyle;
 use crate::inflect::metric_name;
 

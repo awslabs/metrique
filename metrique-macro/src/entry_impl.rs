@@ -136,7 +136,7 @@ pub(crate) fn generate_descriptor_impl(
 
 /// Returns the style constant token stream for a given `NameStyle`.
 /// Maps the macro-internal `NameStyle` enum to the runtime `::metrique::STYLE_*` constants.
-pub(crate) fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
+fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
     match style {
         crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },
         crate::inflect::NameStyle::PascalCase => quote! { ::metrique::STYLE_PASCAL },
