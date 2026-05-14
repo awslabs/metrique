@@ -2180,4 +2180,44 @@ mod tests {
         );
         assert_snapshot!("enum_with_flags", parsed_file);
     }
+
+    #[test]
+    fn test_struct_with_timestamp_and_unit() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase")]
+            struct TimestampMetrics {
+                #[metrics(timestamp)]
+                ts: std::time::SystemTime,
+                #[metrics(unit = Millisecond)]
+                latency: u64,
+                count: u64,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(rename_all = "PascalCase")));
+        assert_snapshot!("struct_with_timestamp_and_unit", parsed_file);
+    }
+
+    #[test]
+    fn test_enum_with_timestamp_and_unit() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase")]
+            enum TimestampEnum {
+                Read {
+                    #[metrics(timestamp)]
+                    ts: std::time::SystemTime,
+                    #[metrics(unit = Millisecond)]
+                    latency: u64,
+                },
+                Write {
+                    #[metrics(timestamp)]
+                    ts: std::time::SystemTime,
+                    bytes: u64,
+                },
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(rename_all = "PascalCase")));
+        assert_snapshot!("enum_with_timestamp_and_unit", parsed_file);
+    }
 }
