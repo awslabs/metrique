@@ -671,73 +671,9 @@ fn enum_variant_field_order_matches_declaration() {
     assert_eq!(child_fields[0].base_name(), "AVal");
 }
 
-#[metrics(rename_all = "PascalCase")]
-enum EnumCfgFlatten {
-    WithCfg {
-        #[metrics(flatten)]
-        first: OrderChildA,
-        #[cfg(test)]
-        #[metrics(flatten)]
-        middle: OrderChildB,
-        #[metrics(flatten)]
-        last: OrderChildC,
-    },
-}
-
-#[test]
-fn enum_cfg_flatten_ordering_preserved() {
-    let m = EnumCfgFlatten::WithCfg {
-        first: OrderChildA { a_val: 1 },
-        middle: OrderChildB { b_val: 2 },
-        last: OrderChildC { c_val: 3 },
-    };
-    let closed = metrique::CloseValue::close(m);
-    let entry = metrique::RootEntry::new(closed);
-    let descriptors = entry.descriptors().unwrap();
-    // base (0 fields) + first + middle + last
-    assert_eq!(descriptors.len(), 4);
-    let d1: Vec<_> = descriptors[1].fields().collect();
-    let d2: Vec<_> = descriptors[2].fields().collect();
-    let d3: Vec<_> = descriptors[3].fields().collect();
-    assert_eq!(d1[0].base_name(), "AVal");
-    assert_eq!(d2[0].base_name(), "BVal");
-    assert_eq!(d3[0].base_name(), "CVal");
-}
-
 #[metrics(subfield)]
 pub struct TupleCfgChild {
     tc_val: u64,
-}
-
-#[metrics(rename_all = "PascalCase")]
-enum TupleCfgEnum {
-    Variant(
-        #[metrics(flatten)] OrderChildA,
-        #[cfg(test)]
-        #[metrics(flatten)]
-        TupleCfgChild,
-        #[metrics(flatten)] OrderChildC,
-    ),
-}
-
-#[test]
-fn tuple_variant_cfg_flatten_descriptor_ordering() {
-    let m = TupleCfgEnum::Variant(
-        OrderChildA { a_val: 1 },
-        TupleCfgChild { tc_val: 2 },
-        OrderChildC { c_val: 3 },
-    );
-    let closed = metrique::CloseValue::close(m);
-    let entry = metrique::RootEntry::new(closed);
-    let descriptors = entry.descriptors().unwrap();
-    // base (0 fields) + A + TupleCfgChild (cfg=test active) + C
-    assert_eq!(descriptors.len(), 4);
-    let d1: Vec<_> = descriptors[1].fields().collect();
-    let d2: Vec<_> = descriptors[2].fields().collect();
-    let d3: Vec<_> = descriptors[3].fields().collect();
-    assert_eq!(d1[0].base_name(), "AVal");
-    assert_eq!(d2[0].base_name(), "TcVal");
-    assert_eq!(d3[0].base_name(), "CVal");
 }
 
 #[test]
@@ -851,4 +787,37 @@ fn enum_child_rename_all_takes_precedence() {
     // Enum child has rename_all = "snake_case", so it wins over parent's PascalCase
     let child_fields: Vec<_> = descs[1].fields().collect();
     assert_eq!(child_fields[0].base_name(), "my_field_name");
+}
+
+#[metrics(rename_all = "PascalCase")]
+enum EnumCfgVariant {
+    Always {
+        val: u64,
+    },
+    #[cfg(test)]
+    TestOnly {
+        val: u64,
+    },
+    Never {
+        val: u64,
+    },
+}
+
+#[test]
+fn enum_cfg_on_whole_variant() {
+    use metrique::writer::Entry;
+
+    // Always variant
+    let m = EnumCfgVariant::Always { val: 1 };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+    assert_eq!(descs[0].name(), "EnumCfgVariant::Always");
+
+    // TestOnly variant (cfg(test) is active)
+    let m2 = EnumCfgVariant::TestOnly { val: 2 };
+    let closed2 = metrique::CloseValue::close(m2);
+    let entry2 = metrique::RootEntry::new(closed2);
+    let descs2 = entry2.descriptors().unwrap();
+    assert_eq!(descs2[0].name(), "EnumCfgVariant::TestOnly");
 }

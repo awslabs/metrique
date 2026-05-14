@@ -61,127 +61,37 @@ pub(crate) fn generate_struct_entry_impl(
     }
 }
 
-/// Builds the flatten chain entries for the `descriptors()` method.
-///
-/// Each flatten field produces either:
-/// - A normal chain (`.chain(child.descriptors())`) for non-cfg fields
-/// - A cfg-gated let-rebinding (`#[cfg(...)] let __desc = __desc.chain(...)`) for cfg fields
-///
-/// Builds flatten chain entries for the descriptors() method.
-///
-/// Returns flatten_chains where each non-cfg chain is a full
-/// iterator expression (used with make_binary_tree_chain for balanced type nesting).
-/// Cfg-gated chains use let-rebinding and are applied after the tree.
-fn build_flatten_chains(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<(bool, Ts2)> {
-    let mut flatten_chains: Vec<(bool, Ts2)> = Vec::new();
+fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<Ts2> {
+    let mut writes = Vec::new();
+    let writer_ident = mixed_site_writer();
+    let self_ident = mixed_site_self();
 
-    for field in fields {
-        match &field.attrs.kind {
-            MetricsFieldKind::Flatten { prefix, .. } => {
-                let field_ident = &field.ident;
-                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
-                let ns = make_ns(root_attrs.rename_all, field.span);
-
-                let prefix_expr = prefix.as_ref().map(|pfx| {
-                    let inflected = pfx.apply_prefix_only(root_attrs.rename_all);
-                    quote! { .with_prefix(#inflected) }
-                });
-
-                let child_expr = if prefix_expr.is_some() {
-                    quote! {
-                        ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                            .map_available(|d| d #prefix_expr)
-                    }
-                } else {
-                    quote! {
-                        ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                    }
-                };
-
-                if cfg_attrs.is_empty() {
-                    flatten_chains.push((false, child_expr));
-                } else {
-                    flatten_chains.push((
-                        true,
-                        quote! {
-                            #(#cfg_attrs)* let __desc = __desc.chain(#child_expr);
-                        },
-                    ));
-                }
-            }
-            MetricsFieldKind::FlattenEntry(_) => {
-                let field_ident = &field.ident;
-                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
-                let child_expr = quote! {
-                    ::metrique::writer::Entry::descriptors(&self.#field_ident)
-                };
-                if cfg_attrs.is_empty() {
-                    flatten_chains.push((false, child_expr));
-                } else {
-                    flatten_chains.push((
-                        true,
-                        quote! {
-                            #(#cfg_attrs)* let __desc = __desc.chain(#child_expr);
-                        },
-                    ));
-                }
-            }
-            _ => {}
-        }
+    for field_ident in root_attrs.configuration_field_names() {
+        writes.push(quote! {
+            ::metrique::writer::Entry::write(&#self_ident.#field_ident, #writer_ident);
+        });
     }
 
-    flatten_chains
+    writes.extend(generate_field_writes(
+        fields,
+        root_attrs,
+        |field_ident| quote! { &#self_ident.#field_ident },
+    ));
+    writes
 }
 
-/// Assembles the `descriptors()` method body from the entry's own descriptor
-/// and any flatten chains.
-///
-/// When all chains are non-cfg, generates a simple expression chain.
-/// When cfg-gated chains exist, uses let-rebinding so cfg-disabled fields
-/// are excluded without affecting the iterator type.
-fn assemble_descriptors_method(
-    entry_name: &Ident,
-    own_style_ns: &Ts2,
-    flatten_chains: &[(bool, Ts2)],
-) -> Ts2 {
-    let base_expr = quote! {
-        ::metrique::writer::core::Descriptors::available(
-            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(<#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX)
-            ))
-        )
-    };
+fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Ts2 {
+    let self_ident = mixed_site_self();
 
-    if flatten_chains.is_empty() {
-        return quote! {
-            fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
-                #base_expr
-            }
-        };
-    }
+    let sample_group_fields: Vec<_> = fields
+        .iter()
+        .filter_map(|field| {
+            collect_field_sample_group(field, root_attrs, |f| quote! { &#self_ident.#f })
+                .map(|(_, iter)| iter)
+        })
+        .collect();
 
-    // Build a chain of .chain() calls
-    let mut chain_expr = base_expr;
-    for (is_cfg, child_expr) in flatten_chains {
-        if *is_cfg {
-            // cfg-gated: wrap in cfg attribute
-            chain_expr = quote! {
-                {
-                    let __desc = #chain_expr;
-                    #child_expr
-                    __desc
-                }
-            };
-        } else {
-            chain_expr = quote! { #chain_expr.chain(#child_expr) };
-        }
-    }
-
-    quote! {
-        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
-            #chain_expr
-        }
-    }
+    make_binary_tree_chain(sample_group_fields)
 }
 
 /// Generates descriptor infrastructure for a struct entry.
@@ -250,35 +160,93 @@ fn generate_descriptor(
     }
 }
 
-fn generate_write_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Vec<Ts2> {
-    let mut writes = Vec::new();
-    let writer_ident = mixed_site_writer();
-    let self_ident = mixed_site_self();
+/// Builds the flatten chain entries for the `descriptors()` method.
+///
+/// Each flatten field produces either:
+/// - A normal chain (`.chain(child.descriptors())`) for non-cfg fields
+/// - A cfg-gated let-rebinding (`#[cfg(...)] let __desc = __desc.chain(...)`) for cfg fields
+///
+/// Builds flatten chain entries for the descriptors() method.
+///
+/// Returns flatten_chains where each non-cfg chain is a full
+/// iterator expression (used with make_binary_tree_chain for balanced type nesting).
+/// Cfg-gated chains use let-rebinding and are applied after the tree.
+fn build_flatten_chains(
+    fields: &[MetricsField],
+    root_attrs: &RootAttributes,
+) -> Vec<(Vec<Ts2>, Ts2)> {
+    let mut flatten_chains: Vec<(Vec<Ts2>, Ts2)> = Vec::new();
 
-    for field_ident in root_attrs.configuration_field_names() {
-        writes.push(quote! {
-            ::metrique::writer::Entry::write(&#self_ident.#field_ident, #writer_ident);
-        });
+    for field in fields {
+        match &field.attrs.kind {
+            MetricsFieldKind::Flatten { prefix, .. } => {
+                let field_ident = &field.ident;
+                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
+                let ns = make_ns(root_attrs.rename_all, field.span);
+
+                let prefix_expr = prefix.as_ref().map(|pfx| {
+                    let inflected = pfx.apply_prefix_only(root_attrs.rename_all);
+                    quote! { .with_prefix(#inflected) }
+                });
+
+                let child_expr = if prefix_expr.is_some() {
+                    quote! {
+                        ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
+                            .map_available(|d| d #prefix_expr)
+                    }
+                } else {
+                    quote! {
+                        ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
+                    }
+                };
+
+                flatten_chains.push((
+                    cfg_attrs.iter().map(|a| quote! { #a }).collect(),
+                    child_expr,
+                ));
+            }
+            MetricsFieldKind::FlattenEntry(_) => {
+                let field_ident = &field.ident;
+                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
+                let child_expr = quote! {
+                    ::metrique::writer::Entry::descriptors(&self.#field_ident)
+                };
+                flatten_chains.push((
+                    cfg_attrs.iter().map(|a| quote! { #a }).collect(),
+                    child_expr,
+                ));
+            }
+            _ => {}
+        }
     }
 
-    writes.extend(generate_field_writes(
-        fields,
-        root_attrs,
-        |field_ident| quote! { &#self_ident.#field_ident },
-    ));
-    writes
+    flatten_chains
 }
 
-fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAttributes) -> Ts2 {
-    let self_ident = mixed_site_self();
+/// Assembles the `descriptors()` method body from the entry's own descriptor
+/// and any flatten chains.
+///
+/// When all chains are non-cfg, generates a simple expression chain.
+/// When cfg-gated chains exist, uses let-rebinding so cfg-disabled fields
+/// are excluded without affecting the iterator type.
+fn assemble_descriptors_method(
+    entry_name: &Ident,
+    own_style_ns: &Ts2,
+    flatten_chains: &[(Vec<Ts2>, Ts2)],
+) -> Ts2 {
+    let base_expr = quote! {
+        ::metrique::writer::core::Descriptors::available(
+            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                #entry_name::__metrique_descriptor(<#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX)
+            ))
+        )
+    };
 
-    let sample_group_fields: Vec<_> = fields
-        .iter()
-        .filter_map(|field| {
-            collect_field_sample_group(field, root_attrs, |f| quote! { &#self_ident.#f })
-                .map(|(_, iter)| iter)
-        })
-        .collect();
+    let chain_expr = super::build_descriptors_chain(base_expr, flatten_chains);
 
-    make_binary_tree_chain(sample_group_fields)
+    quote! {
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #chain_expr
+        }
+    }
 }

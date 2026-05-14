@@ -196,16 +196,8 @@ fn generate_tuple_writes(
                     )
                 }
             };
-            let cfg_attrs: Vec<_> = td
-                .attrs
-                .iter()
-                .filter(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"))
-                .collect();
-            let write = if cfg_attrs.is_empty() {
-                write
-            } else {
-                quote! { #(#cfg_attrs)* { #write } }
-            };
+            // Note: cfg on enum variant fields is rejected at parse time,
+            // so no cfg wrapping is needed here (unlike struct fields).
             (binding, write)
         })
         .unzip()
@@ -473,17 +465,18 @@ fn build_variant_descriptor_arm(
             if flatten_fields.is_empty() {
                 (quote! { #entry_name::#variant_ident { .. } }, base.clone())
             } else {
+                // Cfg on enum variant fields is rejected at parse time, so no cfg filtering needed.
                 let bindings: Vec<_> = flatten_fields.iter().map(|f| &f.ident).collect();
-                let chains: Vec<_> = flatten_fields
+                let children: Vec<(Vec<Ts2>, Ts2)> = flatten_fields
                     .iter()
-                    .map(|f| flatten_chain_expr(&f.attrs.kind, &f.ident, ns))
+                    .map(|f| {
+                        let child = flatten_chain_expr(&f.attrs.kind, &f.ident, ns);
+                        (vec![], child)
+                    })
                     .collect();
-                let mut expr = base.clone();
-                for child in &chains {
-                    expr = quote! { #expr.chain(#child) };
-                }
+                let expr = super::build_descriptors_chain(base.clone(), &children);
                 (
-                    quote! { #entry_name::#variant_ident { #(#bindings),*, .. } },
+                    quote! { #entry_name::#variant_ident { #(#bindings,)* .. } },
                     expr,
                 )
             }
@@ -506,16 +499,17 @@ fn build_variant_descriptor_arm(
                 })
                 .collect();
 
-            let mut expr = base.clone();
-            for (i, td) in tds
+            let children: Vec<(Vec<Ts2>, Ts2)> = tds
                 .iter()
                 .enumerate()
                 .filter(|(_, td)| is_flatten(&td.kind))
-            {
-                let b = format_ident!("__v{}", i);
-                let child = flatten_chain_expr(&td.kind, &quote! { #b }, ns);
-                expr = quote! { #expr.chain(#child) };
-            }
+                .map(|(i, td)| {
+                    let b = format_ident!("__v{}", i);
+                    let child = flatten_chain_expr(&td.kind, &quote! { #b }, ns);
+                    (vec![], child)
+                })
+                .collect();
+            let expr = super::build_descriptors_chain(base.clone(), &children);
 
             (quote! { #entry_name::#variant_ident(#(#patterns),*) }, expr)
         }
