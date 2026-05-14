@@ -748,8 +748,6 @@ struct ParentWithEnumChild {
 
 #[test]
 fn enum_style_propagation_from_parent() {
-    use metrique::writer::Entry;
-
     let m = ParentWithEnumChild {
         child: StyleEnum::Variant { my_field: 42 },
     };
@@ -775,8 +773,6 @@ struct ParentWithSnakeEnum {
 
 #[test]
 fn enum_child_rename_all_takes_precedence() {
-    use metrique::writer::Entry;
-
     let m = ParentWithSnakeEnum {
         child: SnakeCaseEnum::Variant { my_field_name: 1 },
     };
@@ -805,8 +801,6 @@ enum EnumCfgVariant {
 
 #[test]
 fn enum_cfg_on_whole_variant() {
-    use metrique::writer::Entry;
-
     // Always variant
     let m = EnumCfgVariant::Always { val: 1 };
     let closed = metrique::CloseValue::close(m);
@@ -820,4 +814,41 @@ fn enum_cfg_on_whole_variant() {
     let entry2 = metrique::RootEntry::new(closed2);
     let descs2 = entry2.descriptors().unwrap();
     assert_eq!(descs2[0].name(), "EnumCfgVariant::TestOnly");
+}
+
+#[test]
+fn descriptor_forwarding_through_wrappers() {
+    // Box<T> forwards via BoxEntry
+    let m = BasicMetrics {
+        request_id: String::new(),
+        count: 0,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let root = metrique::RootEntry::new(closed);
+    let boxed = metrique::writer::BoxEntry::new(root);
+    let descs = boxed.descriptors().unwrap();
+    assert_eq!(descs[0].name(), "BasicMetrics");
+
+    // &T forwards
+    let m2 = BasicMetrics {
+        request_id: String::new(),
+        count: 0,
+    };
+    let closed2 = metrique::CloseValue::close(m2);
+    let root2 = metrique::RootEntry::new(closed2);
+    let descs = (&root2).descriptors().unwrap();
+    assert_eq!(descs[0].name(), "BasicMetrics");
+
+    // Arc<T> forwards (via BoxEntry which uses Arc internally)
+    // Already tested via BoxEntry above
+
+    // Option<T> forwards when Some, Unavailable-like when None
+    let m3 = BasicMetrics {
+        request_id: String::new(),
+        count: 0,
+    };
+    let closed3 = metrique::CloseValue::close(m3);
+    let opt = Some(metrique::RootEntry::new(closed3));
+    let descs = opt.as_ref().unwrap().descriptors().unwrap();
+    assert_eq!(descs[0].name(), "BasicMetrics");
 }

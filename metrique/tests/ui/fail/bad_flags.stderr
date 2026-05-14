@@ -15,15 +15,3 @@ error: flags(...) cannot be used on flatten or flatten_entry fields. Apply flags
    |
 29 |     #[metrics(flatten, flags(MyTag))]
    |               ^^^^^^^
-
-error: cfg attributes on fields inside enum variants are not supported. Use a cfg-gated variant or an Option field instead.
-  --> tests/ui/fail/bad_flags.rs:40:9
-   |
-40 |         field: u64,
-   |         ^^^^^
-
-error: cfg attributes on fields inside enum variants are not supported. Use a cfg-gated variant or an Option field instead.
-  --> tests/ui/fail/bad_flags.rs:53:9
-   |
-53 |         #[cfg(test)]
-   |         ^

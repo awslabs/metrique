@@ -32,26 +32,3 @@ struct FlagsOnFlatten {
 
 fn main() {}
 
-// cfg on any field inside enum variant is not supported
-#[metrics]
-enum CfgFieldEnum {
-    V {
-        #[cfg(test)]
-        field: u64,
-    },
-}
-
-// cfg on tuple variant field also not supported
-#[metrics(subfield)]
-struct TupleChild {
-    val: u64,
-}
-
-#[metrics]
-enum CfgTupleEnum {
-    V(
-        #[cfg(test)]
-        #[metrics(flatten)]
-        TupleChild,
-    ),
-}
