@@ -691,6 +691,29 @@ impl From<RawTag> for Tag {
     }
 }
 
+/// Wrapper for parsing `flags(Path1, Path2, ...)` as a single darling field.
+///
+/// Implements `FromMeta` by parsing the token stream directly via `parse_args_with`.
+/// This works around a darling limitation where custom `FromMeta` types are silently
+/// dropped when they appear alongside darling `Flag` fields (like `flatten`, `no_close`)
+/// in the same attribute struct.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FlagsList(pub(crate) Vec<syn::Path>);
+
+impl FromMeta for FlagsList {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+        match item {
+            syn::Meta::List(list) => {
+                let parsed: syn::punctuated::Punctuated<syn::Path, syn::Token![,]> = list
+                    .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+                    .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
+                Ok(FlagsList(parsed.into_iter().collect()))
+            }
+            _ => Err(darling::Error::custom("expected flags(Path, ...)").with_span(item)),
+        }
+    }
+}
+
 #[derive(Debug, Default, FromMeta)]
 struct RawRootAttributes {
     prefix: Option<SpannedKv<String>>,
@@ -878,6 +901,9 @@ struct RawMetricsFieldAttrs {
 
     #[darling(default)]
     exact_prefix: Option<SpannedKv<String>>,
+
+    #[darling(default)]
+    flags: FlagsList,
 }
 
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
@@ -1041,6 +1067,22 @@ impl RawMetricsFieldAttrs {
             }
         }
 
+        // flags(...) on flatten/flatten_entry/timestamp/ignore is not yet supported.
+        if !self.flags.0.is_empty()
+            && let Some((
+                MetricsFieldKind::Flatten { span, .. }
+                | MetricsFieldKind::FlattenEntry(span)
+                | MetricsFieldKind::Timestamp(span)
+                | MetricsFieldKind::Ignore(span),
+                _,
+            )) = &out
+        {
+            return Err(darling::Error::custom(
+                "flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.",
+            )
+            .with_span(span));
+        }
+
         Ok(MetricsFieldAttrs {
             close,
             kind: match out {
@@ -1052,6 +1094,7 @@ impl RawMetricsFieldAttrs {
                     format: format.cloned(),
                 },
             },
+            flags: self.flags.0,
         })
     }
 }
@@ -1078,6 +1121,7 @@ fn validate_name_inner(name: &str) -> std::result::Result<(), &'static str> {
 struct MetricsFieldAttrs {
     close: bool,
     kind: MetricsFieldKind,
+    flags: Vec<syn::Path>,
 }
 
 pub(crate) struct MetricsField {

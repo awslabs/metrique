@@ -227,13 +227,27 @@ fn generate_field_writes(
                 let (extra, name) = make_inflect_metric_name(root_attrs, field);
                 let field_access = field_access(&field.ident);
                 let value = crate::value_impl::format_value(format, field_span, field_access);
+
+                let wrapped_value = if field.attrs.flags.is_empty() {
+                    quote! { #value }
+                } else {
+                    let flags = &field.attrs.flags;
+                    let mut expr = quote! { #value };
+                    for path in flags {
+                        expr = quote! {
+                            ::metrique::writer::value::ForceFlag::<_, #path>::from(#expr)
+                        };
+                    }
+                    quote! { &#expr }
+                };
+
                 quote_spanned! {field_span=>
                     ::metrique::writer::EntryWriter::value(#writer_ident,
                         {
                             #extra
                             ::metrique::concat::const_str_value::<#name>()
                         }
-                        , #value);
+                        , #wrapped_value);
                 }
             }
         };
