@@ -297,7 +297,7 @@ impl<NS: crate::NameStyle, T: InflectableEntry<NS>, F: FlagConstructor> Inflecta
         <T as InflectableEntry<NS>>::sample_group(self)
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
         <T as InflectableEntry<NS>>::descriptors(self)
     }
 }

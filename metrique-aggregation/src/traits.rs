@@ -322,8 +322,14 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
         self.aggregated.write(w);
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
-        self.key.descriptors().chain(self.aggregated.descriptors())
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        match (self.key.descriptors(), self.aggregated.descriptors()) {
+            (
+                metrique_writer_core::Descriptors::Available(a),
+                metrique_writer_core::Descriptors::Available(b),
+            ) => metrique_writer_core::Descriptors::available(a.into_iter().chain(b.into_iter())),
+            _ => metrique_writer_core::Descriptors::Unavailable,
+        }
     }
 }
 
@@ -342,9 +348,7 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
     }
 
     fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
-        metrique_writer_core::Descriptors::available(
-            self.key.descriptors().chain(self.aggregated.descriptors()),
-        )
+        self.key.descriptors().chain(self.aggregated.descriptors())
     }
 }
 

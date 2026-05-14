@@ -137,15 +137,13 @@ const _: () = {
             let __metrique_self = self;
             ::std::iter::empty()
         }
-        fn descriptors(
-            &self,
-        ) -> impl ::std::iter::Iterator<
-            Item = ::metrique::writer::core::DescriptorRef<'_>,
-        > {
-            ::std::iter::once(
-                ::metrique::writer::core::DescriptorRef::from_static(
-                    NestedEntry::__metrique_descriptor(
-                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        NestedEntry::__metrique_descriptor(
+                            <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                        ),
                     ),
                 ),
             )
@@ -244,34 +242,6 @@ const _: () = {
                 StatusEntrySampleGroupIter::V0(iter) => iter.next(),
                 StatusEntrySampleGroupIter::V1(iter) => iter.next(),
                 StatusEntrySampleGroupIter::V2(iter) => iter.next(),
-            }
-        }
-    }
-    enum StatusEntryDescIter<'__metrique_lt, V0, V1, V2> {
-        V0(V0),
-        V1(V1),
-        V2(V2),
-        __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
-    }
-    impl<
-        '__metrique_lt,
-        V0: ::std::iter::Iterator<
-                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
-            >,
-        V1: ::std::iter::Iterator<
-                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
-            >,
-        V2: ::std::iter::Iterator<
-                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
-            >,
-    > ::std::iter::Iterator for StatusEntryDescIter<'__metrique_lt, V0, V1, V2> {
-        type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
-        fn next(&mut self) -> ::std::option::Option<Self::Item> {
-            match self {
-                StatusEntryDescIter::V0(iter) => iter.next(),
-                StatusEntryDescIter::V1(iter) => iter.next(),
-                StatusEntryDescIter::V2(iter) => iter.next(),
-                StatusEntryDescIter::__Phantom(_) => None,
             }
         }
     }
@@ -376,80 +346,76 @@ const _: () = {
                 }
             }
         }
-        fn descriptors(
-            &self,
-        ) -> impl ::std::iter::Iterator<
-            Item = ::metrique::writer::core::DescriptorRef<'_>,
-        > {
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
             #[allow(deprecated)]
             match self {
                 StatusEntry::Active { .. } => {
-                    StatusEntryDescIter::V0({
-                        static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VFLAGS_0_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
-                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                                "count",
-                                &__METRIQUE_VFLAGS_0_0,
-                                ::metrique::writer::core::FieldShape::Opaque,
-                                None,
-                            ),
-                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                                "latency",
-                                &__METRIQUE_VFLAGS_0_1,
-                                ::metrique::writer::core::FieldShape::Opaque,
-                                Some(
-                                    <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                                ),
-                            ),
-                        ];
-                        static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                            "Status::Active",
-                            &__METRIQUE_VFIELDS_0,
+                    static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                    static __METRIQUE_VFLAGS_0_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                    static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "count",
+                            &__METRIQUE_VFLAGS_0_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
                             None,
-                        );
+                        ),
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "latency",
+                            &__METRIQUE_VFLAGS_0_1,
+                            ::metrique::writer::core::FieldShape::Opaque,
+                            Some(
+                                <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                            ),
+                        ),
+                    ];
+                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "Status::Active",
+                        &__METRIQUE_VFIELDS_0,
+                        None,
+                    );
+                    ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
                             ::metrique::writer::core::DescriptorRef::from_static(
                                 &__METRIQUE_VDESC_0,
                             ),
-                        )
-                    })
+                        ),
+                    )
                 }
                 StatusEntry::Pending(__v0) => {
-                    StatusEntryDescIter::V1(
-                        {
-                            static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
-                            static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                                "Status::Pending",
-                                &__METRIQUE_VFIELDS_1,
-                                None,
-                            );
+                    {
+                        static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            "Status::Pending",
+                            &__METRIQUE_VFIELDS_1,
+                            None,
+                        );
+                        ::metrique::writer::core::Descriptors::available(
                             ::std::iter::once(
                                 ::metrique::writer::core::DescriptorRef::from_static(
                                     &__METRIQUE_VDESC_1,
                                 ),
-                            )
-                        }
-                            .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0)),
-                    )
+                            ),
+                        )
+                    }
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
                 }
                 StatusEntry::Multi(__v0, _) => {
-                    StatusEntryDescIter::V2(
-                        {
-                            static __METRIQUE_VFIELDS_2: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
-                            static __METRIQUE_VDESC_2: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                                "Status::Multi",
-                                &__METRIQUE_VFIELDS_2,
-                                None,
-                            );
+                    {
+                        static __METRIQUE_VFIELDS_2: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                        static __METRIQUE_VDESC_2: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            "Status::Multi",
+                            &__METRIQUE_VFIELDS_2,
+                            None,
+                        );
+                        ::metrique::writer::core::Descriptors::available(
                             ::std::iter::once(
                                 ::metrique::writer::core::DescriptorRef::from_static(
                                     &__METRIQUE_VDESC_2,
                                 ),
-                            )
-                        }
-                            .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0)),
-                    )
+                            ),
+                        )
+                    }
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
                 }
             }
         }
@@ -560,29 +526,6 @@ const _: () = {
             }
         }
     }
-    enum OperationEntryDescIter<'__metrique_lt, V0, V1> {
-        V0(V0),
-        V1(V1),
-        __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
-    }
-    impl<
-        '__metrique_lt,
-        V0: ::std::iter::Iterator<
-                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
-            >,
-        V1: ::std::iter::Iterator<
-                Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>,
-            >,
-    > ::std::iter::Iterator for OperationEntryDescIter<'__metrique_lt, V0, V1> {
-        type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
-        fn next(&mut self) -> ::std::option::Option<Self::Item> {
-            match self {
-                OperationEntryDescIter::V0(iter) => iter.next(),
-                OperationEntryDescIter::V1(iter) => iter.next(),
-                OperationEntryDescIter::__Phantom(_) => None,
-            }
-        }
-    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for OperationEntry {
         fn write<'__metrique_write>(
@@ -646,53 +589,49 @@ const _: () = {
                 }
             }
         }
-        fn descriptors(
-            &self,
-        ) -> impl ::std::iter::Iterator<
-            Item = ::metrique::writer::core::DescriptorRef<'_>,
-        > {
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
             #[allow(deprecated)]
             match self {
                 OperationEntry::Read { .. } => {
-                    OperationEntryDescIter::V0({
-                        static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                        static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                            ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
-                                "bytes",
-                                &__METRIQUE_VFLAGS_0_0,
-                                ::metrique::writer::core::FieldShape::Opaque,
-                                None,
-                            ),
-                        ];
-                        static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                            "Operation::Read",
-                            &__METRIQUE_VFIELDS_0,
+                    static __METRIQUE_VFLAGS_0_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                    static __METRIQUE_VFIELDS_0: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                        ::metrique::writer::core::FieldDescriptor::__metrique_private_new(
+                            "bytes",
+                            &__METRIQUE_VFLAGS_0_0,
+                            ::metrique::writer::core::FieldShape::Opaque,
                             None,
-                        );
+                        ),
+                    ];
+                    static __METRIQUE_VDESC_0: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                        "Operation::Read",
+                        &__METRIQUE_VFIELDS_0,
+                        None,
+                    );
+                    ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
                             ::metrique::writer::core::DescriptorRef::from_static(
                                 &__METRIQUE_VDESC_0,
                             ),
-                        )
-                    })
+                        ),
+                    )
                 }
                 OperationEntry::Write(__v0) => {
-                    OperationEntryDescIter::V1(
-                        {
-                            static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
-                            static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
-                                "Operation::Write",
-                                &__METRIQUE_VFIELDS_1,
-                                None,
-                            );
+                    {
+                        static __METRIQUE_VFIELDS_1: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                        static __METRIQUE_VDESC_1: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::__metrique_private_new(
+                            "Operation::Write",
+                            &__METRIQUE_VFIELDS_1,
+                            None,
+                        );
+                        ::metrique::writer::core::Descriptors::available(
                             ::std::iter::once(
                                 ::metrique::writer::core::DescriptorRef::from_static(
                                     &__METRIQUE_VDESC_1,
                                 ),
-                            )
-                        }
-                            .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0)),
-                    )
+                            ),
+                        )
+                    }
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
                 }
             }
         }

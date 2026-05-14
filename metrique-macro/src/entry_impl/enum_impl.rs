@@ -352,18 +352,12 @@ fn generate_enum_descriptor(
     let styles = NameStyle::ALL;
     let ns = make_ns(root_attrs.rename_all, entry_name.span());
 
-    // Per-variant descriptors: each variant yields its own descriptor containing only
-    // that variant's fields (+ tag field), plus any flatten children's descriptors.
-    let iter_enum_name = format_ident!("{}DescIter", entry_name);
-    let (iter_variants, iter_enum_def) =
-        generate_descriptor_iter_enum(&iter_enum_name, variants.len());
-
-    // Generate per-variant match arms, each with its own static descriptor.
+    // Per-variant descriptors: each variant returns Descriptors directly.
+    // No iterator enum needed since all arms return the same type.
     let match_arms: Vec<_> = variants
         .iter()
         .enumerate()
         .map(|(v_idx, variant)| {
-            let iter_v = &iter_variants[v_idx];
             let variant_ident = &variant.ident;
 
             // Collect this variant's non-flatten fields
@@ -429,17 +423,19 @@ fn generate_enum_descriptor(
                     static #v_fields_ident: [::metrique::writer::core::FieldDescriptor; #num_v_fields] = [#(#v_field_exprs),*];
                     static #v_desc_ident: ::metrique::writer::core::EntryDescriptor =
                         ::metrique::writer::core::EntryDescriptor::__metrique_private_new(#variant_name, &#v_fields_ident, #v_timestamp_expr);
-                    ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&#v_desc_ident))
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&#v_desc_ident))
+                    )
                 }
             };
 
             let (pattern, chain_expr) = build_variant_descriptor_arm(entry_name, variant, &base, &ns);
-            quote! { #pattern => #iter_enum_name::#iter_v(#chain_expr) }
+            quote! { #pattern => #chain_expr }
         })
         .collect();
 
     let descriptors_method = quote! {
-        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
             #[allow(deprecated)]
             match self {
                 #(#match_arms),*
@@ -448,43 +444,9 @@ fn generate_enum_descriptor(
     };
 
     super::DescriptorOutput {
-        trait_impls: quote! { #iter_enum_def },
+        trait_impls: quote! {},
         method: descriptors_method,
     }
-}
-
-fn generate_descriptor_iter_enum(
-    iter_enum_name: &Ident,
-    variant_count: usize,
-) -> (Vec<Ident>, Ts2) {
-    let iter_variants: Vec<_> = (0..variant_count)
-        .map(|i| format_ident!("V{}", i))
-        .collect();
-
-    let iter_next_arms: Vec<_> = iter_variants
-        .iter()
-        .map(|v| quote! { #iter_enum_name::#v(iter) => iter.next() })
-        .collect();
-
-    let iter_enum_def = quote! {
-        enum #iter_enum_name<'__metrique_lt, #(#iter_variants),*> {
-            #(#iter_variants(#iter_variants),)*
-            __Phantom(::std::marker::PhantomData<&'__metrique_lt ()>),
-        }
-        impl<'__metrique_lt, #(#iter_variants: ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>>),*>
-            ::std::iter::Iterator for #iter_enum_name<'__metrique_lt, #(#iter_variants),*>
-        {
-            type Item = ::metrique::writer::core::DescriptorRef<'__metrique_lt>;
-            fn next(&mut self) -> ::std::option::Option<Self::Item> {
-                match self {
-                    #(#iter_next_arms,)*
-                    #iter_enum_name::__Phantom(_) => None,
-                }
-            }
-        }
-    };
-
-    (iter_variants, iter_enum_def)
 }
 
 fn is_flatten(kind: &MetricsFieldKind) -> bool {
@@ -501,7 +463,7 @@ fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) ->
             quote! { ::metrique::InflectableEntry::<#ns>::descriptors(#binding) }
         }
         MetricsFieldKind::FlattenEntry(_) => {
-            quote! { ::metrique::writer::Entry::descriptors(#binding).into_available().into_iter().flatten() }
+            quote! { ::metrique::writer::Entry::descriptors(#binding) }
         }
         _ => unreachable!("flatten_chain_expr is only called for flatten/flatten_entry"),
     }
@@ -532,16 +494,17 @@ fn build_variant_descriptor_arm(
                 (quote! { #entry_name::#variant_ident { .. } }, base.clone())
             } else {
                 let bindings: Vec<_> = flatten_fields.iter().map(|f| &f.ident).collect();
-                let mut iters = vec![base.clone()];
-                iters.extend(
-                    flatten_fields
-                        .iter()
-                        .map(|f| flatten_chain_expr(&f.attrs.kind, &f.ident, ns)),
-                );
-                let tree = super::make_binary_tree_chain(iters);
+                let chains: Vec<_> = flatten_fields
+                    .iter()
+                    .map(|f| flatten_chain_expr(&f.attrs.kind, &f.ident, ns))
+                    .collect();
+                let mut expr = base.clone();
+                for child in &chains {
+                    expr = quote! { #expr.chain(#child) };
+                }
                 (
                     quote! { #entry_name::#variant_ident { #(#bindings),*, .. } },
-                    tree,
+                    expr,
                 )
             }
         }
@@ -563,19 +526,18 @@ fn build_variant_descriptor_arm(
                 })
                 .collect();
 
-            let mut iters = vec![base.clone()];
-            iters.extend(
-                tds.iter()
-                    .enumerate()
-                    .filter(|(_, td)| is_flatten(&td.kind))
-                    .map(|(i, td)| {
-                        let b = format_ident!("__v{}", i);
-                        flatten_chain_expr(&td.kind, &quote! { #b }, ns)
-                    }),
-            );
-            let tree = super::make_binary_tree_chain(iters);
+            let mut expr = base.clone();
+            for (i, td) in tds
+                .iter()
+                .enumerate()
+                .filter(|(_, td)| is_flatten(&td.kind))
+            {
+                let b = format_ident!("__v{}", i);
+                let child = flatten_chain_expr(&td.kind, &quote! { #b }, ns);
+                expr = quote! { #expr.chain(#child) };
+            }
 
-            (quote! { #entry_name::#variant_ident(#(#patterns),*) }, tree)
+            (quote! { #entry_name::#variant_ident(#(#patterns),*) }, expr)
         }
         None => (quote! { #entry_name::#variant_ident }, base.clone()),
     }

@@ -456,47 +456,6 @@ fn generate_field_writes(
     writes
 }
 
-/// Return an iterator that chains flattened children for a descriptor, handling
-/// conditional inclusion of cfg-gated fields.
-///
-/// `children` is a list of `(is_cfg_gated, iterator_expression)` pairs in declaration order.
-/// Non-cfg children are full iterator expressions (e.g., `child.descriptors()`).
-/// Cfg-gated children are let-rebinding statements (e.g., `#[cfg(test)] let __desc = ...`).
-///
-/// When no cfg children exist, uses binary tree chaining for balanced type nesting that
-/// avoid recursion limit issues.
-/// When cfg children exist, uses linear let-rebinding to preserve interleaved order.
-pub(crate) fn combine_descriptor_chains(base_expr: Ts2, children: &[(bool, Ts2)]) -> Ts2 {
-    let has_cfg = children.iter().any(|(cfg, _)| *cfg);
-
-    if has_cfg {
-        // TODO: linear chaining may hit type recursion limits for structs with many
-        // cfg-gated flatten fields. These are uncommon; if it arises, consider a
-        // custom iterator type (like the enum path uses).
-        let rebindings: Vec<_> = children
-            .iter()
-            .map(|(is_cfg, t)| {
-                if *is_cfg {
-                    t.clone()
-                } else {
-                    quote! { let __desc = __desc.chain(#t); }
-                }
-            })
-            .collect();
-        quote! {
-            let __desc = #base_expr;
-            #(#rebindings)*
-            __desc
-        }
-    } else if children.is_empty() {
-        base_expr
-    } else {
-        let mut all_iters = vec![base_expr];
-        all_iters.extend(children.iter().map(|(_, t)| t.clone()));
-        make_binary_tree_chain(all_iters)
-    }
-}
-
 pub(crate) fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
     if iterators.is_empty() {
         return quote! { ::std::iter::empty() };

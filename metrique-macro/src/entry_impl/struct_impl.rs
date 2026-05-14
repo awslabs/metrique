@@ -90,7 +90,7 @@ fn build_flatten_chains(fields: &[MetricsField], root_attrs: &RootAttributes) ->
                 let child_expr = if prefix_expr.is_some() {
                     quote! {
                         ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                            .map(|d| d #prefix_expr)
+                            .map_available(|d| d #prefix_expr)
                     }
                 } else {
                     quote! {
@@ -113,7 +113,7 @@ fn build_flatten_chains(fields: &[MetricsField], root_attrs: &RootAttributes) ->
                 let field_ident = &field.ident;
                 let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
                 let child_expr = quote! {
-                    ::metrique::writer::Entry::descriptors(&self.#field_ident).into_available().into_iter().flatten()
+                    ::metrique::writer::Entry::descriptors(&self.#field_ident)
                 };
                 if cfg_attrs.is_empty() {
                     flatten_chains.push((false, child_expr));
@@ -145,16 +145,41 @@ fn assemble_descriptors_method(
     flatten_chains: &[(bool, Ts2)],
 ) -> Ts2 {
     let base_expr = quote! {
-        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-            #entry_name::__metrique_descriptor(<#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX)
-        ))
+        ::metrique::writer::core::Descriptors::available(
+            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                #entry_name::__metrique_descriptor(<#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX)
+            ))
+        )
     };
 
-    let body = super::combine_descriptor_chains(base_expr, flatten_chains);
+    if flatten_chains.is_empty() {
+        return quote! {
+            fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+                #base_expr
+            }
+        };
+    }
+
+    // Build a chain of .chain() calls
+    let mut chain_expr = base_expr;
+    for (is_cfg, child_expr) in flatten_chains {
+        if *is_cfg {
+            // cfg-gated: wrap in cfg attribute
+            chain_expr = quote! {
+                {
+                    let __desc = #chain_expr;
+                    #child_expr
+                    __desc
+                }
+            };
+        } else {
+            chain_expr = quote! { #chain_expr.chain(#child_expr) };
+        }
+    }
 
     quote! {
-        fn descriptors(&self) -> impl ::std::iter::Iterator<Item = ::metrique::writer::core::DescriptorRef<'_>> {
-            #body
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #chain_expr
         }
     }
 }

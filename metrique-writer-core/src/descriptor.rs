@@ -199,6 +199,28 @@ impl<'a> Descriptors<'a> {
             Descriptors::Unavailable => None,
         }
     }
+
+    /// Apply a transformation to each descriptor ref. Preserves Unavailable.
+    pub fn map_available(self, f: impl FnMut(DescriptorRef<'a>) -> DescriptorRef<'a>) -> Self {
+        match self {
+            Descriptors::Available(a) => {
+                let mapped: SmallVec<[DescriptorRef<'a>; 2]> = a.0.into_iter().map(f).collect();
+                Descriptors::Available(AvailableDescriptors(mapped))
+            }
+            Descriptors::Unavailable => Descriptors::Unavailable,
+        }
+    }
+
+    /// Chain two descriptor results. Returns `Unavailable` if either is `Unavailable`.
+    pub fn chain(self, other: Descriptors<'a>) -> Self {
+        match (self, other) {
+            (Descriptors::Available(mut a), Descriptors::Available(b)) => {
+                a.0.extend(b.0.into_iter());
+                Descriptors::Available(a)
+            }
+            _ => Descriptors::Unavailable,
+        }
+    }
 }
 
 /// A descriptor segment describing a contiguous group of fields in an entry's

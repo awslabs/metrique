@@ -373,7 +373,7 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
     }
 
     fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
-        metrique_writer_core::Descriptors::available(self.metric.descriptors())
+        self.metric.descriptors()
     }
 }
 

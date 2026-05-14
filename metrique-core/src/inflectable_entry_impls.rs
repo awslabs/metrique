@@ -5,7 +5,7 @@
 
 use std::{borrow::Cow, sync::Arc};
 
-use metrique_writer_core::{DescriptorRef, EntryWriter, entry::SampleGroupElement};
+use metrique_writer_core::{EntryWriter, entry::SampleGroupElement};
 
 use crate::{InflectableEntry, namestyle::NameStyle};
 
@@ -18,7 +18,7 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for &T {
         (**self).sample_group()
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
         (**self).descriptors()
     }
 }
@@ -34,8 +34,11 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for Option<T> 
         self.as_ref().into_iter().flat_map(|e| e.sample_group())
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
-        self.as_ref().into_iter().flat_map(|e| e.descriptors())
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        match self.as_ref() {
+            Some(e) => e.descriptors(),
+            None => metrique_writer_core::Descriptors::available(std::iter::empty()),
+        }
     }
 }
 
@@ -48,7 +51,7 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for B
         (**self).sample_group()
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
         (**self).descriptors()
     }
 }
@@ -62,7 +65,7 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for A
         (**self).sample_group()
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
         (**self).descriptors()
     }
 }
@@ -78,7 +81,7 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ToOwned + ?Sized> InflectableEntry
         (**self).sample_group()
     }
 
-    fn descriptors(&self) -> impl Iterator<Item = DescriptorRef<'_>> {
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
         (**self).descriptors()
     }
 }

@@ -170,21 +170,19 @@ const _: () = {
             let __metrique_self = self;
             ::metrique::InflectableEntry::<NS>::sample_group(&__metrique_self.nested)
         }
-        fn descriptors(
-            &self,
-        ) -> impl ::std::iter::Iterator<
-            Item = ::metrique::writer::core::DescriptorRef<'_>,
-        > {
-            ::std::iter::once(
-                    ::metrique::writer::core::DescriptorRef::from_static(
-                        RequestMetricsEntry::__metrique_descriptor(
-                            <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                    ::std::iter::once(
+                        ::metrique::writer::core::DescriptorRef::from_static(
+                            RequestMetricsEntry::__metrique_descriptor(
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
                         ),
                     ),
                 )
                 .chain(
                     ::metrique::InflectableEntry::<NS>::descriptors(&self.nested)
-                        .map(|d| d.with_prefix("api_")),
+                        .map_available(|d| d.with_prefix("api_")),
                 )
         }
     }

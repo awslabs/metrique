@@ -269,7 +269,7 @@ pub trait InflectableEntry<NS: namestyle::NameStyle = namestyle::Identity> {
         vec![].into_iter()
     }
     /// Returns descriptors for this entry in write order.
-    fn descriptors(&self) -> impl Iterator<Item = metrique_writer_core::DescriptorRef<'_>> {
-        std::iter::empty()
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::Unavailable
     }
 }
