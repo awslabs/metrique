@@ -141,12 +141,12 @@ fn build_flatten_chains(fields: &[MetricsField], root_attrs: &RootAttributes) ->
 /// are excluded without affecting the iterator type.
 fn assemble_descriptors_method(
     entry_name: &Ident,
-    own_style: &Ts2,
+    own_style_ns: &Ts2,
     flatten_chains: &[(bool, Ts2)],
 ) -> Ts2 {
     let base_expr = quote! {
         ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-            #entry_name::__metrique_descriptor(#own_style)
+            #entry_name::__metrique_descriptor(<#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX)
         ))
     };
 
@@ -214,9 +214,10 @@ fn generate_descriptor(
         &timestamp_descriptor,
     );
 
-    let own_style = style_const_for(root_attrs.rename_all);
+    let own_style_ns = make_ns(root_attrs.rename_all, entry_name.span());
     let flatten_chains = build_flatten_chains(fields, root_attrs);
-    let descriptors_method = assemble_descriptors_method(entry_name, &own_style, &flatten_chains);
+    let descriptors_method =
+        assemble_descriptors_method(entry_name, &own_style_ns, &flatten_chains);
 
     super::DescriptorOutput {
         trait_impls: descriptor_impl,

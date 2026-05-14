@@ -145,7 +145,9 @@ const _: () = {
         > {
             ::std::iter::once(
                 ::metrique::writer::core::DescriptorRef::from_static(
-                    NestedMetricsEntry::__metrique_descriptor(::metrique::STYLE_PRESERVE),
+                    NestedMetricsEntry::__metrique_descriptor(
+                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ),
                 ),
             )
         }

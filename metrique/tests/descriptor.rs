@@ -437,8 +437,8 @@ fn nested_flatten_prefix_stacking() {
     let grand_fields: Vec<_> = descriptors[2].fields().collect();
     let grand_parts: Vec<&str> = grand_fields[0].name_parts().collect();
     // Outermost prefix first: Mid, then Inner, then field name
-    // Note: GrandChild has no rename_all, so field name is preserve-style
-    assert_eq!(grand_parts, vec!["Mid", "Inner", "deep_value"]);
+    // Style propagates from parent: GrandChild field rendered as PascalCase
+    assert_eq!(grand_parts, vec!["Mid", "Inner", "DeepValue"]);
 }
 
 #[metrics(subfield)]
@@ -551,7 +551,7 @@ fn enum_variant_with_flatten_chains_child_descriptor() {
 
     // Child's descriptor has its field
     let child_fields: Vec<_> = descriptors[1].fields().collect();
-    assert_eq!(child_fields[0].base_name(), "child_val");
+    assert_eq!(child_fields[0].base_name(), "ChildVal");
 }
 
 #[test]
@@ -628,9 +628,9 @@ fn cfg_flatten_ordering_preserved() {
     let d1: Vec<_> = descriptors[1].fields().collect();
     let d2: Vec<_> = descriptors[2].fields().collect();
     let d3: Vec<_> = descriptors[3].fields().collect();
-    assert_eq!(d1[0].base_name(), "a_val");
-    assert_eq!(d2[0].base_name(), "b_val");
-    assert_eq!(d3[0].base_name(), "c_val");
+    assert_eq!(d1[0].base_name(), "AVal");
+    assert_eq!(d2[0].base_name(), "BVal");
+    assert_eq!(d3[0].base_name(), "CVal");
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -668,7 +668,7 @@ fn enum_variant_field_order_matches_declaration() {
     // Flatten child comes after base
     assert_eq!(descriptors.len(), 2);
     let child_fields: Vec<_> = descriptors[1].fields().collect();
-    assert_eq!(child_fields[0].base_name(), "a_val");
+    assert_eq!(child_fields[0].base_name(), "AVal");
 }
 
 #[metrics(rename_all = "PascalCase")]
@@ -699,9 +699,9 @@ fn enum_cfg_flatten_ordering_preserved() {
     let d1: Vec<_> = descriptors[1].fields().collect();
     let d2: Vec<_> = descriptors[2].fields().collect();
     let d3: Vec<_> = descriptors[3].fields().collect();
-    assert_eq!(d1[0].base_name(), "a_val");
-    assert_eq!(d2[0].base_name(), "b_val");
-    assert_eq!(d3[0].base_name(), "c_val");
+    assert_eq!(d1[0].base_name(), "AVal");
+    assert_eq!(d2[0].base_name(), "BVal");
+    assert_eq!(d3[0].base_name(), "CVal");
 }
 
 #[metrics(subfield)]
@@ -735,9 +735,9 @@ fn tuple_variant_cfg_flatten_descriptor_ordering() {
     let d1: Vec<_> = descriptors[1].fields().collect();
     let d2: Vec<_> = descriptors[2].fields().collect();
     let d3: Vec<_> = descriptors[3].fields().collect();
-    assert_eq!(d1[0].base_name(), "a_val");
-    assert_eq!(d2[0].base_name(), "tc_val");
-    assert_eq!(d3[0].base_name(), "c_val");
+    assert_eq!(d1[0].base_name(), "AVal");
+    assert_eq!(d2[0].base_name(), "TcVal");
+    assert_eq!(d3[0].base_name(), "CVal");
 }
 
 #[test]
@@ -767,4 +767,34 @@ fn descriptors_forward_through_option_and_box() {
     let none_entry = metrique::RootEntry::new(none);
     let none_descs = none_entry.descriptors().unwrap();
     assert_eq!(none_descs.len(), 0);
+}
+
+#[metrics(subfield, rename_all = "snake_case")]
+struct SnakeCaseChild {
+    my_field: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct PascalParentSnakeChild {
+    own_field: u64,
+    #[metrics(flatten)]
+    child: SnakeCaseChild,
+}
+
+#[test]
+fn style_propagation_child_preferred_over_parent() {
+    let m = PascalParentSnakeChild {
+        own_field: 1,
+        child: SnakeCaseChild { my_field: 2 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    // Parent's own field uses PascalCase
+    assert_eq!(descs[0].fields().next().unwrap().base_name(), "OwnField");
+
+    // Child's field uses snake_case (child's rename_all wins over parent's PascalCase)
+    let child_fields: Vec<_> = descs[1].fields().collect();
+    assert_eq!(child_fields[0].base_name(), "my_field");
 }
