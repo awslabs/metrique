@@ -798,3 +798,57 @@ fn style_propagation_child_preferred_over_parent() {
     let child_fields: Vec<_> = descs[1].fields().collect();
     assert_eq!(child_fields[0].base_name(), "my_field");
 }
+
+#[metrics(subfield)]
+enum StyleEnum {
+    Variant { my_field: u64 },
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct ParentWithEnumChild {
+    #[metrics(flatten)]
+    child: StyleEnum,
+}
+
+#[test]
+fn enum_style_propagation_from_parent() {
+    use metrique::writer::Entry;
+
+    let m = ParentWithEnumChild {
+        child: StyleEnum::Variant { my_field: 42 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    // The enum child has no rename_all, so it inherits PascalCase from parent
+    let child_fields: Vec<_> = descs[1].fields().collect();
+    assert_eq!(child_fields[0].base_name(), "MyField");
+}
+
+#[metrics(subfield, rename_all = "snake_case")]
+enum SnakeCaseEnum {
+    Variant { my_field_name: u64 },
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct ParentWithSnakeEnum {
+    #[metrics(flatten)]
+    child: SnakeCaseEnum,
+}
+
+#[test]
+fn enum_child_rename_all_takes_precedence() {
+    use metrique::writer::Entry;
+
+    let m = ParentWithSnakeEnum {
+        child: SnakeCaseEnum::Variant { my_field_name: 1 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    // Enum child has rename_all = "snake_case", so it wins over parent's PascalCase
+    let child_fields: Vec<_> = descs[1].fields().collect();
+    assert_eq!(child_fields[0].base_name(), "my_field_name");
+}

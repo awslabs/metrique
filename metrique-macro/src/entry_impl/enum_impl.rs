@@ -390,44 +390,21 @@ fn generate_enum_descriptor(
                 }
             }
 
-            // Generate this variant's static descriptor (inside the match arm)
-            let v_desc_ident = format_ident!("__METRIQUE_VDESC_{}", v_idx);
-            let v_fields_ident = format_ident!("__METRIQUE_VFIELDS_{}", v_idx);
+            // Generate this variant's 4-style descriptor statics using the shared helper.
             let variant_name = format!("{}::{}", struct_name, variant_ident);
-            let num_v_fields = v_field_metas.len();
-
-            let v_flag_statics: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
-                let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
-                let flags = &f.flags;
-                let num_flags = flags.len();
-                quote! {
-                    static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [#(#flags),*];
-                }
-            }).collect();
-
-            let style_idx = root_attrs.rename_all.descriptor_index();
-            let v_field_exprs: Vec<_> = v_field_metas.iter().enumerate().map(|(i, f)| {
-                let name = &f.names[style_idx];
-                let flags_ident = format_ident!("__METRIQUE_VFLAGS_{}_{}", v_idx, i);
-                let unit_expr = &f.unit_expr;
-                quote! {
-                    ::metrique::writer::core::FieldDescriptor::builder(#name)
-                        .flags(&#flags_ident)
-                        .maybe_unit(#unit_expr)
-                        .build()
-                }
-            }).collect();
+            let ident_prefix = format!("V{}", v_idx);
+            let desc_block = super::generate_style_matched_descriptor(
+                &v_field_metas,
+                &variant_name,
+                &v_timestamp_expr,
+                &ident_prefix,
+            );
 
             let base = quote! {
                 {
-                    #(#v_flag_statics)*
-                    static #v_fields_ident: [::metrique::writer::core::FieldDescriptor; #num_v_fields] = [#(#v_field_exprs),*];
-                    static #v_desc_ident: ::metrique::writer::core::EntryDescriptor =
-                        ::metrique::writer::core::EntryDescriptor::builder(#variant_name, &#v_fields_ident)
-                            .maybe_timestamp(#v_timestamp_expr)
-                            .build();
+                    let style = <#ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
                     ::metrique::writer::core::Descriptors::available(
-                        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(&#v_desc_ident))
+                        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(#desc_block))
                     )
                 }
             };

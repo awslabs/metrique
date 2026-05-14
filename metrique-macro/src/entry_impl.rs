@@ -43,23 +43,34 @@ pub(crate) struct DescriptorFieldMeta {
 ///
 /// Produces a match with 4 arms, each containing a static `EntryDescriptor` with field names
 /// resolved for that style. The style constants from `metrique-core` are used as match patterns.
-pub(crate) fn generate_descriptor_impl(
-    entry_name: &Ident,
-    generics: &syn::Generics,
-    struct_name: &str,
+
+/// Generate a block that selects one of 4 pre-computed EntryDescriptor statics based on a style u8.
+/// Used by both struct and enum descriptor generation.
+///
+/// Returns a token stream like:
+/// ```ignore
+/// {
+///     static FLAGS_0: [...] = [...];
+///     match style {
+///         STYLE_PRESERVE => { static FIELDS: [...]; static DESC: ...; &DESC }
+///         ...
+///     }
+/// }
+/// ```
+pub(crate) fn generate_style_matched_descriptor(
     fields: &[DescriptorFieldMeta],
-    timestamp_descriptor: &Ts2,
+    desc_name: &str,
+    timestamp_expr: &Ts2,
+    ident_prefix: &str,
 ) -> Ts2 {
     let num_fields = fields.len();
-    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    // Tag statics are shared across all 4 style arms because tags don't vary by name style.
-    // Each field gets one static array of FieldFlag, plus a suppressed TypeId array.
+    // Flag statics (shared across all 4 styles)
     let flag_statics: Vec<Ts2> = fields
         .iter()
         .enumerate()
         .map(|(i, f)| {
-            let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
+            let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
             let flags = &f.flags;
             let num_flags = flags.len();
             quote! {
@@ -70,26 +81,19 @@ pub(crate) fn generate_descriptor_impl(
         })
         .collect();
 
-    // Generate one match arm per name style. Each arm contains a static EntryDescriptor
-    // with field names resolved for that style. The match selects the right static based
-    // on the style index passed by the caller (hardcoded at macro time from rename_all).
     let style_names = metrique_core::STYLE_NAMES;
     let style_arms: Vec<Ts2> = (0..style_names.len())
         .map(|style_idx| {
-            // Map the array index to the corresponding runtime STYLE_* constant.
-            let style_const = style_const_for(
-                crate::inflect::NameStyle::ALL[style_idx],
-            );
-            let desc_ident = format_ident!("__METRIQUE_DESC_{}", style_names[style_idx]);
-            let fields_ident = format_ident!("__METRIQUE_FIELDS_{}", style_names[style_idx]);
+            let style_const = style_const_for(crate::inflect::NameStyle::ALL[style_idx]);
+            let desc_ident = format_ident!("__METRIQUE_{}_DESC_{}", ident_prefix, style_names[style_idx]);
+            let fields_ident = format_ident!("__METRIQUE_{}_FIELDS_{}", ident_prefix, style_names[style_idx]);
 
-            // Each field's name is pre-resolved for this style at macro time.
             let field_exprs: Vec<Ts2> = fields
                 .iter()
                 .enumerate()
                 .map(|(i, f)| {
                     let name = &f.names[style_idx];
-                    let flags_ident = format_ident!("__METRIQUE_FLAGS_{}", i);
+                    let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
                     let unit_expr = &f.unit_expr;
                     quote! {
                         ::metrique::writer::core::FieldDescriptor::builder(#name)
@@ -106,8 +110,8 @@ pub(crate) fn generate_descriptor_impl(
                         #(#field_exprs),*
                     ];
                     static #desc_ident: ::metrique::writer::core::EntryDescriptor =
-                        ::metrique::writer::core::EntryDescriptor::builder(#struct_name, &#fields_ident)
-                            .maybe_timestamp(#timestamp_descriptor)
+                        ::metrique::writer::core::EntryDescriptor::builder(#desc_name, &#fields_ident)
+                            .maybe_timestamp(#timestamp_expr)
                             .build();
                     &#desc_ident
                 }
@@ -116,15 +120,33 @@ pub(crate) fn generate_descriptor_impl(
         .collect();
 
     quote! {
+        {
+            #(#flag_statics)*
+            match style {
+                #(#style_arms),*
+                _ => unreachable!()
+            }
+        }
+    }
+}
+
+pub(crate) fn generate_descriptor_impl(
+    entry_name: &Ident,
+    generics: &syn::Generics,
+    struct_name: &str,
+    fields: &[DescriptorFieldMeta],
+    timestamp_descriptor: &Ts2,
+) -> Ts2 {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let body = generate_style_matched_descriptor(fields, struct_name, timestamp_descriptor, "");
+
+    quote! {
         impl #impl_generics #entry_name #ty_generics #where_clause {
             #[doc(hidden)]
             #[inline(always)]
             fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
-                #(#flag_statics)*
-                match __style {
-                    #(#style_arms)*
-                    _ => unreachable!("unknown descriptor style index")
-                }
+                let style = __style;
+                #body
             }
         }
     }

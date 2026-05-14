@@ -324,7 +324,7 @@ Per macro-derived struct entry type:
 - One slice of `FieldFlag` per field (shared across all 4 styles, since flags don't vary by name style).
 - Per-field name strings (one per style, so 4x the name storage).
 
-Per enum entry type: 1 static per variant, hardcoded to the enum's own rename_all style. (Struct entries have 4 statics for style propagation; enum variants do not yet support this.)
+Per enum entry type: 4 statics per variant (same as structs), enabling style propagation.
 
 Ballpark: a ten-field struct with a couple of flags per field is roughly 2 KB of `.rodata` (4x the single-style cost). One-time cost per entry type, not per instantiation. No runtime allocation. Sinks that never call `descriptors()` pay nothing beyond their existing costs.
 
