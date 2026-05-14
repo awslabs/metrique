@@ -842,6 +842,7 @@ dependencies = [
  "insta",
  "metrique",
  "metrique-aggregation",
+ "metrique-core",
  "prettyplease",
  "proc-macro2",
  "quote",

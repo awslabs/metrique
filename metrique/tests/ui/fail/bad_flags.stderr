@@ -1,0 +1,17 @@
+error: conflicting `flags`: `MyTag` is both present and skipped
+  --> tests/ui/fail/bad_flags.rs:11:28
+   |
+11 |     #[metrics(flags(MyTag, skip(MyTag)))]
+   |                            ^^^^
+
+error: skip(...) is not allowed in default_flags. To exclude a flag from a specific field, use flags(skip(T)) on that field.
+  --> tests/ui/fail/bad_flags.rs:16:25
+   |
+16 | #[metrics(default_flags(skip(MyTag)))]
+   |                         ^^^^
+
+error: flags(...) cannot be used on flatten or flatten_entry fields. Apply flags on the child struct directly with default_flags(...).
+  --> tests/ui/fail/bad_flags.rs:29:15
+   |
+29 |     #[metrics(flatten, flags(MyTag))]
+   |               ^^^^^^^

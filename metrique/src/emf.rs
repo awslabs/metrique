@@ -13,6 +13,10 @@ pub use metrique_writer_format_emf::{
     MetricDefinition, MetricDirective, NoMetric, NoMetricCtor, SampledEmf, StorageResolution,
 };
 
+/// Re-exports of `FlagConstructor` types for use in `#[metrics(flags(...))]` attributes.
+#[cfg(feature = "emf")]
+pub use metrique_writer_format_emf::flags;
+
 /// Add EMF Entry-specific dimensions
 ///
 /// Generally, you will not use this directly. Instead, use the `#[metrics(emf::dimension_sets)]` attribute. See the

@@ -51,10 +51,31 @@ pub trait FlagConstructor {
     fn construct() -> MetricFlags<'static>;
 }
 
-/// Helper to force enable metric flags on a value
+/// Helper to force enable metric flags on a value.
 ///
 /// This is intentionally "punned" to work with [Entry], [Value], and [EntryIoStream] to
 /// avoid duplication of the format-specific flag types like `HighStorageResolution`.
+///
+/// Prefer using `#[metrics(flags(...))]` instead of wrapping field types directly.
+/// The macro attribute both applies the flag at write time and records it in the
+/// entry descriptor, giving formats and sinks full visibility:
+///
+/// ```ignore
+/// use my_format::flags::HighStorageResolution;
+///
+/// // Instead of:
+/// #[metrics]
+/// struct MyMetrics {
+///     event_count: HighStorageResolution<Counter>,
+/// }
+///
+/// // Prefer:
+/// #[metrics]
+/// struct MyMetrics {
+///     #[metrics(flags(HighStorageResolution))]
+///     event_count: Counter,
+/// }
+/// ```
 #[derive_where(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash; T)]
 pub struct ForceFlag<T, FLAGS: FlagConstructor>(T, PhantomData<FLAGS>);
 
@@ -135,6 +156,7 @@ impl<T: MetricValue, FLAGS: FlagConstructor> MetricValue for ForceFlag<T, FLAGS>
 }
 
 // This one is private for now since there is no obvious use for it.
+#[doc(hidden)]
 struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
     writer: &'a mut W,
     phantom: PhantomData<FLAGS>,
@@ -166,6 +188,10 @@ impl<E: Entry, FLAGS: FlagConstructor> Entry for ForceFlag<E, FLAGS> {
             writer,
             phantom: self.1,
         })
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        self.0.descriptors()
     }
 }
 

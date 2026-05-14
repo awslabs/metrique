@@ -31,6 +31,16 @@ pub(crate) enum NameStyle {
 }
 
 impl NameStyle {
+    /// All styles in index order (matching `metrique_core::STYLE_*` constants).
+    pub(crate) const ALL: [NameStyle; metrique_core::STYLE_COUNT] = {
+        let mut arr = [NameStyle::Preserve; metrique_core::STYLE_COUNT];
+        arr[metrique_core::STYLE_PRESERVE as usize] = NameStyle::Preserve;
+        arr[metrique_core::STYLE_PASCAL as usize] = NameStyle::PascalCase;
+        arr[metrique_core::STYLE_SNAKE as usize] = NameStyle::SnakeCase;
+        arr[metrique_core::STYLE_KEBAB as usize] = NameStyle::KebabCase;
+        arr
+    };
+
     pub(crate) fn apply(self, name: &str) -> String {
         use inflector::Inflector;
         match self {
@@ -138,6 +148,20 @@ impl HasInflectableName for MetricsVariant {
 mod test {
     use super::name_contains_uninflectables;
     use crate::{NameStyle, inflect::name_ends_with_delimiter};
+
+    #[test]
+    fn descriptor_styles_exhaustive() {
+        // Exhaustive match: adding a new NameStyle variant causes a compile error here,
+        // forcing you to update NameStyle::ALL and descriptor_index().
+        fn _assert_exhaustive(s: NameStyle) -> usize {
+            match s {
+                NameStyle::Preserve => 0,
+                NameStyle::PascalCase => 1,
+                NameStyle::SnakeCase => 2,
+                NameStyle::KebabCase => 3,
+            }
+        }
+    }
 
     #[test]
     fn test_inflect_prefix() {

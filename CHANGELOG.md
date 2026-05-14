@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- MSRV raised from 1.89 to 1.91 (required for `const TypeId::of`).
+
 ## [0.1.25](https://github.com/awslabs/metrique/compare/metrique-v0.1.24...metrique-v0.1.25) - 2026-04-20
 
 ### Added

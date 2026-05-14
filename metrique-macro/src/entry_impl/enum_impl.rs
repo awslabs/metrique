@@ -1,5 +1,9 @@
+use super::DescriptorFieldMeta;
+use super::resolve_field_flags;
 use super::*;
 use crate::enums::{MetricsVariant, VariantData};
+use crate::inflect::NameStyle;
+use crate::inflect::metric_name;
 
 /// Build a struct variant pattern from field identifiers.
 fn struct_pattern(
@@ -64,14 +68,21 @@ pub(crate) fn generate_enum_entry_impl(
         }
     };
 
+    let descriptor = generate_enum_descriptor(entry_name, variants, root_attrs);
+    let descriptor_trait_impls = &descriptor.trait_impls;
+    let descriptors_method = &descriptor.method;
+
     quote! {
         const _: () = {
             #iter_enum
+
+            #descriptor_trait_impls
 
             #[expect(deprecated)]
             impl #impl_generics ::metrique::InflectableEntry<NS> for #entry_name #ty_generics #where_clause {
                 #write_fn
                 #sample_group_fn
+                #descriptors_method
             }
         };
     }
@@ -185,6 +196,8 @@ fn generate_tuple_writes(
                     )
                 }
             };
+            // Note: cfg on enum variant fields is rejected at parse time,
+            // so no cfg wrapping is needed here (unlike struct fields).
             (binding, write)
         })
         .unzip()
@@ -316,5 +329,190 @@ fn collect_tuple_sample_group(
         MetricsFieldKind::Timestamp(_) | MetricsFieldKind::Field { .. } => {
             unreachable!("timestamp/plain fields are rejected earlier in tuple variant parsing")
         }
+    }
+}
+
+/// Generates the enum iterator type for per-variant descriptor dispatch.
+/// Each variant's chain uses make_binary_tree_chain for balanced type nesting.
+/// Same pattern as sample_group: one variant per enum arm, unified via Iterator impl.
+fn generate_enum_descriptor(
+    entry_name: &Ident,
+    variants: &[MetricsVariant],
+    root_attrs: &RootAttributes,
+) -> super::DescriptorOutput {
+    let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
+    let styles = NameStyle::ALL;
+    let ns = make_ns(root_attrs.rename_all, entry_name.span());
+
+    // Per-variant descriptors: each variant returns Descriptors directly.
+    // No iterator enum needed since all arms return the same type.
+    let match_arms: Vec<_> = variants
+        .iter()
+        .enumerate()
+        .map(|(v_idx, variant)| {
+            let variant_ident = &variant.ident;
+
+            // Collect this variant's non-flatten fields
+            let mut v_field_metas: Vec<super::DescriptorFieldMeta> = Vec::new();
+            let mut v_timestamp_expr = quote! { None };
+            if let Some(tag) = &root_attrs.tag {
+                let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
+                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], unit_expr: quote! { None } });
+            }
+            if let Some(VariantData::Struct(fields)) = &variant.data {
+                for field in fields {
+                    match &field.attrs.kind {
+                        MetricsFieldKind::Field { unit, .. } => {
+                            let names: [String; 4] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
+                            let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
+                            let unit_expr = match unit {
+                                Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },
+                                None => quote! { None },
+                            };
+                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, unit_expr });
+                        }
+                        MetricsFieldKind::Timestamp(_) => {
+                            let ts_name = field.name.as_deref().unwrap_or("timestamp");
+                            v_timestamp_expr = quote! {
+                                Some(::metrique::writer::core::TimestampDescriptor::new(#ts_name))
+                            };
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            // Generate this variant's 4-style descriptor statics using the shared helper.
+            let variant_name = format!("{}::{}", struct_name, variant_ident);
+            let ident_prefix = format!("V{}", v_idx);
+            let desc_block = super::generate_style_matched_descriptor(
+                &v_field_metas,
+                &variant_name,
+                &v_timestamp_expr,
+                &ident_prefix,
+            );
+
+            let base = quote! {
+                {
+                    let style = <#ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(#desc_block))
+                    )
+                }
+            };
+
+            let (pattern, chain_expr) = build_variant_descriptor_arm(entry_name, variant, &base, &ns);
+            quote! { #pattern => #chain_expr }
+        })
+        .collect();
+
+    let descriptors_method = quote! {
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #[allow(deprecated)]
+            match self {
+                #(#match_arms),*
+            }
+        }
+    };
+
+    super::DescriptorOutput {
+        trait_impls: quote! {},
+        method: descriptors_method,
+    }
+}
+
+fn is_flatten(kind: &MetricsFieldKind) -> bool {
+    matches!(
+        kind,
+        MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_)
+    )
+}
+
+/// Generates a `.chain(child.descriptors())` expression for a flatten field.
+fn flatten_chain_expr(field_kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) -> Ts2 {
+    match field_kind {
+        MetricsFieldKind::Flatten { .. } => {
+            quote! { ::metrique::InflectableEntry::<#ns>::descriptors(#binding) }
+        }
+        MetricsFieldKind::FlattenEntry(_) => {
+            quote! { ::metrique::writer::Entry::descriptors(#binding) }
+        }
+        _ => unreachable!("flatten_chain_expr is only called for flatten/flatten_entry"),
+    }
+}
+
+/// Generates a match arm pattern and iterator expression for one enum variant's descriptors.
+///
+/// Generates a match arm pattern and iterator expression for one enum variant.
+///
+/// Takes the base iterator and appends flatten children's descriptors if the variant has them.
+/// Returns (pattern, chain_expr) for use in the generated match.
+fn build_variant_descriptor_arm(
+    entry_name: &Ident,
+    variant: &MetricsVariant,
+    base: &Ts2,
+    ns: &Ts2,
+) -> (Ts2, Ts2) {
+    let variant_ident = &variant.ident;
+
+    match &variant.data {
+        Some(VariantData::Struct(fields)) => {
+            let flatten_fields: Vec<_> = fields
+                .iter()
+                .filter(|f| is_flatten(&f.attrs.kind))
+                .collect();
+
+            if flatten_fields.is_empty() {
+                (quote! { #entry_name::#variant_ident { .. } }, base.clone())
+            } else {
+                // Cfg on enum variant fields is rejected at parse time, so no cfg filtering needed.
+                let bindings: Vec<_> = flatten_fields.iter().map(|f| &f.ident).collect();
+                let children: Vec<(Vec<Ts2>, Ts2)> = flatten_fields
+                    .iter()
+                    .map(|f| {
+                        let child = flatten_chain_expr(&f.attrs.kind, &f.ident, ns);
+                        (vec![], child)
+                    })
+                    .collect();
+                let expr = super::build_descriptors_chain(base.clone(), &children);
+                (
+                    quote! { #entry_name::#variant_ident { #(#bindings,)* .. } },
+                    expr,
+                )
+            }
+        }
+        Some(VariantData::Tuple(tds)) => {
+            if !tds.iter().any(|td| is_flatten(&td.kind)) {
+                return (quote! { #entry_name::#variant_ident(..) }, base.clone());
+            }
+
+            let patterns: Vec<_> = tds
+                .iter()
+                .enumerate()
+                .map(|(i, td)| {
+                    if is_flatten(&td.kind) {
+                        let b = format_ident!("__v{}", i);
+                        quote! { #b }
+                    } else {
+                        quote! { _ }
+                    }
+                })
+                .collect();
+
+            let children: Vec<(Vec<Ts2>, Ts2)> = tds
+                .iter()
+                .enumerate()
+                .filter(|(_, td)| is_flatten(&td.kind))
+                .map(|(i, td)| {
+                    let b = format_ident!("__v{}", i);
+                    let child = flatten_chain_expr(&td.kind, &quote! { #b }, ns);
+                    (vec![], child)
+                })
+                .collect();
+            let expr = super::build_descriptors_chain(base.clone(), &children);
+
+            (quote! { #entry_name::#variant_ident(#(#patterns),*) }, expr)
+        }
+        None => (quote! { #entry_name::#variant_ident }, base.clone()),
     }
 }
