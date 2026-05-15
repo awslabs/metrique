@@ -166,13 +166,13 @@ pub struct SysinfoMetrics {
     pub process_disk_written_bytes: u64,
     /// Cumulative bytes written to disk by the current process since its start.
     pub process_disk_total_written_bytes: u64,
-    /// Number of open file descriptors held by the current process. `0` on
+    /// Number of open file descriptors held by the current process. `None` on
     /// platforms where sysinfo can't determine it.
-    pub process_open_files: u64,
+    pub process_open_files: Option<usize>,
     /// Soft `RLIMIT_NOFILE` for the current process — the maximum number of
-    /// file descriptors it may have open. `0` on platforms where sysinfo
+    /// file descriptors it may have open. `None` on platforms where sysinfo
     /// can't determine it.
-    pub process_open_files_limit: u64,
+    pub process_open_files_limit: Option<usize>,
 
     // ----- Optional categories -----
     /// Aggregated disk metrics. `None` (entirely omitted from output) unless
@@ -408,14 +408,8 @@ fn sample(
         process_disk_total_written_bytes: process
             .map(|p| p.disk_usage().total_written_bytes)
             .unwrap_or(0),
-        process_open_files: process
-            .and_then(|p| p.open_files())
-            .map(|v| v as u64)
-            .unwrap_or(0),
-        process_open_files_limit: process
-            .and_then(|p| p.open_files_limit())
-            .map(|v| v as u64)
-            .unwrap_or(0),
+        process_open_files: process.and_then(|p| p.open_files()),
+        process_open_files_limit: process.and_then(|p| p.open_files_limit()),
 
         disks: disks_metrics,
         networks: networks_metrics,
