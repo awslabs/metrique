@@ -290,7 +290,7 @@ struct RequestMetrics {
 }
 ```
 
-This is useful for numeric context values that you want available in CloudWatch Logs Insights queries but don't need as aggregated CloudWatch metrics.
+This is useful for numeric context values that you want available in CloudWatch Logs Insights or Contributor Insights queries but don't need as CloudWatch metrics.
 
 ## Platform Specific Guidance
 
