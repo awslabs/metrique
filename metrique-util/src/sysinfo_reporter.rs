@@ -580,8 +580,8 @@ mod tests {
         let entry = entries.last().unwrap();
         check!(entry.metrics["disk_count"] > 0);
         check!(entry.metrics["total_disk_space"] > 0);
-        check!(entry.metrics.contains_key("network_interface_count"));
-        check!(entry.metrics.contains_key("component_count"));
+        check!(entry.metrics["network_interface_count"] >= 0);
+        check!(entry.metrics["component_count"] >= 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -599,17 +599,17 @@ mod tests {
         let entry = inspector.entries().last().cloned().unwrap();
 
         // The reporter resolves the current PID, so each process_* key should
-        // be present with a non-null value (Option<T> emits as a bare value
-        // when Some, and is omitted when None).
+        // be present (indexing panics when a key is missing, so a `>= 0`
+        // probe is enough to prove Option<T> resolved to Some).
         check!(entry.metrics["process_memory"] > 0);
         check!(entry.metrics["process_virtual_memory"] > 0);
-        check!(entry.metrics.contains_key("process_cpu_usage"));
-        check!(entry.metrics.contains_key("process_accumulated_cpu_time"));
-        check!(entry.metrics.contains_key("process_run_time"));
-        check!(entry.metrics.contains_key("process_disk_read_bytes"));
-        check!(entry.metrics.contains_key("process_disk_total_read_bytes"));
-        check!(entry.metrics.contains_key("process_disk_written_bytes"));
-        check!(entry.metrics.contains_key("process_disk_total_written_bytes"));
+        check!(entry.metrics["process_cpu_usage"] >= 0.0);
+        check!(entry.metrics["process_accumulated_cpu_time"] >= 0);
+        check!(entry.metrics["process_run_time"] >= 0);
+        check!(entry.metrics["process_disk_read_bytes"] >= 0);
+        check!(entry.metrics["process_disk_total_read_bytes"] >= 0);
+        check!(entry.metrics["process_disk_written_bytes"] >= 0);
+        check!(entry.metrics["process_disk_total_written_bytes"] >= 0);
         // stdin / stdout / stderr alone account for at least 3 open FDs.
         check!(entry.metrics["process_open_files"] > 0);
         check!(entry.metrics["process_open_files_limit"] > 0);
@@ -630,9 +630,9 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entry = inspector.entries().last().cloned().unwrap();
-        check!(entry.metrics.contains_key("disk_count"));
-        check!(!entry.metrics.contains_key("network_interface_count"));
-        check!(!entry.metrics.contains_key("component_count"));
+        check!(entry.metrics["disk_count"] >= 0);
+        check!(entry.metrics.get("network_interface_count").is_none());
+        check!(entry.metrics.get("component_count").is_none());
     }
 
     #[tokio::test(start_paused = true)]
@@ -650,9 +650,9 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entry = inspector.entries().last().cloned().unwrap();
-        check!(!entry.metrics.contains_key("disk_count"));
-        check!(entry.metrics.contains_key("network_interface_count"));
-        check!(!entry.metrics.contains_key("component_count"));
+        check!(entry.metrics.get("disk_count").is_none());
+        check!(entry.metrics["network_interface_count"] >= 0);
+        check!(entry.metrics.get("component_count").is_none());
     }
 
     #[tokio::test(start_paused = true)]
@@ -670,9 +670,9 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entry = inspector.entries().last().cloned().unwrap();
-        check!(!entry.metrics.contains_key("disk_count"));
-        check!(!entry.metrics.contains_key("network_interface_count"));
-        check!(entry.metrics.contains_key("component_count"));
+        check!(entry.metrics.get("disk_count").is_none());
+        check!(entry.metrics.get("network_interface_count").is_none());
+        check!(entry.metrics["component_count"] >= 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -688,9 +688,9 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
 
         let entry = inspector.entries().last().cloned().unwrap();
-        check!(!entry.metrics.contains_key("disk_count"));
-        check!(!entry.metrics.contains_key("network_interface_count"));
-        check!(!entry.metrics.contains_key("component_count"));
+        check!(entry.metrics.get("disk_count").is_none());
+        check!(entry.metrics.get("network_interface_count").is_none());
+        check!(entry.metrics.get("component_count").is_none());
     }
 
     #[tokio::test(start_paused = true)]
