@@ -254,27 +254,6 @@ pub struct ComponentMetrics {
 }
 
 /// Extension methods for subscribing system metrics to a global entry sink.
-///
-/// Spawns a background task that periodically samples [`SysinfoMetrics`] from
-/// [`sysinfo`] and appends each snapshot to the sink. The task is automatically
-/// aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is
-/// dropped.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use metrique_util::{
-///     AttachGlobalEntrySinkSysinfoExt, MetricNameStyle, SysinfoMetricsConfig,
-/// };
-/// use std::time::Duration;
-///
-/// let _handle = ServiceMetrics::attach_to_stream(emf.output_to(std::io::stderr()));
-///
-/// let config = SysinfoMetricsConfig::default()
-///     .with_interval(Duration::from_secs(30))
-///     .with_name_style(MetricNameStyle::PascalCase);
-/// ServiceMetrics::subscribe_sysinfo_metrics(config);
-/// ```
 pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// Subscribe to system metrics, adding the subscription to this handle.
     ///
@@ -288,6 +267,22 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     ///
     /// If no sink has been attached yet, entries are silently discarded until
     /// one is attached.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use metrique_util::{
+    ///     AttachGlobalEntrySinkSysinfoExt, MetricNameStyle, SysinfoMetricsConfig,
+    /// };
+    /// use std::time::Duration;
+    ///
+    /// let _handle = ServiceMetrics::attach_to_stream(emf.output_to(std::io::stderr()));
+    ///
+    /// let config = SysinfoMetricsConfig::default()
+    ///     .with_interval(Duration::from_secs(30))
+    ///     .with_name_style(MetricNameStyle::PascalCase);
+    /// ServiceMetrics::subscribe_sysinfo_metrics(config);
+    /// ```
     fn subscribe_sysinfo_metrics(config: SysinfoMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
         let abort = spawn_sysinfo_metrics_task(sink, config);
