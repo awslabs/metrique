@@ -6,6 +6,7 @@ members = [
     "metrique-core",
     "metrique-macro",
     "metrique-metricsrs",
+    "metrique-otel",
     "metrique-service-metrics",
     "metrique-timesource",
     "metrique-util",

@@ -4,7 +4,7 @@
 use std::{
     io,
     marker::PhantomData,
-    ops::{Deref, DerefMut},
+    ops::{AddAssign, Deref, DerefMut, SubAssign},
 };
 
 use derive_where::derive_where;
@@ -137,6 +137,34 @@ impl<T: Value, FLAGS: FlagConstructor> Value for ForceFlag<T, FLAGS> {
 
 impl<T: MetricValue, FLAGS: FlagConstructor> MetricValue for ForceFlag<T, FLAGS> {
     type Unit = T::Unit;
+}
+
+// Forward `+=` / `-=` through the wrapper so flag-tagged values stay usable
+// as accumulators (e.g. `metrique-aggregation`'s `Sum` strategy needs
+// `T: AddAssign`). Both sides receive the same `FLAGS` ctor; mixing tags is
+// nonsense and the type system prevents it.
+impl<T: AddAssign, FLAGS: FlagConstructor> AddAssign for ForceFlag<T, FLAGS> {
+    fn add_assign(&mut self, rhs: Self) {
+        self.0 += rhs.0;
+    }
+}
+
+impl<T: AddAssign, FLAGS: FlagConstructor> AddAssign<T> for ForceFlag<T, FLAGS> {
+    fn add_assign(&mut self, rhs: T) {
+        self.0 += rhs;
+    }
+}
+
+impl<T: SubAssign, FLAGS: FlagConstructor> SubAssign for ForceFlag<T, FLAGS> {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.0 -= rhs.0;
+    }
+}
+
+impl<T: SubAssign, FLAGS: FlagConstructor> SubAssign<T> for ForceFlag<T, FLAGS> {
+    fn sub_assign(&mut self, rhs: T) {
+        self.0 -= rhs;
+    }
 }
 
 // This one is private for now since there is no obvious use for it.
