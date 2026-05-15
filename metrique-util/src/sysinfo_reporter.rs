@@ -12,6 +12,19 @@ use sysinfo::{Components, Disks, Networks, ProcessesToUpdate, System};
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 
+/// Whether the target platform implements load average. Matches the set of
+/// targets where sysinfo carries a real implementation (anything outside this
+/// list returns `0.0` from `System::load_average()`).
+const LOAD_AVERAGE_SUPPORTED: bool = cfg!(any(
+    target_os = "linux",
+    target_os = "android",
+    target_os = "macos",
+    target_os = "ios",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "windows",
+));
+
 /// Configuration for system metrics bridge subscriptions.
 ///
 /// By default the bridge tracks CPU, memory, swap, load average, uptime, and
@@ -119,12 +132,16 @@ pub struct SysinfoMetrics {
     pub free_swap: u64,
 
     // ----- Load average -----
-    /// 1-minute load average. `0.0` on platforms without load average support.
-    pub load_average_one: f64,
-    /// 5-minute load average. `0.0` on platforms without load average support.
-    pub load_average_five: f64,
-    /// 15-minute load average. `0.0` on platforms without load average support.
-    pub load_average_fifteen: f64,
+    //
+    // `None` on platforms where sysinfo doesn't implement load average
+    // (currently only the `unknown` fallback target — Linux, macOS, iOS,
+    // Android, FreeBSD, NetBSD, and Windows all carry real implementations).
+    /// 1-minute load average.
+    pub load_average_one: Option<f64>,
+    /// 5-minute load average.
+    pub load_average_five: Option<f64>,
+    /// 15-minute load average.
+    pub load_average_fifteen: Option<f64>,
 
     /// System uptime in seconds.
     pub uptime: u64,
@@ -372,9 +389,9 @@ fn sample(
         used_swap: system.used_swap(),
         free_swap: system.free_swap(),
 
-        load_average_one: load.one,
-        load_average_five: load.five,
-        load_average_fifteen: load.fifteen,
+        load_average_one: LOAD_AVERAGE_SUPPORTED.then_some(load.one),
+        load_average_five: LOAD_AVERAGE_SUPPORTED.then_some(load.five),
+        load_average_fifteen: LOAD_AVERAGE_SUPPORTED.then_some(load.fifteen),
 
         uptime: System::uptime(),
 
