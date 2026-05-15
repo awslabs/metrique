@@ -53,8 +53,13 @@ pub trait FlagConstructor {
 
 /// Helper to force enable metric flags on a value
 ///
-/// This is intentionally "punned" to work with [Entry], [Value], and [EntryIoStream] to
-/// avoid duplication of the format-specific flag types like `HighStorageResolution`.
+/// The `#[metrics(flags(...))]` attribute provides an alternative syntax:
+/// ```ignore
+/// #[metrics(flags(HighStorageResolution))]
+/// latency: u64,
+/// ```
+// Intentionally "punned" to work with Entry, Value, and EntryIoStream to
+// avoid duplication of the format-specific flag types like HighStorageResolution.
 #[derive_where(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash; T)]
 pub struct ForceFlag<T, FLAGS: FlagConstructor>(T, PhantomData<FLAGS>);
 

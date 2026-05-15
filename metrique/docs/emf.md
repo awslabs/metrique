@@ -251,6 +251,47 @@ Your choice of destination will depend on your platform and performance needs. S
 
 **Important Note**: In all cases, you do not (and should not) use a nonblocking writer like [`tracing_appender::non_blocking`] when configuring `metrique`. There is _already_ a background sink. By using a non-blocking writer, you're adding a second level of indirection that is both unnecessary and will consume more memory during failure.
 
+## High-Resolution Metrics
+
+By default, CloudWatch metrics have a 60-second storage resolution. To store at 1-second resolution, apply the `HighStorageResolution` flag:
+
+```rust
+use metrique::unit_of_work::metrics;
+use metrique::emf::flags::HighStorageResolution;
+
+#[metrics(
+    rename_all = "PascalCase",
+    emf::dimension_sets = [["Operation"]],
+)]
+struct LatencySensitiveMetrics {
+    operation: String,
+    #[metrics(flags(HighStorageResolution))]
+    latency_ms: u64,
+}
+```
+
+## Excluding Fields from CloudWatch Metrics (NoMetric)
+
+To emit a numeric value as a JSON property without creating a CloudWatch metric, apply the `NoMetric` flag:
+
+```rust
+use metrique::unit_of_work::metrics;
+use metrique::emf::flags::NoMetric;
+
+#[metrics(
+    rename_all = "PascalCase",
+    emf::dimension_sets = [["Service"]],
+)]
+struct RequestMetrics {
+    service: String,
+    latency_ms: u64,
+    #[metrics(flags(NoMetric))]
+    request_size_bytes: u64, // appears in JSON but not as a CloudWatch metric
+}
+```
+
+This is useful for numeric context values that you want available in CloudWatch Logs Insights or Contributor Insights queries but don't need as CloudWatch metrics.
+
 ## Platform Specific Guidance
 
 ### Fargate / ECS
