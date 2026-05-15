@@ -27,5 +27,6 @@ tracing = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 metrique = { workspace = true }
 metrique-aggregation = { workspace = true }
+metrique-writer-format-emf = { workspace = true }
 opentelemetry_sdk = { version = "0.32", features = ["testing"] }
 tracing-subscriber = { workspace = true }

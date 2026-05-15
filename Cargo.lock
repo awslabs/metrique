@@ -1159,6 +1159,7 @@ dependencies = [
  "metrique-aggregation",
  "metrique-writer",
  "metrique-writer-core",
+ "metrique-writer-format-emf",
  "opentelemetry",
  "opentelemetry-otlp",
  "opentelemetry_sdk",
