@@ -96,6 +96,7 @@ impl SysinfoMetricsConfig {
 ///
 /// [sysinfo docs]: https://docs.rs/sysinfo
 #[metrics(subfield_owned)]
+#[non_exhaustive]
 pub struct SysinfoMetrics {
     // ----- CPU -----
     /// Global CPU usage percentage, averaged across all cores (0.0 to 100.0).
@@ -174,6 +175,7 @@ pub struct SysinfoMetrics {
 /// Aggregated disk metrics across all mounted disks. Emitted as part of
 /// [`SysinfoMetrics`] when [`SysinfoMetricsConfig::with_disks`] is set.
 #[metrics(subfield_owned)]
+#[non_exhaustive]
 pub struct DiskMetrics {
     /// Number of mounted disks.
     pub disk_count: u64,
@@ -186,6 +188,7 @@ pub struct DiskMetrics {
 /// Aggregated network metrics across all interfaces. Emitted as part of
 /// [`SysinfoMetrics`] when [`SysinfoMetricsConfig::with_networks`] is set.
 #[metrics(subfield_owned)]
+#[non_exhaustive]
 pub struct NetworkMetrics {
     /// Number of network interfaces being tracked.
     pub network_interface_count: u64,
@@ -221,6 +224,7 @@ pub struct NetworkMetrics {
 /// Component (thermal sensor) metrics. Emitted as part of [`SysinfoMetrics`]
 /// when [`SysinfoMetricsConfig::with_components`] is set.
 #[metrics(subfield_owned)]
+#[non_exhaustive]
 pub struct ComponentMetrics {
     /// Number of thermal/component sensors being tracked.
     pub component_count: u64,
@@ -578,6 +582,37 @@ mod tests {
         check!(entry.metrics["total_disk_space"] > 0);
         check!(entry.metrics.contains_key("network_interface_count"));
         check!(entry.metrics.contains_key("component_count"));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn process_level_metrics_are_populated() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let entry = inspector.entries().last().cloned().unwrap();
+
+        // The reporter resolves the current PID, so each process_* key should
+        // be present with a non-null value (Option<T> emits as a bare value
+        // when Some, and is omitted when None).
+        check!(entry.metrics["process_memory"] > 0);
+        check!(entry.metrics["process_virtual_memory"] > 0);
+        check!(entry.metrics.contains_key("process_cpu_usage"));
+        check!(entry.metrics.contains_key("process_accumulated_cpu_time"));
+        check!(entry.metrics.contains_key("process_run_time"));
+        check!(entry.metrics.contains_key("process_disk_read_bytes"));
+        check!(entry.metrics.contains_key("process_disk_total_read_bytes"));
+        check!(entry.metrics.contains_key("process_disk_written_bytes"));
+        check!(entry.metrics.contains_key("process_disk_total_written_bytes"));
+        // stdin / stdout / stderr alone account for at least 3 open FDs.
+        check!(entry.metrics["process_open_files"] > 0);
+        check!(entry.metrics["process_open_files_limit"] > 0);
     }
 
     #[tokio::test(start_paused = true)]
