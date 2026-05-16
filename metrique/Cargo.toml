@@ -86,12 +86,7 @@ name = "json"
 required-features = ["json"]
 
 [[example]]
-name = "tokio-metrics"
-required-features = ["emf", "service-metrics"]
-doc-scrape-examples = false
-
-[[example]]
-name = "sysinfo"
+name = "extras"
 required-features = ["emf", "service-metrics"]
 doc-scrape-examples = false
 
