@@ -256,7 +256,10 @@ async fn otel_up_down_counter_sums_signed_deltas() {
         }
     }
 
-    assert!(found, "expected a `Delta` UpDownCounter in exported metrics");
+    assert!(
+        found,
+        "expected a `Delta` UpDownCounter in exported metrics"
+    );
     assert_eq!(
         total,
         (3 - 1 + 5 - 2) as i64,

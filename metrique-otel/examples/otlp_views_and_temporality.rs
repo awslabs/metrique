@@ -107,9 +107,7 @@ async fn main() {
         // for sub-second latencies (in milliseconds, matching the unit
         // declared on the field).
         .with_view(|inst: &opentelemetry_sdk::metrics::Instrument| {
-            if inst.name() == "RequestLatency"
-                && matches!(inst.kind(), InstrumentKind::Histogram)
-            {
+            if inst.name() == "RequestLatency" && matches!(inst.kind(), InstrumentKind::Histogram) {
                 Some(
                     Stream::builder()
                         .with_aggregation(Aggregation::ExplicitBucketHistogram {
