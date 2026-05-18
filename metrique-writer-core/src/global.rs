@@ -32,9 +32,9 @@ use super::Entry;
 
 /// A global version of [`crate::EntrySink`] that can be referred to by any thread or component.
 ///
-/// Services typically run many components, only some of which may be owned by the service team.
-/// Many components, like the AuthRuntimeClient (ARC), still need to emit metrics or audit logs on
-/// behalf of the service. Configuring a global entry sink makes it easy for library authors to
+/// Services typically run many components, only some of which may be directly written by application authors.
+/// Many shared libraries still need to emit metrics or audit logs on
+/// behalf of the application. Configuring a global entry sink makes it easy for library authors to
 /// emit metrics to the right log file without being explicitly passed a background queue.
 ///
 /// Note that there be dangers with globals. They're more difficult to test, and they create
