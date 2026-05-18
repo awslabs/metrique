@@ -73,12 +73,16 @@ impl MetricOptions for OtelOptions {
 }
 
 /// Tag for fields that record onto an OTel monotonic counter.
+#[non_exhaustive]
 pub struct Counter;
 /// Tag for fields that record onto an OTel up-down counter.
+#[non_exhaustive]
 pub struct UpDownCounter;
 /// Tag for fields that record onto an OTel histogram instrument.
+#[non_exhaustive]
 pub struct Histogram;
 /// Tag for fields that record onto an OTel asynchronous gauge.
+#[non_exhaustive]
 pub struct Gauge;
 
 impl FlagConstructor for Counter {
