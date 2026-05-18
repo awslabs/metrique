@@ -6,15 +6,11 @@ use std::time::Duration;
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
+use metrique_core::DynamicNameStyle as MetricNameStyle;
 use tokio::runtime::Handle;
 use tokio_metrics::RuntimeMonitor;
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
-
-/// Runtime metric field naming style used by the Tokio metrics bridge.
-///
-/// This is a re-export of [`metrique_core::DynamicNameStyle`].
-pub use metrique_core::DynamicNameStyle as MetricNameStyle;
 
 /// Configuration for Tokio runtime metrics bridge subscriptions.
 #[derive(Debug, Clone, Copy)]
