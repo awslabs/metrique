@@ -22,6 +22,7 @@ opentelemetry-otlp = { version = "0.32", features = [
     "grpc-tonic",
     "metrics",
 ] }
+papaya = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 

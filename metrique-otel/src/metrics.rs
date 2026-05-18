@@ -1,8 +1,6 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, sync::RwLock};
-
 use metrique_writer_core::{
     Observation, Unit,
     unit::{NegativeScale, PositiveScale},
@@ -15,14 +13,17 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 
 use crate::flags::InstrumentKind;
 
-/// Cache of OTel instruments keyed by `(name, kind)`. Each `CachedInstrument`
-/// variant is `Arc`-backed inside the OTel SDK, so cloning a hit is cheap and
-/// recording is internally synchronized — no external locking required around
-/// the recording itself. Reads take the read lock and clone the handle out;
-/// the write lock is taken only on first sight of a new `(name, kind)` pair.
+/// Cache of OTel instruments keyed by `(scope, name, kind)`. Each
+/// `CachedInstrument` variant is `Arc`-backed inside the OTel SDK, so cloning
+/// a hit is cheap and recording is internally synchronized, so no external
+/// locking is required around the recording itself.
+///
+/// Storage is a lock-free [`papaya::HashMap`]: steady-state lookups never
+/// take a lock, and the first-sight insert path uses `get_or_insert_with` to
+/// stay race-safe without serializing readers.
 pub(crate) struct InstrumentCache {
     meter_provider: SdkMeterProvider,
-    instruments: RwLock<HashMap<InstrumentKey, CachedInstrument>>,
+    instruments: papaya::HashMap<InstrumentKey, CachedInstrument>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -44,7 +45,7 @@ impl InstrumentCache {
     pub(crate) fn new(meter_provider: SdkMeterProvider) -> Self {
         Self {
             meter_provider,
-            instruments: RwLock::new(HashMap::new()),
+            instruments: papaya::HashMap::new(),
         }
     }
 
@@ -62,23 +63,19 @@ impl InstrumentCache {
             name: name.to_owned(),
             kind,
         };
-        // Read-fast-path: clone the `Arc`-backed handle out and drop the lock
-        // before doing any recording. Steady-state lookups never take the
-        // write lock.
-        let instrument = if let Some(inst) = self
-            .instruments
-            .read()
-            .expect("instrument cache poisoned")
-            .get(&key)
-        {
+        let map = self.instruments.pin();
+        let instrument = if let Some(inst) = map.get(&key) {
             inst.clone()
         } else {
             // Instrument unit is fixed at creation time. If the same metric
-            // name is later recorded with a different unit, the original wins
-            // — that mirrors the OTEL SDK's own behavior.
+            // name is later recorded with a different unit, the original wins,
+            // mirroring the OTEL SDK's own behavior.
             let meter = self.meter_provider.meter(scope);
             let unit_str = unit_to_otel(unit);
-            let fresh = match kind {
+            // Race-safe insert: under contention the closure can run more than
+            // once and only one instrument is kept. Building a fresh handle is
+            // cheap and the discard path is rare (first sight of a key).
+            map.get_or_insert_with(key, || match kind {
                 InstrumentKind::Counter => CachedInstrument::Counter(
                     meter
                         .u64_counter(name.to_owned())
@@ -100,14 +97,8 @@ impl InstrumentCache {
                 InstrumentKind::Gauge => CachedInstrument::Gauge(
                     meter.f64_gauge(name.to_owned()).with_unit(unit_str).build(),
                 ),
-            };
-            // Race-safe insert: if another writer beat us, keep their entry.
-            self.instruments
-                .write()
-                .expect("instrument cache poisoned")
-                .entry(key)
-                .or_insert(fresh)
-                .clone()
+            })
+            .clone()
         };
 
         match &instrument {
