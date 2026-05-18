@@ -3,25 +3,36 @@
 
 //! End-to-end test for the recommended `KeyedAggregator -> WorkerSink ->
 //! OtelSink` pipeline. Verifies that:
-//! - `#[aggregate(strategy = Sum)]` fields flow through the aggregator and
-//!   land on an OTel counter
-//! - `#[aggregate(strategy = Histogram<T>)]` fields land on an OTel
-//!   histogram via the `Distribution` flag
+//! - `#[aggregate(strategy = OtelCounter)]` fields flow through the
+//!   aggregator and land on an OTel counter
+//! - `#[aggregate(strategy = OtelHistogram<U>)]` fields land on an OTel
+//!   histogram with `U` propagated as the wire unit
 //! - `#[aggregate(key)]` fields become OTel attributes on the recorded
 //!   measurements.
 
 use std::time::Duration;
 
+use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::{
-    aggregate, aggregator::KeyedAggregator, histogram::Histogram, sink::WorkerSink, value::Sum,
-};
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::flags::Counter;
+use metrique_otel::aggregate::{OtelCounter, OtelGauge, OtelHistogram, OtelUpDownCounter};
 use opentelemetry_sdk::metrics::{
     InMemoryMetricExporter, PeriodicReader, SdkMeterProvider,
     data::{AggregatedMetrics, MetricData},
 };
+
+/// Build a fresh `OtelSink` wired to an `InMemoryMetricExporter` and return
+/// both so each test can drive the pipeline and read the exported metrics.
+fn fresh_pipeline() -> (OtelSink, SdkMeterProvider, InMemoryMetricExporter) {
+    let exporter = InMemoryMetricExporter::default();
+    let reader = PeriodicReader::builder(exporter.clone()).build();
+    let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+    let sink = OtelSink::builder()
+        .with_meter_provider(meter_provider.clone())
+        .build();
+    (sink, meter_provider, exporter)
+}
 
 #[aggregate]
 #[metrics(rename_all = "PascalCase")]
@@ -29,11 +40,10 @@ struct RequestMetrics {
     #[aggregate(key)]
     operation: String,
 
-    #[aggregate(strategy = Sum)]
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     request_count: u64,
 
-    #[aggregate(strategy = Histogram<Duration>)]
+    #[aggregate(strategy = OtelHistogram<Millisecond>)]
     latency: Duration,
 }
 
@@ -68,10 +78,11 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
         .expect("get_finished_metrics");
 
     // Index exported metrics by name and instrument variant so we can
-    // assert on shapes, attribute groups, and aggregated values directly.
+    // assert on shapes, attribute groups, aggregated values, and units.
     let mut counter_attrs: Vec<Vec<(String, String)>> = Vec::new();
     let mut counter_values_by_op: Vec<(String, u64)> = Vec::new();
     let mut histogram_attrs: Vec<Vec<(String, String)>> = Vec::new();
+    let mut latency_unit: Option<String> = None;
 
     for rm in &exported {
         for sm in rm.scope_metrics() {
@@ -94,6 +105,7 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
                         }
                     }
                     ("Latency", AggregatedMetrics::F64(MetricData::Histogram(hist))) => {
+                        latency_unit = Some(m.unit().to_owned());
                         for dp in hist.data_points() {
                             let mut attrs: Vec<(String, String)> = dp
                                 .attributes()
@@ -113,7 +125,7 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
     assert_eq!(
         counter_values_by_op,
         vec![("GET".to_string(), 3), ("POST".to_string(), 1),],
-        "Sum strategy should produce one counter point per Operation key"
+        "OtelCounter should aggregate as Sum and emit one counter point per Operation key"
     );
 
     assert!(
@@ -133,5 +145,172 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
         histogram_attrs.len(),
         2,
         "expected one histogram point per Operation key, got {histogram_attrs:?}"
+    );
+    assert_eq!(
+        latency_unit.as_deref(),
+        Some("ms"),
+        "OtelHistogram<Millisecond> should propagate ms as the wire unit"
+    );
+}
+
+// --- Scoped per-strategy tests --------------------------------------------
+//
+// Each test uses the two-macro form (`#[aggregate]` + `#[metrics]`) on a
+// minimal struct, exercising a single OTel-aware strategy at a time so a
+// regression points directly at one strategy.
+
+#[aggregate]
+#[metrics(rename_all = "PascalCase")]
+struct BytesEntry {
+    #[aggregate(strategy = OtelCounter<Byte>)]
+    bytes_sent: u64,
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn otel_counter_propagates_byte_unit() {
+    let (sink, meter_provider, exporter) = fresh_pipeline();
+    let aggregator = KeyedAggregator::<BytesEntry, _>::new(sink.clone());
+    let worker = WorkerSink::new(aggregator, Duration::from_secs(3600));
+
+    for n in [128u64, 256, 1024] {
+        BytesEntry { bytes_sent: n }.close_and_merge(worker.clone());
+    }
+
+    worker.flush().await;
+    meter_provider.force_flush().expect("force_flush");
+
+    let exported = exporter
+        .get_finished_metrics()
+        .expect("get_finished_metrics");
+
+    let mut total = 0u64;
+    let mut unit: Option<String> = None;
+    for rm in &exported {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let ("BytesSent", AggregatedMetrics::U64(MetricData::Sum(sum))) =
+                    (m.name(), m.data())
+                {
+                    unit = Some(m.unit().to_owned());
+                    for dp in sum.data_points() {
+                        total += dp.value();
+                    }
+                }
+            }
+        }
+    }
+
+    assert_eq!(total, 128 + 256 + 1024, "OtelCounter should sum all values");
+    assert_eq!(
+        unit.as_deref(),
+        Some("By"),
+        "OtelCounter<Byte> should propagate `By` as the wire unit"
+    );
+}
+
+#[aggregate]
+#[metrics(rename_all = "PascalCase")]
+struct InFlightEntry {
+    #[aggregate(strategy = OtelUpDownCounter)]
+    delta: f64,
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn otel_up_down_counter_sums_signed_deltas() {
+    let (sink, meter_provider, exporter) = fresh_pipeline();
+    let aggregator = KeyedAggregator::<InFlightEntry, _>::new(sink.clone());
+    let worker = WorkerSink::new(aggregator, Duration::from_secs(3600));
+
+    for d in [3.0_f64, -1.0, 5.0, -2.0] {
+        InFlightEntry { delta: d }.close_and_merge(worker.clone());
+    }
+
+    worker.flush().await;
+    meter_provider.force_flush().expect("force_flush");
+
+    let exported = exporter
+        .get_finished_metrics()
+        .expect("get_finished_metrics");
+
+    let mut total = 0i64;
+    let mut found = false;
+    for rm in &exported {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let ("Delta", AggregatedMetrics::I64(MetricData::Sum(sum))) =
+                    (m.name(), m.data())
+                {
+                    // OTel emits an `is_monotonic` flag on `Sum` — verify we
+                    // landed on the non-monotonic instrument (UpDownCounter)
+                    // rather than the monotonic one (Counter).
+                    assert!(
+                        !sum.is_monotonic(),
+                        "UpDownCounter sum should report is_monotonic == false"
+                    );
+                    found = true;
+                    for dp in sum.data_points() {
+                        total += dp.value();
+                    }
+                }
+            }
+        }
+    }
+
+    assert!(found, "expected a `Delta` UpDownCounter in exported metrics");
+    assert_eq!(
+        total,
+        (3 - 1 + 5 - 2) as i64,
+        "OtelUpDownCounter should aggregate signed deltas via Sum"
+    );
+}
+
+#[aggregate]
+#[metrics(rename_all = "PascalCase")]
+struct PoolEntry {
+    #[aggregate(strategy = OtelGauge)]
+    pool_size: f64,
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn otel_gauge_emits_last_observed_value() {
+    let (sink, meter_provider, exporter) = fresh_pipeline();
+    let aggregator = KeyedAggregator::<PoolEntry, _>::new(sink.clone());
+    let worker = WorkerSink::new(aggregator, Duration::from_secs(3600));
+
+    // KeepLast semantics: the final inserted value should be the one exported.
+    for s in [10.0_f64, 25.0, 7.0] {
+        PoolEntry { pool_size: s }.close_and_merge(worker.clone());
+    }
+
+    worker.flush().await;
+    meter_provider.force_flush().expect("force_flush");
+
+    let exported = exporter
+        .get_finished_metrics()
+        .expect("get_finished_metrics");
+
+    let mut observed: Vec<f64> = Vec::new();
+    for rm in &exported {
+        for sm in rm.scope_metrics() {
+            for m in sm.metrics() {
+                if let ("PoolSize", AggregatedMetrics::F64(MetricData::Gauge(g))) =
+                    (m.name(), m.data())
+                {
+                    for dp in g.data_points() {
+                        observed.push(dp.value());
+                    }
+                }
+            }
+        }
+    }
+
+    assert_eq!(
+        observed.len(),
+        1,
+        "OtelGauge should emit exactly one observation per key, got {observed:?}"
+    );
+    assert_eq!(
+        observed[0], 7.0,
+        "OtelGauge should retain only the last observed value"
     );
 }

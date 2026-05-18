@@ -22,11 +22,9 @@ use std::time::Duration;
 
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
-use metrique_aggregation::{
-    aggregate, aggregator::KeyedAggregator, histogram::Histogram, sink::WorkerSink, value::Sum,
-};
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::flags::Counter;
+use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
 #[aggregate]
@@ -37,18 +35,15 @@ struct RequestMetrics {
     operation: String,
 
     /// Summed across all requests sharing the same `operation`; flushed as a
-    /// single `add()` on an OTEL counter. `flags(Counter)` is what the sink
-    /// reads (via `MetricFlags` downcast) to pick the OTel instrument kind.
-    #[aggregate(strategy = Sum)]
-    #[metrics(flags(Counter))]
+    /// single `add()` on an OTel counter. `OtelCounter` bundles the `Sum`
+    /// aggregation with the `Counter` instrument-kind flag the sink reads.
+    #[aggregate(strategy = OtelCounter)]
     request_count: u64,
 
     /// Each `add_value` is preserved exactly; on flush, the merged
-    /// distribution emits multi-observation data the `OtelSink` recognizes
-    /// (via the `Distribution` flag emitted by `metrique-aggregation`) and
-    /// records on an OTel histogram.
-    #[aggregate(strategy = Histogram<Duration>)]
-    #[metrics(unit = Millisecond)]
+    /// distribution is recorded on an OTel histogram. `OtelHistogram<Millisecond>`
+    /// bundles the histogram aggregation with the wire unit.
+    #[aggregate(strategy = OtelHistogram<Millisecond>)]
     latency: Duration,
 }
 

@@ -3,6 +3,7 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub mod aggregate;
 pub mod flags;
 mod metrics;
 mod translator;

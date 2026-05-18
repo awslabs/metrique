@@ -11,6 +11,8 @@ publish = false
 [dependencies]
 metrique-writer-core = { workspace = true }
 metrique-writer = { workspace = true, features = ["background-queue"] }
+metrique-aggregation = { workspace = true }
+metrique-core = { workspace = true }
 opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.32", features = [
     "metrics",
@@ -26,7 +28,6 @@ tracing = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 metrique = { workspace = true }
-metrique-aggregation = { workspace = true }
 metrique-writer-format-emf = { workspace = true }
 opentelemetry_sdk = { version = "0.32", features = ["testing"] }
 tracing-subscriber = { workspace = true }
