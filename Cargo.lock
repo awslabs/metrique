@@ -1155,6 +1155,7 @@ dependencies = [
 name = "metrique-otel"
 version = "0.0.0"
 dependencies = [
+ "divan",
  "metrique",
  "metrique-aggregation",
  "metrique-core",

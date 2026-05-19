@@ -38,3 +38,12 @@ metrique = { workspace = true }
 metrique-writer-format-emf = { workspace = true }
 opentelemetry_sdk = { version = "0.32", features = ["testing"] }
 tracing-subscriber = { workspace = true }
+divan = "0.1"
+
+[[bench]]
+name = "otel_append"
+harness = false
+
+[[bench]]
+name = "otel_vs_emf"
+harness = false
