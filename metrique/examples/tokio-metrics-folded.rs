@@ -3,10 +3,9 @@
 
 //! Folding Tokio runtime metrics into per-request entries.
 //!
-//! `subscribe_tokio_runtime_metrics` emits standalone runtime-metric entries
-//! on an interval. This example shows how to also fold the latest sample
-//! into per-request entries via [`EmbeddedTokioMetrics`], so each emitted
-//! record carries runtime context without an extra join at query time.
+//! [`EmbeddedTokioMetrics::spawn`] starts a background sampler and returns a
+//! `State<EmbeddedTokioMetrics>` that can be flattened into any entry, so
+//! every emitted record carries the latest runtime sample.
 
 use std::time::Duration;
 
@@ -16,17 +15,14 @@ use metrique::{
     unit_of_work::metrics,
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
-use metrique_util::{
-    AttachGlobalEntrySinkTokioMetricsExt, EmbeddedTokioMetrics, MetricNameStyle,
-    TokioRuntimeMetricsConfig,
-};
+use metrique_util::{EmbeddedTokioMetrics, State, TokioRuntimeMetricsConfig};
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     operation: &'static str,
     success: bool,
     #[metrics(flatten)]
-    runtime: EmbeddedTokioMetrics,
+    runtime: State<EmbeddedTokioMetrics>,
 }
 
 #[tokio::main]
@@ -36,21 +32,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .output_to(std::io::stderr()),
     );
 
-    // Spawns the background sampler that feeds `EmbeddedTokioMetrics`.
-    ServiceMetrics::subscribe_tokio_runtime_metrics(
-        TokioRuntimeMetricsConfig::default()
-            .with_interval(Duration::from_millis(500))
-            .with_name_style(MetricNameStyle::PascalCase),
+    let runtime = EmbeddedTokioMetrics::spawn(
+        TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(500)),
     );
 
-    // Without this, the first request would fold in the zero-default RuntimeMetrics.
+    // For the example, without this, the first request would fold in the default RuntimeMetrics.
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     for op in ["Read", "Write", "Read"] {
         let _m = RequestMetrics {
             operation: op,
             success: true,
-            runtime: EmbeddedTokioMetrics,
+            runtime: runtime.clone(),
         }
         .append_on_drop(ServiceMetrics::sink());
         tokio::time::sleep(Duration::from_millis(100)).await;

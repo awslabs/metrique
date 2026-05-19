@@ -15,7 +15,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 default = []
 state = ["dep:arc-swap"]
 tokio-metrics-bridge = [
-    "dep:arc-swap",
+    "state",
     "dep:metrique",
     "dep:tokio",
     "dep:tokio-metrics",
