@@ -1,13 +1,58 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
+
+use arc_swap::ArcSwap;
 
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use tokio::runtime::Handle;
-use tokio_metrics::RuntimeMonitor;
+use tokio_metrics::{RuntimeMetrics, RuntimeMonitor};
+
+static LATEST_TOKIO_METRICS: LazyLock<ArcSwap<RuntimeMetrics>> =
+    LazyLock::new(|| ArcSwap::from_pointee(RuntimeMetrics::default()));
+
+/// Folds the most recent Tokio runtime metrics sample into the enclosing
+/// entry. Embed via `#[metrics(flatten)]` after calling
+/// [`AttachGlobalEntrySinkTokioMetricsExt::subscribe_tokio_runtime_metrics`]
+/// somewhere in the process.
+///
+/// If `subscribe_tokio_runtime_metrics` has not been called (or the sampler
+/// has not ticked yet), the folded fields read as the default
+/// [`RuntimeMetrics`] (all zeros).
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use metrique::unit_of_work::metrics;
+/// use metrique_util::EmbeddedTokioMetrics;
+///
+/// #[metrics(rename_all = "PascalCase")]
+/// struct RequestMetrics {
+///     operation: &'static str,
+///     #[metrics(flatten)]
+///     runtime: EmbeddedTokioMetrics,
+/// }
+/// ```
+#[derive(Default, Debug, Clone, Copy)]
+pub struct EmbeddedTokioMetrics;
+
+impl CloseValue for EmbeddedTokioMetrics {
+    type Closed = <RuntimeMetrics as CloseValue>::Closed;
+    fn close(self) -> Self::Closed {
+        LATEST_TOKIO_METRICS.load().as_ref().clone().close()
+    }
+}
+
+impl CloseValue for &EmbeddedTokioMetrics {
+    type Closed = <RuntimeMetrics as CloseValue>::Closed;
+    fn close(self) -> Self::Closed {
+        LATEST_TOKIO_METRICS.load().as_ref().clone().close()
+    }
+}
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -122,6 +167,7 @@ fn spawn_tokio_runtime_metrics_task(
         let handle = Handle::current();
         let monitor = RuntimeMonitor::new(&handle);
         for snapshot in monitor.intervals() {
+            LATEST_TOKIO_METRICS.store(Arc::new(snapshot.clone()));
             sink.append(DynamicInflectionEntry {
                 entry: snapshot.close(),
                 name_style,
@@ -253,6 +299,40 @@ mod tests {
 
         #[cfg(tokio_unstable)]
         check!(entry.metrics["poll-time-histogram"].num_observations() > 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn embedded_folds_latest_sample_into_entry() {
+        use metrique::unit_of_work::metrics;
+        use metrique_writer::test_util::test_metric;
+
+        use super::EmbeddedTokioMetrics;
+
+        #[metrics(rename_all = "PascalCase")]
+        struct RequestMetrics {
+            operation: &'static str,
+            #[metrics(flatten)]
+            runtime: EmbeddedTokioMetrics,
+        }
+
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_tokio_runtime_metrics(
+            TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        let entry = test_metric(RequestMetrics {
+            operation: "Read",
+            runtime: EmbeddedTokioMetrics,
+        });
+
+        check!(entry.values["Operation"] == "Read");
+        check!(entry.metrics["WorkersCount"] == 1);
+        check!(entry.metrics["TotalParkCount"].as_u64() > 0);
     }
 
     #[tokio::test(start_paused = true)]

@@ -16,7 +16,8 @@ mod dynamic_inflection;
 mod tokio_metrics_reporter;
 #[cfg(feature = "tokio-metrics-bridge")]
 pub use tokio_metrics_reporter::{
-    AttachGlobalEntrySinkTokioMetricsExt, MetricNameStyle, TokioRuntimeMetricsConfig,
+    AttachGlobalEntrySinkTokioMetricsExt, EmbeddedTokioMetrics, MetricNameStyle,
+    TokioRuntimeMetricsConfig,
 };
 
 #[cfg(feature = "pending-sink")]
