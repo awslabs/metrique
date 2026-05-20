@@ -20,7 +20,7 @@
 //!
 //! ## Running this example
 //!
-//! ```ignore
+//! ```sh
 //! docker run --rm -p 4317:4317 -p 4318:4318 \
 //!     otel/opentelemetry-collector-contrib:latest
 //!
@@ -36,6 +36,60 @@
 //!     points per export, even with many distinct operations;
 //!   - aggregation temporality is reported as `Delta` rather than the
 //!     default `Cumulative`.
+//!
+//! ## Expected exported output (abbreviated)
+//!
+//! A single OTLP export after one run looks roughly like this (one
+//! `ScopeMetrics` block per scope; only the interesting fields are shown):
+//!
+//! ```json
+//! {
+//!   "scope": { "name": "metrique/otlp_views_and_temporality" },
+//!   "metrics": [
+//!     {
+//!       "name": "RequestCount",
+//!       "unit": "1",
+//!       "sum": {
+//!         "aggregationTemporality": "DELTA",
+//!         "isMonotonic": true,
+//!         "dataPoints": [
+//!           { "attributes": { "otel.metric.overflow": true },            "asInt": "2" },
+//!           { "attributes": { "Operation": "GET", "RequestId": "req-1" }, "asInt": "1" },
+//!           { "attributes": { "Operation": "GET", "RequestId": "req-2" }, "asInt": "1" },
+//!           { "attributes": { "Operation": "GET", "RequestId": "req-3" }, "asInt": "1" }
+//!         ]
+//!       }
+//!     },
+//!     {
+//!       "name": "RequestLatency",
+//!       "unit": "ms",
+//!       "histogram": {
+//!         "aggregationTemporality": "DELTA",
+//!         "dataPoints": [
+//!           { "attributes": { "Operation": "GET",  "RequestId": "req-1" }, "count": "1", "explicitBounds": [1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0], "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
+//!           { "attributes": { "Operation": "GET",  "RequestId": "req-2" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
+//!           { "attributes": { "Operation": "GET",  "RequestId": "req-3" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
+//!           { "attributes": { "Operation": "POST", "RequestId": "req-4" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
+//!           { "attributes": { "Operation": "POST", "RequestId": "req-5" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] }
+//!         ]
+//!       }
+//!     }
+//!   ]
+//! }
+//! ```
+//!
+//! Things worth noting in the payload:
+//!   - `aggregationTemporality` is `DELTA` (not the default `CUMULATIVE`),
+//!     because the exporter was built with `Temporality::Delta`.
+//!   - `RequestLatency.explicitBounds` matches the boundaries declared in
+//!     the view, not the SDK defaults. The view only fires on
+//!     `RequestLatency`, so the histogram still emits one data point per
+//!     `(Operation, RequestId)` pair, here all 5 requests.
+//!   - The 5 input requests yielded only 4 `RequestCount` data points: the
+//!     first 3 distinct attribute sets fit under the cardinality cap, and
+//!     the remaining 2 are rolled into a single synthetic
+//!     `otel.metric.overflow` point. The SDK does not guarantee a stable
+//!     order between the surviving data points and the overflow point.
 
 use std::time::{Duration, Instant, SystemTime};
 

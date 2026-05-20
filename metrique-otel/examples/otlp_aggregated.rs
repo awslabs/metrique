@@ -12,7 +12,7 @@
 //!
 //! Run with the same environment variables as `otlp_grpc.rs`:
 //!
-//! ```ignore
+//! ```sh
 //! OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
 //! OTEL_SERVICE_NAME=metrique-otel-example \
 //!     cargo run -p metrique-otel --example otlp_aggregated

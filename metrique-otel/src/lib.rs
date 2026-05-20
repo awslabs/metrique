@@ -49,15 +49,13 @@ impl OtelSink {
     }
 
     /// Drive `force_flush` on the meter provider and resolve once it's done.
-    /// Errors from `force_flush` are logged at `warn` level but not surfaced —
-    /// the [`EntrySink`] trait has no way to report them.
+    /// Errors from `force_flush` are logged at `warn` level.
     ///
-    /// Internally this uses `tokio::task::spawn_blocking` so it must be
-    /// awaited on a tokio runtime. Callers of [`with_otlp_default`] already
-    /// require tokio (the OTLP/gRPC exporters use it transitively), so this
-    /// is not an additional constraint in practice.
+    /// # Panics
     ///
-    /// [`with_otlp_default`]: Self::with_otlp_default
+    /// The returned [`FlushWait`] must be awaited on a tokio runtime; it uses
+    /// `tokio::task::spawn_blocking` internally and will panic if polled
+    /// outside of one.
     pub fn flush_async(&self) -> FlushWait {
         let meter = self.inner.meter_provider.clone();
         FlushWait::from_future(async move {
@@ -72,6 +70,15 @@ impl OtelSink {
 
     /// Build a sink whose meter provider is wired to an OTLP/gRPC exporter
     /// using the standard `OTEL_*` environment variables.
+    ///
+    /// # Panics
+    ///
+    /// Must be called from within a tokio runtime. The tonic-backed OTLP
+    /// exporter and the [`PeriodicReader`] both spawn export tasks on the
+    /// current runtime; calling this outside of `#[tokio::main]` (or an
+    /// explicit `Runtime::enter`) will panic.
+    ///
+    /// [`PeriodicReader`]: opentelemetry_sdk::metrics::PeriodicReader
     pub fn with_otlp_default() -> Result<Self, OtelSinkError> {
         let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
             .with_tonic()
@@ -145,6 +152,17 @@ impl OtelSinkBuilder {
         self
     }
 
+    /// # Panics
+    ///
+    /// The default (no provider supplied) builds an empty [`SdkMeterProvider`]
+    /// with no readers attached, which does not require a tokio runtime.
+    ///
+    /// If a meter provider is supplied via [`Self::with_meter_provider`] that
+    /// carries a [`PeriodicReader`] (or any other reader that spawns onto the
+    /// current runtime), `build` must be called from within a tokio runtime;
+    /// the reader will panic otherwise.
+    ///
+    /// [`PeriodicReader`]: opentelemetry_sdk::metrics::PeriodicReader
     pub fn build(self) -> OtelSink {
         let meter_provider = self.meter_provider.unwrap_or_else(|| {
             let mut b = SdkMeterProvider::builder();

@@ -12,7 +12,7 @@
 //!
 //! Start a local OTLP gRPC collector first:
 //!
-//! ```ignore
+//! ```sh
 //! docker run --rm -p 4317:4317 -p 4318:4318 \
 //!     otel/opentelemetry-collector-contrib:latest \
 //!     --config=/etc/otelcol-contrib/config.yaml
@@ -20,7 +20,7 @@
 //!
 //! Then point the example at it and run:
 //!
-//! ```ignore
+//! ```sh
 //! OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
 //! OTEL_SERVICE_NAME=metrique-otel-example \
 //!     cargo run -p metrique-otel --example otlp_grpc

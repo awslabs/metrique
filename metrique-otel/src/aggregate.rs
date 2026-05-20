@@ -4,12 +4,10 @@
 //! Each strategy here is a thin layer over a `metrique-aggregation` primitive
 //! plus a wrapping at close time:
 //!
-//! - [`OtelCounter<U>`] — `Sum`, closes as `ForceFlag<WithUnit<T, U>, flags::Counter>`.
-//! - [`OtelUpDownCounter<U>`] — `Sum`, closes as `ForceFlag<WithUnit<T, U>, flags::UpDownCounter>`.
-//! - [`OtelGauge<U>`] — keep-last, closes as `ForceFlag<WithUnit<T, U>, flags::Gauge>`.
-//! - [`OtelHistogram<U>`] — `Histogram<T>`, closes as `WithUnit<HistogramClosed<T>, U>`
-//!   (the histogram self-emits the `Distribution` flag, which the sink maps to a
-//!   histogram instrument; no `ForceFlag` needed).
+//! - [`OtelCounter<U>`]: sums values; closes as [`ForceFlag`]`<`[`WithUnit`]`<T, U>,`[`flags::Counter`]`>`.
+//! - [`OtelUpDownCounter<U>`]: sums signed values; closes as [`ForceFlag`]`<`[`WithUnit`]`<T, U>,`[`flags::UpDownCounter`]`>`.
+//! - [`OtelGauge<U>`]: keep-last; closes as [`ForceFlag`]`<`[`WithUnit`]`<T, U>,`[`flags::Gauge`]`>`.
+//! - [`OtelHistogram<U>`]: collects a distribution; closes as [`WithUnit`]`<`[`HistogramClosed`]`<T>, U>`.
 //!
 //! `T` is supplied by the aggregate macro from the source field type, so it
 //! never has to be named in user code. The default for `U` is
@@ -166,10 +164,6 @@ where
 
 /// Collect observations into a distribution; emit as an OTel histogram with
 /// unit `U`.
-///
-/// The underlying [`HistogramClosed`] already emits a `Distribution` flag,
-/// which the OTel sink maps to a histogram instrument — so no explicit flag
-/// wrap is needed here; we only override the wire unit.
 pub struct OtelHistogram<U = Dimensionless>(PhantomData<U>);
 
 /// Accumulator for [`OtelHistogram`].
