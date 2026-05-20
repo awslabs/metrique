@@ -18,7 +18,7 @@ use metrique_writer_core::{
 };
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 
-use crate::{metrics::InstrumentCache, translator::OtelEntryWriter};
+use crate::{metrics::InstrumentCache, translator::append_with_pool};
 
 /// Default OTel `InstrumentationScope` name when the caller does not set one
 /// via [`OtelSinkBuilder::with_scope`].
@@ -238,9 +238,7 @@ impl OtelSinkBuilder {
 
 impl<E: Entry + Send + 'static> EntrySink<E> for OtelSink {
     fn append(&self, entry: E) {
-        let mut writer = OtelEntryWriter::new(&self.inner.instruments, self.inner.scope);
-        entry.write(&mut writer);
-        writer.finish();
+        append_with_pool(&self.inner.instruments, self.inner.scope, entry);
     }
 
     fn flush_async(&self) -> FlushWait {

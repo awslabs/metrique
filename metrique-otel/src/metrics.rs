@@ -1,6 +1,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::hash::{Hash, Hasher};
+
 use metrique_writer_core::{
     Observation, Unit,
     unit::{NegativeScale, PositiveScale},
@@ -10,6 +12,7 @@ use opentelemetry::{
     metrics::{Counter, Gauge, Histogram, MeterProvider, UpDownCounter},
 };
 use opentelemetry_sdk::metrics::SdkMeterProvider;
+use papaya::Equivalent;
 
 use crate::flags::InstrumentKind;
 
@@ -31,6 +34,31 @@ pub(crate) struct InstrumentKey {
     pub(crate) scope: &'static str,
     pub(crate) name: String,
     pub(crate) kind: InstrumentKind,
+}
+
+/// Borrowed counterpart to [`InstrumentKey`] used for cache lookups. Lets
+/// `record` probe the map without first allocating an owned `String` for the
+/// metric name; the owned key is only constructed on the insert path.
+struct InstrumentKeyRef<'a> {
+    scope: &'static str,
+    name: &'a str,
+    kind: InstrumentKind,
+}
+
+// Must match `#[derive(Hash)]` on `InstrumentKey`: same field order, and
+// `Hash for String` delegates to `Hash for str`, so the two hashes agree.
+impl Hash for InstrumentKeyRef<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.scope.hash(state);
+        self.name.hash(state);
+        self.kind.hash(state);
+    }
+}
+
+impl Equivalent<InstrumentKey> for InstrumentKeyRef<'_> {
+    fn equivalent(&self, key: &InstrumentKey) -> bool {
+        self.scope == key.scope && self.kind == key.kind && self.name == key.name.as_str()
+    }
 }
 
 #[derive(Clone)]
@@ -58,13 +86,10 @@ impl InstrumentCache {
         unit: Unit,
         attributes: &[KeyValue],
     ) {
-        let key = InstrumentKey {
-            scope,
-            name: name.to_owned(),
-            kind,
-        };
         let map = self.instruments.pin();
-        let instrument = if let Some(inst) = map.get(&key) {
+        // Probe with a borrowed key so a steady-state hit pays no allocation.
+        // Only construct the owned `InstrumentKey` on the cold insert path.
+        let instrument = if let Some(inst) = map.get(&InstrumentKeyRef { scope, name, kind }) {
             inst.clone()
         } else {
             // Instrument unit is fixed at creation time. If the same metric
@@ -72,10 +97,15 @@ impl InstrumentCache {
             // mirroring the OTEL SDK's own behavior.
             let meter = self.meter_provider.meter(scope);
             let unit_str = unit_to_otel(unit);
+            let owned_key = InstrumentKey {
+                scope,
+                name: name.to_owned(),
+                kind,
+            };
             // Race-safe insert: under contention the closure can run more than
             // once and only one instrument is kept. Building a fresh handle is
             // cheap and the discard path is rare (first sight of a key).
-            map.get_or_insert_with(key, || match kind {
+            map.get_or_insert_with(owned_key, || match kind {
                 InstrumentKind::Counter => CachedInstrument::Counter(
                     meter
                         .u64_counter(name.to_owned())

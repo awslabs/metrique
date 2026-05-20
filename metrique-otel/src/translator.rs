@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::borrow::Cow;
+use std::cell::RefCell;
 
 use metrique_writer_core::{
     EntryConfig, MetricFlags, Observation, Unit, ValidationError,
@@ -27,50 +28,157 @@ struct PendingMetric {
     per_metric_dimensions: Vec<KeyValue>,
 }
 
-pub(crate) struct OtelEntryWriter<'sink> {
-    pub(crate) cache: &'sink InstrumentCache,
+impl PendingMetric {
+    /// Reset fields to a clean state while keeping the heap capacities of
+    /// `name`, `observations`, and `per_metric_dimensions`. Used when a
+    /// slot is recycled out of [`WriterBufs::metric_pool`]; `kind` and
+    /// `unit` are placeholders, overwritten before the slot leaves the
+    /// pool.
+    fn empty() -> Self {
+        Self {
+            name: String::new(),
+            kind: InstrumentKind::Counter,
+            observations: Vec::new(),
+            unit: Unit::None,
+            per_metric_dimensions: Vec::new(),
+        }
+    }
+}
+
+/// Per-thread scratch space reused across appends. Outer `Vec`s and the
+/// inner `Vec`s inside each pooled `PendingMetric` keep their capacity
+/// across calls, so steady-state appends on a given thread allocate only
+/// for genuine growth (e.g. a wider entry than seen before).
+pub(crate) struct WriterBufs {
+    entry_attributes: Vec<KeyValue>,
+    pending: Vec<PendingMetric>,
+    /// Scratch used in `finish` to merge per-metric dimensions with the
+    /// entry-level attributes; only touched when at least one metric has
+    /// per-metric dimensions.
+    scratch: Vec<KeyValue>,
+    /// Recycled `PendingMetric` slots with their inner `Vec` capacity
+    /// preserved.
+    metric_pool: Vec<PendingMetric>,
+}
+
+impl WriterBufs {
+    pub(crate) const fn new() -> Self {
+        Self {
+            entry_attributes: Vec::new(),
+            pending: Vec::new(),
+            scratch: Vec::new(),
+            metric_pool: Vec::new(),
+        }
+    }
+
+    /// Reset the per-append state. Tolerates leftover state from a prior
+    /// `Entry::write` that panicked mid-walk: any half-built `pending`
+    /// slots get returned to the pool with their capacity intact.
+    fn reset(&mut self) {
+        self.entry_attributes.clear();
+        self.scratch.clear();
+        while let Some(mut m) = self.pending.pop() {
+            m.name.clear();
+            m.observations.clear();
+            m.per_metric_dimensions.clear();
+            self.metric_pool.push(m);
+        }
+    }
+
+    fn take_metric(&mut self) -> PendingMetric {
+        self.metric_pool.pop().unwrap_or_else(PendingMetric::empty)
+    }
+}
+
+thread_local! {
+    static BUFS: RefCell<WriterBufs> = const { RefCell::new(WriterBufs::new()) };
+}
+
+/// Run a single append against the per-thread `WriterBufs` arena. Falls
+/// back to a stack-local arena if the thread-local is unavailable
+/// (re-entrant append from inside `Entry::write`, or thread shutdown).
+pub(crate) fn append_with_pool<E: metrique_writer_core::Entry>(
+    cache: &InstrumentCache,
+    scope: &'static str,
+    entry: E,
+) {
+    let mut entry_opt = Some(entry);
+    let _ = BUFS.try_with(|cell| {
+        if let Ok(mut bufs) = cell.try_borrow_mut() {
+            if let Some(e) = entry_opt.take() {
+                run(cache, scope, &mut bufs, e);
+            }
+        }
+    });
+    if let Some(e) = entry_opt {
+        let mut local = WriterBufs::new();
+        run(cache, scope, &mut local, e);
+    }
+}
+
+fn run<E: metrique_writer_core::Entry>(
+    cache: &InstrumentCache,
+    scope: &'static str,
+    bufs: &mut WriterBufs,
+    entry: E,
+) {
+    bufs.reset();
+    let mut writer = OtelEntryWriter { cache, scope, bufs };
+    entry.write(&mut writer);
+    writer.finish();
+}
+
+pub(crate) struct OtelEntryWriter<'a> {
+    pub(crate) cache: &'a InstrumentCache,
     /// OTel `InstrumentationScope` name, derived once per entry type at
     /// [`OtelSink::append`] time from `std::any::type_name::<E>()`.
     ///
     /// [`OtelSink::append`]: crate::OtelSink
     pub(crate) scope: &'static str,
-    /// String fields collected during the walk; applied as attributes to
-    /// every metric in this entry at `finish()` time.
-    entry_attributes: Vec<KeyValue>,
-    pending: Vec<PendingMetric>,
+    bufs: &'a mut WriterBufs,
 }
 
-impl<'sink> OtelEntryWriter<'sink> {
-    pub(crate) fn new(cache: &'sink InstrumentCache, scope: &'static str) -> Self {
-        Self {
-            cache,
-            scope,
-            entry_attributes: Vec::new(),
-            pending: Vec::new(),
-        }
-    }
-
-    pub(crate) fn finish(self) {
-        for m in self.pending {
-            // Per-metric dimensions take precedence by appearing first; the
-            // entry-level attributes follow. The OTEL SDK does not de-dup
-            // attribute keys, so any collision is left visible — that's a
-            // user-data problem, not something to paper over here.
-            let mut attributes = m.per_metric_dimensions;
-            attributes.extend(self.entry_attributes.iter().cloned());
-            self.cache.record(
-                self.scope,
+impl<'a> OtelEntryWriter<'a> {
+    fn finish(self) {
+        let OtelEntryWriter { cache, scope, bufs } = self;
+        // Pop metrics in reverse insertion order; OTel doesn't care about
+        // record ordering inside an export window, and popping lets us
+        // return each slot to the pool without holding a second borrow.
+        while let Some(mut m) = bufs.pending.pop() {
+            let attrs: &[KeyValue] = if m.per_metric_dimensions.is_empty() {
+                // Common case: no per-metric dimensions on this metric.
+                // Borrow the entry-level attribute set directly, skipping
+                // the N*K clone the old code paid.
+                &bufs.entry_attributes
+            } else {
+                // Uncommon path: combine per-metric dims (first, so they
+                // take precedence on the wire) with the entry-level
+                // attrs. Reuses a single scratch Vec across metrics. The
+                // OTEL SDK does not de-dup attribute keys, so any
+                // collision is left visible — that's a user-data problem,
+                // not something to paper over here.
+                bufs.scratch.clear();
+                bufs.scratch.extend(m.per_metric_dimensions.iter().cloned());
+                bufs.scratch.extend(bufs.entry_attributes.iter().cloned());
+                &bufs.scratch
+            };
+            cache.record(
+                scope,
                 &m.name,
                 m.kind,
-                m.observations,
+                m.observations.iter().copied(),
                 m.unit,
-                &attributes,
+                attrs,
             );
+            m.name.clear();
+            m.observations.clear();
+            m.per_metric_dimensions.clear();
+            bufs.metric_pool.push(m);
         }
     }
 }
 
-impl<'a, 'sink> EntryWriter<'a> for OtelEntryWriter<'sink> {
+impl<'a, 'b> EntryWriter<'a> for OtelEntryWriter<'b> {
     fn timestamp(&mut self, _timestamp: std::time::SystemTime) {
         // OTEL meter readers stamp measurements with their own clock; the
         // entry timestamp is informational only. Until the descriptor system
@@ -89,26 +197,27 @@ impl<'a, 'sink> EntryWriter<'a> for OtelEntryWriter<'sink> {
     }
 }
 
-pub(crate) struct OtelValueWriter<'a, 'sink> {
-    pub(crate) parent: &'a mut OtelEntryWriter<'sink>,
+pub(crate) struct OtelValueWriter<'a, 'b> {
+    pub(crate) parent: &'a mut OtelEntryWriter<'b>,
     pub(crate) name: Cow<'a, str>,
 }
 
-impl<'a, 'sink> ValueWriter for OtelValueWriter<'a, 'sink> {
+impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
     fn string(self, value: &str) {
         // String fields become entry-wide attributes attached to every
         // metric this entry produces. Keeping metadata next to metrics is
         // the explicit V1 goal — see plan items 1 and 2.
         self.parent
+            .bufs
             .entry_attributes
             .push(KeyValue::new(self.name.into_owned(), value.to_owned()));
     }
 
-    fn metric<'b>(
+    fn metric<'c>(
         self,
         distribution: impl IntoIterator<Item = Observation>,
         unit: Unit,
-        dimensions: impl IntoIterator<Item = (&'b str, &'b str)>,
+        dimensions: impl IntoIterator<Item = (&'c str, &'c str)>,
         flags: MetricFlags<'_>,
     ) {
         // Resolve the instrument kind from the metric flags:
@@ -124,17 +233,20 @@ impl<'a, 'sink> ValueWriter for OtelValueWriter<'a, 'sink> {
         } else {
             return;
         };
-        let per_metric_dimensions: Vec<KeyValue> = dimensions
-            .into_iter()
-            .map(|(k, v)| KeyValue::new(k.to_owned(), v.to_owned()))
-            .collect();
-        self.parent.pending.push(PendingMetric {
-            name: self.name.into_owned(),
-            kind,
-            observations: distribution.into_iter().collect(),
-            unit,
-            per_metric_dimensions,
-        });
+        let mut metric = self.parent.bufs.take_metric();
+        metric.name.clear();
+        metric.name.push_str(&self.name);
+        metric.kind = kind;
+        metric.unit = unit;
+        metric.observations.clear();
+        metric.observations.extend(distribution);
+        metric.per_metric_dimensions.clear();
+        metric.per_metric_dimensions.extend(
+            dimensions
+                .into_iter()
+                .map(|(k, v)| KeyValue::new(k.to_owned(), v.to_owned())),
+        );
+        self.parent.bufs.pending.push(metric);
     }
 
     fn error(self, _error: ValidationError) {
