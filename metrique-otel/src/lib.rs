@@ -51,6 +51,8 @@ impl OtelSink {
     /// Drive `force_flush` on the meter provider and resolve once it's done.
     /// Errors from `force_flush` are logged at `warn` level.
     ///
+    /// Callers outside a tokio runtime should use [`Self::flush`] instead.
+    ///
     /// # Panics
     ///
     /// The returned [`FlushWait`] must be awaited on a tokio runtime; it uses
@@ -68,8 +70,27 @@ impl OtelSink {
         })
     }
 
+    /// Synchronous counterpart to [`Self::flush_async`]: drive `force_flush`
+    /// on the meter provider directly, blocking the calling thread until the
+    /// flush completes. Errors are logged at `warn` level.
+    ///
+    /// `SdkMeterProvider::force_flush` is itself synchronous; `flush_async`
+    /// wraps it in `spawn_blocking` only to remain well-behaved when called
+    /// from inside a tokio executor. From a non-tokio context, prefer this
+    /// method; from an async context, prefer [`Self::flush_async`] so the
+    /// tokio runtime doesn't get blocked.
+    pub fn flush(&self) {
+        if let Err(e) = self.inner.meter_provider.force_flush() {
+            tracing::warn!(error = %e, "metrique-otel: meter provider force_flush failed");
+        }
+    }
+
     /// Build a sink whose meter provider is wired to an OTLP/gRPC exporter
     /// using the standard `OTEL_*` environment variables.
+    ///
+    /// Callers outside a tokio runtime should use
+    /// [`Self::with_otlp_http_default`] instead, which uses a blocking
+    /// HTTP/protobuf transport that does not need a runtime.
     ///
     /// # Panics
     ///
@@ -82,6 +103,32 @@ impl OtelSink {
     pub fn with_otlp_default() -> Result<Self, OtelSinkError> {
         let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
             .with_tonic()
+            .build()
+            .map_err(|e| OtelSinkError::Otlp(Box::new(e)))?;
+        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(metric_exporter).build();
+        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+
+        Ok(OtelSinkBuilder::default()
+            .with_meter_provider(meter_provider)
+            .build())
+    }
+
+    /// Synchronous counterpart to [`Self::with_otlp_default`]: build a sink
+    /// wired to an OTLP/HTTP+protobuf exporter using a blocking `reqwest`
+    /// client. No tokio runtime is required at construction time.
+    ///
+    /// Uses the standard `OTEL_*` environment variables to discover the
+    /// endpoint. The endpoint must be an HTTP URL (gRPC endpoints are not
+    /// accepted here; use [`Self::with_otlp_default`] for those).
+    ///
+    /// The export loop still runs on a background thread spawned by
+    /// [`PeriodicReader`], but that thread is a plain OS thread, not a
+    /// tokio task.
+    ///
+    /// [`PeriodicReader`]: opentelemetry_sdk::metrics::PeriodicReader
+    pub fn with_otlp_http_default() -> Result<Self, OtelSinkError> {
+        let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+            .with_http()
             .build()
             .map_err(|e| OtelSinkError::Otlp(Box::new(e)))?;
         let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(metric_exporter).build();
@@ -603,5 +650,60 @@ mod tests {
             scopes.iter().any(|s| s == DEFAULT_SCOPE),
             "expected default scope {DEFAULT_SCOPE:?}, got {scopes:?}"
         );
+    }
+
+    /// `flush` is the synchronous counterpart to `flush_async`: callable from
+    /// a plain (non-tokio) `#[test]` thread and still drains the meter
+    /// provider end-to-end.
+    #[test]
+    fn flush_drains_meter_provider_sync() {
+        struct E;
+        impl Entry for E {
+            fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+                let count: ForceFlag<u64, Counter> = ForceFlag::from(5u64);
+                w.value(Cow::Borrowed("SyncFlushed"), &count);
+            }
+        }
+
+        let metric_exporter = InMemoryMetricExporter::default();
+        let reader = PeriodicReader::builder(metric_exporter.clone()).build();
+        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+
+        let sink = OtelSink::builder()
+            .with_meter_provider(meter_provider)
+            .build();
+
+        sink.append(E);
+        sink.flush();
+
+        let exported = metric_exporter
+            .get_finished_metrics()
+            .expect("get_finished_metrics");
+        let names: Vec<&str> = exported
+            .iter()
+            .flat_map(|rm| rm.scope_metrics())
+            .flat_map(|sm| sm.metrics())
+            .map(|m| m.name())
+            .collect();
+        assert!(
+            names.contains(&"SyncFlushed"),
+            "expected SyncFlushed counter via sync flush(), got {names:?}"
+        );
+    }
+
+    /// `with_otlp_http_default` must be constructible from a plain (non-tokio)
+    /// `#[test]` thread. The HTTP exporter uses a blocking reqwest client and
+    /// the `PeriodicReader` background worker is a plain OS thread, so no
+    /// tokio runtime is required at build time.
+    ///
+    /// We only assert that construction succeeds; we deliberately do not
+    /// `append` or `flush`, since that would attempt to push metrics to the
+    /// default `localhost:4318` endpoint and stall on a real network attempt.
+    #[test]
+    fn with_otlp_http_default_constructs_outside_tokio() {
+        let sink = OtelSink::with_otlp_http_default()
+            .expect("with_otlp_http_default must construct without tokio");
+        // Cloning is cheap (Arc-backed); proves the value is a usable sink.
+        let _cloned = sink.clone();
     }
 }

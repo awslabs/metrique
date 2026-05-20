@@ -26,6 +26,8 @@ opentelemetry_sdk = { version = "0.32", features = [
 ] }
 opentelemetry-otlp = { version = "0.32", features = [
     "grpc-tonic",
+    "http-proto",
+    "reqwest-blocking-client",
     "metrics",
 ] }
 papaya = { workspace = true }
