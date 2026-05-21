@@ -6,46 +6,60 @@
 pub mod aggregate;
 pub mod flags;
 mod metrics;
+pub mod stream;
 mod translator;
 
 pub use flags::{Counter, Gauge, Histogram, InstrumentKind, UpDownCounter};
+pub use stream::OtelStream;
 
 use std::sync::Arc;
 
-use metrique_writer_core::{
-    Entry,
-    sink::{EntrySink, FlushWait},
-};
+use metrique_writer_core::sink::{AnyEntrySink, FlushWait};
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 
-use crate::{metrics::InstrumentCache, translator::append_with_pool};
+use crate::{stream::OtelStreamInner, translator::append_with_pool};
 
 /// Default OTel `InstrumentationScope` name when the caller does not set one
 /// via [`OtelSinkBuilder::with_scope`].
 const DEFAULT_SCOPE: &str = "metrique-otel";
 
+/// A sink that translates metrique entries into OTel observations and pushes
+/// them through an [`SdkMeterProvider`].
+///
+/// Each `append` walks the entry, resolves the matching OTel instrument via
+/// the shared lock-free cache, and records observations synchronously. There
+/// is no internal buffering on our side — the OTel `PeriodicReader` is the
+/// queue. Call [`Self::flush_async`] / [`Self::flush`] to force an export
+/// now; otherwise the provider exports on its own schedule.
+///
+/// Use [`Self::stream`] to obtain an [`OtelStream`] sharing the same
+/// instrument cache, suitable for `tee` / `merge_globals` / sampling
+/// composition.
 #[derive(Clone)]
 pub struct OtelSink {
-    inner: Arc<OtelSinkInner>,
-}
-
-struct OtelSinkInner {
+    /// Held separately so [`Self::flush`] / [`Self::flush_async`] can drive
+    /// `force_flush` directly. `SdkMeterProvider` is internally `Arc`-backed,
+    /// so the clone is cheap.
     meter_provider: SdkMeterProvider,
-    instruments: InstrumentCache,
-    /// OTel `InstrumentationScope` name applied to every metric this sink
-    /// records. Set once at build time via [`OtelSinkBuilder::with_scope`];
-    /// defaults to [`DEFAULT_SCOPE`].
-    ///
-    /// `&'static str` because the OTel SDK's `MeterProvider::meter()` requires
-    /// it. When the caller supplies a `String`, the builder leaks it once at
-    /// `build()` time so the borrow lives for the rest of the process — that
-    /// is `O(#sinks_built)` bytes, bounded.
-    scope: &'static str,
+    /// Shared with every [`OtelStream`] handed out by [`Self::stream`], so
+    /// `append` and any composed stream record into the same instruments.
+    inner: Arc<OtelStreamInner>,
 }
 
 impl OtelSink {
     pub fn builder() -> OtelSinkBuilder {
         OtelSinkBuilder::default()
+    }
+
+    /// Return an [`OtelStream`] sharing this sink's instrument cache and
+    /// meter provider. Cheap — a single `Arc::clone` under the hood.
+    ///
+    /// Use this to compose into other `EntryIoStream`-based pipelines, e.g.
+    /// `tee(sink.stream(), emf_stream)` to fan an entry out to both OTel and
+    /// EMF, or `sink.stream().merge_globals(...)` to attach shared dimensions.
+    /// All such streams record into the same OTel pipeline as `self.append(...)`.
+    pub fn stream(&self) -> OtelStream {
+        OtelStream::from_inner(Arc::clone(&self.inner))
     }
 
     /// Drive `force_flush` on the meter provider and resolve once it's done.
@@ -59,7 +73,7 @@ impl OtelSink {
     /// `tokio::task::spawn_blocking` internally and will panic if polled
     /// outside of one.
     pub fn flush_async(&self) -> FlushWait {
-        let meter = self.inner.meter_provider.clone();
+        let meter = self.meter_provider.clone();
         FlushWait::from_future(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = meter.force_flush() {
@@ -80,46 +94,35 @@ impl OtelSink {
     /// method; from an async context, prefer [`Self::flush_async`] so the
     /// tokio runtime doesn't get blocked.
     pub fn flush(&self) {
-        if let Err(e) = self.inner.meter_provider.force_flush() {
+        if let Err(e) = self.meter_provider.force_flush() {
             tracing::warn!(error = %e, "metrique-otel: meter provider force_flush failed");
         }
     }
 
     /// Build a sink whose meter provider is wired to an OTLP/gRPC exporter
-    /// using the standard `OTEL_*` environment variables.
+    /// using the standard `OTEL_*` environment variables. Equivalent to
+    /// `OtelSink::builder().with_otlp_default()`.
     ///
-    /// Callers outside a tokio runtime should use
-    /// [`Self::with_otlp_http_default`] instead, which uses a blocking
-    /// HTTP/protobuf transport that does not need a runtime.
+    /// Callers that want to bind the exporter to a specific runtime should
+    /// go through the builder and use
+    /// [`OtelSinkBuilder::with_runtime_handle`]. Callers outside any tokio
+    /// runtime should use [`Self::with_otlp_http_default`], which uses a
+    /// blocking HTTP/protobuf transport that does not need one.
     ///
     /// # Panics
     ///
     /// Must be called from within a tokio runtime. The tonic-backed OTLP
-    /// exporter and the [`PeriodicReader`] both spawn export tasks on the
-    /// current runtime; calling this outside of `#[tokio::main]` (or an
-    /// explicit `Runtime::enter`) will panic.
-    ///
-    /// [`PeriodicReader`]: opentelemetry_sdk::metrics::PeriodicReader
+    /// exporter spawns export tasks on the current runtime; calling this
+    /// outside of `#[tokio::main]` (or an explicit `Runtime::enter`) will
+    /// panic.
     pub fn with_otlp_default() -> Result<Self, OtelSinkError> {
-        let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
-            .with_tonic()
-            .build()
-            .map_err(|e| OtelSinkError::Otlp(Box::new(e)))?;
-        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(metric_exporter).build();
-        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
-
-        Ok(OtelSinkBuilder::default()
-            .with_meter_provider(meter_provider)
-            .build())
+        OtelSinkBuilder::default().with_otlp_default()
     }
 
     /// Synchronous counterpart to [`Self::with_otlp_default`]: build a sink
     /// wired to an OTLP/HTTP+protobuf exporter using a blocking `reqwest`
-    /// client. No tokio runtime is required at construction time.
-    ///
-    /// Uses the standard `OTEL_*` environment variables to discover the
-    /// endpoint. The endpoint must be an HTTP URL (gRPC endpoints are not
-    /// accepted here; use [`Self::with_otlp_default`] for those).
+    /// client. No tokio runtime is required at construction time. Equivalent
+    /// to `OtelSink::builder().with_otlp_http_default()`.
     ///
     /// The export loop still runs on a background thread spawned by
     /// [`PeriodicReader`], but that thread is a plain OS thread, not a
@@ -127,16 +130,7 @@ impl OtelSink {
     ///
     /// [`PeriodicReader`]: opentelemetry_sdk::metrics::PeriodicReader
     pub fn with_otlp_http_default() -> Result<Self, OtelSinkError> {
-        let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
-            .with_http()
-            .build()
-            .map_err(|e| OtelSinkError::Otlp(Box::new(e)))?;
-        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(metric_exporter).build();
-        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
-
-        Ok(OtelSinkBuilder::default()
-            .with_meter_provider(meter_provider)
-            .build())
+        OtelSinkBuilder::default().with_otlp_http_default()
     }
 }
 
@@ -172,6 +166,7 @@ pub struct OtelSinkBuilder {
     meter_provider: Option<SdkMeterProvider>,
     resource: Option<Resource>,
     scope: Option<String>,
+    runtime_handle: Option<tokio::runtime::Handle>,
 }
 
 impl OtelSinkBuilder {
@@ -199,6 +194,26 @@ impl OtelSinkBuilder {
         self
     }
 
+    /// Bind the OTel SDK's runtime-dependent components (the tonic OTLP
+    /// exporter, any tokio-driven reader) to an explicit
+    /// [`tokio::runtime::Handle`] instead of the one captured by
+    /// `Handle::current()` at build time.
+    ///
+    /// Resolution order at build time:
+    /// 1. the handle passed here, if set
+    /// 2. otherwise the ambient `Handle::try_current()`
+    /// 3. otherwise the SDK's default behavior (typically panic for tonic, or
+    ///    a plain OS thread for the HTTP transport / in-memory reader)
+    ///
+    /// Only [`OtelSink::with_otlp_default`] actually needs a runtime today;
+    /// [`OtelSink::with_otlp_http_default`] uses a blocking HTTP client and a
+    /// plain OS thread for the periodic reader. A handle set here is still
+    /// honored if a future reader does need one.
+    pub fn with_runtime_handle(mut self, handle: tokio::runtime::Handle) -> Self {
+        self.runtime_handle = Some(handle);
+        self
+    }
+
     /// # Panics
     ///
     /// The default (no provider supplied) builds an empty [`SdkMeterProvider`]
@@ -206,8 +221,9 @@ impl OtelSinkBuilder {
     ///
     /// If a meter provider is supplied via [`Self::with_meter_provider`] that
     /// carries a [`PeriodicReader`] (or any other reader that spawns onto the
-    /// current runtime), `build` must be called from within a tokio runtime;
-    /// the reader will panic otherwise.
+    /// current runtime), `build` must be called from within a tokio runtime
+    /// or be paired with [`Self::with_runtime_handle`]; the reader will
+    /// panic otherwise.
     ///
     /// [`PeriodicReader`]: opentelemetry_sdk::metrics::PeriodicReader
     pub fn build(self) -> OtelSink {
@@ -218,7 +234,6 @@ impl OtelSinkBuilder {
             }
             b.build()
         });
-        let instruments = InstrumentCache::new(meter_provider.clone());
         // Caller-supplied scopes are leaked exactly once at build time so the
         // OTel SDK's `meter(&'static str)` API can borrow them for the rest
         // of the process. The default literal is already `'static`.
@@ -226,19 +241,48 @@ impl OtelSinkBuilder {
             Some(s) => Box::leak(s.into_boxed_str()),
             None => DEFAULT_SCOPE,
         };
+        let inner = Arc::new(OtelStreamInner {
+            instruments: crate::metrics::InstrumentCache::new(meter_provider.clone()),
+            scope,
+        });
         OtelSink {
-            inner: Arc::new(OtelSinkInner {
-                meter_provider,
-                instruments,
-                scope,
-            }),
+            meter_provider,
+            inner,
         }
+    }
+
+    /// Build a sink wired to an OTLP/gRPC (tonic) exporter using the standard
+    /// `OTEL_*` environment variables. If [`Self::with_runtime_handle`] was
+    /// called, the tonic exporter binds to that runtime; otherwise it binds
+    /// to the ambient `Handle::current()` and panics if there is none.
+    pub fn with_otlp_default(self) -> Result<OtelSink, OtelSinkError> {
+        let _guard = self.runtime_handle.as_ref().map(|h| h.enter());
+        let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+            .with_tonic()
+            .build()
+            .map_err(|e| OtelSinkError::Otlp(Box::new(e)))?;
+        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(metric_exporter).build();
+        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+        drop(_guard);
+        Ok(self.with_meter_provider(meter_provider).build())
+    }
+
+    /// Build a sink wired to an OTLP/HTTP+protobuf exporter using a blocking
+    /// `reqwest` client. No tokio runtime is required.
+    pub fn with_otlp_http_default(self) -> Result<OtelSink, OtelSinkError> {
+        let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+            .with_http()
+            .build()
+            .map_err(|e| OtelSinkError::Otlp(Box::new(e)))?;
+        let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(metric_exporter).build();
+        let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+        Ok(self.with_meter_provider(meter_provider).build())
     }
 }
 
-impl<E: Entry + Send + 'static> EntrySink<E> for OtelSink {
-    fn append(&self, entry: E) {
-        append_with_pool(&self.inner.instruments, self.inner.scope, entry);
+impl AnyEntrySink for OtelSink {
+    fn append_any(&self, entry: impl metrique_writer_core::Entry + Send + 'static) {
+        append_with_pool(&self.inner.instruments, self.inner.scope, &entry);
     }
 
     fn flush_async(&self) -> FlushWait {
@@ -257,7 +301,9 @@ mod tests {
     use std::borrow::Cow;
     use std::time::SystemTime;
 
+    use metrique_writer_core::Entry;
     use metrique_writer_core::entry::EntryWriter;
+    use metrique_writer_core::sink::EntrySink;
     use metrique_writer_core::value::ForceFlag;
     use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader};
 

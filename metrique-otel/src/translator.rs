@@ -97,30 +97,29 @@ thread_local! {
 /// Run a single append against the per-thread `WriterBufs` arena. Falls
 /// back to a stack-local arena if the thread-local is unavailable
 /// (re-entrant append from inside `Entry::write`, or thread shutdown).
-pub(crate) fn append_with_pool<E: metrique_writer_core::Entry>(
+pub(crate) fn append_with_pool(
     cache: &InstrumentCache,
     scope: &'static str,
-    entry: E,
+    entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
-    let mut entry_opt = Some(entry);
+    let mut ran = false;
     let _ = BUFS.try_with(|cell| {
-        if let Ok(mut bufs) = cell.try_borrow_mut()
-            && let Some(e) = entry_opt.take()
-        {
-            run(cache, scope, &mut bufs, e);
+        if let Ok(mut bufs) = cell.try_borrow_mut() {
+            run(cache, scope, &mut bufs, entry);
+            ran = true;
         }
     });
-    if let Some(e) = entry_opt {
+    if !ran {
         let mut local = WriterBufs::new();
-        run(cache, scope, &mut local, e);
+        run(cache, scope, &mut local, entry);
     }
 }
 
-fn run<E: metrique_writer_core::Entry>(
+fn run(
     cache: &InstrumentCache,
     scope: &'static str,
     bufs: &mut WriterBufs,
-    entry: E,
+    entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     bufs.reset();
     let mut writer = OtelEntryWriter { cache, scope, bufs };
