@@ -104,10 +104,10 @@ pub(crate) fn append_with_pool<E: metrique_writer_core::Entry>(
 ) {
     let mut entry_opt = Some(entry);
     let _ = BUFS.try_with(|cell| {
-        if let Ok(mut bufs) = cell.try_borrow_mut() {
-            if let Some(e) = entry_opt.take() {
-                run(cache, scope, &mut bufs, e);
-            }
+        if let Ok(mut bufs) = cell.try_borrow_mut()
+            && let Some(e) = entry_opt.take()
+        {
+            run(cache, scope, &mut bufs, e);
         }
     });
     if let Some(e) = entry_opt {
