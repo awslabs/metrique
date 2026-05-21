@@ -270,13 +270,20 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```rust,no_run
+    /// use metrique::emf::Emf;
+    /// use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, sink::global_entry_sink};
     /// use metrique_util::{
     ///     AttachGlobalEntrySinkSysinfoExt, MetricNameStyle, SysinfoMetricsConfig,
     /// };
     /// use std::time::Duration;
     ///
-    /// let _handle = ServiceMetrics::attach_to_stream(emf.output_to(std::io::stderr()));
+    /// global_entry_sink! { ServiceMetrics }
+    ///
+    /// let emf = Emf::builder("MyService".to_string(), vec![vec![]])
+    ///     .build()
+    ///     .output_to_makewriter(|| std::io::stderr().lock());
+    /// let _handle = ServiceMetrics::attach_to_stream(emf);
     ///
     /// let config = SysinfoMetricsConfig::default()
     ///     .with_interval(Duration::from_secs(30))
