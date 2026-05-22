@@ -1,8 +1,17 @@
-//! OTel-aware aggregation strategies that bundle merge behavior, unit, and
-//! OTel instrument kind into a single `#[aggregate(strategy = …)]` annotation.
+//! Primary user-facing API of `metrique-otel`: aggregation strategies that
+//! bundle merge behavior, unit, and OTel instrument kind into a single
+//! `#[aggregate(strategy = ...)]` annotation.
 //!
-//! Each strategy here is a thin layer over a `metrique-aggregation` primitive
-//! plus a wrapping at close time:
+//! Use these on `#[aggregate]` struct fields, then flush through a
+//! [`KeyedAggregator`] -> [`WorkerSink`] -> [`crate::OtelSink`] topology. The
+//! aggregator merges values on its worker thread; the OTel SDK only sees one
+//! observation per `#[aggregate(key)]` tuple per flush.
+//!
+//! [`KeyedAggregator`]: metrique_aggregation::aggregator::KeyedAggregator
+//! [`WorkerSink`]: metrique_aggregation::sink::WorkerSink
+//!
+//! Each strategy is a thin layer over a `metrique-aggregation` primitive plus
+//! a wrapping at close time:
 //!
 //! - [`OtelCounter<U>`]: sums values; closes as [`ForceFlag`]`<`[`WithUnit`]`<T, U>,`[`flags::Counter`]`>`.
 //! - [`OtelUpDownCounter<U>`]: sums signed values; closes as [`ForceFlag`]`<`[`WithUnit`]`<T, U>,`[`flags::UpDownCounter`]`>`.

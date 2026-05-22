@@ -3,63 +3,118 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+//! OpenTelemetry (OTLP) backend for [`metrique`].
+//!
+//! The user-facing API is the aggregation pipeline: declare a metrics struct
+//! with [`#[aggregate]`](metrique_aggregation::aggregate), tag each metric
+//! field with an [`aggregate`] strategy from this crate, and pipe it through a
+//! [`KeyedAggregator`] backed by an [`OtelSink`].
+//!
+//! [`metrique`]: https://docs.rs/metrique
+//! [`KeyedAggregator`]: metrique_aggregation::aggregator::KeyedAggregator
+//!
+//! ```
+//! use std::time::Duration;
+//! use metrique::unit::Millisecond;
+//! use metrique::unit_of_work::metrics;
+//! use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
+//! use metrique_otel::OtelSink;
+//! use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
+//!
+//! #[aggregate]
+//! #[metrics(rename_all = "PascalCase")]
+//! struct RequestMetrics {
+//!     #[aggregate(key)] operation: String,
+//!     #[aggregate(strategy = OtelCounter)] request_count: u64,
+//!     #[aggregate(strategy = OtelHistogram<Millisecond>)] latency: Duration,
+//! }
+//!
+//! # async fn run() {
+//! let otel_sink = OtelSink::with_otlp_default().expect("OTLP env not configured");
+//! let aggregator = KeyedAggregator::<RequestMetrics, _>::new(otel_sink.clone());
+//! let worker = WorkerSink::new(aggregator, Duration::from_secs(1));
+//!
+//! RequestMetrics {
+//!     operation: "GET".into(),
+//!     request_count: 1,
+//!     latency: Duration::from_millis(12),
+//! }
+//! .close_and_merge(worker.clone());
+//!
+//! worker.flush().await;
+//! otel_sink.flush_async().await;
+//! # }
+//! ```
+//!
+//! The four strategy types in [`aggregate`] cover every OTel instrument kind:
+//!
+//! - [`aggregate::OtelCounter<U>`] -> monotonic counter
+//! - [`aggregate::OtelUpDownCounter<U>`] -> up-down counter
+//! - [`aggregate::OtelGauge<U>`] -> gauge (keep-last)
+//! - [`aggregate::OtelHistogram<U>`] -> histogram distribution
+//!
+//! Each strategy sums or accumulates on the worker thread; the OTel SDK only
+//! sees one merged observation per `#[aggregate(key)]` tuple per flush, which
+//! is roughly 30x cheaper per ingest than recording on every entry.
+//!
+//! See `examples/otlp_aggregated.rs` for the canonical wiring and
+//! `examples/otlp_*` for variations covering custom resources, views and
+//! temporality, multiple entry types, and dual emission with EMF.
+
 pub mod aggregate;
+#[doc(hidden)]
 pub mod flags;
 mod metrics;
-pub mod stream;
 mod translator;
-
-pub use flags::{Counter, Gauge, Histogram, InstrumentKind, UpDownCounter};
-pub use stream::OtelStream;
 
 use std::sync::Arc;
 
 use metrique_writer_core::sink::{AnyEntrySink, FlushWait};
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 
-use crate::{stream::OtelStreamInner, translator::append_with_pool};
+use crate::{metrics::InstrumentCache, translator::append_with_pool};
 
 /// Default OTel `InstrumentationScope` name when the caller does not set one
 /// via [`OtelSinkBuilder::with_scope`].
 const DEFAULT_SCOPE: &str = "metrique-otel";
 
-/// A sink that translates metrique entries into OTel observations and pushes
-/// them through an [`SdkMeterProvider`].
+/// The OTel-facing sink that aggregation pipelines flush through.
 ///
-/// Each `append` walks the entry, resolves the matching OTel instrument via
-/// the shared lock-free cache, and records observations synchronously. There
-/// is no internal buffering on our side — the OTel `PeriodicReader` is the
-/// queue. Call [`Self::flush_async`] / [`Self::flush`] to force an export
-/// now; otherwise the provider exports on its own schedule.
+/// Construct it via [`OtelSink::builder`] (or [`OtelSink::with_otlp_default`])
+/// and hand it to a [`KeyedAggregator`]; the recommended topology is
+/// [`KeyedAggregator`] -> [`WorkerSink`] -> [`OtelSink`]. The aggregator
+/// merges entries on a worker thread and flushes one observation per
+/// `#[aggregate(key)]` tuple into this sink per flush interval, which is
+/// where the OTel SDK actually sees them.
 ///
-/// Use [`Self::stream`] to obtain an [`OtelStream`] sharing the same
-/// instrument cache, suitable for `tee` / `merge_globals` / sampling
-/// composition.
+/// [`KeyedAggregator`]: metrique_aggregation::aggregator::KeyedAggregator
+/// [`WorkerSink`]: metrique_aggregation::sink::WorkerSink
+///
+/// Internally, each flushed entry is walked once, the matching OTel
+/// instrument is resolved via a shared lock-free cache, and observations are
+/// recorded synchronously. There is no internal buffering on our side; the
+/// OTel `PeriodicReader` is the queue. Call [`Self::flush_async`] /
+/// [`Self::flush`] to force an export now; otherwise the provider exports on
+/// its own schedule.
 #[derive(Clone)]
 pub struct OtelSink {
     /// Held separately so [`Self::flush`] / [`Self::flush_async`] can drive
     /// `force_flush` directly. `SdkMeterProvider` is internally `Arc`-backed,
     /// so the clone is cheap.
     meter_provider: SdkMeterProvider,
-    /// Shared with every [`OtelStream`] handed out by [`Self::stream`], so
-    /// `append` and any composed stream record into the same instruments.
-    inner: Arc<OtelStreamInner>,
+    /// Carries the instrument cache and the resolved scope name used by every
+    /// `append` on this sink.
+    inner: Arc<OtelSinkInner>,
+}
+
+pub(crate) struct OtelSinkInner {
+    pub(crate) instruments: InstrumentCache,
+    pub(crate) scope: &'static str,
 }
 
 impl OtelSink {
     pub fn builder() -> OtelSinkBuilder {
         OtelSinkBuilder::default()
-    }
-
-    /// Return an [`OtelStream`] sharing this sink's instrument cache and
-    /// meter provider. Cheap — a single `Arc::clone` under the hood.
-    ///
-    /// Use this to compose into other `EntryIoStream`-based pipelines, e.g.
-    /// `tee(sink.stream(), emf_stream)` to fan an entry out to both OTel and
-    /// EMF, or `sink.stream().merge_globals(...)` to attach shared dimensions.
-    /// All such streams record into the same OTel pipeline as `self.append(...)`.
-    pub fn stream(&self) -> OtelStream {
-        OtelStream::from_inner(Arc::clone(&self.inner))
     }
 
     /// Drive `force_flush` on the meter provider and resolve once it's done.
@@ -241,8 +296,8 @@ impl OtelSinkBuilder {
             Some(s) => Box::leak(s.into_boxed_str()),
             None => DEFAULT_SCOPE,
         };
-        let inner = Arc::new(OtelStreamInner {
-            instruments: crate::metrics::InstrumentCache::new(meter_provider.clone()),
+        let inner = Arc::new(OtelSinkInner {
+            instruments: InstrumentCache::new(meter_provider.clone()),
             scope,
         });
         OtelSink {
@@ -308,6 +363,7 @@ mod tests {
     use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader};
 
     use super::*;
+    use crate::flags::{Counter, Gauge, Histogram, UpDownCounter};
 
     #[test]
     fn builder_default_constructs_a_sink() {

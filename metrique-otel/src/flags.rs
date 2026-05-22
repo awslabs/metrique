@@ -1,41 +1,12 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Flag markers consumed by [`OtelSink`](crate::OtelSink).
+//! Internal instrument-kind tags consumed by the OTel sink's translator.
 //!
-//! Apply via `#[metrics(flags(...))]` to declare the OTel instrument kind the
-//! sink should record observations against. At write time the sink resolves
-//! the kind from each field's [`MetricFlags`].
-//!
-//! ```
-//! use std::time::Duration;
-//! use metrique::unit_of_work::metrics;
-//! use metrique_otel::OtelSink;
-//! use metrique_otel::flags::{Counter, Histogram};
-//!
-//! #[metrics(rename_all = "PascalCase")]
-//! struct RequestMetrics {
-//!     operation: String,
-//!     #[metrics(flags(Counter))]   request_count: u64,
-//!     #[metrics(flags(Histogram))] latency_ms: Duration,
-//! }
-//!
-//! // The default builder produces an empty meter provider with no readers,
-//! // so this works without a tokio runtime (see `OtelSinkBuilder::build`).
-//! let sink = OtelSink::builder().build();
-//!
-//! // Append-on-drop: the guard goes out of scope at the end of the block,
-//! // flushing one observation per metric field into the sink. The empty
-//! // provider records the observations but never exports them.
-//! {
-//!     let _m = RequestMetrics {
-//!         operation: "GET".into(),
-//!         request_count: 1,
-//!         latency_ms: Duration::from_millis(5),
-//!     }
-//!     .append_on_drop(sink);
-//! }
-//! ```
+//! These are wired into entries by the aggregation strategies in
+//! [`crate::aggregate`] (`OtelCounter`, `OtelUpDownCounter`, `OtelGauge`,
+//! `OtelHistogram`). They are not part of the public API and may change
+//! without notice; reach for the `aggregate` strategies instead.
 
 use std::any::Any;
 use std::sync::{Mutex, OnceLock};
