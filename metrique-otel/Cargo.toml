@@ -49,3 +49,7 @@ harness = false
 [[bench]]
 name = "otel_vs_emf"
 harness = false
+
+[[bench]]
+name = "otel_vs_aggregation"
+harness = false
