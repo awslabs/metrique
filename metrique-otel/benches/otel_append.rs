@@ -28,7 +28,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::SystemTime;
 
 use divan::{Bencher, black_box};
-use metrique_otel::{Counter, OtelSink};
+use metrique_otel::OtelSink;
+use metrique_otel::flags::Counter;
 use metrique_writer_core::{Entry, entry::EntryWriter, sink::EntrySink, value::ForceFlag};
 use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
 

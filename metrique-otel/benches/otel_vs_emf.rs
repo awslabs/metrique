@@ -24,7 +24,8 @@ use std::io;
 use std::time::SystemTime;
 
 use divan::{Bencher, black_box, counter::BytesCount};
-use metrique_otel::{Counter, Gauge, Histogram, OtelSink, UpDownCounter};
+use metrique_otel::OtelSink;
+use metrique_otel::flags::{Counter, Gauge, Histogram, UpDownCounter};
 use metrique_writer::{EntrySink, format::FormatExt as _, sink::FlushImmediately};
 use metrique_writer_core::{Entry, entry::EntryWriter, value::ForceFlag};
 use metrique_writer_format_emf::Emf;

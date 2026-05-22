@@ -50,7 +50,8 @@ use divan::{Bencher, black_box};
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::aggregate::{OtelCounter, OtelGauge, OtelHistogram, OtelUpDownCounter};
-use metrique_otel::{Counter, Gauge, Histogram, OtelSink, UpDownCounter};
+use metrique_otel::OtelSink;
+use metrique_otel::flags::{Counter, Gauge, Histogram, UpDownCounter};
 use metrique_writer_core::{Entry, entry::EntryWriter, sink::EntrySink, value::ForceFlag};
 use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
 
