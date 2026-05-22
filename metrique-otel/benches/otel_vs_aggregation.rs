@@ -34,16 +34,15 @@
 //! - `append_aggregation_keyed[cardinality]`: cardinality sweep. Cycles
 //!   through N pre-built `(operation, region)` pairs to show HashMap
 //!   lookup / resize pressure as the keyspace grows.
-//! - `contention_aggregation_single_key[threads]`: N threads, one shared
-//!   `WorkerSink`, same key. Highlights whether the single worker thread
-//!   becomes a serialization bottleneck. Pair-read against
-//!   `contention_same_name` in `otel_append.rs`.
-//! - `contention_aggregation_disjoint_keys[threads]`: same shape, each
-//!   thread uses its own unique key. Shows whether the worker serializes
-//!   regardless of key.
+//! - `drain_after_burst[(threads, per_thread)]`: answers "is the worker
+//!   keeping up?". Producers push `per_thread` entries each across
+//!   `threads` threads, then we time the worker's drain (an explicit
+//!   `WorkerSink::flush`). Drain throughput = `threads * per_thread / drain_time`,
+//!   which is the worker's effective processing rate. If that rate stays
+//!   roughly flat across workloads, the worker is keeping up; if it
+//!   collapses, the worker is the bottleneck.
 
 use std::borrow::Cow;
-use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, SystemTime};
 
@@ -62,8 +61,17 @@ fn main() {
     divan::main();
 }
 
-const THREADS: &[usize] = &[1, 2, 4, 8];
 const CARDINALITIES: &[usize] = &[1, 10, 100, 1000];
+
+/// (producer threads, entries per thread); total burst is the product.
+const DRAIN_WORKLOADS: &[(usize, usize)] = &[
+    (1, 10_000),
+    (4, 10_000),
+    (8, 10_000),
+    (1, 100_000),
+    (4, 100_000),
+    (8, 100_000),
+];
 
 // ---------------------------------------------------------------------------
 // Baseline entry (same shape as otel_vs_emf.rs::MixedEntry).
@@ -237,62 +245,50 @@ fn append_aggregation_keyed(bencher: Bencher, cardinality: usize) {
 }
 
 // ---------------------------------------------------------------------------
-// Aggregation: thread contention.
+// Drain: does the worker keep up?
 // ---------------------------------------------------------------------------
 
-#[divan::bench(threads = THREADS)]
-fn contention_aggregation_single_key(bencher: Bencher) {
-    let worker = make_aggregation_sink();
-    // Warm so first-sight cost is excluded.
-    AggMixedEntry::fresh("Shared", "us-east-1").close_and_merge(worker.clone());
-    bencher.counter(1usize).bench(|| {
-        AggMixedEntry::fresh(black_box("Shared"), black_box("us-east-1"))
-            .close_and_merge(worker.clone());
-    });
-}
+/// Producers push a fixed burst (`threads * per_thread` entries) and then stop;
+/// we time the worker's drain via an explicit `flush`. Producer wall-clock is
+/// excluded; only the drain after the burst is in the measurement. Dividing
+/// burst size by drain time yields the worker's effective processing rate.
+#[divan::bench(args = DRAIN_WORKLOADS)]
+fn drain_after_burst(bencher: Bencher, workload: (usize, usize)) {
+    let (threads, per_thread) = workload;
+    let total = threads * per_thread;
 
-#[divan::bench(threads = THREADS)]
-fn contention_aggregation_disjoint_keys(bencher: Bencher) {
-    let worker = make_aggregation_sink();
-    let op = thread_op();
-    let region = thread_region();
-    // Warm one accumulator slot per thread.
-    AggMixedEntry::fresh(op, region).close_and_merge(worker.clone());
-    bencher.counter(1usize).bench(|| {
-        AggMixedEntry::fresh(black_box(op), black_box(region)).close_and_merge(worker.clone());
-    });
-}
+    // One tokio runtime for the whole bench; flush is async.
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("build current-thread runtime");
 
-/// Returns a `&'static str` operation name unique to the calling thread.
-/// Bounded leak: one small string per thread that ever calls it.
-fn thread_op() -> &'static str {
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-    thread_local! {
-        static NAME: Cell<Option<&'static str>> = const { Cell::new(None) };
-    }
-    NAME.with(|slot| {
-        if let Some(s) = slot.get() {
-            return s;
-        }
-        let idx = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let leaked: &'static str = Box::leak(format!("Op_{idx}").into_boxed_str());
-        slot.set(Some(leaked));
-        leaked
-    })
-}
+    // Pre-leak one (op, region) per producer thread, once.
+    let keys: Vec<(&'static str, &'static str)> = (0..threads)
+        .map(|t| {
+            let op: &'static str = Box::leak(format!("Op_{t}").into_boxed_str());
+            let region: &'static str = Box::leak(format!("Region_{t}").into_boxed_str());
+            (op, region)
+        })
+        .collect();
 
-fn thread_region() -> &'static str {
-    static COUNTER: AtomicUsize = AtomicUsize::new(0);
-    thread_local! {
-        static NAME: Cell<Option<&'static str>> = const { Cell::new(None) };
-    }
-    NAME.with(|slot| {
-        if let Some(s) = slot.get() {
-            return s;
-        }
-        let idx = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let leaked: &'static str = Box::leak(format!("Region_{idx}").into_boxed_str());
-        slot.set(Some(leaked));
-        leaked
-    })
+    bencher
+        .counter(total)
+        .with_inputs(|| {
+            let worker = make_aggregation_sink();
+            std::thread::scope(|s| {
+                for &(op, region) in &keys {
+                    let worker = worker.clone();
+                    s.spawn(move || {
+                        for _ in 0..per_thread {
+                            AggMixedEntry::fresh(op, region).close_and_merge(worker.clone());
+                        }
+                    });
+                }
+            });
+            worker
+        })
+        .bench_values(|worker| {
+            rt.block_on(worker.flush());
+        });
 }
