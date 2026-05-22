@@ -4,8 +4,8 @@
 //! Flag markers consumed by [`OtelSink`](crate::OtelSink).
 //!
 //! Apply via `#[metrics(flags(...))]` to declare the OTel instrument kind the
-//! sink should record observations against. At write time the sink downcasts
-//! [`MetricFlags`] to [`OtelOptions`] to pick the kind.
+//! sink should record observations against. At write time the sink resolves
+//! the kind from each field's [`MetricFlags`].
 //!
 //! ```
 //! use std::time::Duration;

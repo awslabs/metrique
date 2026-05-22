@@ -28,6 +28,7 @@ use crate::{metrics::InstrumentCache, translator::append_with_pool};
 /// [`OtelSink::stream`]: crate::OtelSink::stream
 /// [`OtelSink::flush`]: crate::OtelSink::flush
 /// [`OtelSink::flush_async`]: crate::OtelSink::flush_async
+/// [`SdkMeterProvider`]: opentelemetry_sdk::metrics::SdkMeterProvider
 #[derive(Clone)]
 pub struct OtelStream {
     inner: Arc<OtelStreamInner>,
