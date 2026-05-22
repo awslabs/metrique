@@ -1,23 +1,25 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Same metric entries delivered to **both** `OtelSink` and a `metrique-writer-format-emf`
-//! pipeline. Useful while migrating from EMF to OTel, you can run them in
-//! parallel and diff the output before flipping over.
+//! Same recording site delivering metrics to **both** an `OtelSink` (via
+//! [`KeyedAggregator`]) and a `metrique-writer-format-emf` pipeline. Useful
+//! during an EMF -> OTel migration, you can run them in parallel and diff the
+//! output before flipping over.
 //!
-//! ## Why this needs a small inline helper
+//! [`KeyedAggregator`]: metrique_aggregation::aggregator::KeyedAggregator
 //!
-//! `metrique-writer` ships `stream::tee()` for fanning one entry to multiple
-//! destinations, but it only works on `EntryIoStream` (format-based streams
-//! like EMF). `OtelSink` is an `EntrySink`, not an `EntryIoStream`, so we
-//! can't tee them at the stream layer. Instead, this example defines a
-//! tiny `Fanout` `EntrySink` adapter that holds two child sinks and
-//! appends each entry to both.
+//! ## Why two structs
 //!
-//! Because `Fanout::append` takes the entry by value and forwards it twice,
-//! it requires `E: Clone`. That rules out `BoxEntry` (not `Clone`), so we
-//! work with a concrete, hand-rolled `Entry` type rather than going
-//! through the global `ServiceMetrics` registration.
+//! The OTel path here is aggregated: a `#[aggregate]` struct whose fields are
+//! marked with strategies (`OtelCounter`, `OtelHistogram<U>`, ...). The
+//! aggregator merges entries on a worker thread and only flushes one
+//! observation per `#[aggregate(key)]` tuple per interval.
+//!
+//! The EMF path wants raw per-request entries (one event per request, with
+//! string fields as dimensions). That is a different shape from the
+//! aggregation source struct, so we declare two: `EmfRequest` for the EMF
+//! event and `OtelRequest` for the aggregated OTel observation. The recording
+//! site populates both from the same inputs.
 //!
 //! ## Running this example
 //!
@@ -31,77 +33,60 @@
 //! ```
 //!
 //! You'll see EMF JSON lines on stdout AND the same metrics reaching the
-//! OTLP collector.
+//! OTLP collector (aggregated per `Operation`).
 
 use std::borrow::Cow;
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
+use metrique::unit::Millisecond;
+use metrique::unit_of_work::metrics;
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::flags::{Counter, Histogram};
+use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
 use metrique_writer::sink::BackgroundQueue;
 use metrique_writer::{EntrySink, FormatExt};
-use metrique_writer_core::sink::FlushWait;
-use metrique_writer_core::value::ForceFlag;
 use metrique_writer_core::{Entry, EntryWriter};
 use metrique_writer_format_emf::Emf;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
-/// Concrete entry type. Built by hand (rather than via `#[metrics]`) so that
-/// it can `derive(Clone)`. `Fanout` needs to send a copy of each entry to
-/// each downstream sink.
-#[derive(Clone)]
-struct RequestEntry {
+/// EMF event: one entry per request. String fields become EMF dimensions,
+/// numeric fields become EMF metric values. Hand-rolled `Entry` so the type
+/// is directly usable with `BackgroundQueue<EmfRequest>`; the `#[metrics]`
+/// derive produces a guard-based API that is a different idiom from the
+/// direct-append flow we want here.
+struct EmfRequest {
     operation: String,
-    request_count: ForceFlag<u64, Counter>,
-    latency_ms: ForceFlag<f64, Histogram>,
+    request_count: u64,
+    latency_ms: f64,
 }
 
-impl Entry for RequestEntry {
+impl Entry for EmfRequest {
     fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
         w.timestamp(SystemTime::now());
-        // String fields become per-entry attributes / EMF dimensions.
         w.value(Cow::Borrowed("Operation"), &self.operation);
         w.value(Cow::Borrowed("RequestCount"), &self.request_count);
         w.value(Cow::Borrowed("LatencyMs"), &self.latency_ms);
     }
 }
 
-/// Tiny inline tee for `EntrySink`. Forwards each appended entry to both
-/// children. Production code would likely choose `tee()` at the
-/// `EntryIoStream` level when possible. This combinator exists for the
-/// EntrySink-only case (any `EntrySink` that isn't backed by an
-/// `EntryIoStream`, e.g. `OtelSink`).
-#[derive(Clone)]
-struct Fanout<A, B> {
-    a: A,
-    b: B,
-}
-
-impl<E, A, B> EntrySink<E> for Fanout<A, B>
-where
-    E: Entry + Clone + Send + 'static,
-    A: EntrySink<E> + Send + Sync,
-    B: EntrySink<E> + Send + Sync,
-{
-    fn append(&self, entry: E) {
-        self.a.append(entry.clone());
-        self.b.append(entry);
-    }
-
-    fn flush_async(&self) -> FlushWait {
-        let a = self.a.flush_async();
-        let b = self.b.flush_async();
-        FlushWait::from_future(async move {
-            let _ = tokio::join!(a, b);
-        })
-    }
+/// OTel aggregated entry: rolls up by `Operation` on the worker thread; the
+/// OTel SDK sees one observation per operation per flush.
+#[aggregate]
+#[metrics(rename_all = "PascalCase")]
+struct OtelRequest {
+    #[aggregate(key)]
+    operation: String,
+    #[aggregate(strategy = OtelCounter)]
+    request_count: u64,
+    #[aggregate(strategy = OtelHistogram<Millisecond>)]
+    latency: Duration,
 }
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    // --- OTel pipeline ---
+    // --- OTel pipeline (aggregated) ---
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .build()
@@ -113,32 +98,42 @@ async fn main() {
         .with_meter_provider(meter_provider)
         .with_scope("metrique/otlp_alongside_emf")
         .build();
+    let otel_worker = WorkerSink::new(
+        KeyedAggregator::<OtelRequest, _>::new(otel_sink.clone()),
+        Duration::from_secs(1),
+    );
 
-    // --- EMF pipeline ---
-    // EMF is a format-based EntryIoStream; wrap it in BackgroundQueue to
-    // get an EntrySink<RequestEntry> we can tee with. Keep `_emf_join`
-    // bound until end of main, dropping it shuts the queue down (with up
-    // to a 5-minute drain).
+    // --- EMF pipeline (direct) ---
+    // EMF is a format-based EntryIoStream; wrap it in BackgroundQueue to get
+    // an `EntrySink<EmfRequest>` we can append into. Keep `_emf_join` bound
+    // until end of main; dropping it shuts the queue down (with up to a
+    // 5-minute drain).
     let emf_stream = Emf::all_validations("MetriqueOtelExample".to_owned(), vec![vec![]])
         .output_to_makewriter(|| std::io::stdout().lock());
-    let (emf_sink, _emf_join): (BackgroundQueue<RequestEntry>, _) =
-        BackgroundQueue::new(emf_stream);
+    let (emf_sink, _emf_join): (BackgroundQueue<EmfRequest>, _) = BackgroundQueue::new(emf_stream);
 
-    // --- Tee ---
-    let sink = Fanout {
-        a: otel_sink.clone(),
-        b: emf_sink,
-    };
-
+    // --- Recording site: populate both paths from the same inputs. ---
     for op in ["GET", "POST"] {
         let start = Instant::now();
-        sink.append(RequestEntry {
+        let latency = start.elapsed();
+        let latency_ms = latency.as_secs_f64() * 1000.0;
+
+        emf_sink.append(EmfRequest {
             operation: op.to_owned(),
-            request_count: ForceFlag::from(1u64),
-            latency_ms: ForceFlag::from(start.elapsed().as_secs_f64() * 1000.0),
+            request_count: 1,
+            latency_ms,
         });
+
+        OtelRequest {
+            operation: op.to_owned(),
+            request_count: 1,
+            latency,
+        }
+        .close_and_merge(otel_worker.clone());
     }
 
-    // Drain both pipes. Fanout's flush_async awaits each child concurrently.
-    sink.flush_async().await;
+    // Drain both pipes.
+    otel_worker.flush().await;
+    otel_sink.flush_async().await;
+    emf_sink.flush_async().await;
 }

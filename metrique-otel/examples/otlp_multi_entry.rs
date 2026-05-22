@@ -1,19 +1,22 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Multiple `#[metrics]` entry types flowing through **one** `OtelSink` /
+//! Multiple `#[aggregate]` entry types flowing through **one** `OtelSink` /
 //! `SdkMeterProvider`.
 //!
-//! Real services emit more than one shape of metric. A request path,
-//! a background job loop, and a one-shot startup record are common
-//! examples. Each shape is its own `#[metrics]` struct; together they share
-//! a single meter provider so all exports go out on the same OTLP pipe.
+//! Real services emit more than one shape of metric. A request path, a
+//! background job loop, and a one-shot startup record are common examples.
+//! Each shape is its own `#[aggregate]` struct, given its own
+//! [`KeyedAggregator`] (and worker), all flushing into the same
+//! [`crate::OtelSink`] so exports go out on the same OTLP pipe.
 //!
-//! Each struct's field names become individual OTel instrument names; string
+//! Each struct's field names become OTel instrument names; `#[aggregate(key)]`
 //! fields become per-entry attributes on every metric in that entry. Across
 //! entries, instrument names live in a flat namespace, so it's worth giving
 //! struct fields names that won't collide (e.g., `RequestLatency` /
 //! `JobLatency` rather than two `Latency` fields).
+//!
+//! [`KeyedAggregator`]: metrique_aggregation::aggregator::KeyedAggregator
 //!
 //! ## Running this example
 //!
@@ -29,78 +32,50 @@
 //! The collector should see seven metric series:
 //!   - `RequestCount`, `RequestLatency`, `RequestErrors` carrying `Operation`
 //!   - `JobsProcessed`, `JobQueueDepth` carrying `JobKind`
-//!   - `StartupMillis`, `ConfigSourcesLoaded` (no attributes, startup is
-//!     a singleton entry)
+//!   - `StartupMillis`, `ConfigSourcesLoaded` (no key fields, startup is a
+//!     singleton entry)
 
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
-use metrique::ServiceMetrics;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
-use metrique::writer::AttachGlobalEntrySink;
-use metrique::writer::GlobalEntrySink;
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::flags::{Counter, Gauge, Histogram};
+use metrique_otel::aggregate::{OtelCounter, OtelGauge, OtelHistogram};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
+#[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
-    #[metrics(timestamp)]
-    timestamp: SystemTime,
+    #[aggregate(key)]
     operation: String,
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     request_count: u64,
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     request_errors: u64,
-    #[metrics(unit = Millisecond, flags(Histogram))]
+    #[aggregate(strategy = OtelHistogram<Millisecond>)]
     request_latency: Duration,
 }
 
-impl RequestMetrics {
-    fn init(operation: String) -> RequestMetricsGuard {
-        Self {
-            timestamp: SystemTime::now(),
-            operation,
-            request_count: 0,
-            request_errors: 0,
-            request_latency: Duration::default(),
-        }
-        .append_on_drop(ServiceMetrics::sink())
-    }
-}
-
+#[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct JobMetrics {
-    #[metrics(timestamp)]
-    timestamp: SystemTime,
+    #[aggregate(key)]
     job_kind: String,
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     jobs_processed: u64,
-    #[metrics(flags(Gauge))]
+    #[aggregate(strategy = OtelGauge)]
     job_queue_depth: f64,
 }
 
-impl JobMetrics {
-    fn init(job_kind: String) -> JobMetricsGuard {
-        Self {
-            timestamp: SystemTime::now(),
-            job_kind,
-            jobs_processed: 0,
-            job_queue_depth: 0.0,
-        }
-        .append_on_drop(ServiceMetrics::sink())
-    }
-}
-
-/// Singleton entry emitted once during process startup. No string fields →
+/// Singleton entry emitted once during process startup. No key fields means
 /// no per-entry attributes, so these metrics arrive bare.
+#[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct StartupMetrics {
-    #[metrics(timestamp)]
-    timestamp: SystemTime,
-    #[metrics(unit = Millisecond, flags(Histogram))]
+    #[aggregate(strategy = OtelHistogram<Millisecond>)]
     startup_millis: Duration,
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     config_sources_loaded: u64,
 }
 
@@ -116,41 +91,59 @@ async fn main() {
     let meter_provider = SdkMeterProvider::builder()
         .with_reader(PeriodicReader::builder(exporter).build())
         .build();
-    let sink = OtelSink::builder()
+    let otel_sink = OtelSink::builder()
         .with_meter_provider(meter_provider)
         .with_scope("metrique/otlp_multi_entry")
         .build();
-    let _handle = ServiceMetrics::attach((sink.clone(), ()));
+
+    // One aggregator per entry shape, all flushing into the same OtelSink.
+    let request_worker = WorkerSink::new(
+        KeyedAggregator::<RequestMetrics, _>::new(otel_sink.clone()),
+        Duration::from_secs(1),
+    );
+    let job_worker = WorkerSink::new(
+        KeyedAggregator::<JobMetrics, _>::new(otel_sink.clone()),
+        Duration::from_secs(1),
+    );
+    let startup_worker = WorkerSink::new(
+        KeyedAggregator::<StartupMetrics, _>::new(otel_sink.clone()),
+        Duration::from_secs(1),
+    );
 
     // Startup record, emitted once.
-    {
-        let mut s = StartupMetrics {
-            timestamp: SystemTime::now(),
-            startup_millis: Duration::default(),
-            config_sources_loaded: 0,
-        }
-        .append_on_drop(ServiceMetrics::sink());
-        s.config_sources_loaded = 3;
-        s.startup_millis = started_at.elapsed();
+    StartupMetrics {
+        startup_millis: started_at.elapsed(),
+        config_sources_loaded: 3,
     }
+    .close_and_merge(startup_worker.clone());
 
     // Request path, multiple operations.
     for op in ["GET", "POST"] {
         let start = Instant::now();
-        let mut m = RequestMetrics::init(op.to_owned());
-        m.request_count += 1;
-        if op == "POST" {
-            m.request_errors += 1;
+        let request_errors = if op == "POST" { 1 } else { 0 };
+        RequestMetrics {
+            operation: op.to_owned(),
+            request_count: 1,
+            request_errors,
+            request_latency: start.elapsed(),
         }
-        m.request_latency = start.elapsed();
+        .close_and_merge(request_worker.clone());
     }
 
     // Background jobs, emitted from a worker loop.
     for (kind, depth) in [("indexer", 12.0), ("compactor", 3.0)] {
-        let mut j = JobMetrics::init(kind.to_owned());
-        j.jobs_processed += 1;
-        j.job_queue_depth = depth;
+        JobMetrics {
+            job_kind: kind.to_owned(),
+            jobs_processed: 1,
+            job_queue_depth: depth,
+        }
+        .close_and_merge(job_worker.clone());
     }
 
-    sink.flush_async().await;
+    // Drain each aggregator (sequentially, so the example output is
+    // deterministic), then drain the OtelSink's exporter.
+    request_worker.flush().await;
+    job_worker.flush().await;
+    startup_worker.flush().await;
+    otel_sink.flush_async().await;
 }

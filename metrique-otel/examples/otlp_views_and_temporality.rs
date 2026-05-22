@@ -15,8 +15,15 @@
 //!     can't blow up exporter memory.
 //!   - The OTLP exporter is configured with `Temporality::Delta` so counters
 //!     arrive as per-interval increments rather than monotonically rising
-//!     totals — useful for sinks that prefer delta semantics (Prometheus
+//!     totals; useful for sinks that prefer delta semantics (Prometheus
 //!     remote-write gateways, Datadog, etc.).
+//!
+//! Aggregation note: views and temporality are properties of the OTel meter
+//! provider, not of the metrique pipeline; they apply equally whether entries
+//! arrive direct or through a [`KeyedAggregator`]. This example uses the
+//! aggregation path, which is the recommended topology.
+//!
+//! [`KeyedAggregator`]: metrique_aggregation::aggregator::KeyedAggregator
 //!
 //! ## Running this example
 //!
@@ -36,76 +43,20 @@
 //!     points per export, even with many distinct operations;
 //!   - aggregation temporality is reported as `Delta` rather than the
 //!     default `Cumulative`.
-//!
-//! ## Expected exported output (abbreviated)
-//!
-//! A single OTLP export after one run looks roughly like this (one
-//! `ScopeMetrics` block per scope; only the interesting fields are shown):
-//!
-//! ```json
-//! {
-//!   "scope": { "name": "metrique/otlp_views_and_temporality" },
-//!   "metrics": [
-//!     {
-//!       "name": "RequestCount",
-//!       "unit": "1",
-//!       "sum": {
-//!         "aggregationTemporality": "DELTA",
-//!         "isMonotonic": true,
-//!         "dataPoints": [
-//!           { "attributes": { "otel.metric.overflow": true },            "asInt": "2" },
-//!           { "attributes": { "Operation": "GET", "RequestId": "req-1" }, "asInt": "1" },
-//!           { "attributes": { "Operation": "GET", "RequestId": "req-2" }, "asInt": "1" },
-//!           { "attributes": { "Operation": "GET", "RequestId": "req-3" }, "asInt": "1" }
-//!         ]
-//!       }
-//!     },
-//!     {
-//!       "name": "RequestLatency",
-//!       "unit": "ms",
-//!       "histogram": {
-//!         "aggregationTemporality": "DELTA",
-//!         "dataPoints": [
-//!           { "attributes": { "Operation": "GET",  "RequestId": "req-1" }, "count": "1", "explicitBounds": [1.0, 2.5, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0], "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
-//!           { "attributes": { "Operation": "GET",  "RequestId": "req-2" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
-//!           { "attributes": { "Operation": "GET",  "RequestId": "req-3" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
-//!           { "attributes": { "Operation": "POST", "RequestId": "req-4" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] },
-//!           { "attributes": { "Operation": "POST", "RequestId": "req-5" }, "count": "1", "bucketCounts": ["1", "0", "0", "0", "0", "0", "0", "0", "0", "0", "0"] }
-//!         ]
-//!       }
-//!     }
-//!   ]
-//! }
-//! ```
-//!
-//! Things worth noting in the payload:
-//!   - `aggregationTemporality` is `DELTA` (not the default `CUMULATIVE`),
-//!     because the exporter was built with `Temporality::Delta`.
-//!   - `RequestLatency.explicitBounds` matches the boundaries declared in
-//!     the view, not the SDK defaults. The view only fires on
-//!     `RequestLatency`, so the histogram still emits one data point per
-//!     `(Operation, RequestId)` pair, here all 5 requests.
-//!   - The 5 input requests yielded only 4 `RequestCount` data points: the
-//!     first 3 distinct attribute sets fit under the cardinality cap, and
-//!     the remaining 2 are rolled into a single synthetic
-//!     `otel.metric.overflow` point. The SDK does not guarantee a stable
-//!     order between the surviving data points and the overflow point.
 
-use std::time::{Duration, Instant, SystemTime};
+use std::time::Duration;
 
-use metrique::ServiceMetrics;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
-use metrique::writer::AttachGlobalEntrySink;
-use metrique::writer::GlobalEntrySink;
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::flags::{Counter, Histogram};
+use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
 use opentelemetry_sdk::metrics::{
     Aggregation, InstrumentKind, PeriodicReader, SdkMeterProvider, Stream, Temporality,
 };
 
 /// Cap on data points per export for `RequestCount`. Beyond this, the SDK
-/// folds the overflow into a synthetic `otel.metric.overflow` data point —
+/// folds the overflow into a synthetic `otel.metric.overflow` data point;
 /// you'll see truncation rather than unbounded memory growth.
 ///
 /// Set deliberately small (3) so that running this example produces a
@@ -113,31 +64,19 @@ use opentelemetry_sdk::metrics::{
 /// to the largest expected legitimate cardinality.
 const MAX_REQUEST_COUNT_DATAPOINTS: usize = 3;
 
+#[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
-    #[metrics(timestamp)]
-    timestamp: SystemTime,
+    #[aggregate(key)]
     operation: String,
-    /// High-cardinality attribute that drives up data-point count if
-    /// unbounded — the cardinality-limit view below caps the total.
+    /// High-cardinality key that would drive up data-point count if
+    /// unbounded; the cardinality-limit view below caps the total.
+    #[aggregate(key)]
     request_id: String,
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     request_count: u64,
-    #[metrics(unit = Millisecond, flags(Histogram))]
+    #[aggregate(strategy = OtelHistogram<Millisecond>)]
     request_latency: Duration,
-}
-
-impl RequestMetrics {
-    fn init(operation: String, request_id: String) -> RequestMetricsGuard {
-        Self {
-            timestamp: SystemTime::now(),
-            operation,
-            request_id,
-            request_count: 0,
-            request_latency: Duration::default(),
-        }
-        .append_on_drop(ServiceMetrics::sink())
-    }
 }
 
 #[tokio::main]
@@ -147,7 +86,7 @@ async fn main() {
     // Delta temporality is selected on the exporter; the SDK passes the
     // selection down to its readers. `Temporality::Delta` means counter
     // and histogram exports carry per-interval increments rather than
-    // running totals — the receiver is responsible for any rollup.
+    // running totals; the receiver is responsible for any rollup.
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_temporality(Temporality::Delta)
@@ -180,7 +119,7 @@ async fn main() {
         // View 2: cap data-point cardinality on `RequestCount`. Without
         // this, a caller emitting many distinct `RequestId` values would
         // produce one data point per ID. With the cap, overflow rolls into
-        // a synthetic `otel.metric.overflow` point — bounded memory.
+        // a synthetic `otel.metric.overflow` point: bounded memory.
         .with_view(|inst: &opentelemetry_sdk::metrics::Instrument| {
             if inst.name() == "RequestCount" {
                 Some(
@@ -195,26 +134,34 @@ async fn main() {
         })
         .build();
 
-    let sink = OtelSink::builder()
+    let otel_sink = OtelSink::builder()
         .with_meter_provider(meter_provider)
         .with_scope("metrique/otlp_views_and_temporality")
         .build();
-    let _handle = ServiceMetrics::attach((sink.clone(), ()));
 
-    // Several requests with distinct request IDs — the view should fold
-    // these into a single `RequestCount` data point per `Operation`.
-    for (op, rid) in [
-        ("GET", "req-1"),
-        ("GET", "req-2"),
-        ("GET", "req-3"),
-        ("POST", "req-4"),
-        ("POST", "req-5"),
+    let aggregator = KeyedAggregator::<RequestMetrics, _>::new(otel_sink.clone());
+    let worker = WorkerSink::new(aggregator, Duration::from_secs(1));
+
+    // Several requests with distinct request IDs exercise the cardinality
+    // cap. With `MAX_REQUEST_COUNT_DATAPOINTS = 3`, the first three distinct
+    // (Operation, RequestId) tuples produce their own data points and the
+    // remainder collapse into an `otel.metric.overflow` synthetic point.
+    for (op, rid, latency_ms) in [
+        ("GET", "req-1", 0u64),
+        ("GET", "req-2", 0),
+        ("GET", "req-3", 0),
+        ("POST", "req-4", 0),
+        ("POST", "req-5", 0),
     ] {
-        let start = Instant::now();
-        let mut m = RequestMetrics::init(op.to_owned(), rid.to_owned());
-        m.request_count += 1;
-        m.request_latency = start.elapsed();
+        RequestMetrics {
+            operation: op.to_owned(),
+            request_id: rid.to_owned(),
+            request_count: 1,
+            request_latency: Duration::from_millis(latency_ms),
+        }
+        .close_and_merge(worker.clone());
     }
 
-    sink.flush_async().await;
+    worker.flush().await;
+    otel_sink.flush_async().await;
 }

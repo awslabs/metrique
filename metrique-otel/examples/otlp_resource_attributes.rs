@@ -3,15 +3,15 @@
 
 //! Programmatic OTel `Resource` configuration with semantic conventions.
 //!
-//! `otlp_grpc.rs` and `otlp_aggregated.rs` rely on `OTEL_SERVICE_NAME` to
-//! identify the producer. This example shows the programmatic path: build a
-//! `Resource` with semantic-convention attributes (`service.name`,
-//! `service.version`, `service.instance.id`, `deployment.environment`,
-//! `host.name`) and hand it to `SdkMeterProvider::builder().with_resource()`.
+//! `otlp_aggregated.rs` relies on `OTEL_SERVICE_NAME` to identify the producer.
+//! This example shows the programmatic path: build a `Resource` with
+//! semantic-convention attributes (`service.name`, `service.version`,
+//! `service.instance.id`, `deployment.environment`, `host.name`) and hand it to
+//! `SdkMeterProvider::builder().with_resource()`.
 //!
 //! Resource attributes attach to every metric the provider produces, distinct
-//! from per-entry attributes (which come from string fields on a `#[metrics]`
-//! struct) and per-metric dimensions (which come from `ValueWriter::metric`).
+//! from per-entry attributes (which come from `#[aggregate(key)]` fields) and
+//! per-metric dimensions.
 //!
 //! Note: `OtelSinkBuilder::with_resource` only applies when no meter provider
 //! is supplied. For runnable apps (where you need a reader + exporter), set
@@ -30,36 +30,23 @@
 //! In the collector logs, every metric will carry the resource attributes
 //! shown under `Resource attributes:`.
 
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use metrique::ServiceMetrics;
 use metrique::unit_of_work::metrics;
-use metrique::writer::AttachGlobalEntrySink;
-use metrique::writer::GlobalEntrySink;
+use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::flags::Counter;
+use metrique_otel::aggregate::OtelCounter;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
+#[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
-    #[metrics(timestamp)]
-    timestamp: SystemTime,
+    #[aggregate(key)]
     operation: String,
-    #[metrics(flags(Counter))]
+    #[aggregate(strategy = OtelCounter)]
     request_count: u64,
-}
-
-impl RequestMetrics {
-    fn init(operation: String) -> RequestMetricsGuard {
-        Self {
-            timestamp: SystemTime::now(),
-            operation,
-            request_count: 0,
-        }
-        .append_on_drop(ServiceMetrics::sink())
-    }
 }
 
 #[tokio::main]
@@ -90,18 +77,24 @@ async fn main() {
         .with_resource(resource)
         .build();
 
-    let sink = OtelSink::builder()
+    let otel_sink = OtelSink::builder()
         .with_meter_provider(meter_provider)
         .with_scope("metrique/otlp_resource_attributes")
         .build();
-    let _handle = ServiceMetrics::attach((sink.clone(), ()));
+
+    let aggregator = KeyedAggregator::<RequestMetrics, _>::new(otel_sink.clone());
+    let worker = WorkerSink::new(aggregator, Duration::from_secs(1));
 
     for op in ["GET", "POST", "DELETE"] {
-        let mut m = RequestMetrics::init(op.to_owned());
-        m.request_count += 1;
+        RequestMetrics {
+            operation: op.to_owned(),
+            request_count: 1,
+        }
+        .close_and_merge(worker.clone());
     }
 
-    sink.flush_async().await;
+    worker.flush().await;
+    otel_sink.flush_async().await;
 }
 
 /// Stand-in for a real instance ID source (e.g., container ID, pod UID, or
