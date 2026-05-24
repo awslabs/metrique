@@ -460,48 +460,58 @@ fn spawn_sysinfo_metrics_task(
     let (cancel_tx, cancel_rx) = channel::<()>();
 
     let worker = move || {
-        tracing::debug!("sysinfo metrics reporter started");
-        let mut system = System::new();
-        let mut disks = track_disks.then(Disks::new_with_refreshed_list);
-        let mut networks = track_networks.then(Networks::new_with_refreshed_list);
-        let mut components = track_components.then(Components::new_with_refreshed_list);
-        let pid = sysinfo::get_current_pid()
-            .inspect_err(|e| {
-                tracing::debug!(
-                    "sysinfo could not resolve current pid ({e}); process_* metrics will be empty"
-                );
-            })
-            .ok();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            tracing::debug!("sysinfo metrics reporter started");
+            let mut system = System::new();
+            let mut disks = track_disks.then(Disks::new_with_refreshed_list);
+            let mut networks = track_networks.then(Networks::new_with_refreshed_list);
+            let mut components = track_components.then(Components::new_with_refreshed_list);
+            let pid = sysinfo::get_current_pid()
+                .inspect_err(|e| {
+                    tracing::debug!(
+                        "sysinfo could not resolve current pid ({e}); process_* metrics will be empty"
+                    );
+                })
+                .ok();
 
-        // Prime delta-based readings (CPU usage, network rx/tx since last
-        // refresh, etc.) so the first emitted sample has accurate values.
-        // sysinfo computes those from the time delta between two refreshes.
-        system.refresh_cpu_all();
-        if let Some(pid) = pid {
-            system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
-        }
-        if let Some(n) = networks.as_mut() {
-            n.refresh(true);
-        }
-        if !sleep_or_cancel(&cancel_rx, sysinfo::MINIMUM_CPU_UPDATE_INTERVAL) {
-            return;
-        }
-
-        loop {
-            let snapshot = sample(
-                &mut system,
-                disks.as_mut(),
-                networks.as_mut(),
-                components.as_mut(),
-                pid,
-            );
-            sink.append(DynamicInflectionEntry {
-                entry: snapshot.close(),
-                name_style,
-            });
-            if !sleep_or_cancel(&cancel_rx, interval) {
+            // Prime delta-based readings (CPU usage, network rx/tx since last
+            // refresh, etc.) so the first emitted sample has accurate values.
+            // sysinfo computes those from the time delta between two refreshes.
+            system.refresh_cpu_all();
+            if let Some(pid) = pid {
+                system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+            }
+            if let Some(n) = networks.as_mut() {
+                n.refresh(true);
+            }
+            if !sleep_or_cancel(&cancel_rx, sysinfo::MINIMUM_CPU_UPDATE_INTERVAL) {
                 return;
             }
+
+            loop {
+                let snapshot = sample(
+                    &mut system,
+                    disks.as_mut(),
+                    networks.as_mut(),
+                    components.as_mut(),
+                    pid,
+                );
+                sink.append(DynamicInflectionEntry {
+                    entry: snapshot.close(),
+                    name_style,
+                });
+                if !sleep_or_cancel(&cancel_rx, interval) {
+                    return;
+                }
+            }
+        }));
+        if let Err(payload) = result {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or("<non-string panic>");
+            tracing::error!("sysinfo metrics reporter panicked: {msg}");
         }
     };
 
