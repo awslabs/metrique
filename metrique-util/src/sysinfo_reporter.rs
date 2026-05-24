@@ -61,6 +61,13 @@ impl Default for SysinfoMetricsConfig {
 
 impl SysinfoMetricsConfig {
     /// Return a config with a custom sampling interval.
+    ///
+    /// Defaults to 30 seconds. Intervals below
+    /// [`sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`] (~200ms) produce unreliable
+    /// CPU readings, since each sample calls `refresh_cpu_all` and CPU usage
+    /// is computed from the delta between refreshes.
+    ///
+    /// [`sysinfo::MINIMUM_CPU_UPDATE_INTERVAL`]: https://docs.rs/sysinfo/latest/sysinfo/constant.MINIMUM_CPU_UPDATE_INTERVAL.html
     pub fn with_interval(self, interval: Duration) -> Self {
         Self { interval, ..self }
     }
