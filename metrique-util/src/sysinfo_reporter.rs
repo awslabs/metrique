@@ -477,7 +477,7 @@ fn spawn_sysinfo_metrics_task(
         if let Err(err) = worker.await
             && !err.is_cancelled()
         {
-            tracing::error!("sysinfo metrics reporter panicked: {err}");
+            tracing::error!("sysinfo metrics reporter panicked: {err:#}");
         }
     });
     abort
