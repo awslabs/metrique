@@ -252,14 +252,15 @@ pub struct NetworkMetrics {
 pub struct ComponentMetrics {
     /// Number of thermal/component sensors being tracked.
     pub component_count: u64,
-    /// Maximum current temperature across all components, in degrees Celsius.
-    /// `None` if no component reports a temperature.
+    /// Maximum temperature across all components this cycle, in degrees
+    /// Celsius. `None` if no component reports a temperature.
     pub component_max_temperature: Option<f32>,
     /// Label of the component that produced [`Self::component_max_temperature`].
     /// `None` if no component reports a temperature.
     pub component_max_temperature_name: Option<String>,
-    /// Maximum recorded temperature across all components, in degrees Celsius.
-    /// `None` if no component reports a max.
+    /// Gauge that captures the maximum temperature across all components over
+    /// the lifetime of the process, in degrees Celsius. `None` if no component
+    /// reports a max.
     pub component_max_temperature_recorded: Option<f32>,
     /// Label of the component that produced
     /// [`Self::component_max_temperature_recorded`]. `None` if no component
