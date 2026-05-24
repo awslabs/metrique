@@ -253,11 +253,11 @@ pub struct ComponentMetrics {
     /// Number of thermal/component sensors being tracked.
     pub component_count: u64,
     /// Maximum current temperature across all components, in degrees Celsius.
-    /// `0.0` if no component reports a temperature.
-    pub component_max_temperature: f32,
+    /// `None` if no component reports a temperature.
+    pub component_max_temperature: Option<f32>,
     /// Maximum recorded temperature across all components, in degrees Celsius.
-    /// `0.0` if no component reports a max.
-    pub component_max_temperature_recorded: f32,
+    /// `None` if no component reports a max.
+    pub component_max_temperature_recorded: Option<f32>,
 }
 
 /// Extension methods for subscribing system metrics to a global entry sink.
@@ -374,12 +374,16 @@ fn sample(
 
     let components_metrics = components.map(|c| {
         c.refresh(true);
-        let (max_cur, max_recorded) = c.list().iter().fold((0.0f32, 0.0f32), |(cur, max), comp| {
-            (
-                cur.max(comp.temperature().unwrap_or(0.0)),
-                max.max(comp.max().unwrap_or(0.0)),
-            )
-        });
+        let (max_cur, max_recorded) = c.list().iter().fold(
+            (None::<f32>, None::<f32>),
+            |(cur, max), comp| {
+                let merge = |acc: Option<f32>, val: Option<f32>| match (acc, val) {
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                    (a, b) => a.or(b),
+                };
+                (merge(cur, comp.temperature()), merge(max, comp.max()))
+            },
+        );
         ComponentMetrics {
             component_count: c.list().len() as u64,
             component_max_temperature: max_cur,
