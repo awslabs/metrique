@@ -658,6 +658,30 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn load_average_present_on_supported_platforms() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let entry = inspector.entries().last().cloned().unwrap();
+        if super::LOAD_AVERAGE_SUPPORTED {
+            check!(entry.metrics["load_average_one"] >= 0.0);
+            check!(entry.metrics["load_average_five"] >= 0.0);
+            check!(entry.metrics["load_average_fifteen"] >= 0.0);
+        } else {
+            check!(entry.metrics.get("load_average_one").is_none());
+            check!(entry.metrics.get("load_average_five").is_none());
+            check!(entry.metrics.get("load_average_fifteen").is_none());
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn only_disks_enabled() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
