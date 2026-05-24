@@ -1,6 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::Duration;
 
 use crate::dynamic_inflection::DynamicInflectionEntry;
@@ -9,6 +10,7 @@ use metrique::unit_of_work::metrics;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use metrique_core::DynamicNameStyle as MetricNameStyle;
 use sysinfo::{Components, Disks, Networks, ProcessesToUpdate, System};
+use tokio::runtime::Handle;
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -283,10 +285,10 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// If no sink has been attached yet, entries are silently discarded until
     /// one is attached.
     ///
-    /// # Panics
-    ///
-    /// Must be called from within a Tokio runtime — the reporter is spawned
-    /// via [`tokio::spawn`], which panics if there is no active runtime.
+    /// The reporter performs blocking syscalls (reading `/proc`, IOKit, etc.),
+    /// so it runs on a dedicated thread. Inside a Tokio runtime it uses
+    /// [`tokio::task::spawn_blocking`]; outside one it falls back to a plain
+    /// [`std::thread::spawn`].
     ///
     /// # Example
     ///
@@ -312,10 +314,8 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// ```
     fn subscribe_sysinfo_metrics(config: SysinfoMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
-        let abort = spawn_sysinfo_metrics_task(sink, config);
-        Self::register_shutdown_fn(ShutdownFn::new(move || {
-            abort.abort();
-        }));
+        let shutdown = spawn_sysinfo_metrics_task(sink, config);
+        Self::register_shutdown_fn(ShutdownFn::new(shutdown));
     }
 }
 
@@ -451,13 +451,15 @@ fn sample(
 fn spawn_sysinfo_metrics_task(
     sink: BoxEntrySink,
     config: SysinfoMetricsConfig,
-) -> tokio::task::AbortHandle {
+) -> impl FnOnce() + Send + 'static {
     let interval = config.interval;
     let name_style = config.name_style;
     let track_disks = config.track_disks;
     let track_networks = config.track_networks;
     let track_components = config.track_components;
-    let worker = tokio::spawn(async move {
+    let (cancel_tx, cancel_rx) = channel::<()>();
+
+    let worker = move || {
         tracing::debug!("sysinfo metrics reporter started");
         let mut system = System::new();
         let mut disks = track_disks.then(Disks::new_with_refreshed_list);
@@ -481,7 +483,9 @@ fn spawn_sysinfo_metrics_task(
         if let Some(n) = networks.as_mut() {
             n.refresh(true);
         }
-        tokio::time::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL).await;
+        if !sleep_or_cancel(&cancel_rx, sysinfo::MINIMUM_CPU_UPDATE_INTERVAL) {
+            return;
+        }
 
         loop {
             let snapshot = sample(
@@ -495,20 +499,26 @@ fn spawn_sysinfo_metrics_task(
                 entry: snapshot.close(),
                 name_style,
             });
-            tokio::time::sleep(interval).await;
+            if !sleep_or_cancel(&cancel_rx, interval) {
+                return;
+            }
         }
-    });
-    let abort = worker.abort_handle();
+    };
 
-    // Spawn a monitor to log panics
-    tokio::spawn(async move {
-        if let Err(err) = worker.await
-            && !err.is_cancelled()
-        {
-            tracing::error!("sysinfo metrics reporter panicked: {err:#}");
-        }
-    });
-    abort
+    if Handle::try_current().is_ok() {
+        tokio::task::spawn_blocking(worker);
+    } else {
+        std::thread::spawn(worker);
+    }
+
+    // Dropping the sender disconnects the receiver, waking the worker.
+    move || drop(cancel_tx)
+}
+
+/// Sleep for `dur` or return `false` immediately if the cancel channel is
+/// disconnected. Returns `true` to continue the reporter loop.
+fn sleep_or_cancel(cancel: &Receiver<()>, dur: Duration) -> bool {
+    matches!(cancel.recv_timeout(dur), Err(RecvTimeoutError::Timeout))
 }
 
 #[cfg(test)]
@@ -521,7 +531,7 @@ mod tests {
 
     use super::{AttachGlobalEntrySinkSysinfoExt, MetricNameStyle, SysinfoMetricsConfig};
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn subscribe_appends_metrics_identity() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -541,7 +551,7 @@ mod tests {
         check!(entry.metrics["uptime"] > 0);
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn subscribe_appends_metrics_pascal_case() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -563,7 +573,7 @@ mod tests {
         check!(entry.metrics["Uptime"] > 0);
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn subscribe_appends_metrics_snake_case() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -585,7 +595,7 @@ mod tests {
         check!(entry.metrics["uptime"] > 0);
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn subscribe_appends_metrics_kebab_case() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -607,7 +617,7 @@ mod tests {
         check!(entry.metrics["uptime"] > 0);
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn opt_in_categories_emit_their_fields() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -632,7 +642,7 @@ mod tests {
         check!(entry.metrics["component_count"] >= 0);
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn process_level_metrics_are_populated() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -663,7 +673,7 @@ mod tests {
         check!(entry.metrics["process_open_files_limit"] > 0);
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn load_average_present_on_supported_platforms() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -687,7 +697,7 @@ mod tests {
         }
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn only_disks_enabled() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -705,7 +715,7 @@ mod tests {
         check!(entry.metrics.keys().any(|k| k.starts_with("disk_")));
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn only_networks_enabled() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -723,7 +733,7 @@ mod tests {
         check!(entry.metrics.keys().any(|k| k.starts_with("network_")));
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn only_components_enabled() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -741,7 +751,7 @@ mod tests {
         check!(entry.metrics.keys().any(|k| k.starts_with("component_")));
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn opt_in_categories_omitted_by_default() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
@@ -760,7 +770,7 @@ mod tests {
         check!(!keys.iter().any(|k| k.starts_with("component_")));
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn subscribe_aborted_on_handle_drop() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { inspector, sink } = test_entry_sink();
