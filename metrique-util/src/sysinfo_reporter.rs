@@ -255,9 +255,16 @@ pub struct ComponentMetrics {
     /// Maximum current temperature across all components, in degrees Celsius.
     /// `None` if no component reports a temperature.
     pub component_max_temperature: Option<f32>,
+    /// Label of the component that produced [`Self::component_max_temperature`].
+    /// `None` if no component reports a temperature.
+    pub component_max_temperature_name: Option<String>,
     /// Maximum recorded temperature across all components, in degrees Celsius.
     /// `None` if no component reports a max.
     pub component_max_temperature_recorded: Option<f32>,
+    /// Label of the component that produced
+    /// [`Self::component_max_temperature_recorded`]. `None` if no component
+    /// reports a max.
+    pub component_max_temperature_recorded_name: Option<String>,
 }
 
 /// Extension methods for subscribing system metrics to a global entry sink.
@@ -375,19 +382,24 @@ fn sample(
     let components_metrics = components.map(|c| {
         c.refresh(true);
         let (max_cur, max_recorded) = c.list().iter().fold(
-            (None::<f32>, None::<f32>),
+            (None::<(String, f32)>, None::<(String, f32)>),
             |(cur, max), comp| {
-                let merge = |acc: Option<f32>, val: Option<f32>| match (acc, val) {
-                    (Some(a), Some(b)) => Some(a.max(b)),
-                    (a, b) => a.or(b),
+                let merge = |acc: Option<(String, f32)>, val: Option<f32>| match (acc, val) {
+                    (None, None) => None,
+                    (Some(acc), None) => Some(acc),
+                    (None, Some(b)) => Some((comp.label().to_string(), b)),
+                    (Some((_, a)), Some(b)) if b > a => Some((comp.label().to_string(), b)),
+                    (Some(acc), Some(_)) => Some(acc),
                 };
                 (merge(cur, comp.temperature()), merge(max, comp.max()))
             },
         );
         ComponentMetrics {
             component_count: c.list().len() as u64,
-            component_max_temperature: max_cur,
-            component_max_temperature_recorded: max_recorded,
+            component_max_temperature: max_cur.as_ref().map(|(_, v)| *v),
+            component_max_temperature_name: max_cur.map(|(n, _)| n),
+            component_max_temperature_recorded: max_recorded.as_ref().map(|(_, v)| *v),
+            component_max_temperature_recorded_name: max_recorded.map(|(n, _)| n),
         }
     });
 
