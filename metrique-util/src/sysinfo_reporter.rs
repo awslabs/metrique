@@ -457,7 +457,13 @@ fn spawn_sysinfo_metrics_task(
         let mut disks = track_disks.then(Disks::new_with_refreshed_list);
         let mut networks = track_networks.then(Networks::new_with_refreshed_list);
         let mut components = track_components.then(Components::new_with_refreshed_list);
-        let pid = sysinfo::get_current_pid().ok();
+        let pid = sysinfo::get_current_pid()
+            .inspect_err(|e| {
+                tracing::debug!(
+                    "sysinfo could not resolve current pid ({e}); process_* metrics will be empty"
+                );
+            })
+            .ok();
 
         // Prime delta-based readings (CPU usage, network rx/tx since last
         // refresh, etc.) so the first emitted sample has accurate values.
