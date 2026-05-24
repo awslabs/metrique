@@ -283,6 +283,11 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// If no sink has been attached yet, entries are silently discarded until
     /// one is attached.
     ///
+    /// # Panics
+    ///
+    /// Must be called from within a Tokio runtime — the reporter is spawned
+    /// via [`tokio::spawn`], which panics if there is no active runtime.
+    ///
     /// # Example
     ///
     /// ```rust,no_run
