@@ -33,9 +33,10 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::aggregate::OtelCounter;
+use metrique_otel::flags::Counter;
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
@@ -45,7 +46,8 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 struct RequestMetrics {
     #[aggregate(key)]
     operation: String,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     request_count: u64,
 }
 

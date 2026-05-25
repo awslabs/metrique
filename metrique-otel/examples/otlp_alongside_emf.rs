@@ -10,10 +10,13 @@
 //!
 //! ## Why two structs
 //!
-//! The OTel path here is aggregated: a `#[aggregate]` struct whose fields are
-//! marked with strategies (`OtelCounter`, `OtelHistogram<U>`, ...). The
+//! The OTel path here is aggregated: a `#[aggregate]` struct whose fields use
+//! the standard `metrique-aggregation` strategies (`Sum`, `Histogram`, ...)
+//! and are tagged for OTel via `#[metrics(flags(Counter|...))]`. The
 //! aggregator merges entries on a worker thread and only flushes one
-//! observation per `#[aggregate(key)]` tuple per interval.
+//! observation per `#[aggregate(key)]` tuple per interval. Non-OTel sinks
+//! (like EMF below) would simply ignore the `flags(...)` tag and treat the
+//! same struct as a regular aggregated entry.
 //!
 //! The EMF path wants raw per-request entries (one event per request, with
 //! string fields as dimensions). That is a different shape from the
@@ -40,9 +43,11 @@ use std::time::{Duration, Instant, SystemTime};
 
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::Histogram;
+use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
+use metrique_otel::flags::Counter;
 use metrique_writer::sink::BackgroundQueue;
 use metrique_writer::{EntrySink, FormatExt};
 use metrique_writer_core::{Entry, EntryWriter};
@@ -76,9 +81,11 @@ impl Entry for EmfRequest {
 struct OtelRequest {
     #[aggregate(key)]
     operation: String,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     request_count: u64,
-    #[aggregate(strategy = OtelHistogram<Millisecond>)]
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
     latency: Duration,
 }
 

@@ -48,9 +48,10 @@ use std::time::{Duration, SystemTime};
 
 use divan::{Bencher, black_box};
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::Histogram as HistogramStrategy;
+use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::aggregate::{OtelCounter, OtelGauge, OtelHistogram, OtelUpDownCounter};
 use metrique_otel::flags::{Counter, Gauge, Histogram, UpDownCounter};
 use metrique_writer_core::{Entry, entry::EntryWriter, sink::EntrySink, value::ForceFlag};
 use opentelemetry_sdk::metrics::{InMemoryMetricExporter, PeriodicReader, SdkMeterProvider};
@@ -123,13 +124,16 @@ struct AggMixedEntry {
     operation: String,
     #[aggregate(key)]
     region: String,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     requests: u64,
-    #[aggregate(strategy = OtelUpDownCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(UpDownCounter))]
     in_flight: f64,
-    #[aggregate(strategy = OtelHistogram)]
+    #[aggregate(strategy = HistogramStrategy<f64>)]
     latency_ms: f64,
-    #[aggregate(strategy = OtelGauge)]
+    #[aggregate(strategy = KeepLast)]
+    #[metrics(flags(Gauge))]
     queue_depth: f64,
 }
 

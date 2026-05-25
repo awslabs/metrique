@@ -48,9 +48,11 @@ use std::time::Duration;
 
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::Histogram;
+use metrique_aggregation::value::Sum;
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
+use metrique_otel::flags::Counter;
 use opentelemetry_sdk::metrics::{
     Aggregation, InstrumentKind, PeriodicReader, SdkMeterProvider, Stream, Temporality,
 };
@@ -73,9 +75,11 @@ struct RequestMetrics {
     /// unbounded; the cardinality-limit view below caps the total.
     #[aggregate(key)]
     request_id: String,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     request_count: u64,
-    #[aggregate(strategy = OtelHistogram<Millisecond>)]
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
     request_latency: Duration,
 }
 

@@ -1,12 +1,33 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Internal instrument-kind tags consumed by the OTel sink's translator.
+//! Instrument-kind tags for OTel-bound fields.
 //!
-//! These are wired into entries by the aggregation strategies in
-//! [`crate::aggregate`] (`OtelCounter`, `OtelUpDownCounter`, `OtelGauge`,
-//! `OtelHistogram`). They are not part of the public API and may change
-//! without notice; reach for the `aggregate` strategies instead.
+//! Apply one of [`Counter`], [`UpDownCounter`], or [`Gauge`] via
+//! `#[metrics(flags(...))]` to tell [`OtelSink`][crate::OtelSink] which OTel
+//! instrument the field should record onto. Histograms use the standard
+//! `Histogram` strategy from `metrique-aggregation` and need no flag; the
+//! closed value advertises a `Distribution`, which the translator already
+//! maps to a histogram instrument.
+//!
+//! Non-OTel sinks ignore these flags and treat the field as whatever its
+//! aggregation strategy or value type already says it is, so the same struct
+//! can be fanned out to OTel and EMF in parallel.
+//!
+//! ```
+//! use metrique::unit_of_work::metrics;
+//! use metrique_aggregation::aggregate;
+//! use metrique_aggregation::value::Sum;
+//! use metrique_otel::flags::Counter;
+//!
+//! #[aggregate]
+//! #[metrics(rename_all = "PascalCase")]
+//! struct Reqs {
+//!     #[aggregate(strategy = Sum)]
+//!     #[metrics(flags(Counter))]
+//!     request_count: u64,
+//! }
+//! ```
 
 use std::any::Any;
 use std::sync::{Mutex, OnceLock};

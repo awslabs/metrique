@@ -39,9 +39,11 @@ use std::time::{Duration, Instant};
 
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::Histogram;
+use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::aggregate::{OtelCounter, OtelGauge, OtelHistogram};
+use metrique_otel::flags::{Counter, Gauge};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 
 #[aggregate]
@@ -49,11 +51,14 @@ use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 struct RequestMetrics {
     #[aggregate(key)]
     operation: String,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     request_count: u64,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     request_errors: u64,
-    #[aggregate(strategy = OtelHistogram<Millisecond>)]
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
     request_latency: Duration,
 }
 
@@ -62,9 +67,11 @@ struct RequestMetrics {
 struct JobMetrics {
     #[aggregate(key)]
     job_kind: String,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     jobs_processed: u64,
-    #[aggregate(strategy = OtelGauge)]
+    #[aggregate(strategy = KeepLast)]
+    #[metrics(flags(Gauge))]
     job_queue_depth: f64,
 }
 
@@ -73,9 +80,11 @@ struct JobMetrics {
 #[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct StartupMetrics {
-    #[aggregate(strategy = OtelHistogram<Millisecond>)]
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
     startup_millis: Duration,
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     config_sources_loaded: u64,
 }
 

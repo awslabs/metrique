@@ -6,8 +6,10 @@
 //! OpenTelemetry (OTLP) backend for [`metrique`].
 //!
 //! The user-facing API is the aggregation pipeline: declare a metrics struct
-//! with [`#[aggregate]`](metrique_aggregation::aggregate), tag each metric
-//! field with an [`aggregate`] strategy from this crate, and pipe it through a
+//! with [`#[aggregate]`](metrique_aggregation::aggregate), pick a standard
+//! aggregation strategy from [`metrique_aggregation`] (`Sum`, `KeepLast`,
+//! `Histogram`), and tag the OTel instrument kind on the field with
+//! [`#[metrics(flags(...))]`][flags]. Pipe the result through a
 //! [`KeyedAggregator`] backed by an [`OtelSink`].
 //!
 //! [`metrique`]: https://docs.rs/metrique
@@ -17,16 +19,24 @@
 //! use std::time::Duration;
 //! use metrique::unit::Millisecond;
 //! use metrique::unit_of_work::metrics;
+//! use metrique_aggregation::value::Sum;
+//! use metrique_aggregation::histogram::Histogram;
 //! use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 //! use metrique_otel::OtelSink;
-//! use metrique_otel::aggregate::{OtelCounter, OtelHistogram};
+//! use metrique_otel::flags::Counter;
 //!
 //! #[aggregate]
 //! #[metrics(rename_all = "PascalCase")]
 //! struct RequestMetrics {
 //!     #[aggregate(key)] operation: String,
-//!     #[aggregate(strategy = OtelCounter)] request_count: u64,
-//!     #[aggregate(strategy = OtelHistogram<Millisecond>)] latency: Duration,
+//!
+//!     #[aggregate(strategy = Sum)]
+//!     #[metrics(flags(Counter))]
+//!     request_count: u64,
+//!
+//!     #[aggregate(strategy = Histogram<Duration>)]
+//!     #[metrics(unit = Millisecond)]
+//!     latency: Duration,
 //! }
 //!
 //! # async fn run() {
@@ -46,12 +56,19 @@
 //! # }
 //! ```
 //!
-//! The four strategy types in [`aggregate`] cover every OTel instrument kind:
+//! Two pieces of plumbing tell `OtelSink` which OTel instrument to record on:
 //!
-//! - [`aggregate::OtelCounter<U>`] -> monotonic counter
-//! - [`aggregate::OtelUpDownCounter<U>`] -> up-down counter
-//! - [`aggregate::OtelGauge<U>`] -> gauge (keep-last)
-//! - [`aggregate::OtelHistogram<U>`] -> histogram distribution
+//! - For counters, up-down counters, and gauges, tag the field with
+//!   [`flags(Counter)`][flags::Counter], [`flags(UpDownCounter)`][flags::UpDownCounter],
+//!   or [`flags(Gauge)`][flags::Gauge]. Non-OTel sinks (e.g. EMF) ignore the
+//!   tag and treat the field as whatever its strategy says it is.
+//! - For histograms, no extra tag is needed: a `Histogram` strategy closes to
+//!   `HistogramClosed`, whose `Value::write` already advertises a
+//!   `Distribution`, and the OTel translator maps that to a histogram
+//!   instrument.
+//!
+//! Units are spelled with [`#[metrics(unit = ...)]`][metrique-unit] alongside
+//! the kind tag, exactly like in non-aggregated entries.
 //!
 //! Each strategy sums or accumulates on the worker thread; the OTel SDK only
 //! sees one merged observation per `#[aggregate(key)]` tuple per flush, which
@@ -60,9 +77,10 @@
 //! See `examples/otlp_aggregated.rs` for the canonical wiring and
 //! `examples/otlp_*` for variations covering custom resources, views and
 //! temporality, multiple entry types, and dual emission with EMF.
+//!
+//! [flags]: crate::flags
+//! [metrique-unit]: https://docs.rs/metrique
 
-pub mod aggregate;
-#[doc(hidden)]
 pub mod flags;
 mod metrics;
 mod translator;

@@ -3,10 +3,13 @@
 
 //! End-to-end test for the recommended `KeyedAggregator -> WorkerSink ->
 //! OtelSink` pipeline. Verifies that:
-//! - `#[aggregate(strategy = OtelCounter)]` fields flow through the
-//!   aggregator and land on an OTel counter
-//! - `#[aggregate(strategy = OtelHistogram<U>)]` fields land on an OTel
-//!   histogram with `U` propagated as the wire unit
+//! - `Sum` + `flags(Counter)` fields flow through the aggregator and land on
+//!   an OTel counter, with `#[metrics(unit = ...)]` propagated as the wire
+//!   unit
+//! - `Sum` + `flags(UpDownCounter)` lands on a non-monotonic counter
+//! - `KeepLast` + `flags(Gauge)` lands on a gauge with keep-last semantics
+//! - `Histogram` fields land on an OTel histogram (via the `Distribution`
+//!   flag from the closed histogram, no explicit `flags(Histogram)` needed)
 //! - `#[aggregate(key)]` fields become OTel attributes on the recorded
 //!   measurements.
 
@@ -14,9 +17,11 @@ use std::time::Duration;
 
 use metrique::unit::{Byte, Millisecond};
 use metrique::unit_of_work::metrics;
+use metrique_aggregation::histogram::Histogram;
+use metrique_aggregation::value::{KeepLast, Sum};
 use metrique_aggregation::{aggregate, aggregator::KeyedAggregator, sink::WorkerSink};
 use metrique_otel::OtelSink;
-use metrique_otel::aggregate::{OtelCounter, OtelGauge, OtelHistogram, OtelUpDownCounter};
+use metrique_otel::flags::{Counter, Gauge, UpDownCounter};
 use opentelemetry_sdk::metrics::{
     InMemoryMetricExporter, PeriodicReader, SdkMeterProvider,
     data::{AggregatedMetrics, MetricData},
@@ -40,10 +45,12 @@ struct RequestMetrics {
     #[aggregate(key)]
     operation: String,
 
-    #[aggregate(strategy = OtelCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter))]
     request_count: u64,
 
-    #[aggregate(strategy = OtelHistogram<Millisecond>)]
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
     latency: Duration,
 }
 
@@ -125,7 +132,7 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
     assert_eq!(
         counter_values_by_op,
         vec![("GET".to_string(), 3), ("POST".to_string(), 1),],
-        "OtelCounter should aggregate as Sum and emit one counter point per Operation key"
+        "Sum + flags(Counter) should emit one counter point per Operation key with the summed value"
     );
 
     assert!(
@@ -149,25 +156,25 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
     assert_eq!(
         latency_unit.as_deref(),
         Some("ms"),
-        "OtelHistogram<Millisecond> should propagate ms as the wire unit"
+        "Histogram + #[metrics(unit = Millisecond)] should propagate ms as the wire unit"
     );
 }
 
 // --- Scoped per-strategy tests --------------------------------------------
 //
-// Each test uses the two-macro form (`#[aggregate]` + `#[metrics]`) on a
-// minimal struct, exercising a single OTel-aware strategy at a time so a
-// regression points directly at one strategy.
+// Each test exercises a single (strategy + flag) combination on a minimal
+// struct so a regression points directly at one combination.
 
 #[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct BytesEntry {
-    #[aggregate(strategy = OtelCounter<Byte>)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(Counter), unit = Byte)]
     bytes_sent: u64,
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn otel_counter_propagates_byte_unit() {
+async fn counter_propagates_byte_unit() {
     let (sink, meter_provider, exporter) = fresh_pipeline();
     let aggregator = KeyedAggregator::<BytesEntry, _>::new(sink.clone());
     let worker = WorkerSink::new(aggregator, Duration::from_secs(3600));
@@ -200,23 +207,28 @@ async fn otel_counter_propagates_byte_unit() {
         }
     }
 
-    assert_eq!(total, 128 + 256 + 1024, "OtelCounter should sum all values");
+    assert_eq!(
+        total,
+        128 + 256 + 1024,
+        "Sum + flags(Counter) should sum all values"
+    );
     assert_eq!(
         unit.as_deref(),
         Some("By"),
-        "OtelCounter<Byte> should propagate `By` as the wire unit"
+        "#[metrics(unit = Byte)] should propagate `By` as the wire unit"
     );
 }
 
 #[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct InFlightEntry {
-    #[aggregate(strategy = OtelUpDownCounter)]
+    #[aggregate(strategy = Sum)]
+    #[metrics(flags(UpDownCounter))]
     delta: f64,
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn otel_up_down_counter_sums_signed_deltas() {
+async fn up_down_counter_sums_signed_deltas() {
     let (sink, meter_provider, exporter) = fresh_pipeline();
     let aggregator = KeyedAggregator::<InFlightEntry, _>::new(sink.clone());
     let worker = WorkerSink::new(aggregator, Duration::from_secs(3600));
@@ -263,19 +275,20 @@ async fn otel_up_down_counter_sums_signed_deltas() {
     assert_eq!(
         total,
         (3 - 1 + 5 - 2) as i64,
-        "OtelUpDownCounter should aggregate signed deltas via Sum"
+        "Sum + flags(UpDownCounter) should aggregate signed deltas"
     );
 }
 
 #[aggregate]
 #[metrics(rename_all = "PascalCase")]
 struct PoolEntry {
-    #[aggregate(strategy = OtelGauge)]
+    #[aggregate(strategy = KeepLast)]
+    #[metrics(flags(Gauge))]
     pool_size: f64,
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn otel_gauge_emits_last_observed_value() {
+async fn gauge_emits_last_observed_value() {
     let (sink, meter_provider, exporter) = fresh_pipeline();
     let aggregator = KeyedAggregator::<PoolEntry, _>::new(sink.clone());
     let worker = WorkerSink::new(aggregator, Duration::from_secs(3600));
@@ -310,10 +323,10 @@ async fn otel_gauge_emits_last_observed_value() {
     assert_eq!(
         observed.len(),
         1,
-        "OtelGauge should emit exactly one observation per key, got {observed:?}"
+        "KeepLast + flags(Gauge) should emit exactly one observation per key, got {observed:?}"
     );
     assert_eq!(
         observed[0], 7.0,
-        "OtelGauge should retain only the last observed value"
+        "KeepLast + flags(Gauge) should retain only the last observed value"
     );
 }
