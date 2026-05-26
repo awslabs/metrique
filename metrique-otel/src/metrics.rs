@@ -163,10 +163,14 @@ impl InstrumentCache {
                         Observation::Floating(v) => v,
                         // Repeated has already collapsed the distribution to
                         // (total, occurrences); we can't recover individual
-                        // samples. Record the mean once — bucketing is lossy
-                        // but count and sum stay sensible. Users that need
-                        // faithful distributions should keep raw `Floating`
-                        // observations and avoid pre-summing.
+                        // samples. Record the mean once: bucketing is lossy
+                        // and, critically, the OTel histogram's `count` will
+                        // report 1 here rather than `occurrences`, so any
+                        // count-based aggregation downstream will undercount.
+                        // The `sum` (mean x 1) is also no longer the true sum
+                        // (which would be `total`). Users that need faithful
+                        // distributions or accurate counts should keep raw
+                        // `Floating` observations and avoid pre-summing.
                         Observation::Repeated { total, occurrences } if occurrences > 0 => {
                             total / occurrences as f64
                         }

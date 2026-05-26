@@ -157,7 +157,7 @@ impl<'a> OtelEntryWriter<'a> {
                 // collision is left visible — that's a user-data problem,
                 // not something to paper over here.
                 bufs.scratch.clear();
-                bufs.scratch.extend(m.per_metric_dimensions.iter().cloned());
+                bufs.scratch.append(&mut m.per_metric_dimensions);
                 bufs.scratch.extend(bufs.entry_attributes.iter().cloned());
                 &bufs.scratch
             };
@@ -165,25 +165,22 @@ impl<'a> OtelEntryWriter<'a> {
                 scope,
                 &m.name,
                 m.kind,
-                m.observations.iter().copied(),
+                m.observations.drain(..),
                 m.unit,
                 attrs,
             );
             m.name.clear();
-            m.observations.clear();
-            m.per_metric_dimensions.clear();
             bufs.metric_pool.push(m);
         }
     }
 }
 
 impl<'a, 'b> EntryWriter<'a> for OtelEntryWriter<'b> {
-    fn timestamp(&mut self, _timestamp: std::time::SystemTime) {
-        // OTEL meter readers stamp measurements with their own clock; the
-        // entry timestamp is informational only. Until the descriptor system
-        // (#282) gives us a structural way to surface it (e.g. as an
-        // attribute or via a source extractor), it's dropped here.
-    }
+    /// Dropped. OTel meter readers stamp measurements with their own clock,
+    /// so the entry timestamp is informational only on this path. Until the
+    /// descriptor system (#282) gives us a structural way to surface it
+    /// (e.g. as an attribute or via a source extractor), it's discarded.
+    fn timestamp(&mut self, _timestamp: std::time::SystemTime) {}
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
         let name = name.into();
