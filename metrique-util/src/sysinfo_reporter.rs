@@ -802,4 +802,41 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
         check!(inspector.entries().len() == count_before);
     }
+
+    // On a single-threaded runtime there is exactly one async worker. Blocking
+    // it with a synchronous sleep would stall any `tokio::spawn`ed task, but
+    // the reporter runs on a blocking thread (`spawn_blocking`), so it keeps
+    // sampling. This regresses if the reporter is moved back onto an async task.
+    #[tokio::test(flavor = "current_thread")]
+    async fn reporter_samples_while_async_worker_is_blocked() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // Block the only async worker thread with a real, non-yielding sleep.
+        std::thread::sleep(Duration::from_millis(500));
+
+        check!(!inspector.entries().is_empty());
+    }
+
+    // The reporter must work without an active Tokio runtime, falling back to
+    // a plain `std::thread`.
+    #[test]
+    fn reporter_runs_without_tokio_runtime() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { inspector, sink } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        Sink::subscribe_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        std::thread::sleep(Duration::from_millis(500));
+
+        check!(!inspector.entries().is_empty());
+    }
 }
