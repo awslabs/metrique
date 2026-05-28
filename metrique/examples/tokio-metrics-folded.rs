@@ -39,9 +39,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(500)),
     );
 
-    // For the example, without this, the first request would fold in the default RuntimeMetrics.
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
     for op in ["Read", "Write", "Read"] {
         let _m = RequestMetrics {
             operation: op,

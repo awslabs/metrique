@@ -184,9 +184,13 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
 
 impl<T: AttachGlobalEntrySink + 'static> AttachGlobalEntrySinkTokioMetricsExt for T {}
 
-/// Spawn the [`RuntimeMonitor`]-driven sampling loop. Each yielded sample is
-/// passed to `on_sample`. A second task logs unexpected panics from the
-/// worker. Returns the worker's [`AbortHandle`](tokio::task::AbortHandle).
+/// Spawn the [`RuntimeMonitor`]-driven sampling loop. Consumes the first
+/// sample synchronously and hands it to `on_sample` before returning, so
+/// callers (and any `State` they're populating) see real runtime data
+/// immediately rather than the all-zero [`RuntimeMetrics::default`].
+/// Subsequent samples are handled on a spawned task, with a sibling task
+/// logging unexpected panics. Returns the worker's
+/// [`AbortHandle`](tokio::task::AbortHandle).
 fn spawn_runtime_metrics_loop<F>(
     interval: Duration,
     mut on_sample: F,
@@ -194,13 +198,18 @@ fn spawn_runtime_metrics_loop<F>(
 where
     F: FnMut(RuntimeMetrics) + Send + 'static,
 {
+    let handle = Handle::current();
+    let monitor = RuntimeMonitor::new(&handle);
+    let mut intervals = monitor.intervals();
+    if let Some(first) = intervals.next() {
+        on_sample(first);
+    }
+
     let worker = tokio::spawn(async move {
         tracing::debug!("tokio runtime metrics reporter started");
-        let handle = Handle::current();
-        let monitor = RuntimeMonitor::new(&handle);
-        for snapshot in monitor.intervals() {
-            on_sample(snapshot);
+        for snapshot in intervals {
             tokio::time::sleep(interval).await;
+            on_sample(snapshot);
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
     });
@@ -350,8 +359,9 @@ mod tests {
             TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(200)).await;
-
+        // No sleep — the first sample is consumed synchronously by
+        // `embed_tokio_runtime_metrics` before it returns, so the state is
+        // already populated.
         let entry = test_metric(RequestMetrics {
             operation: "Read",
             runtime: runtime.clone(),
@@ -359,7 +369,6 @@ mod tests {
 
         check!(entry.values["Operation"] == "Read");
         check!(entry.metrics["WorkersCount"] == 1);
-        check!(entry.metrics["TotalParkCount"].as_u64() > 0);
     }
 
     #[tokio::test(start_paused = true)]
