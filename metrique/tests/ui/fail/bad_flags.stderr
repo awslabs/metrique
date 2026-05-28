@@ -1,0 +1,23 @@
+error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
+  --> tests/ui/fail/bad_flags.rs:12:15
+   |
+12 |     #[metrics(flatten, flags(FakeFlagCtor))]
+   |               ^^^^^^^
+
+error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
+  --> tests/ui/fail/bad_flags.rs:23:15
+   |
+23 |     #[metrics(flatten_entry, flags(FakeFlagCtor))]
+   |               ^^^^^^^^^^^^^
+
+error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
+  --> tests/ui/fail/bad_flags.rs:34:15
+   |
+34 |     #[metrics(ignore, flags(FakeFlagCtor))]
+   |               ^^^^^^
+
+error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
+  --> tests/ui/fail/bad_flags.rs:40:15
+   |
+40 |     #[metrics(timestamp, flags(FakeFlagCtor))]
+   |               ^^^^^^^^^
