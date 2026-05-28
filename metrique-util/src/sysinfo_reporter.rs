@@ -515,8 +515,8 @@ fn spawn_sysinfo_metrics_task(
         }
     };
 
-    if Handle::try_current().is_ok() {
-        tokio::task::spawn_blocking(worker);
+    if let Ok(handle) = Handle::try_current() {
+        handle.spawn_blocking(worker);
     } else {
         std::thread::spawn(worker);
     }
