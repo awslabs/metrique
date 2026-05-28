@@ -176,10 +176,6 @@ impl<'a> OtelEntryWriter<'a> {
 }
 
 impl<'a, 'b> EntryWriter<'a> for OtelEntryWriter<'b> {
-    /// Dropped. OTel meter readers stamp measurements with their own clock,
-    /// so the entry timestamp is informational only on this path. Until the
-    /// descriptor system (#282) gives us a structural way to surface it
-    /// (e.g. as an attribute or via a source extractor), it's discarded.
     fn timestamp(&mut self, _timestamp: std::time::SystemTime) {}
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {

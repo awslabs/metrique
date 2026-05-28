@@ -30,32 +30,20 @@
 //! ```
 
 use std::any::Any;
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use metrique_writer::rate_limit::rate_limited;
 use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
 
-/// Minimum time between repeated conflict warnings logged from
-/// [`OtelOptions::try_merge`]. Conflicts are a debugging signal, not telemetry,
-/// so collapsing repeats is fine.
-const CONFLICT_WARN_INTERVAL: Duration = Duration::from_secs(60);
-
-/// Last time a conflict warning was emitted, used to rate-limit the
-/// `tracing::warn!` in [`warn_conflict`] to at most once per
-/// [`CONFLICT_WARN_INTERVAL`] process-wide.
-static LAST_CONFLICT_WARN: OnceLock<Mutex<Instant>> = OnceLock::new();
-
 fn warn_conflict(kept: InstrumentKind, dropped: InstrumentKind) {
-    let mu = LAST_CONFLICT_WARN.get_or_init(|| Mutex::new(Instant::now() - CONFLICT_WARN_INTERVAL));
-    let mut last = mu.lock().expect("OTel conflict warn mutex poisoned");
-    if last.elapsed() >= CONFLICT_WARN_INTERVAL {
+    rate_limited!(
+        Duration::from_secs(60),
         tracing::warn!(
             kept = ?kept,
             dropped = ?dropped,
             "metrique-otel: conflicting OTel instrument kinds wrapping the same value; first-wins"
-        );
-        *last = Instant::now();
-    }
+        )
+    );
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

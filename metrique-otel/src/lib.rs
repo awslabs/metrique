@@ -78,6 +78,33 @@
 //! `examples/otlp_*` for variations covering custom resources, views and
 //! temporality, multiple entry types, and dual emission with EMF.
 //!
+//! # Observation semantics
+//!
+//! ## Repeated observations on histograms
+//!
+//! When a field arrives as an `Observation::Repeated { total, occurrences }`
+//! (i.e. a strategy has pre-summed the distribution), `OtelSink` replays the
+//! mean `total / occurrences` against the histogram instrument
+//! `min(occurrences, 1024)` times. Replaying is what lets the OTel
+//! histogram's `count` and `sum` line up with the original
+//! occurrence count instead of reporting `1` per pre-summed batch. When
+//! `occurrences` exceeds the cap, the excess is dropped (logged at `warn`,
+//! rate-limited) and downstream `count` will undercount by that excess.
+//!
+//! Bucketing is still lossy because every replayed sample is the mean rather
+//! than an individual value: histogram bucket counts and percentiles will be
+//! pinched toward the mean. Callers that need faithful distributions should
+//! keep raw `Floating` observations and avoid pre-summing on the way in
+//! (e.g. avoid `Sum`-style strategies on histogram fields).
+//!
+//! ## Entry timestamps are dropped
+//!
+//! OTel meter readers stamp measurements with their own clock, so the
+//! per-entry timestamp emitted by `metrique` is informational only on this
+//! path and is discarded. Once the descriptor system (#282) provides a
+//! structural way to surface it (e.g. as an attribute or via a source
+//! extractor) this can become opt-in.
+//!
 //! [flags]: crate::flags
 //! [metrique-unit]: https://docs.rs/metrique
 
@@ -86,7 +113,9 @@ mod metrics;
 mod translator;
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use metrique_writer::rate_limit::rate_limited;
 use metrique_writer_core::sink::{AnyEntrySink, FlushWait};
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 
@@ -150,7 +179,10 @@ impl OtelSink {
         FlushWait::from_future(async move {
             let _ = tokio::task::spawn_blocking(move || {
                 if let Err(e) = meter.force_flush() {
-                    tracing::warn!(error = %e, "metrique-otel: meter provider force_flush failed");
+                    rate_limited!(
+                        Duration::from_secs(60),
+                        tracing::warn!(error = %e, "metrique-otel: meter provider force_flush failed")
+                    );
                 }
             })
             .await;
@@ -168,7 +200,10 @@ impl OtelSink {
     /// tokio runtime doesn't get blocked.
     pub fn flush(&self) {
         if let Err(e) = self.meter_provider.force_flush() {
-            tracing::warn!(error = %e, "metrique-otel: meter provider force_flush failed");
+            rate_limited!(
+                Duration::from_secs(60),
+                tracing::warn!(error = %e, "metrique-otel: meter provider force_flush failed")
+            );
         }
     }
 

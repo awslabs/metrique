@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::hash::{Hash, Hasher};
-use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
+use metrique_writer::rate_limit::rate_limited;
 use metrique_writer_core::{
     Observation, Unit,
     unit::{NegativeScale, PositiveScale},
@@ -18,29 +18,9 @@ use papaya::Equivalent;
 
 use crate::flags::InstrumentKind;
 
-/// Minimum time between repeated bad-value warnings, process-wide. NaN /
-/// non-finite / out-of-range observations are dropped, but we only surface
-/// one log line per interval so a misconfigured field can't drown the log.
-const BAD_VALUE_WARN_INTERVAL: Duration = Duration::from_secs(60);
-
-static LAST_BAD_VALUE_WARN: OnceLock<Mutex<Instant>> = OnceLock::new();
-
-#[cold]
-fn warn_bad_value(name: &str, kind: InstrumentKind, value: f64, reason: &'static str) {
-    let mu =
-        LAST_BAD_VALUE_WARN.get_or_init(|| Mutex::new(Instant::now() - BAD_VALUE_WARN_INTERVAL));
-    let mut last = mu.lock().expect("OTel bad-value warn mutex poisoned");
-    if last.elapsed() >= BAD_VALUE_WARN_INTERVAL {
-        tracing::warn!(
-            metric = name,
-            kind = ?kind,
-            value = value,
-            reason = reason,
-            "metrique-otel: dropping out-of-range observation"
-        );
-        *last = Instant::now();
-    }
-}
+/// Replay cap for `Observation::Repeated` on histograms. See the
+/// "Repeated observations on histograms" section of the crate docs.
+const HISTOGRAM_REPEATED_CAP: u64 = 1024;
 
 /// Cache of OTel instruments keyed by `(scope, name, kind)`. Each
 /// `CachedInstrument` variant is `Arc`-backed inside the OTel SDK, so cloning
@@ -167,14 +147,32 @@ impl InstrumentCache {
                         Observation::Unsigned(v) => v,
                         Observation::Floating(v) => {
                             if !v.is_finite() || v < 0.0 {
-                                warn_bad_value(name, kind, v, NON_FINITE_OR_NEGATIVE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = v,
+                                        reason = NON_FINITE_OR_NEGATIVE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
                             v as u64
                         }
                         Observation::Repeated { total, .. } => {
                             if !total.is_finite() || total < 0.0 {
-                                warn_bad_value(name, kind, total, NON_FINITE_OR_NEGATIVE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = total,
+                                        reason = NON_FINITE_OR_NEGATIVE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
                             total as u64
@@ -190,7 +188,16 @@ impl InstrumentCache {
                         Observation::Unsigned(v) => v as i64,
                         Observation::Floating(v) => {
                             if !v.is_finite() {
-                                warn_bad_value(name, kind, v, NON_FINITE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = v,
+                                        reason = NON_FINITE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
                             v as i64
@@ -198,7 +205,16 @@ impl InstrumentCache {
                         Observation::Repeated { total, occurrences } if occurrences > 0 => {
                             let mean = total / occurrences as f64;
                             if !mean.is_finite() {
-                                warn_bad_value(name, kind, mean, NON_FINITE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = mean,
+                                        reason = NON_FINITE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
                             mean as i64
@@ -210,36 +226,57 @@ impl InstrumentCache {
             }
             CachedInstrument::Histogram(h) => {
                 for obs in observations {
-                    let v = match obs {
-                        Observation::Unsigned(v) => v as f64,
+                    match obs {
+                        Observation::Unsigned(v) => h.record(v as f64, attributes),
                         Observation::Floating(v) => {
                             if !v.is_finite() {
-                                warn_bad_value(name, kind, v, NON_FINITE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = v,
+                                        reason = NON_FINITE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
-                            v
+                            h.record(v, attributes);
                         }
-                        // Repeated has already collapsed the distribution to
-                        // (total, occurrences); we can't recover individual
-                        // samples. Record the mean once: bucketing is lossy
-                        // and, critically, the OTel histogram's `count` will
-                        // report 1 here rather than `occurrences`, so any
-                        // count-based aggregation downstream will undercount.
-                        // The `sum` (mean x 1) is also no longer the true sum
-                        // (which would be `total`). Users that need faithful
-                        // distributions or accurate counts should keep raw
-                        // `Floating` observations and avoid pre-summing.
                         Observation::Repeated { total, occurrences } if occurrences > 0 => {
                             let mean = total / occurrences as f64;
                             if !mean.is_finite() {
-                                warn_bad_value(name, kind, mean, NON_FINITE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = mean,
+                                        reason = NON_FINITE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
-                            mean
+                            let n = occurrences.min(HISTOGRAM_REPEATED_CAP);
+                            if occurrences > HISTOGRAM_REPEATED_CAP {
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        occurrences = occurrences,
+                                        cap = HISTOGRAM_REPEATED_CAP,
+                                        "metrique-otel: histogram Repeated replay capped; downstream count will undercount"
+                                    )
+                                );
+                            }
+                            for _ in 0..n {
+                                h.record(mean, attributes);
+                            }
                         }
                         _ => continue,
-                    };
-                    h.record(v, attributes);
+                    }
                 }
             }
             CachedInstrument::Gauge(g) => {
@@ -248,7 +285,16 @@ impl InstrumentCache {
                         Observation::Unsigned(v) => v as f64,
                         Observation::Floating(v) => {
                             if !v.is_finite() {
-                                warn_bad_value(name, kind, v, NON_FINITE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = v,
+                                        reason = NON_FINITE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
                             v
@@ -256,7 +302,16 @@ impl InstrumentCache {
                         Observation::Repeated { total, occurrences } if occurrences > 0 => {
                             let mean = total / occurrences as f64;
                             if !mean.is_finite() {
-                                warn_bad_value(name, kind, mean, NON_FINITE);
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = mean,
+                                        reason = NON_FINITE,
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
                                 continue;
                             }
                             mean
