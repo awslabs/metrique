@@ -90,11 +90,20 @@ impl TokioRuntimeMetricsConfig {
     }
 }
 
-/// Extension methods for subscribing Tokio runtime metrics to a global entry sink.
+/// Extension methods for plugging Tokio runtime metrics into a global entry sink.
 ///
-/// Spawns a background task that periodically samples
-/// [`RuntimeMetrics`] and appends each snapshot to the sink.
-/// The task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
+/// Two flavors are available, both backed by a single background sampler
+/// task whose lifecycle is tied to the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle):
+///
+/// - [`subscribe_tokio_runtime_metrics`](Self::subscribe_tokio_runtime_metrics)
+///   appends each [`RuntimeMetrics`] snapshot to the sink as a standalone
+///   entry — best when you want a separate runtime-metrics record stream.
+/// - [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics)
+///   returns a [`State<EmbeddedTokioMetrics>`](EmbeddedTokioMetrics) you
+///   embed into your own metric structs via `#[metrics(flatten)]` — best
+///   when you want every emitted record to carry the latest runtime
+///   sample alongside its own fields.
 ///
 /// ## `tokio_unstable`
 ///
@@ -138,6 +147,10 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     ///
     /// If no sink has been attached yet, entries are silently discarded until one
     /// is attached.
+    ///
+    /// If you'd rather fold the latest runtime sample into your own metric
+    /// structs instead of emitting standalone runtime-metric entries, use
+    /// [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics).
     ///
     /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
