@@ -3,9 +3,10 @@
 
 //! Folding Tokio runtime metrics into per-request entries.
 //!
-//! [`EmbeddedTokioMetrics::spawn`] starts a background sampler and returns a
-//! `State<EmbeddedTokioMetrics>` that can be flattened into any entry, so
-//! every emitted record carries the latest runtime sample.
+//! [`AttachGlobalEntrySinkTokioMetricsExt::embed_tokio_runtime_metrics`]
+//! starts a background sampler and returns a `State<EmbeddedTokioMetrics>`
+//! that can be flattened into any entry, so every emitted record carries
+//! the latest runtime sample.
 
 use std::time::Duration;
 
@@ -15,7 +16,9 @@ use metrique::{
     unit_of_work::metrics,
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
-use metrique_util::{EmbeddedTokioMetrics, State, TokioRuntimeMetricsConfig};
+use metrique_util::{
+    AttachGlobalEntrySinkTokioMetricsExt, EmbeddedTokioMetrics, State, TokioRuntimeMetricsConfig,
+};
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
@@ -32,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .output_to(std::io::stderr()),
     );
 
-    let runtime = EmbeddedTokioMetrics::spawn(
+    let runtime = ServiceMetrics::embed_tokio_runtime_metrics(
         TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(500)),
     );
 
