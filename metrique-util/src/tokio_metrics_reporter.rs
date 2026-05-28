@@ -204,10 +204,7 @@ impl<T: AttachGlobalEntrySink + 'static> AttachGlobalEntrySinkTokioMetricsExt fo
 /// Subsequent samples are handled on a spawned task, with a sibling task
 /// logging unexpected panics. Returns the worker's
 /// [`AbortHandle`](tokio::task::AbortHandle).
-fn spawn_runtime_metrics_loop<F>(
-    interval: Duration,
-    mut on_sample: F,
-) -> tokio::task::AbortHandle
+fn spawn_runtime_metrics_loop<F>(interval: Duration, mut on_sample: F) -> tokio::task::AbortHandle
 where
     F: FnMut(RuntimeMetrics) + Send + 'static,
 {
