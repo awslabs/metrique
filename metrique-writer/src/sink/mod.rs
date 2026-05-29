@@ -11,6 +11,7 @@ use crate::Entry;
 mod background;
 mod immediate_flush;
 mod metrics;
+mod observer;
 
 #[cfg(feature = "background-queue")]
 pub use background::{BACKGROUND_QUEUE_METRICS, describe_sink_metrics};
@@ -25,6 +26,9 @@ use metrique_writer_core::{BoxEntrySink, EntryIoStream, EntrySink};
 pub use metrique_writer_core::{
     global::AttachGlobalEntrySink, global::AttachHandle, global::ShutdownFn, global_entry_sink,
 };
+pub use observer::FlushImmediatelyObserver;
+#[cfg(feature = "background-queue")]
+pub use observer::{BackgroundQueueEvent, BackgroundQueueObserver};
 
 /// Extension trait for `AttachGlobalEntrySink`, containing functions that use
 /// types that are not present in [`metrique_writer_core`].

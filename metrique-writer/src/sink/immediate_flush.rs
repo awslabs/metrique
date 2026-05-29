@@ -10,18 +10,19 @@ use crate::{
     stream::{EntryIoStream, IoStreamError},
 };
 
+#[cfg(feature = "metrics-rs-024")]
+use super::metrics::FlushImmediatelyMetricsRsObserver;
 use super::{
     FlushWait,
-    metrics::{
-        DescribedMetric, GlobalRecorderVersion, MetricRecorder, MetricsRsType, MetricsRsUnit,
-    },
+    metrics::{DescribedMetric, GlobalRecorderVersion, MetricsRsType, MetricsRsUnit},
+    observer::FlushImmediatelyObserver,
 };
 
 /// Builder for [`FlushImmediately`] and [`AnyFlushImmediately`].
 #[derive(Default)]
 pub struct FlushImmediatelyBuilder {
     metric_name: Option<String>,
-    metric_recorder: Option<Box<dyn MetricRecorder>>,
+    observer: Option<Box<dyn FlushImmediatelyObserver>>,
 }
 
 impl FlushImmediatelyBuilder {
@@ -38,11 +39,26 @@ impl FlushImmediatelyBuilder {
         self
     }
 
-    /// If provided, metrics to the callback when entries are written.
-    #[deprecated = "this function can't be called by users since `MetricRecorder` implementations are private, \
-        call metrics_recorder_global or metrics_recorder_local instead"]
-    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
-        self.metric_recorder = recorder;
+    /// Send lifecycle events from the sink to a user-provided observer.
+    ///
+    /// Use this to capture per-flush timing from any observability backend, not just
+    /// `metrics.rs`. See [`FlushImmediatelyObserver`] for the events available.
+    ///
+    /// # Example
+    ///
+    /// A closure is an observer, so recording the flush duration takes no boilerplate:
+    ///
+    /// ```
+    /// # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+    /// # use metrique_writer::sink::FlushImmediatelyBuilder;
+    /// let last_flush_ms = Arc::new(AtomicU64::new(0));
+    /// let observed = Arc::clone(&last_flush_ms);
+    /// let _builder = FlushImmediatelyBuilder::new().observer(move |_sink: &str, flush_time_ms: u32| {
+    ///     observed.store(flush_time_ms as u64, Ordering::Relaxed);
+    /// });
+    /// ```
+    pub fn observer(mut self, observer: impl FlushImmediatelyObserver + 'static) -> Self {
+        self.observer = Some(Box::new(observer));
         self
     }
 
@@ -92,7 +108,7 @@ impl FlushImmediatelyBuilder {
     pub fn metrics_recorder_global<V: super::metrics::GlobalRecorderVersion + ?Sized>(
         mut self,
     ) -> Self {
-        self.metric_recorder = Some(Box::new(V::recorder()));
+        self.observer = Some(Box::new(FlushImmediatelyMetricsRsObserver(V::recorder())));
         self
     }
 
@@ -140,7 +156,9 @@ impl FlushImmediatelyBuilder {
         mut self,
         recorder: R,
     ) -> Self {
-        self.metric_recorder = Some(Box::new(V::recorder(recorder)));
+        self.observer = Some(Box::new(FlushImmediatelyMetricsRsObserver(V::recorder(
+            recorder,
+        ))));
         self
     }
 
@@ -152,7 +170,7 @@ impl FlushImmediatelyBuilder {
                 name: self
                     .metric_name
                     .unwrap_or_else(|| "immediate-flush".to_string()),
-                recorder: self.metric_recorder,
+                observer: self.observer,
             })),
             _phantom: PhantomData,
         }
@@ -175,7 +193,7 @@ impl FlushImmediatelyBuilder {
                 name: self
                     .metric_name
                     .unwrap_or_else(|| "immediate-flush".to_string()),
-                recorder: self.metric_recorder,
+                observer: self.observer,
             })),
         }
     }
@@ -184,7 +202,7 @@ impl FlushImmediatelyBuilder {
 struct SinkState<S> {
     stream: S,
     name: String,
-    recorder: Option<Box<dyn MetricRecorder>>,
+    observer: Option<Box<dyn FlushImmediatelyObserver>>,
 }
 
 impl<S: EntryIoStream> SinkState<S> {
@@ -210,10 +228,9 @@ impl<S: EntryIoStream> SinkState<S> {
             tracing::warn!(?err, "couldn't flush metric stream");
         }
 
-        // Record flush time metric if recorder is configured
-        if let Some(recorder) = &self.recorder {
+        if let Some(observer) = &self.observer {
             let flush_time_ms = start.elapsed().as_millis() as u32;
-            recorder.record_histogram("metrique_flush_time_ms", &self.name, flush_time_ms);
+            observer.on_flush(&self.name, flush_time_ms);
         }
     }
 }
@@ -487,5 +504,34 @@ mod tests {
         };
         assert_eq!(value.len(), 2);
         assert_eq!(name.key().name(), "metrique_flush_time_ms");
+    }
+
+    #[derive(Default, Clone)]
+    struct TestFlushObserver(Arc<Mutex<Vec<(String, u32)>>>);
+
+    impl FlushImmediatelyObserver for TestFlushObserver {
+        fn on_flush(&self, sink: &str, flush_time_ms: u32) {
+            self.0
+                .lock()
+                .unwrap()
+                .push((sink.to_owned(), flush_time_ms));
+        }
+    }
+
+    #[test]
+    fn custom_observer_receives_flush_events() {
+        let observer = TestFlushObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let sink = FlushImmediatelyBuilder::new()
+            .metric_name("test-sink")
+            .observer(observer.clone())
+            .build::<TestEntry, _>(Arc::clone(&output));
+
+        sink.append(TestEntry(1));
+        sink.append(TestEntry(2));
+
+        let events = observer.0.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|(name, _)| name == "test-sink"));
     }
 }

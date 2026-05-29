@@ -19,16 +19,17 @@ use metrique_writer_core::{
 use crate::{Entry, EntryIoStreamExt, EntrySink, rate_limit::rate_limited};
 
 use super::metrics::{
-    DescribedMetric, GlobalRecorderVersion, LocalRecorderVersion, MetricRecorder, MetricsRsType,
-    MetricsRsUnit,
+    BackgroundQueueMetricsRsObserver, DescribedMetric, GlobalRecorderVersion, LocalRecorderVersion,
+    MetricsRsType, MetricsRsUnit,
 };
+use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
 
 /// Builder for [`BackgroundQueue`]
 pub struct BackgroundQueueBuilder {
     capacity: usize,
     thread_name: String,
     metric_name: Option<String>,
-    metric_recorder: Option<Box<dyn MetricRecorder>>,
+    observer: Option<Box<dyn BackgroundQueueObserver>>,
     flush_interval: Duration,
     shutdown_timeout: Duration,
 }
@@ -39,7 +40,7 @@ impl Default for BackgroundQueueBuilder {
             capacity: 64 * 1024,
             thread_name: "metric-background-queue".into(),
             metric_name: None,
-            metric_recorder: None,
+            observer: None,
             flush_interval: Duration::from_secs(1),
             shutdown_timeout: Duration::from_secs(30),
         }
@@ -128,11 +129,29 @@ impl BackgroundQueueBuilder {
         self
     }
 
-    /// If true, the background queue will emit metrics to the callback
-    #[deprecated = "this function can't be called by users since `MetricRecorder` implementations are private, \
-        call metrics_recorder_global or metrics_recorder_local instead"]
-    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
-        self.metric_recorder = recorder;
+    /// Send lifecycle events from the background queue to a user-provided observer.
+    ///
+    /// Use this to capture queue overflow, per-flush emission counts, IO/validation
+    /// error counts, and idle/length samples from any observability backend, not just
+    /// `metrics.rs`. See [`BackgroundQueueObserver`] for the events available.
+    ///
+    /// # Example
+    ///
+    /// A closure is an observer, so handling a single event takes no boilerplate:
+    ///
+    /// ```
+    /// # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+    /// # use metrique_writer::sink::{BackgroundQueueBuilder, BackgroundQueueEvent};
+    /// let overflows = Arc::new(AtomicU64::new(0));
+    /// let counter = Arc::clone(&overflows);
+    /// let _builder = BackgroundQueueBuilder::new().observer(move |_queue: &str, event| {
+    ///     if let BackgroundQueueEvent::QueueOverflow = event {
+    ///         counter.fetch_add(1, Ordering::Relaxed);
+    ///     }
+    /// });
+    /// ```
+    pub fn observer(mut self, observer: impl BackgroundQueueObserver + 'static) -> Self {
+        self.observer = Some(Box::new(observer));
         self
     }
 
@@ -252,7 +271,7 @@ impl BackgroundQueueBuilder {
     /// [metrique_metricsrs]: https://docs.rs/metrique_metricsrs
     #[allow(private_bounds)]
     pub fn metrics_recorder_global<V: GlobalRecorderVersion + ?Sized>(mut self) -> Self {
-        self.metric_recorder = Some(Box::new(V::recorder()));
+        self.observer = Some(Box::new(BackgroundQueueMetricsRsObserver(V::recorder())));
         self
     }
 
@@ -316,7 +335,9 @@ impl BackgroundQueueBuilder {
         mut self,
         recorder: R,
     ) -> Self {
-        self.metric_recorder = Some(Box::new(V::recorder(recorder)));
+        self.observer = Some(Box::new(BackgroundQueueMetricsRsObserver(V::recorder(
+            recorder,
+        ))));
         self
     }
 
@@ -405,7 +426,7 @@ impl BackgroundQueueBuilder {
             queue: ArrayQueue::new(self.capacity),
             unparker: unparker.clone(),
             flush_queue_sender,
-            recorder: self.metric_recorder,
+            observer: self.observer,
         });
         let shutdown_signal = Arc::new(AtomicBool::new(false));
 
@@ -466,8 +487,8 @@ struct Inner<E> {
     flush_queue_sender: std::sync::mpsc::Sender<FlushSignal>,
     // The unparker allows appending threads to cheaply wake up the background writing thread
     unparker: Unparker,
-    // metric recorder
-    recorder: Option<Box<dyn MetricRecorder>>,
+    // lifecycle observer
+    observer: Option<Box<dyn BackgroundQueueObserver>>,
 }
 
 /// Guard handle that, when dropped, will shut down the background queue (making it drop all further entries),
@@ -525,8 +546,8 @@ impl<E> Inner<E> {
         // force_push causes the oldest entry to be dropped if the queue is full. We want this since the more recent
         // metrics are more valuable when describing the state of the service!
         if self.queue.force_push(entry).is_some() {
-            if let Some(recorder) = self.recorder.as_ref() {
-                recorder.increment_counter("metrique_queue_overflows", &self.name, 1);
+            if let Some(observer) = self.observer.as_ref() {
+                observer.on_event(&self.name, BackgroundQueueEvent::QueueOverflow);
             }
             rate_limited!(
                 Duration::from_secs(1),
@@ -686,7 +707,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 if !waker_tracker.will_progress_on_drained_queue() {
                     let park_start = Instant::now();
                     self.parker.park_deadline(next_flush);
-                    if self.inner.recorder.is_some() {
+                    if self.inner.observer.is_some() {
                         idle_duration += park_start.elapsed();
                     }
                 }
@@ -699,7 +720,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             }
 
             self.flush_stream();
-            if let Some(recorder) = &self.inner.recorder {
+            if let Some(observer) = &self.inner.observer {
                 let queue_len = self.inner.queue.len().try_into().unwrap_or(u32::MAX);
                 let total_duration = loop_start.elapsed();
                 let idle_percent: u32 = idle_duration
@@ -709,8 +730,13 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                     .unwrap_or(100)
                     .try_into()
                     .unwrap_or(100);
-                recorder.record_histogram("metrique_idle_percent", &self.inner.name, idle_percent);
-                recorder.record_histogram("metrique_queue_len", &self.inner.name, queue_len);
+                observer.on_event(
+                    &self.inner.name,
+                    BackgroundQueueEvent::FlushComplete {
+                        idle_percent,
+                        queue_len,
+                    },
+                );
             }
             if self.shutdown_signal.load(Ordering::Relaxed) {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
@@ -791,26 +817,28 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             )
         }
 
-        if let Some(recorder) = &self.inner.recorder {
-            // intentionally use the metric macros here, so if a new global recorder is
+        if let Some(observer) = &self.inner.observer {
+            // intentionally route through the observer here, so if a new global recorder is
             // installed after the background queue is created, [most] metrics won't be lost
             //
             // this is a bit racy because the first flush can always be lost, but life's life
-            // [yes, this allocates, but it's only done once every X seconds, when flushing]
-            recorder.increment_counter(
-                "metrique_metrics_emitted",
+            observer.on_event(
                 &self.inner.name,
-                std::mem::take(&mut self.metrics_emitted),
+                BackgroundQueueEvent::MetricsEmitted {
+                    count: std::mem::take(&mut self.metrics_emitted),
+                },
             );
-            recorder.increment_counter(
-                "metrique_io_errors",
+            observer.on_event(
                 &self.inner.name,
-                std::mem::take(&mut self.metric_io_errors),
+                BackgroundQueueEvent::IoErrors {
+                    count: std::mem::take(&mut self.metric_io_errors),
+                },
             );
-            recorder.increment_counter(
-                "metrique_validation_errors",
+            observer.on_event(
                 &self.inner.name,
-                std::mem::take(&mut self.metric_validation_errors),
+                BackgroundQueueEvent::ValidationErrors {
+                    count: std::mem::take(&mut self.metric_validation_errors),
+                },
             );
         }
     }
@@ -1360,5 +1388,80 @@ mod tests {
                 handle.shut_down();
             }
         }
+    }
+
+    #[derive(Default)]
+    struct RecordedEvents {
+        overflows: u64,
+        emitted: u64,
+        io_errors: u64,
+        validation_errors: u64,
+        flush_completes: u64,
+        last_queue: Option<String>,
+    }
+
+    #[derive(Default, Clone)]
+    struct TestObserver(Arc<Mutex<RecordedEvents>>);
+
+    impl BackgroundQueueObserver for TestObserver {
+        fn on_event(&self, queue: &str, event: BackgroundQueueEvent) {
+            let mut e = self.0.lock().unwrap();
+            match event {
+                BackgroundQueueEvent::QueueOverflow => {
+                    e.overflows += 1;
+                    e.last_queue = Some(queue.to_owned());
+                }
+                BackgroundQueueEvent::MetricsEmitted { count } => {
+                    e.emitted += count;
+                    e.last_queue = Some(queue.to_owned());
+                }
+                BackgroundQueueEvent::IoErrors { count } => e.io_errors += count,
+                BackgroundQueueEvent::ValidationErrors { count } => e.validation_errors += count,
+                BackgroundQueueEvent::FlushComplete { .. } => e.flush_completes += 1,
+            }
+        }
+    }
+
+    #[test]
+    fn custom_observer_receives_events() {
+        let events = TestObserver::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(1_000)
+            .metric_name("my_queue")
+            .observer(events.clone())
+            .build::<TestEntry>(Arc::new(Mutex::new(TestStream::default())));
+        for i in 0..5 {
+            queue.append(TestEntry(i));
+        }
+        handle.shut_down();
+
+        let recorded = events.0.lock().unwrap();
+        assert_eq!(recorded.emitted, 5);
+        assert_eq!(recorded.io_errors, 0);
+        assert_eq!(recorded.validation_errors, 0);
+        assert_eq!(recorded.overflows, 0);
+        assert!(recorded.flush_completes > 0);
+        assert_eq!(recorded.last_queue.as_deref(), Some("my_queue"));
+    }
+
+    #[test]
+    fn custom_observer_records_overflows() {
+        let events = TestObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(4)
+            .metric_name("my_queue")
+            .observer(events.clone())
+            .build::<TestEntry>(Arc::clone(&output));
+        {
+            // hold the output lock so the writer can't drain
+            let _locked = output.lock().unwrap();
+            for i in 0..20 {
+                queue.append(TestEntry(i));
+            }
+        }
+        handle.shut_down();
+
+        assert!(events.0.lock().unwrap().overflows > 0);
     }
 }

@@ -1,6 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use super::observer::FlushImmediatelyObserver;
+#[cfg(feature = "background-queue")]
+use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
+
 /// Defines callbacks for recording metrics
 ///
 /// This trait is unstable and not exposed since its definition might change to
@@ -210,5 +214,56 @@ where
 {
     fn recorder(recorder: R) -> impl MetricRecorder + 'static {
         LocalMetricsRs024Bridge(recorder)
+    }
+}
+
+/// Adapts a [`MetricRecorder`] to the [`BackgroundQueueObserver`] trait by mapping
+/// each event to the built-in `metrique_*` counter/histogram on the recorder.
+#[cfg(feature = "background-queue")]
+pub(crate) struct BackgroundQueueMetricsRsObserver<R: MetricRecorder>(pub(crate) R);
+
+#[cfg(feature = "background-queue")]
+impl<R: MetricRecorder> BackgroundQueueObserver for BackgroundQueueMetricsRsObserver<R> {
+    // Match exhaustively (no wildcard): adding a `BackgroundQueueEvent` variant is a
+    // non-breaking change for external observers but a compile error here until the
+    // built-in recorder maps it.
+    fn on_event(&self, queue: &str, event: BackgroundQueueEvent) {
+        match event {
+            BackgroundQueueEvent::QueueOverflow => {
+                self.0
+                    .increment_counter("metrique_queue_overflows", queue, 1);
+            }
+            BackgroundQueueEvent::MetricsEmitted { count } => {
+                self.0
+                    .increment_counter("metrique_metrics_emitted", queue, count);
+            }
+            BackgroundQueueEvent::IoErrors { count } => {
+                self.0.increment_counter("metrique_io_errors", queue, count);
+            }
+            BackgroundQueueEvent::ValidationErrors { count } => {
+                self.0
+                    .increment_counter("metrique_validation_errors", queue, count);
+            }
+            BackgroundQueueEvent::FlushComplete {
+                idle_percent,
+                queue_len,
+            } => {
+                self.0
+                    .record_histogram("metrique_idle_percent", queue, idle_percent);
+                self.0
+                    .record_histogram("metrique_queue_len", queue, queue_len);
+            }
+        }
+    }
+}
+
+/// Adapts a [`MetricRecorder`] to the [`FlushImmediatelyObserver`] trait by mapping
+/// `on_flush` to the built-in `metrique_flush_time_ms` histogram on the recorder.
+pub(crate) struct FlushImmediatelyMetricsRsObserver<R: MetricRecorder>(pub(crate) R);
+
+impl<R: MetricRecorder> FlushImmediatelyObserver for FlushImmediatelyMetricsRsObserver<R> {
+    fn on_flush(&self, sink: &str, flush_time_ms: u32) {
+        self.0
+            .record_histogram("metrique_flush_time_ms", sink, flush_time_ms);
     }
 }
