@@ -6,3 +6,5 @@
 fuzz/target
 fuzz/artifacts
 fuzz/corpus
+.claude
+CLAUDE.md
