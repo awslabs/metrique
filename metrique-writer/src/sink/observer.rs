@@ -80,24 +80,53 @@ impl<F: Fn(&str, BackgroundQueueEvent) + Send + Sync> BackgroundQueueObserver fo
     }
 }
 
+/// A lifecycle event emitted by a [`FlushImmediately`] sink.
+///
+/// Delivered to a [`FlushImmediatelyObserver`] alongside the sink's configured
+/// metric name. The sink constructs these events; an observer only ever matches
+/// on them.
+///
+/// [`FlushImmediately`]: super::FlushImmediately
+#[non_exhaustive]
+pub enum FlushImmediatelyEvent {
+    /// IO errors occurred while writing or flushing the underlying stream.
+    #[non_exhaustive]
+    IoErrors {
+        /// Number of IO errors.
+        count: u64,
+    },
+    /// Validation errors occurred while writing to the underlying stream.
+    #[non_exhaustive]
+    ValidationErrors {
+        /// Number of validation errors.
+        count: u64,
+    },
+    /// A flush has completed.
+    #[non_exhaustive]
+    FlushComplete {
+        /// Time spent flushing the underlying stream.
+        duration: std::time::Duration,
+    },
+}
+
 /// Receives lifecycle events from a [`FlushImmediately`] sink.
 ///
 /// Plug an implementation into [`FlushImmediatelyBuilder::observer`] to capture
-/// per-flush timing. Each flush is reported with the sink's configured metric
-/// name as `sink` and the flush duration in milliseconds.
+/// per-flush timing and write/flush errors. Each event is delivered with the
+/// sink's configured metric name as `sink`.
 ///
-/// Any `Fn(&str, u32)` is an observer via the blanket impl, so a closure works
-/// wherever a `FlushImmediatelyObserver` is expected.
+/// Any `Fn(&str, FlushImmediatelyEvent)` is an observer via the blanket impl, so
+/// a closure works wherever a `FlushImmediatelyObserver` is expected.
 ///
 /// [`FlushImmediately`]: super::FlushImmediately
 /// [`FlushImmediatelyBuilder::observer`]: super::FlushImmediatelyBuilder::observer
 pub trait FlushImmediatelyObserver: Send + Sync {
-    /// A flush has completed in `flush_time_ms` milliseconds.
-    fn on_flush(&self, sink: &str, flush_time_ms: u32);
+    /// Handle a single [`FlushImmediatelyEvent`] for the sink named `sink`.
+    fn on_event(&self, sink: &str, event: FlushImmediatelyEvent);
 }
 
-impl<F: Fn(&str, u32) + Send + Sync> FlushImmediatelyObserver for F {
-    fn on_flush(&self, sink: &str, flush_time_ms: u32) {
-        self(sink, flush_time_ms)
+impl<F: Fn(&str, FlushImmediatelyEvent) + Send + Sync> FlushImmediatelyObserver for F {
+    fn on_event(&self, sink: &str, event: FlushImmediatelyEvent) {
+        self(sink, event)
     }
 }

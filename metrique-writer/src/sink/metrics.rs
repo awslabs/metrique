@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::observer::FlushImmediatelyObserver;
 #[cfg(feature = "background-queue")]
 use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
+use super::observer::{FlushImmediatelyEvent, FlushImmediatelyObserver};
 
 /// Defines callbacks for recording metrics
 ///
@@ -156,6 +156,7 @@ impl GlobalRecorderVersion for dyn metrics_024::Recorder {
                 MetricsRsUnit::Count => metrics_024::Unit::Count,
                 MetricsRsUnit::Percent => metrics_024::Unit::Percent,
                 MetricsRsUnit::Millisecond => metrics_024::Unit::Milliseconds,
+                MetricsRsUnit::Microsecond => metrics_024::Unit::Microseconds,
             };
             match metric.r#type {
                 MetricsRsType::Counter => {
@@ -183,6 +184,7 @@ pub enum MetricsRsUnit {
     Percent,
     Count,
     Millisecond,
+    Microsecond,
 }
 
 /// Describes a metrics.rs metric type in a non-exhaustive fashion
@@ -258,12 +260,29 @@ impl<R: MetricRecorder> BackgroundQueueObserver for BackgroundQueueMetricsRsObse
 }
 
 /// Adapts a [`MetricRecorder`] to the [`FlushImmediatelyObserver`] trait by mapping
-/// `on_flush` to the built-in `metrique_flush_time_ms` histogram on the recorder.
+/// each event to the built-in `metrique_*` counter/histogram on the recorder.
 pub(crate) struct FlushImmediatelyMetricsRsObserver<R: MetricRecorder>(pub(crate) R);
 
 impl<R: MetricRecorder> FlushImmediatelyObserver for FlushImmediatelyMetricsRsObserver<R> {
-    fn on_flush(&self, sink: &str, flush_time_ms: u32) {
-        self.0
-            .record_histogram("metrique_flush_time_ms", sink, flush_time_ms);
+    // Match exhaustively (no wildcard): adding a `FlushImmediatelyEvent` variant is a
+    // non-breaking change for external observers but a compile error here until the
+    // built-in recorder maps it.
+    fn on_event(&self, sink: &str, event: FlushImmediatelyEvent) {
+        match event {
+            FlushImmediatelyEvent::IoErrors { count } => {
+                self.0.increment_counter("metrique_io_errors", sink, count);
+            }
+            FlushImmediatelyEvent::ValidationErrors { count } => {
+                self.0
+                    .increment_counter("metrique_validation_errors", sink, count);
+            }
+            FlushImmediatelyEvent::FlushComplete { duration } => {
+                self.0.record_histogram(
+                    "metrique_flush_time_us",
+                    sink,
+                    duration.as_micros() as u32,
+                );
+            }
+        }
     }
 }
