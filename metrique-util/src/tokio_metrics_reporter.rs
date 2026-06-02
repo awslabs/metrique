@@ -1,14 +1,13 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::State;
 use crate::dynamic_inflection::DynamicInflectionEntry;
-use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, EntryWriter, ShutdownFn};
-use metrique::{CloseValue, InflectableEntry, NameStyle};
+use metrique::CloseValue;
+use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use metrique_core::DynamicNameStyle as MetricNameStyle;
 use tokio::runtime::Handle;
 use tokio_metrics::{RuntimeMetrics, RuntimeMonitor};
@@ -31,22 +30,16 @@ type RtClosed = <RuntimeMetrics as CloseValue>::Closed;
 pub struct EmbeddedTokioMetrics(Arc<RtClosed>);
 
 impl CloseValue for EmbeddedTokioMetrics {
-    type Closed = Self;
-    fn close(self) -> Self {
-        self
+    type Closed = Arc<RtClosed>;
+    fn close(self) -> Self::Closed {
+        self.0
     }
 }
 
-impl<NS: NameStyle> InflectableEntry<NS> for EmbeddedTokioMetrics
-where
-    RtClosed: InflectableEntry<NS>,
-{
-    fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
-        <RtClosed as InflectableEntry<NS>>::write(self.0.as_ref(), w);
-    }
-
-    fn sample_group(&self) -> impl Iterator<Item = (Cow<'static, str>, Cow<'static, str>)> {
-        <RtClosed as InflectableEntry<NS>>::sample_group(self.0.as_ref())
+impl CloseValue for &'_ EmbeddedTokioMetrics {
+    type Closed = Arc<RtClosed>;
+    fn close(self) -> Self::Closed {
+        self.0.clone()
     }
 }
 
