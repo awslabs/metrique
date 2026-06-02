@@ -9,6 +9,7 @@ use crate::State;
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, EntryWriter, ShutdownFn};
 use metrique::{CloseValue, InflectableEntry, NameStyle};
+use metrique_core::DynamicNameStyle as MetricNameStyle;
 use tokio::runtime::Handle;
 use tokio_metrics::{RuntimeMetrics, RuntimeMonitor};
 
@@ -50,11 +51,6 @@ where
 }
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
-
-/// Runtime metric field naming style used by the Tokio metrics bridge.
-///
-/// This is a re-export of [`metrique_core::DynamicNameStyle`].
-pub use metrique_core::DynamicNameStyle as MetricNameStyle;
 
 /// Configuration for Tokio runtime metrics bridge subscriptions.
 #[derive(Debug, Clone, Copy)]
@@ -151,6 +147,11 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     /// If you'd rather fold the latest runtime sample into your own metric
     /// structs instead of emitting standalone runtime-metric entries, use
     /// [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics).
+    ///
+    /// # Panics
+    ///
+    /// Must be called from within a Tokio runtime — the reporter is spawned
+    /// via [`tokio::spawn`], which panics if there is no active runtime.
     ///
     /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {

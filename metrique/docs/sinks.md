@@ -222,6 +222,10 @@ Available integrations (via [`metrique-util`]):
   `metrique-util` and call [`subscribe_tokio_runtime_metrics`] to
   start appending [`RuntimeMetrics`] snapshots (worker
   utilization, queue depths, poll durations, and more).
+- **System metrics** — enable the `sysinfo-bridge` feature on
+  `metrique-util` and call [`subscribe_sysinfo_metrics`] to start
+  appending [`SysinfoMetrics`] snapshots (CPU usage, memory, and
+  per-process counters, and more), sampled via [`sysinfo`].
 
   If you'd rather fold the latest runtime sample into each of your own
   entries (so every emitted record carries runtime context without an
@@ -237,6 +241,9 @@ Available integrations (via [`metrique-util`]):
 [`embed_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.embed_tokio_runtime_metrics
 [`State<EmbeddedTokioMetrics>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.EmbeddedTokioMetrics.html
 [`RuntimeMetrics`]: https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.RuntimeMetrics.html
+[`subscribe_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.subscribe_sysinfo_metrics
+[`SysinfoMetrics`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoMetrics.html
+[`sysinfo`]: https://docs.rs/sysinfo
 
 ## Use of exporters
 
