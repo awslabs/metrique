@@ -39,6 +39,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(500)),
     );
 
+    // Each loop iteration emits one EMF record like:
+    //   {"Operation":"Read", "Success":1,
+    //    "WorkersCount":12, "TotalParkCount":4, "TotalBusyDuration":0.135,
+    //    "GlobalQueueDepth":0, "Elapsed":500.7, ...}
+    // — user fields and folded runtime fields on the same line.
     for op in ["Read", "Write", "Read"] {
         let _m = RequestMetrics {
             operation: op,
