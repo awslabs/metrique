@@ -212,8 +212,8 @@ where
     let worker = tokio::spawn(async move {
         tracing::debug!("tokio runtime metrics reporter started");
         for snapshot in intervals {
-            tokio::time::sleep(interval).await;
             on_sample(snapshot);
+            tokio::time::sleep(interval).await;
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
     });
