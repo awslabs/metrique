@@ -26,9 +26,9 @@ use metrique_writer_core::{BoxEntrySink, EntryIoStream, EntrySink};
 pub use metrique_writer_core::{
     global::AttachGlobalEntrySink, global::AttachHandle, global::ShutdownFn, global_entry_sink,
 };
-pub use observer::FlushImmediatelyObserver;
 #[cfg(feature = "background-queue")]
 pub use observer::{BackgroundQueueEvent, BackgroundQueueObserver};
+pub use observer::{FlushImmediatelyEvent, FlushImmediatelyObserver};
 
 /// Extension trait for `AttachGlobalEntrySink`, containing functions that use
 /// types that are not present in [`metrique_writer_core`].
