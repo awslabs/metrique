@@ -22,6 +22,7 @@
 #[non_exhaustive]
 pub enum BackgroundQueueEvent {
     /// An entry was dropped because the queue was full.
+    #[non_exhaustive]
     QueueOverflow,
     /// Entries were successfully written to the underlying stream since the
     /// previous flush.

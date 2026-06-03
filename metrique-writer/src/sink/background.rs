@@ -145,7 +145,7 @@ impl BackgroundQueueBuilder {
     /// let overflows = Arc::new(AtomicU64::new(0));
     /// let counter = Arc::clone(&overflows);
     /// let _builder = BackgroundQueueBuilder::new().observer(move |_queue: &str, event| {
-    ///     if let BackgroundQueueEvent::QueueOverflow = event {
+    ///     if let BackgroundQueueEvent::QueueOverflow { .. } = event {
     ///         counter.fetch_add(1, Ordering::Relaxed);
     ///     }
     /// });
