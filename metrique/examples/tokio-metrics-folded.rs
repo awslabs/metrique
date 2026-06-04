@@ -17,7 +17,7 @@ use metrique::{
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
 use metrique_util::{
-    AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeSnapshot, State, TokioRuntimeMetricsConfig,
+    AttachGlobalEntrySinkTokioMetricsExt, State, TokioRuntimeMetricsConfig, TokioRuntimeSnapshot,
 };
 
 #[metrics(rename_all = "PascalCase")]
