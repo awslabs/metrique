@@ -90,6 +90,11 @@ name = "extras"
 required-features = ["emf", "service-metrics"]
 doc-scrape-examples = false
 
+[[example]]
+name = "sysinfo-folded"
+required-features = ["emf", "service-metrics"]
+doc-scrape-examples = false
+
 [package.metadata.docs.rs]
 all-features = true
 targets = ["x86_64-unknown-linux-gnu"]
