@@ -20,7 +20,7 @@ pub use crate::sink::AttachGlobalEntrySinkExt;
 
 pub mod entry;
 pub mod format;
-pub(crate) mod rate_limit;
+pub mod rate_limit;
 pub mod sample;
 pub mod sink;
 pub mod stream;
