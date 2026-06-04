@@ -18,7 +18,7 @@ type RtClosed = <RuntimeMetrics as CloseValue>::Closed;
 /// each entry can flatten in the latest sample without cloning the
 /// underlying data.
 ///
-/// Obtain a `State<EmbeddedTokioMetrics>` by calling
+/// Obtain a `State<TokioRuntimeSnapshot>` by calling
 /// [`AttachGlobalEntrySinkTokioMetricsExt::embed_tokio_runtime_metrics`] on
 /// your global entry sink. The sampler is aborted when the sink's
 /// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
@@ -27,16 +27,16 @@ type RtClosed = <RuntimeMetrics as CloseValue>::Closed;
 /// Cloning the [`State`] (per request) and closing the entry are both
 /// cheap reference-count operations.
 #[derive(Clone)]
-pub struct EmbeddedTokioMetrics(Arc<RtClosed>);
+pub struct TokioRuntimeSnapshot(Arc<RtClosed>);
 
-impl CloseValue for EmbeddedTokioMetrics {
+impl CloseValue for TokioRuntimeSnapshot {
     type Closed = Arc<RtClosed>;
     fn close(self) -> Self::Closed {
         self.0
     }
 }
 
-impl CloseValue for &'_ EmbeddedTokioMetrics {
+impl CloseValue for &'_ TokioRuntimeSnapshot {
     type Closed = Arc<RtClosed>;
     fn close(self) -> Self::Closed {
         self.0.clone()
@@ -89,7 +89,7 @@ impl TokioRuntimeMetricsConfig {
 ///   appends each [`RuntimeMetrics`] snapshot to the sink as a standalone
 ///   entry — best when you want a separate runtime-metrics record stream.
 /// - [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics)
-///   returns a [`State<EmbeddedTokioMetrics>`](EmbeddedTokioMetrics) you
+///   returns a [`State<TokioRuntimeSnapshot>`](TokioRuntimeSnapshot) you
 ///   embed into your own metric structs via `#[metrics(flatten)]` — best
 ///   when you want every emitted record to carry the latest runtime
 ///   sample alongside its own fields.
@@ -175,12 +175,12 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     /// [`State`] into their own entries instead.
     fn embed_tokio_runtime_metrics(
         config: TokioRuntimeMetricsConfig,
-    ) -> State<EmbeddedTokioMetrics> {
-        let initial = EmbeddedTokioMetrics(Arc::new(RuntimeMetrics::default().close()));
+    ) -> State<TokioRuntimeSnapshot> {
+        let initial = TokioRuntimeSnapshot(Arc::new(RuntimeMetrics::default().close()));
         let state = State::new(initial);
         let task_state = state.clone();
         let abort = spawn_runtime_metrics_loop(config.interval, move |snapshot| {
-            task_state.store(Arc::new(EmbeddedTokioMetrics(Arc::new(snapshot.close()))));
+            task_state.store(Arc::new(TokioRuntimeSnapshot(Arc::new(snapshot.close()))));
         });
         Self::register_shutdown_fn(ShutdownFn::new(move || {
             abort.abort();
@@ -346,13 +346,13 @@ mod tests {
         use metrique::unit_of_work::metrics;
         use metrique_writer::test_util::test_metric;
 
-        use super::EmbeddedTokioMetrics;
+        use super::TokioRuntimeSnapshot;
 
         #[metrics(rename_all = "PascalCase")]
         struct RequestMetrics {
             operation: &'static str,
             #[metrics(flatten)]
-            runtime: crate::State<EmbeddedTokioMetrics>,
+            runtime: crate::State<TokioRuntimeSnapshot>,
         }
 
         metrique_writer::sink::global_entry_sink! { Sink }

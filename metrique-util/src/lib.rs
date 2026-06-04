@@ -24,7 +24,7 @@ pub use metrique_core::DynamicNameStyle as MetricNameStyle;
 mod tokio_metrics_reporter;
 #[cfg(feature = "tokio-metrics-bridge")]
 pub use tokio_metrics_reporter::{
-    AttachGlobalEntrySinkTokioMetricsExt, EmbeddedTokioMetrics, TokioRuntimeMetricsConfig,
+    AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeSnapshot, TokioRuntimeMetricsConfig,
 };
 
 #[cfg(feature = "sysinfo-bridge")]

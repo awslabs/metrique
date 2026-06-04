@@ -4,7 +4,7 @@
 //! Folding Tokio runtime metrics into per-request entries.
 //!
 //! [`AttachGlobalEntrySinkTokioMetricsExt::embed_tokio_runtime_metrics`]
-//! starts a background sampler and returns a `State<EmbeddedTokioMetrics>`
+//! starts a background sampler and returns a `State<TokioRuntimeSnapshot>`
 //! that can be flattened into any entry, so every emitted record carries
 //! the latest runtime sample.
 
@@ -17,7 +17,7 @@ use metrique::{
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
 use metrique_util::{
-    AttachGlobalEntrySinkTokioMetricsExt, EmbeddedTokioMetrics, State, TokioRuntimeMetricsConfig,
+    AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeSnapshot, State, TokioRuntimeMetricsConfig,
 };
 
 #[metrics(rename_all = "PascalCase")]
@@ -25,7 +25,7 @@ struct RequestMetrics {
     operation: &'static str,
     success: bool,
     #[metrics(flatten)]
-    runtime: State<EmbeddedTokioMetrics>,
+    runtime: State<TokioRuntimeSnapshot>,
 }
 
 #[tokio::main]

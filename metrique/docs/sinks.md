@@ -231,7 +231,7 @@ Available integrations (via [`metrique-util`]):
   entries (so every emitted record carries runtime context without an
   extra join at query time), use
   [`embed_tokio_runtime_metrics`] instead. It returns a
-  [`State<EmbeddedTokioMetrics>`] that you embed in your metric struct
+  [`State<TokioRuntimeSnapshot>`] that you embed in your metric struct
   with `#[metrics(flatten)]`; the sampler shares the same
   [`AttachHandle`]-tied lifecycle as `subscribe_tokio_runtime_metrics`.
 
@@ -239,7 +239,7 @@ Available integrations (via [`metrique-util`]):
 [`metrique-util`]: https://docs.rs/metrique-util/latest/metrique_util/
 [`subscribe_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.subscribe_tokio_runtime_metrics
 [`embed_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.embed_tokio_runtime_metrics
-[`State<EmbeddedTokioMetrics>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.EmbeddedTokioMetrics.html
+[`State<TokioRuntimeSnapshot>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.TokioRuntimeSnapshot.html
 [`RuntimeMetrics`]: https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.RuntimeMetrics.html
 [`subscribe_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.subscribe_sysinfo_metrics
 [`SysinfoMetrics`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoMetrics.html
