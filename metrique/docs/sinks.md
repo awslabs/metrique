@@ -209,6 +209,30 @@ if you use metric entries to track user log-in operations, and your application 
 
 In that case, you should not be using [`BackgroundQueue`] or sampling. It is probably fine to use the [`Format`] implementations in that case, but it is recommended to test and audit your use-case to make sure nothing is being missed.
 
+## Observing sink health
+
+Both [`BackgroundQueue`] and [`FlushImmediately`] can report their own lifecycle events (queue overflows, per-flush emitted/error counts, idle/length samples, and flush timing) so you can monitor the sink itself.
+
+If you use `metrics.rs`, call `metrics_recorder_global` / `metrics_recorder_local` on the builder to emit the [`BACKGROUND_QUEUE_METRICS`] directly. If you use a different observability backend, pass an `observer` to the builder instead. Any closure of the right shape works, so capturing an event takes no boilerplate:
+
+```rust
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use metrique::writer::sink::{BackgroundQueueBuilder, BackgroundQueueEvent};
+
+let overflows = Arc::new(AtomicU64::new(0));
+let counter = Arc::clone(&overflows);
+let _builder = BackgroundQueueBuilder::new().observer(move |_queue: &str, event| {
+    if let BackgroundQueueEvent::QueueOverflow { .. } = event {
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+});
+```
+
+See [`BackgroundQueueObserver`] and [`FlushImmediatelyObserver`] for the full set of events.
+
+[`BackgroundQueueObserver`]: https://docs.rs/metrique/latest/metrique/writer/sink/trait.BackgroundQueueObserver.html
+[`FlushImmediatelyObserver`]: https://docs.rs/metrique/latest/metrique/writer/sink/trait.FlushImmediatelyObserver.html
+
 ## Metric source integrations
 
 Global entry sinks support subscribing background metric sources that
