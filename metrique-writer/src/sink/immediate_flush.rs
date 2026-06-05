@@ -10,18 +10,19 @@ use crate::{
     stream::{EntryIoStream, IoStreamError},
 };
 
+#[cfg(feature = "metrics-rs-024")]
+use super::metrics::FlushImmediatelyMetricsRsObserver;
 use super::{
     FlushWait,
-    metrics::{
-        DescribedMetric, GlobalRecorderVersion, MetricRecorder, MetricsRsType, MetricsRsUnit,
-    },
+    metrics::{DescribedMetric, GlobalRecorderVersion, MetricsRsType, MetricsRsUnit},
+    observer::{FlushImmediatelyEvent, FlushImmediatelyObserver},
 };
 
 /// Builder for [`FlushImmediately`] and [`AnyFlushImmediately`].
 #[derive(Default)]
 pub struct FlushImmediatelyBuilder {
     metric_name: Option<String>,
-    metric_recorder: Option<Box<dyn MetricRecorder>>,
+    observer: Option<Box<dyn FlushImmediatelyObserver>>,
 }
 
 impl FlushImmediatelyBuilder {
@@ -38,11 +39,28 @@ impl FlushImmediatelyBuilder {
         self
     }
 
-    /// If provided, metrics to the callback when entries are written.
-    #[deprecated = "this function can't be called by users since `MetricRecorder` implementations are private, \
-        call metrics_recorder_global or metrics_recorder_local instead"]
-    pub fn metric_recorder(mut self, recorder: Option<Box<dyn MetricRecorder>>) -> Self {
-        self.metric_recorder = recorder;
+    /// Send lifecycle events from the sink to a user-provided observer.
+    ///
+    /// Use this to capture per-flush timing from any observability backend, not just
+    /// `metrics.rs`. See [`FlushImmediatelyObserver`] for the events available.
+    ///
+    /// # Example
+    ///
+    /// A closure is an observer, so recording the flush duration takes no boilerplate:
+    ///
+    /// ```
+    /// # use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+    /// # use metrique_writer::sink::{FlushImmediatelyBuilder, FlushImmediatelyEvent};
+    /// let last_flush_micros = Arc::new(AtomicU64::new(0));
+    /// let observed = Arc::clone(&last_flush_micros);
+    /// let _builder = FlushImmediatelyBuilder::new().observer(move |_sink: &str, event: FlushImmediatelyEvent| {
+    ///     if let FlushImmediatelyEvent::FlushComplete { duration, .. } = event {
+    ///         observed.store(duration.as_micros() as u64, Ordering::Relaxed);
+    ///     }
+    /// });
+    /// ```
+    pub fn observer(mut self, observer: impl FlushImmediatelyObserver + 'static) -> Self {
+        self.observer = Some(Box::new(observer));
         self
     }
 
@@ -52,7 +70,9 @@ impl FlushImmediatelyBuilder {
     /// All metrics are emitted with the dimension `sink` equal to the [Self::metric_name] config.
     ///
     /// The following metrics exist:
-    /// 1. `metrique_flush_time_ms` - histogram of flush operation times in milliseconds
+    /// 1. `metrique_flush_time_us` - histogram of flush operation times in microseconds
+    /// 2. `metrique_io_errors` - counter of IO errors when emitting from this sink
+    /// 3. `metrique_validation_errors` - counter of validation errors when emitting from this sink
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
@@ -92,7 +112,7 @@ impl FlushImmediatelyBuilder {
     pub fn metrics_recorder_global<V: super::metrics::GlobalRecorderVersion + ?Sized>(
         mut self,
     ) -> Self {
-        self.metric_recorder = Some(Box::new(V::recorder()));
+        self.observer = Some(Box::new(FlushImmediatelyMetricsRsObserver(V::recorder())));
         self
     }
 
@@ -102,7 +122,9 @@ impl FlushImmediatelyBuilder {
     /// All metrics are emitted with the dimension `sink` equal to the [Self::metric_name] config.
     ///
     /// The following metrics exist:
-    /// 1. `metrique_flush_time_ms` - histogram of flush operation times in milliseconds
+    /// 1. `metrique_flush_time_us` - histogram of flush operation times in microseconds
+    /// 2. `metrique_io_errors` - counter of IO errors when emitting from this sink
+    /// 3. `metrique_validation_errors` - counter of validation errors when emitting from this sink
     ///
     /// For example (assuming you already have a [`metrics::Recorder`] named `recorder`
     /// and an [`EntryIoStream`] named `stream`).
@@ -140,7 +162,9 @@ impl FlushImmediatelyBuilder {
         mut self,
         recorder: R,
     ) -> Self {
-        self.metric_recorder = Some(Box::new(V::recorder(recorder)));
+        self.observer = Some(Box::new(FlushImmediatelyMetricsRsObserver(V::recorder(
+            recorder,
+        ))));
         self
     }
 
@@ -152,7 +176,7 @@ impl FlushImmediatelyBuilder {
                 name: self
                     .metric_name
                     .unwrap_or_else(|| "immediate-flush".to_string()),
-                recorder: self.metric_recorder,
+                observer: self.observer,
             })),
             _phantom: PhantomData,
         }
@@ -175,7 +199,7 @@ impl FlushImmediatelyBuilder {
                 name: self
                     .metric_name
                     .unwrap_or_else(|| "immediate-flush".to_string()),
-                recorder: self.metric_recorder,
+                observer: self.observer,
             })),
         }
     }
@@ -184,7 +208,7 @@ impl FlushImmediatelyBuilder {
 struct SinkState<S> {
     stream: S,
     name: String,
-    recorder: Option<Box<dyn MetricRecorder>>,
+    observer: Option<Box<dyn FlushImmediatelyObserver>>,
 }
 
 impl<S: EntryIoStream> SinkState<S> {
@@ -193,9 +217,18 @@ impl<S: EntryIoStream> SinkState<S> {
             Ok(()) => {}
             Err(IoStreamError::Validation(err)) => {
                 tracing::error!(?err, "metric entry couldn't be formatted correctly");
+                if let Some(observer) = &self.observer {
+                    observer.on_event(
+                        &self.name,
+                        FlushImmediatelyEvent::ValidationErrors { count: 1 },
+                    );
+                }
             }
             Err(IoStreamError::Io(err)) => {
                 tracing::error!(?err, "couldn't append to metric stream");
+                if let Some(observer) = &self.observer {
+                    observer.on_event(&self.name, FlushImmediatelyEvent::IoErrors { count: 1 });
+                }
             }
         }
 
@@ -208,12 +241,18 @@ impl<S: EntryIoStream> SinkState<S> {
 
         if let Err(err) = self.stream.flush() {
             tracing::warn!(?err, "couldn't flush metric stream");
+            if let Some(observer) = &self.observer {
+                observer.on_event(&self.name, FlushImmediatelyEvent::IoErrors { count: 1 });
+            }
         }
 
-        // Record flush time metric if recorder is configured
-        if let Some(recorder) = &self.recorder {
-            let flush_time_ms = start.elapsed().as_millis() as u32;
-            recorder.record_histogram("metrique_flush_time_ms", &self.name, flush_time_ms);
+        if let Some(observer) = &self.observer {
+            observer.on_event(
+                &self.name,
+                FlushImmediatelyEvent::FlushComplete {
+                    duration: start.elapsed(),
+                },
+            );
         }
     }
 }
@@ -329,12 +368,26 @@ impl<S: EntryIoStream> AnyEntrySink for AnyFlushImmediately<S> {
     }
 }
 
-pub const IMMEDIATE_FLUSH_METRICS: &[DescribedMetric] = &[DescribedMetric {
-    name: "metrique_flush_time",
-    unit: MetricsRsUnit::Millisecond,
-    r#type: MetricsRsType::Histogram,
-    description: "Percent of time the background sink is idle",
-}];
+pub const IMMEDIATE_FLUSH_METRICS: &[DescribedMetric] = &[
+    DescribedMetric {
+        name: "metrique_flush_time_us",
+        unit: MetricsRsUnit::Microsecond,
+        r#type: MetricsRsType::Histogram,
+        description: "Time spent flushing the immediate-flush sink",
+    },
+    DescribedMetric {
+        name: "metrique_io_errors",
+        unit: MetricsRsUnit::Count,
+        r#type: MetricsRsType::Counter,
+        description: "Number of IO errors when emitting from this sink",
+    },
+    DescribedMetric {
+        name: "metrique_validation_errors",
+        unit: MetricsRsUnit::Count,
+        r#type: MetricsRsType::Counter,
+        description: "Number of metric validation errors when emitting from this sink",
+    },
+];
 
 /// Does describe_metrics for this global recorder, which makes your units visible.
 /// Call it with a recorder type, to allow it to autodetect your metrics.rs version
@@ -486,6 +539,81 @@ mod tests {
             panic!("unexpected metrics: {snapshot:#?}")
         };
         assert_eq!(value.len(), 2);
-        assert_eq!(name.key().name(), "metrique_flush_time_ms");
+        assert_eq!(name.key().name(), "metrique_flush_time_us");
+    }
+
+    #[derive(Default, Clone)]
+    struct TestFlushObserver(Arc<Mutex<Vec<(String, FlushImmediatelyEvent)>>>);
+
+    impl FlushImmediatelyObserver for TestFlushObserver {
+        fn on_event(&self, sink: &str, event: FlushImmediatelyEvent) {
+            self.0.lock().unwrap().push((sink.to_owned(), event));
+        }
+    }
+
+    #[test]
+    fn custom_observer_receives_flush_events() {
+        let observer = TestFlushObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let sink = FlushImmediatelyBuilder::new()
+            .metric_name("test-sink")
+            .observer(observer.clone())
+            .build::<TestEntry, _>(Arc::clone(&output));
+
+        sink.append(TestEntry(1));
+        sink.append(TestEntry(2));
+
+        let events = observer.0.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|(name, _)| name == "test-sink"));
+        assert!(
+            events
+                .iter()
+                .all(|(_, event)| matches!(event, FlushImmediatelyEvent::FlushComplete { .. }))
+        );
+    }
+
+    #[test]
+    fn custom_observer_receives_validation_errors() {
+        let observer = TestFlushObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        output.lock().unwrap().error = Some(IoStreamError::Validation(ValidationError::invalid(
+            "test error",
+        )));
+        let sink = FlushImmediatelyBuilder::new()
+            .metric_name("test-sink")
+            .observer(observer.clone())
+            .build::<TestEntry, _>(Arc::clone(&output));
+
+        sink.append(TestEntry(1));
+
+        let events = observer.0.lock().unwrap();
+        assert!(events.iter().any(|(_, event)| matches!(
+            event,
+            FlushImmediatelyEvent::ValidationErrors { count: 1 }
+        )));
+    }
+
+    #[test]
+    fn custom_observer_receives_io_errors() {
+        let observer = TestFlushObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        output.lock().unwrap().error = Some(IoStreamError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "test error",
+        )));
+        let sink = FlushImmediatelyBuilder::new()
+            .metric_name("test-sink")
+            .observer(observer.clone())
+            .build::<TestEntry, _>(Arc::clone(&output));
+
+        sink.append(TestEntry(1));
+
+        let events = observer.0.lock().unwrap();
+        assert!(
+            events
+                .iter()
+                .any(|(_, event)| matches!(event, FlushImmediatelyEvent::IoErrors { count: 1 }))
+        );
     }
 }

@@ -110,12 +110,13 @@
 
 pub mod flags;
 mod metrics;
+pub(crate) mod rate_limit;
 mod translator;
 
 use std::sync::Arc;
 use std::time::Duration;
 
-use metrique_writer::rate_limit::rate_limited;
+use crate::rate_limit::rate_limited;
 use metrique_writer_core::sink::{AnyEntrySink, FlushWait};
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 

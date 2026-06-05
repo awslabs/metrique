@@ -4,7 +4,7 @@
 use std::hash::{Hash, Hasher};
 use std::time::Duration;
 
-use metrique_writer::rate_limit::rate_limited;
+use crate::rate_limit::rate_limited;
 use metrique_writer_core::{
     Observation, Unit,
     unit::{NegativeScale, PositiveScale},

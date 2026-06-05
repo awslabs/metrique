@@ -32,7 +32,7 @@
 use std::any::Any;
 use std::time::Duration;
 
-use metrique_writer::rate_limit::rate_limited;
+use crate::rate_limit::rate_limited;
 use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
 
 fn warn_conflict(kept: InstrumentKind, dropped: InstrumentKind) {
