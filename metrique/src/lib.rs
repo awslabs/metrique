@@ -56,12 +56,14 @@ pub mod slot;
 /// - [`sinks`] : destinations, sink types, and alternatives to `ServiceMetrics`
 /// - [`sampling`] : congressional sampling and the tee pattern for high-volume services
 /// - [`testing`] : test utilities and debugging common issues
+/// - [`extending`] : defining your own metric types and how the core traits relate
 ///
 /// [`cookbook`]: crate::_guide::cookbook
 /// [`concurrency`]: crate::_guide::concurrency
 /// [`sinks`]: crate::_guide::sinks
 /// [`sampling`]: crate::_guide::sampling
 /// [`testing`]: crate::_guide::testing
+/// [`extending`]: crate::_guide::extending
 pub mod _guide {
     #[doc = include_str!("../docs/cookbook.md")]
     pub mod cookbook {}
@@ -73,6 +75,8 @@ pub mod _guide {
     pub mod sampling {}
     #[doc = include_str!("../docs/testing.md")]
     pub mod testing {}
+    #[doc = include_str!("../docs/extending.md")]
+    pub mod extending {}
 }
 
 use metrique_core::CloseEntry;
