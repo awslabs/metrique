@@ -612,13 +612,17 @@ fn write_json(
 
 /// Recursively sort all object keys to ensure deterministic output regardless of
 /// whether serde_json's `preserve_order` feature is enabled.
-fn sort_json_keys(map: serde_json::Map<String, serde_json::Value>) -> serde_json::Map<String, serde_json::Value> {
+fn sort_json_keys(
+    map: serde_json::Map<String, serde_json::Value>,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut entries: Vec<(String, serde_json::Value)> = map.into_iter().collect();
     entries.sort_by(|(a, _), (b, _)| a.cmp(b));
     entries
         .into_iter()
         .map(|(k, v)| match v {
-            serde_json::Value::Object(inner) => (k, serde_json::Value::Object(sort_json_keys(inner))),
+            serde_json::Value::Object(inner) => {
+                (k, serde_json::Value::Object(sort_json_keys(inner)))
+            }
             other => (k, other),
         })
         .collect()
