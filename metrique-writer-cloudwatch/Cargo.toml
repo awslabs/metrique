@@ -21,7 +21,7 @@ tokio_runtime = ["tokio/rt"]
 [dependencies]
 metrique-writer-core = { workspace = true }
 metrique-writer-format-emf = { workspace = true }
-aws-sdk-cloudwatchlogs = "1"
+aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 aws-smithy-types = "1"
 tokio = { workspace = true, features = ["sync", "time"] }
 tracing = "0.1"
