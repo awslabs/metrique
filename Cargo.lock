@@ -1910,6 +1910,7 @@ dependencies = [
  "aws-smithy-runtime-api",
  "aws-smithy-types",
  "bon",
+ "futures",
  "http 1.4.0",
  "metrique-writer",
  "metrique-writer-core",
