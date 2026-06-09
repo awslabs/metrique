@@ -1,0 +1,122 @@
+---
+source: metrique-macro/src/aggregate.rs
+assertion_line: 998
+expression: parsed_file
+---
+#[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
+#[allow(clippy::type_complexity)]
+pub struct AggregatedMyMetrics {
+    count: <Sum as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+        <WithDimension<u64> as ::metrique_writer::value::WithDimensionsExt>::Inner,
+    >>::Aggregated,
+}
+impl ::metrique_aggregation::__macro_plumbing::Merge for MyMetrics {
+    type Merged = AggregatedMyMetrics;
+    type MergeConfig = ();
+    fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {
+        Self::Merged::default()
+    }
+    fn merge(accum: &mut Self::Merged, input: Self) {
+        <Sum as ::metrique_aggregation::__macro_plumbing::AggregateValue<
+            <WithDimension<u64> as ::metrique_writer::value::WithDimensionsExt>::Inner,
+        >>::insert(&mut accum.count, input.count.into_value());
+    }
+}
+#[derive(Clone)]
+pub struct MyMetricsKey {
+    __dyn_keys: ::metrique_aggregation::__macro_plumbing::SmallVec<
+        [(::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>); 4],
+    >,
+    __entry_dimensions: Option<
+        ::metrique_aggregation::__macro_plumbing::EntryDimensions,
+    >,
+}
+impl ::std::cmp::PartialEq for MyMetricsKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.__dyn_keys == other.__dyn_keys
+    }
+}
+impl ::std::cmp::Eq for MyMetricsKey {}
+impl ::std::hash::Hash for MyMetricsKey {
+    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+        self.__dyn_keys.as_slice().hash(state);
+    }
+}
+impl metrique::CloseValue for MyMetricsKey {
+    type Closed = MyMetricsKey;
+    fn close(self) -> Self::Closed {
+        MyMetricsKey {
+            __dyn_keys: self.__dyn_keys,
+            __entry_dimensions: self.__entry_dimensions,
+        }
+    }
+}
+impl metrique::InflectableEntry for MyMetricsKey {
+    fn write<'__w>(&'__w self, writer: &mut impl ::metrique_writer::EntryWriter<'__w>) {
+        if let Some(ref dims) = self.__entry_dimensions {
+            writer.config(dims);
+        }
+        for (class, instance) in &self.__dyn_keys {
+            writer.value(class.clone(), &**instance);
+        }
+    }
+}
+impl ::metrique_writer::Entry for MyMetricsKey {
+    fn write<'__w>(&'__w self, writer: &mut impl ::metrique_writer::EntryWriter<'__w>) {
+        <Self as metrique::InflectableEntry>::write(self, writer);
+    }
+}
+struct MyMetricsKeyExtractor;
+impl ::metrique_aggregation::__macro_plumbing::Key<MyMetrics> for MyMetricsKeyExtractor {
+    type Key<'a> = MyMetricsKey;
+    fn from_source(source: &MyMetrics) -> Self::Key<'_> {
+        let __dyn_keys = ::metrique_aggregation::__macro_plumbing::extract_dimensions(
+            source,
+        );
+        let __entry_dimensions = if __dyn_keys.is_empty() {
+            None
+        } else {
+            let classes: Vec<::std::borrow::Cow<'static, str>> = __dyn_keys
+                .iter()
+                .map(|(c, _)| c.clone())
+                .collect::<::std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            let dim_set: ::std::borrow::Cow<
+                'static,
+                [::std::borrow::Cow<'static, str>],
+            > = ::std::borrow::Cow::Owned(classes);
+            Some(
+                ::metrique_aggregation::__macro_plumbing::EntryDimensions::new(
+                    ::std::borrow::Cow::Owned(vec![dim_set]),
+                ),
+            )
+        };
+        #[allow(deprecated)]
+        MyMetricsKey {
+            __dyn_keys,
+            __entry_dimensions,
+        }
+    }
+    fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+        MyMetricsKey {
+            __dyn_keys: key.__dyn_keys.clone(),
+            __entry_dimensions: key.__entry_dimensions.clone(),
+        }
+    }
+    fn static_key_matches<'a>(
+        owned: &Self::Key<'static>,
+        borrowed: &Self::Key<'a>,
+    ) -> bool {
+        owned == borrowed
+    }
+}
+impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for MyMetrics {
+    type Source = MyMetrics;
+    type Key = MyMetricsKeyExtractor;
+}
+#[metrics(rename_all = "PascalCase")]
+struct MyMetrics {
+    count: WithDimension<u64>,
+}

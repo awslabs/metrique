@@ -157,6 +157,16 @@ impl<V, const N: usize> WithDimensions<V, N> {
             dimensions: self.dimensions,
         }
     }
+
+    /// Consume the wrapper and return the inner value, discarding dimensions.
+    pub fn into_value(self) -> V {
+        self.value
+    }
+
+    /// Borrow the inner value.
+    pub fn inner(&self) -> &V {
+        &self.value
+    }
 }
 
 /// Type alias of [`WithDimensions`] for the common case of adding a single (class, instance) pair.
@@ -350,6 +360,17 @@ impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
 
 impl<V: MetricValue, const N: usize> MetricValue for WithDimensions<V, N> {
     type Unit = V::Unit;
+}
+
+/// Helper trait for extracting the inner type from `WithDimensions<V, N>`.
+/// Used by the aggregate macro to determine the value type for aggregation strategies.
+pub trait WithDimensionsExt {
+    /// The inner value type
+    type Inner;
+}
+
+impl<V, const N: usize> WithDimensionsExt for WithDimensions<V, N> {
+    type Inner = V;
 }
 
 impl<E: Entry, const N: usize> Entry for WithDimensions<E, N> {
