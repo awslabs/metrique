@@ -20,7 +20,7 @@ tokio-metrics-bridge = [
     "dep:tokio-metrics",
     "dep:tracing",
 ]
-sysinfo-bridge = ["dep:metrique", "dep:tokio", "dep:sysinfo", "dep:tracing"]
+sysinfo-bridge = ["state", "dep:metrique", "dep:tokio", "dep:sysinfo", "dep:tracing"]
 # Enables BoxEntrySink::pending() for deferred sink attachment with bounded buffering
 pending-sink = ["dep:metrique-writer-core", "dep:crossbeam-queue"]
 

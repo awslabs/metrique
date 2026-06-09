@@ -1,9 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::Duration;
 
+use crate::State;
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
@@ -118,6 +120,7 @@ impl SysinfoMetricsConfig {
 ///
 /// [sysinfo docs]: https://docs.rs/sysinfo
 #[metrics(subfield_owned)]
+#[derive(Default)]
 #[non_exhaustive]
 pub struct SysinfoMetrics {
     // ----- CPU -----
@@ -270,7 +273,50 @@ pub struct ComponentMetrics {
     pub component_max_temperature_recorded_name: Option<String>,
 }
 
-/// Extension methods for subscribing system metrics to a global entry sink.
+type SyClosed = <SysinfoMetrics as CloseValue>::Closed;
+
+/// Pre-closed system-metrics snapshot, embedded in a [`State`] so each entry
+/// can flatten in the latest sample without cloning the underlying data.
+///
+/// Obtain a `State<SysinfoSnapshot>` by calling
+/// [`AttachGlobalEntrySinkSysinfoExt::embed_sysinfo_metrics`] on your global
+/// entry sink. The sampler is aborted when the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
+/// Embed the [`State`] in your entry with `#[metrics(flatten)]`.
+///
+/// Cloning the [`State`] (per request) and closing the entry are both
+/// cheap reference-count operations.
+#[derive(Clone)]
+pub struct SysinfoSnapshot(Arc<SyClosed>);
+
+impl CloseValue for SysinfoSnapshot {
+    type Closed = Arc<SyClosed>;
+    fn close(self) -> Self::Closed {
+        self.0
+    }
+}
+
+impl CloseValue for &'_ SysinfoSnapshot {
+    type Closed = Arc<SyClosed>;
+    fn close(self) -> Self::Closed {
+        self.0.clone()
+    }
+}
+
+/// Extension methods for plugging system metrics into a global entry sink.
+///
+/// Two flavors are available, both backed by a single background sampler
+/// task whose lifecycle is tied to the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle):
+///
+/// - [`subscribe_sysinfo_metrics`](Self::subscribe_sysinfo_metrics) appends
+///   each [`SysinfoMetrics`] snapshot to the sink as a standalone entry —
+///   best when you want a separate system-metrics record stream.
+/// - [`embed_sysinfo_metrics`](Self::embed_sysinfo_metrics) returns a
+///   [`State<SysinfoSnapshot>`](SysinfoSnapshot) you embed into your own
+///   metric structs via `#[metrics(flatten)]` — best when you want every
+///   emitted record to carry the latest system sample alongside its own
+///   fields.
 pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// Subscribe to system metrics, adding the subscription to this handle.
     ///
@@ -289,6 +335,10 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// so it runs on a dedicated thread. Inside a Tokio runtime it uses
     /// [`tokio::task::spawn_blocking`]; outside one it falls back to a plain
     /// [`std::thread::spawn`].
+    ///
+    /// If you'd rather fold the latest system sample into your own metric
+    /// structs instead of emitting standalone sysinfo entries, use
+    /// [`embed_sysinfo_metrics`](Self::embed_sysinfo_metrics).
     ///
     /// # Example
     ///
@@ -314,8 +364,42 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// ```
     fn subscribe_sysinfo_metrics(config: SysinfoMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
-        let shutdown = spawn_sysinfo_metrics_task(sink, config);
+        let name_style = config.name_style;
+        let shutdown = spawn_sysinfo_metrics_loop(config, move |snapshot| {
+            sink.append(DynamicInflectionEntry {
+                entry: snapshot.close(),
+                name_style,
+            });
+        });
         Self::register_shutdown_fn(ShutdownFn::new(shutdown));
+    }
+
+    /// Spawn a sysinfo sampler that drives a shared [`State`] for folding
+    /// into per-request entries via `#[metrics(flatten)]`.
+    ///
+    /// The sampler is aborted when the
+    /// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped,
+    /// the same way [`subscribe_sysinfo_metrics`](Self::subscribe_sysinfo_metrics)
+    /// is. After shutdown the returned [`State`] still resolves (to the last
+    /// sample stored before the abort), but no longer refreshes.
+    ///
+    /// Unlike `subscribe_sysinfo_metrics`, this does not emit standalone
+    /// system-metric entries — callers fold the returned [`State`] into
+    /// their own entries instead.
+    ///
+    /// Note that the first real sample doesn't land in the [`State`] until
+    /// after the worker's CPU-prime sleep (~200ms by default). Entries that
+    /// close before then fold in the default [`SysinfoMetrics`] (all zeros
+    /// / `None`).
+    fn embed_sysinfo_metrics(config: SysinfoMetricsConfig) -> State<SysinfoSnapshot> {
+        let initial = SysinfoSnapshot(Arc::new(SysinfoMetrics::default().close()));
+        let state = State::new(initial);
+        let task_state = state.clone();
+        let shutdown = spawn_sysinfo_metrics_loop(config, move |snapshot| {
+            task_state.store(Arc::new(SysinfoSnapshot(Arc::new(snapshot.close()))));
+        });
+        Self::register_shutdown_fn(ShutdownFn::new(shutdown));
+        state
     }
 }
 
@@ -448,12 +532,14 @@ fn sample(
     }
 }
 
-fn spawn_sysinfo_metrics_task(
-    sink: BoxEntrySink,
+fn spawn_sysinfo_metrics_loop<F>(
     config: SysinfoMetricsConfig,
-) -> impl FnOnce() + Send + 'static {
+    mut on_sample: F,
+) -> impl FnOnce() + Send + 'static
+where
+    F: FnMut(SysinfoMetrics) + Send + 'static,
+{
     let interval = config.interval;
-    let name_style = config.name_style;
     let track_disks = config.track_disks;
     let track_networks = config.track_networks;
     let track_components = config.track_components;
@@ -496,10 +582,7 @@ fn spawn_sysinfo_metrics_task(
                     components.as_mut(),
                     pid,
                 );
-                sink.append(DynamicInflectionEntry {
-                    entry: snapshot.close(),
-                    name_style,
-                });
+                on_sample(snapshot);
                 if !sleep_or_cancel(&cancel_rx, interval) {
                     return;
                 }
@@ -838,5 +921,64 @@ mod tests {
         std::thread::sleep(Duration::from_millis(500));
 
         check!(!inspector.entries().is_empty());
+    }
+
+    #[tokio::test]
+    async fn embedded_folds_latest_sample_into_entry() {
+        use metrique::unit_of_work::metrics;
+        use metrique_writer::test_util::test_metric;
+
+        use super::SysinfoSnapshot;
+
+        #[metrics(rename_all = "PascalCase")]
+        struct RequestMetrics {
+            operation: &'static str,
+            #[metrics(flatten)]
+            system: crate::State<SysinfoSnapshot>,
+        }
+
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        let system = Sink::embed_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // Wait past the worker's CPU prime sleep so a real sample lands.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let entry = test_metric(RequestMetrics {
+            operation: "Read",
+            system: system.clone(),
+        });
+
+        check!(entry.values["Operation"] == "Read");
+        check!(entry.metrics["TotalMemory"] > 0);
+        check!(entry.metrics["Uptime"] > 0);
+    }
+
+    #[tokio::test]
+    async fn embed_aborted_on_handle_drop() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let handle = Sink::attach((sink, ()));
+
+        let system = Sink::embed_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // Let the sampler tick at least once, then abort it.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        drop(handle);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // After abort, fresh snapshots taken over a span longer than the
+        // would-be sampling interval must resolve to the same Arc — proving
+        // no new sample was stored.
+        let a = system.clone().snapshot();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let b = system.clone().snapshot();
+        check!(std::sync::Arc::ptr_eq(&a, &b));
     }
 }
