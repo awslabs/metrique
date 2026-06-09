@@ -1642,7 +1642,6 @@ dependencies = [
  "metrique-metricsrs",
  "metrique-service-metrics",
  "metrique-timesource",
- "metrique-util",
  "metrique-writer",
  "metrique-writer-core",
  "metrique-writer-format-emf",
@@ -1796,6 +1795,7 @@ dependencies = [
  "tokio",
  "tokio-metrics",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
