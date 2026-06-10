@@ -24,7 +24,7 @@ use metrique_util::{
 struct RequestMetrics {
     operation: &'static str,
     success: bool,
-    #[metrics(flatten)]
+    #[metrics(flatten, prefix = "tokio_")]
     runtime: State<TokioRuntimeSnapshot>,
 }
 
@@ -41,8 +41,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Each loop iteration emits one EMF record like:
     //   {"Operation":"Read", "Success":1,
-    //    "WorkersCount":12, "TotalParkCount":4, "TotalBusyDuration":0.135,
-    //    "GlobalQueueDepth":0, "Elapsed":500.7, ...}
+    //    "TokioWorkersCount":12, "TokioTotalParkCount":4, "TokioTotalBusyDuration":0.135,
+    //    "TokioGlobalQueueDepth":0, "TokioElapsed":500.7, ...}
     // — user fields and folded runtime fields on the same line.
     for op in ["Read", "Write", "Read"] {
         let _m = RequestMetrics {

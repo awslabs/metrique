@@ -105,7 +105,10 @@ impl TokioRuntimeMetricsConfig {
 /// `budget_forced_yield_count`, and `poll_time_histogram`. The histogram
 /// requires calling `enable_metrics_poll_time_histogram` on the runtime builder.
 ///
-/// # Example
+/// # Example: standalone runtime-metric entries
+///
+/// [`subscribe_tokio_runtime_metrics`](Self::subscribe_tokio_runtime_metrics)
+/// appends each snapshot to the sink as its own record:
 ///
 /// ```rust,ignore
 /// use metrique_util::{
@@ -119,6 +122,66 @@ impl TokioRuntimeMetricsConfig {
 ///     .with_interval(Duration::from_secs(30))
 ///     .with_name_style(MetricNameStyle::PascalCase);
 /// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
+/// ```
+///
+/// # Example: folding the runtime sample into your own entries
+///
+/// [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics) returns
+/// a [`State<TokioRuntimeSnapshot>`](TokioRuntimeSnapshot) you flatten into a
+/// metric struct with `#[metrics(flatten)]`, so every emitted record carries
+/// the latest runtime sample alongside its own fields. The runtime field
+/// names (`workers_count`, `total_park_count`, ...) are distinctive enough
+/// that prefixing is usually unnecessary, but if you want to namespace them —
+/// for example to avoid collisions with your own fields — add
+/// `prefix = "tokio_"` to the same attribute:
+///
+/// ```rust
+/// use std::time::Duration;
+///
+/// use metrique::{
+///     ServiceMetrics,
+///     emf::Emf,
+///     unit_of_work::metrics,
+///     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
+/// };
+/// use metrique_util::{
+///     AttachGlobalEntrySinkTokioMetricsExt, State, TokioRuntimeMetricsConfig,
+///     TokioRuntimeSnapshot,
+/// };
+///
+/// #[metrics(rename_all = "PascalCase")]
+/// struct RequestMetrics {
+///     operation: &'static str,
+///     success: bool,
+///     // `prefix = "tokio_"` namespaces the folded fields, e.g.
+///     // `TokioWorkersCount`, `TokioTotalParkCount`. Drop the `prefix`
+///     // to emit them unprefixed (`WorkersCount`, ...).
+///     #[metrics(flatten, prefix = "tokio_")]
+///     runtime: State<TokioRuntimeSnapshot>,
+/// }
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let _handle = ServiceMetrics::attach_to_stream(
+///         Emf::all_validations("Example".to_string(), vec![vec![]])
+///             .output_to(std::io::stderr()),
+///     );
+///
+///     let runtime = ServiceMetrics::embed_tokio_runtime_metrics(
+///         TokioRuntimeMetricsConfig::default().with_interval(Duration::from_secs(30)),
+///     );
+///
+///     // Clone the `State` into each request; closing the entry folds in the
+///     // latest sample, producing one record like:
+///     //   {"Operation":"Read", "Success":1,
+///     //    "TokioWorkersCount":12, "TokioTotalParkCount":4, ...}
+///     let _m = RequestMetrics {
+///         operation: "Read",
+///         success: true,
+///         runtime: runtime.clone(),
+///     }
+///     .append_on_drop(ServiceMetrics::sink());
+/// }
 /// ```
 ///
 /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
@@ -172,7 +235,9 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     ///
     /// Unlike `subscribe_tokio_runtime_metrics`, this does not emit
     /// standalone runtime-metric entries — callers fold the returned
-    /// [`State`] into their own entries instead.
+    /// [`State`] into their own entries instead. See the
+    /// [trait-level docs](AttachGlobalEntrySinkTokioMetricsExt) for a
+    /// flatten + prefixing example.
     fn embed_tokio_runtime_metrics(
         config: TokioRuntimeMetricsConfig,
     ) -> State<TokioRuntimeSnapshot> {

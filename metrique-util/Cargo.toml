@@ -43,7 +43,7 @@ crossbeam-queue = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
-metrique = { workspace = true, features = ["emf", "test-util"] }
+metrique = { workspace = true, features = ["emf", "test-util", "service-metrics"] }
 metrique-writer = { workspace = true, features = ["test-util"] }
 metrique-writer-core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
