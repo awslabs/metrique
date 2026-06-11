@@ -15,6 +15,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 default = []
 state = ["dep:arc-swap"]
 tokio-metrics-bridge = [
+    "state",
     "dep:metrique",
     "dep:tokio",
     "dep:tokio-metrics",
@@ -57,6 +58,16 @@ required-features = ["state", "sysinfo-bridge", "tokio-metrics-bridge"]
 [[example]]
 name = "extras"
 required-features = ["sysinfo-bridge", "tokio-metrics-bridge"]
+
+[[example]]
+name = "tokio-metrics-folded"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "tokio-metrics-folded-static"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true

@@ -251,9 +251,19 @@ Available integrations (via [`metrique-util`]):
   appending [`SysinfoMetrics`] snapshots (CPU usage, memory, and
   per-process counters, and more), sampled via [`sysinfo`].
 
+  If you'd rather fold the latest runtime sample into each of your own
+  entries (so every emitted record carries runtime context without an
+  extra join at query time), use
+  [`embed_tokio_runtime_metrics`] instead. It returns a
+  [`State<TokioRuntimeSnapshot>`] that you embed in your metric struct
+  with `#[metrics(flatten)]`; the sampler shares the same
+  [`AttachHandle`]-tied lifecycle as `subscribe_tokio_runtime_metrics`.
+
 [`AttachHandle`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.AttachHandle.html
 [`metrique-util`]: https://docs.rs/metrique-util/latest/metrique_util/
 [`subscribe_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.subscribe_tokio_runtime_metrics
+[`embed_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.embed_tokio_runtime_metrics
+[`State<TokioRuntimeSnapshot>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.TokioRuntimeSnapshot.html
 [`RuntimeMetrics`]: https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.RuntimeMetrics.html
 [`subscribe_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.subscribe_sysinfo_metrics
 [`SysinfoMetrics`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoMetrics.html
