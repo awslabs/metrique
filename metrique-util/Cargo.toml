@@ -1,6 +1,6 @@
 [package]
 name = "metrique-util"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
@@ -49,6 +49,15 @@ metrique-writer-core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 rstest = { workspace = true }
 metrique-util = { path = ".", features = ["state", "pending-sink", "sysinfo-bridge", "tokio-metrics-bridge"] }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "global-state"
+required-features = ["state", "sysinfo-bridge", "tokio-metrics-bridge"]
+
+[[example]]
+name = "extras"
+required-features = ["sysinfo-bridge", "tokio-metrics-bridge"]
 
 [package.metadata.docs.rs]
 all-features = true
