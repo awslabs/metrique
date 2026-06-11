@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer-cloudwatch"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.89"
 license = "Apache-2.0"
@@ -14,12 +14,16 @@ targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--cfg", "docsrs"]
 cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]
 
+[features]
+default = ["tokio_runtime"]
+tokio_runtime = ["tokio/rt"]
+
 [dependencies]
 metrique-writer-core = { workspace = true }
 metrique-writer-format-emf = { workspace = true }
-aws-sdk-cloudwatchlogs = "1"
+aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 aws-smithy-types = "1"
-tokio = { workspace = true, features = ["sync", "time", "rt"] }
+tokio = { workspace = true, features = ["sync", "time"] }
 tracing = "0.1"
 bon = "3"
 
@@ -31,3 +35,4 @@ tokio = { workspace = true, features = ["full", "test-util"] }
 metrique-writer-core = { workspace = true, features = ["test-util"] }
 metrique-writer = { workspace = true }
 tracing-test = "0.2"
+futures = { workspace = true, features = ["executor"] }

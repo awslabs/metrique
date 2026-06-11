@@ -8,9 +8,21 @@
 //! ```text
 //! App threads → BackgroundQueue (metrique) → std thread calls CwLogsStream::next(&entry)
 //!   → EMF serialize (reuses metrique-writer-format-emf)
-//!   → batch until size/count limit hit: try_send(batch) over tokio mpsc
-//!   → single tokio task: recv batch → client.put_log_events (async HTTP)
+//!   → batch until size/count limit hit: try_send(batch) over bounded channel
+//!   → single async task: recv batch → client.put_log_events (async HTTP)
 //! ```
+//!
+//! # Runtime
+//!
+//! The `tokio_runtime` feature is enabled by default and provides the default
+//! [`TaskSpawner::tokio()`] spawner. With `--no-default-features`, callers must
+//! provide a custom [`TaskSpawner`] with [`CwLogsStream::builder()`]. Custom
+//! spawners must detach or otherwise keep the submitted future running after
+//! the spawn callback returns.
+//!
+//! For non-Tokio executors, configure the AWS client with a compatible
+//! [`AsyncSleep`](aws_sdk_cloudwatchlogs::config::AsyncSleep). SDK timeouts and
+//! retry delays use that sleep hook.
 //!
 //! # Backpressure
 //!
@@ -63,7 +75,6 @@ use metrique_writer_core::format::Format;
 use metrique_writer_core::{Entry, EntryIoStream, IoStreamError};
 use metrique_writer_format_emf::Emf;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 /// Maximum payload size for a single PutLogEvents request (1 MB).
@@ -137,12 +148,9 @@ impl CwLogsStreamObserver for NoOpObserver {
 /// Type alias for a task spawner function.
 // TODO: Consider upstreaming to metrique-writer-core as a shared utility for async EntryIoStream backends.
 pub type TaskSpawnerFn =
-    Box<dyn Fn(Pin<Box<dyn Future<Output = ()> + Send>>) -> JoinHandle<()> + Send + Sync + 'static>;
+    Box<dyn Fn(Pin<Box<dyn Future<Output = ()> + Send>>) + Send + Sync + 'static>;
 
 /// A wrapper around a task spawner function.
-///
-/// Use [`TaskSpawner::tokio()`] for the default tokio spawner, or provide a custom
-/// one (e.g. `dial9::spawn`) via [`TaskSpawner::new()`].
 pub struct TaskSpawner(TaskSpawnerFn);
 
 impl std::fmt::Debug for TaskSpawner {
@@ -155,24 +163,27 @@ impl TaskSpawner {
     /// Create a new TaskSpawner with a custom spawn function.
     pub fn new<F>(f: F) -> Self
     where
-        F: Fn(Pin<Box<dyn Future<Output = ()> + Send>>) -> JoinHandle<()> + Send + Sync + 'static,
+        F: Fn(Pin<Box<dyn Future<Output = ()> + Send>>) + Send + Sync + 'static,
     {
         Self(Box::new(f))
     }
 
     /// Spawn a task.
-    pub fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) -> JoinHandle<()> {
-        (self.0)(future)
+    pub fn spawn(&self, future: Pin<Box<dyn Future<Output = ()> + Send>>) {
+        (self.0)(future);
     }
 
     /// Create a task spawner that uses `tokio::spawn`.
+    #[cfg(feature = "tokio_runtime")]
     pub fn tokio() -> Self {
-        Self::new(|future| tokio::spawn(future))
+        Self::new(|future| {
+            tokio::spawn(future);
+        })
     }
 }
 
 /// An [`EntryIoStream`] that serializes entries as EMF JSON and submits them
-/// to CloudWatch Logs via `PutLogEvents` in a background tokio task.
+/// to CloudWatch Logs via `PutLogEvents` in a background async task.
 pub struct CwLogsStream {
     emf: Emf,
     log_group_name: String,
@@ -181,7 +192,7 @@ pub struct CwLogsStream {
     batch_bytes: usize,
     tx: Option<mpsc::Sender<WorkerCommand>>,
     observer: Arc<dyn CwLogsStreamObserver>,
-    submit_task: Option<JoinHandle<()>>,
+    submit_task_spawned: bool,
 }
 
 impl std::fmt::Debug for CwLogsStream {
@@ -239,8 +250,9 @@ impl CwLogsStream {
     ///
     /// # Panics
     ///
-    /// Panics if using the default tokio spawner outside of a tokio runtime context.
-    /// Provide a custom [`TaskSpawner`] to avoid this.
+    /// Panics if the default `tokio_runtime` spawner, or
+    /// [`TaskSpawner::tokio()`], is used outside of a Tokio runtime context.
+    /// A custom [`TaskSpawner`] may also panic according to its implementation.
     #[builder]
     pub fn new(
         client: CloudWatchLogsClient,
@@ -249,15 +261,16 @@ impl CwLogsStream {
         namespace: String,
         #[builder(default = vec![vec![]])] default_dimensions: Vec<Vec<String>>,
         #[builder(default)] config: CwLogsStreamConfig,
-        task_spawner: Option<TaskSpawner>,
+        #[cfg_attr(feature = "tokio_runtime", builder(default = TaskSpawner::tokio()))]
+        task_spawner: TaskSpawner,
         observer: Option<Box<dyn CwLogsStreamObserver>>,
     ) -> (Self, CwLogsStreamHandle) {
         let (tx, rx) = mpsc::channel(config.channel_capacity.get());
         let observer: Arc<dyn CwLogsStreamObserver> =
             Arc::from(observer.unwrap_or_else(|| Box::new(NoOpObserver)));
-        let spawner = task_spawner.unwrap_or_else(TaskSpawner::tokio);
+        let spawner = task_spawner;
 
-        let submit_task = spawner.spawn(Box::pin(submit_loop(
+        spawner.spawn(Box::pin(submit_loop(
             rx,
             client.clone(),
             log_group_name.clone(),
@@ -295,7 +308,7 @@ impl CwLogsStream {
                 batch_bytes: 0,
                 tx: Some(tx),
                 observer,
-                submit_task: Some(submit_task),
+                submit_task_spawned: true,
             },
             handle,
         )
@@ -334,7 +347,7 @@ impl Drop for CwLogsStream {
         if !self.batch.is_empty() {
             self.enqueue_batch();
         }
-        if self.submit_task.is_some() && self.tx.is_some() {
+        if self.submit_task_spawned && self.tx.is_some() {
             tracing::warn!(
                 "CwLogsStream dropped without calling shutdown() — \
                  in-flight batches will drain in the background but \
@@ -342,7 +355,7 @@ impl Drop for CwLogsStream {
             );
         }
         self.tx.take();
-        self.submit_task.take();
+        self.submit_task_spawned = false;
     }
 }
 
@@ -534,7 +547,8 @@ async fn create_log_resources(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aws_sdk_cloudwatchlogs::config::{BehaviorVersion, Credentials, Region};
+    use aws_sdk_cloudwatchlogs::config::timeout::TimeoutConfig;
+    use aws_sdk_cloudwatchlogs::config::{AsyncSleep, BehaviorVersion, Credentials, Region, Sleep};
     use aws_smithy_http_client::test_util::infallible_client_fn;
     use aws_smithy_runtime_api::client::http::{
         HttpClient, HttpConnector, HttpConnectorFuture, HttpConnectorSettings, SharedHttpConnector,
@@ -562,6 +576,15 @@ mod tests {
             .unwrap()
     }
 
+    #[derive(Debug)]
+    struct InstantSleep;
+
+    impl AsyncSleep for InstantSleep {
+        fn sleep(&self, _duration: Duration) -> Sleep {
+            Sleep::new(std::future::ready(()))
+        }
+    }
+
     fn test_client_success() -> CloudWatchLogsClient {
         test_client(infallible_client_fn(|_req| success_response()))
     }
@@ -575,6 +598,8 @@ mod tests {
             .behavior_version(BehaviorVersion::latest())
             .region(Region::new("us-east-1"))
             .credentials_provider(Credentials::new("test", "test", None, None, "test"))
+            .timeout_config(TimeoutConfig::disabled())
+            .sleep_impl(InstantSleep)
             .http_client(http_client)
             .build();
         CloudWatchLogsClient::from_conf(config)
@@ -690,10 +715,52 @@ mod tests {
             .log_stream_name("s".to_string())
             .namespace("Ns".to_string())
             .config(config);
+        #[cfg(not(feature = "tokio_runtime"))]
+        let builder = builder.task_spawner(explicit_tokio_test_spawner());
         match observer {
             Some(reporter) => builder.observer(reporter).build(),
             None => builder.build(),
         }
+    }
+
+    #[cfg(not(feature = "tokio_runtime"))]
+    fn explicit_tokio_test_spawner() -> TaskSpawner {
+        TaskSpawner::new(|future| {
+            tokio::spawn(future);
+        })
+    }
+
+    fn futures_thread_spawner() -> TaskSpawner {
+        TaskSpawner::new(|future| {
+            std::thread::spawn(|| futures::executor::block_on(future));
+        })
+    }
+
+    #[test]
+    fn custom_futures_spawner_runs_outside_tokio_runtime() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let client = test_client(infallible_client_fn({
+            let calls = calls.clone();
+            move |_req| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                success_response()
+            }
+        }));
+        let (mut stream, handle) = CwLogsStream::builder()
+            .client(client)
+            .log_group_name("g".to_string())
+            .log_stream_name("s".to_string())
+            .namespace("Ns".to_string())
+            .config(default_config())
+            .task_spawner(futures_thread_spawner())
+            .build();
+
+        stream.next(&TestEntry(1)).unwrap();
+        stream.flush().unwrap();
+
+        futures::executor::block_on(handle.shutdown());
+
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
@@ -789,7 +856,7 @@ mod tests {
         let (mut stream, _handle) = default_stream();
 
         stream.next(&TestEntry(1)).unwrap();
-        assert!(stream.submit_task.is_some());
+        assert!(stream.submit_task_spawned);
         drop(stream);
 
         assert!(logs_contain(
