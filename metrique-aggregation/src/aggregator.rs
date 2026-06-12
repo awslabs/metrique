@@ -5,7 +5,6 @@ use metrique::{InflectableEntry, RootEntry, RootMetric};
 use metrique_core::CloseValue;
 use metrique_writer::EntrySink;
 use std::hash::BuildHasher;
-use std::marker::PhantomData;
 
 use metrique::writer::BoxEntrySink;
 
@@ -35,7 +34,7 @@ pub type AggregatedEntry<T> = crate::traits::AggregationResult<
 pub struct KeyedAggregator<T: AggregateStrategy, Sink = BoxEntrySink> {
     storage: hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>,
     sink: Sink,
-    _phantom: PhantomData<T>,
+    merge_config: <T::Source as Merge>::MergeConfig,
 }
 
 impl<T, Sink> KeyedAggregator<T, Sink>
@@ -46,22 +45,27 @@ where
 {
     /// Create a new keyed aggregator
     pub fn new(sink: Sink) -> Self {
-        Self {
-            storage: Default::default(),
-            sink,
-            _phantom: PhantomData,
-        }
+        Self::new_with_config(sink, Default::default())
     }
 }
 
 impl<T, Sink> KeyedAggregator<T, Sink>
 where
     T: AggregateStrategy,
-    <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
+    /// Create a new keyed aggregator with a custom merge configuration
+    pub fn new_with_config(sink: Sink, merge_config: <T::Source as Merge>::MergeConfig) -> Self {
+        Self {
+            storage: Default::default(),
+            sink,
+            merge_config,
+        }
+    }
+
     fn get_or_create_accum<'a>(
         storage: &'a mut hashbrown::HashMap<KeyTy<'static, T>, AggregateTy<T>>,
+        merge_config: &<T::Source as Merge>::MergeConfig,
         entry: &T::Source,
     ) -> &'a mut AggregateTy<T> {
         let borrowed_key = T::Key::from_source(entry);
@@ -74,7 +78,7 @@ where
             RawEntryMut::Occupied(occupied) => occupied.into_mut(),
             RawEntryMut::Vacant(vacant) => {
                 let static_key = T::Key::static_key(&borrowed_key);
-                let new_value = T::Source::new_merged(&Default::default());
+                let new_value = T::Source::new_merged(merge_config);
                 vacant.insert_hashed_nocheck(hash, static_key, new_value).1
             }
         }
@@ -84,11 +88,10 @@ where
 impl<T, Sink> AggregateSink<T::Source> for KeyedAggregator<T, Sink>
 where
     T: AggregateStrategy,
-    <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
     fn merge(&mut self, entry: T::Source) {
-        let accum = Self::get_or_create_accum(&mut self.storage, &entry);
+        let accum = Self::get_or_create_accum(&mut self.storage, &self.merge_config, &entry);
         T::Source::merge(accum, entry);
     }
 }
@@ -97,11 +100,10 @@ impl<T, Sink> AggregateSinkRef<T::Source> for KeyedAggregator<T, Sink>
 where
     T: AggregateStrategy,
     T::Source: MergeRef,
-    <T::Source as Merge>::MergeConfig: Default,
     Sink: metrique_writer::EntrySink<AggregatedEntry<T>>,
 {
     fn merge_ref(&mut self, entry: &T::Source) {
-        let accum = Self::get_or_create_accum(&mut self.storage, entry);
+        let accum = Self::get_or_create_accum(&mut self.storage, &self.merge_config, entry);
         T::Source::merge_ref(accum, entry);
     }
 }
