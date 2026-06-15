@@ -1,6 +1,6 @@
 [package]
 name = "metrique-util"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2024"
 rust-version = "1.89" # See build.yml for why this MSRV
 license = "Apache-2.0"
@@ -15,6 +15,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 default = []
 state = ["dep:arc-swap"]
 tokio-metrics-bridge = [
+    "state",
     "dep:metrique",
     "dep:tokio",
     "dep:tokio-metrics",
@@ -42,12 +43,41 @@ crossbeam-queue = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
-metrique = { workspace = true, features = ["emf", "test-util"] }
+metrique = { workspace = true, features = ["emf", "test-util", "service-metrics"] }
 metrique-writer = { workspace = true, features = ["test-util"] }
 metrique-writer-core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 rstest = { workspace = true }
 metrique-util = { path = ".", features = ["state", "pending-sink", "sysinfo-bridge", "tokio-metrics-bridge"] }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "global-state"
+required-features = ["state", "sysinfo-bridge", "tokio-metrics-bridge"]
+
+[[example]]
+name = "extras"
+required-features = ["sysinfo-bridge", "tokio-metrics-bridge"]
+
+[[example]]
+name = "tokio-metrics-folded"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "tokio-metrics-folded-static"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "sysinfo-folded"
+required-features = ["sysinfo-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "sysinfo-folded-static"
+required-features = ["sysinfo-bridge"]
+doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true

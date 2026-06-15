@@ -1,14 +1,47 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
 use std::time::Duration;
 
+use crate::State;
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
 use metrique::writer::{AttachGlobalEntrySink, BoxEntrySink, EntrySink, ShutdownFn};
 use metrique_core::DynamicNameStyle as MetricNameStyle;
 use tokio::runtime::Handle;
-use tokio_metrics::RuntimeMonitor;
+use tokio_metrics::{RuntimeMetrics, RuntimeMonitor};
+
+type RtClosed = <RuntimeMetrics as CloseValue>::Closed;
+
+/// Pre-closed Tokio runtime-metrics snapshot, embedded in a [`State`] so
+/// each entry can flatten in the latest sample without cloning the
+/// underlying data.
+///
+/// Obtain a `State<TokioRuntimeSnapshot>` by calling
+/// [`AttachGlobalEntrySinkTokioMetricsExt::embed_tokio_runtime_metrics`] on
+/// your global entry sink. The sampler is aborted when the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
+/// Embed the [`State`] in your entry with `#[metrics(flatten)]`.
+///
+/// Cloning the [`State`] (per request) and closing the entry are both
+/// cheap reference-count operations.
+#[derive(Clone)]
+pub struct TokioRuntimeSnapshot(Arc<RtClosed>);
+
+impl CloseValue for TokioRuntimeSnapshot {
+    type Closed = Arc<RtClosed>;
+    fn close(self) -> Self::Closed {
+        self.0
+    }
+}
+
+impl CloseValue for &'_ TokioRuntimeSnapshot {
+    type Closed = Arc<RtClosed>;
+    fn close(self) -> Self::Closed {
+        self.0.clone()
+    }
+}
 
 const DEFAULT_METRIC_SAMPLING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -46,11 +79,20 @@ impl TokioRuntimeMetricsConfig {
     }
 }
 
-/// Extension methods for subscribing Tokio runtime metrics to a global entry sink.
+/// Extension methods for plugging Tokio runtime metrics into a global entry sink.
 ///
-/// Spawns a background task that periodically samples
-/// [`RuntimeMetrics`] and appends each snapshot to the sink.
-/// The task is automatically aborted when the [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
+/// Two flavors are available, both backed by a single background sampler
+/// task whose lifecycle is tied to the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle):
+///
+/// - [`subscribe_tokio_runtime_metrics`](Self::subscribe_tokio_runtime_metrics)
+///   appends each [`RuntimeMetrics`] snapshot to the sink as a standalone
+///   entry — best when you want a separate runtime-metrics record stream.
+/// - [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics)
+///   returns a [`State<TokioRuntimeSnapshot>`](TokioRuntimeSnapshot) you
+///   embed into your own metric structs via `#[metrics(flatten)]` — best
+///   when you want every emitted record to carry the latest runtime
+///   sample alongside its own fields.
 ///
 /// ## `tokio_unstable`
 ///
@@ -63,7 +105,10 @@ impl TokioRuntimeMetricsConfig {
 /// `budget_forced_yield_count`, and `poll_time_histogram`. The histogram
 /// requires calling `enable_metrics_poll_time_histogram` on the runtime builder.
 ///
-/// # Example
+/// # Example: standalone runtime-metric entries
+///
+/// [`subscribe_tokio_runtime_metrics`](Self::subscribe_tokio_runtime_metrics)
+/// appends each snapshot to the sink as its own record:
 ///
 /// ```rust,ignore
 /// use metrique_util::{
@@ -77,6 +122,66 @@ impl TokioRuntimeMetricsConfig {
 ///     .with_interval(Duration::from_secs(30))
 ///     .with_name_style(MetricNameStyle::PascalCase);
 /// ServiceMetrics::subscribe_tokio_runtime_metrics(config);
+/// ```
+///
+/// # Example: folding the runtime sample into your own entries
+///
+/// [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics) returns
+/// a [`State<TokioRuntimeSnapshot>`](TokioRuntimeSnapshot) you flatten into a
+/// metric struct with `#[metrics(flatten)]`, so every emitted record carries
+/// the latest runtime sample alongside its own fields. The runtime field
+/// names (`workers_count`, `total_park_count`, ...) are distinctive enough
+/// that prefixing is usually unnecessary, but if you want to namespace them —
+/// for example to avoid collisions with your own fields — add
+/// `prefix = "tokio_"` to the same attribute:
+///
+/// ```rust
+/// use std::time::Duration;
+///
+/// use metrique::{
+///     ServiceMetrics,
+///     emf::Emf,
+///     unit_of_work::metrics,
+///     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
+/// };
+/// use metrique_util::{
+///     AttachGlobalEntrySinkTokioMetricsExt, State, TokioRuntimeMetricsConfig,
+///     TokioRuntimeSnapshot,
+/// };
+///
+/// #[metrics(rename_all = "PascalCase")]
+/// struct RequestMetrics {
+///     operation: &'static str,
+///     success: bool,
+///     // `prefix = "tokio_"` namespaces the folded fields, e.g.
+///     // `TokioWorkersCount`, `TokioTotalParkCount`. Drop the `prefix`
+///     // to emit them unprefixed (`WorkersCount`, ...).
+///     #[metrics(flatten, prefix = "tokio_")]
+///     runtime: State<TokioRuntimeSnapshot>,
+/// }
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let _handle = ServiceMetrics::attach_to_stream(
+///         Emf::all_validations("Example".to_string(), vec![vec![]])
+///             .output_to(std::io::stderr()),
+///     );
+///
+///     let runtime = ServiceMetrics::embed_tokio_runtime_metrics(
+///         TokioRuntimeMetricsConfig::default().with_interval(Duration::from_secs(30)),
+///     );
+///
+///     // Clone the `State` into each request; closing the entry folds in the
+///     // latest sample, producing one record like:
+///     //   {"Operation":"Read", "Success":1,
+///     //    "TokioWorkersCount":12, "TokioTotalParkCount":4, ...}
+///     let _m = RequestMetrics {
+///         operation: "Read",
+///         success: true,
+///         runtime: runtime.clone(),
+///     }
+///     .append_on_drop(ServiceMetrics::sink());
+/// }
 /// ```
 ///
 /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
@@ -95,6 +200,10 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     /// If no sink has been attached yet, entries are silently discarded until one
     /// is attached.
     ///
+    /// If you'd rather fold the latest runtime sample into your own metric
+    /// structs instead of emitting standalone runtime-metric entries, use
+    /// [`embed_tokio_runtime_metrics`](Self::embed_tokio_runtime_metrics).
+    ///
     /// # Panics
     ///
     /// Must be called from within a Tokio runtime — the reporter is spawned
@@ -103,37 +212,78 @@ pub trait AttachGlobalEntrySinkTokioMetricsExt: AttachGlobalEntrySink + 'static 
     /// [`RuntimeMetrics`]: tokio_metrics::RuntimeMetrics
     fn subscribe_tokio_runtime_metrics(config: TokioRuntimeMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
-        let abort = spawn_tokio_runtime_metrics_task(sink, config);
+        let name_style = config.name_style;
+        let abort = spawn_runtime_metrics_loop(config.interval, move |snapshot| {
+            sink.append(DynamicInflectionEntry {
+                entry: snapshot.close(),
+                name_style,
+            });
+        });
         Self::register_shutdown_fn(ShutdownFn::new(move || {
             abort.abort();
         }));
+    }
+
+    /// Spawn a runtime-metrics sampler that drives a shared [`State`] for
+    /// folding into per-request entries via `#[metrics(flatten)]`.
+    ///
+    /// The sampler is aborted when the
+    /// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped,
+    /// the same way [`subscribe_tokio_runtime_metrics`](Self::subscribe_tokio_runtime_metrics)
+    /// is. After shutdown the returned [`State`] still resolves (to the last
+    /// sample stored before the abort), but no longer refreshes.
+    ///
+    /// Unlike `subscribe_tokio_runtime_metrics`, this does not emit
+    /// standalone runtime-metric entries — callers fold the returned
+    /// [`State`] into their own entries instead. See the
+    /// [trait-level docs](AttachGlobalEntrySinkTokioMetricsExt) for a
+    /// flatten + prefixing example.
+    fn embed_tokio_runtime_metrics(
+        config: TokioRuntimeMetricsConfig,
+    ) -> State<TokioRuntimeSnapshot> {
+        let initial = TokioRuntimeSnapshot(Arc::new(RuntimeMetrics::default().close()));
+        let state = State::new(initial);
+        let task_state = state.clone();
+        let abort = spawn_runtime_metrics_loop(config.interval, move |snapshot| {
+            task_state.store(Arc::new(TokioRuntimeSnapshot(Arc::new(snapshot.close()))));
+        });
+        Self::register_shutdown_fn(ShutdownFn::new(move || {
+            abort.abort();
+        }));
+        state
     }
 }
 
 impl<T: AttachGlobalEntrySink + 'static> AttachGlobalEntrySinkTokioMetricsExt for T {}
 
-fn spawn_tokio_runtime_metrics_task(
-    sink: BoxEntrySink,
-    config: TokioRuntimeMetricsConfig,
-) -> tokio::task::AbortHandle {
-    let interval = config.interval;
-    let name_style = config.name_style;
+/// Spawn the [`RuntimeMonitor`]-driven sampling loop. Consumes the first
+/// sample synchronously and hands it to `on_sample` before returning, so
+/// callers (and any `State` they're populating) see real runtime data
+/// immediately rather than the all-zero [`RuntimeMetrics::default`].
+/// Subsequent samples are handled on a spawned task, with a sibling task
+/// logging unexpected panics. Returns the worker's
+/// [`AbortHandle`](tokio::task::AbortHandle).
+fn spawn_runtime_metrics_loop<F>(interval: Duration, mut on_sample: F) -> tokio::task::AbortHandle
+where
+    F: FnMut(RuntimeMetrics) + Send + 'static,
+{
+    let handle = Handle::current();
+    let monitor = RuntimeMonitor::new(&handle);
+    let mut intervals = monitor.intervals();
+    if let Some(first) = intervals.next() {
+        on_sample(first);
+    }
+
     let worker = tokio::spawn(async move {
         tracing::debug!("tokio runtime metrics reporter started");
-        let handle = Handle::current();
-        let monitor = RuntimeMonitor::new(&handle);
-        for snapshot in monitor.intervals() {
-            sink.append(DynamicInflectionEntry {
-                entry: snapshot.close(),
-                name_style,
-            });
+        for snapshot in intervals {
+            on_sample(snapshot);
             tokio::time::sleep(interval).await;
         }
         tracing::debug!("tokio runtime metrics reporter stopped");
     });
     let abort = worker.abort_handle();
 
-    // Spawn a monitor to log panics
     tokio::spawn(async move {
         if let Err(err) = worker.await
             && !err.is_cancelled()
@@ -254,6 +404,64 @@ mod tests {
 
         #[cfg(tokio_unstable)]
         check!(entry.metrics["poll-time-histogram"].num_observations() > 0);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn embedded_folds_latest_sample_into_entry() {
+        use metrique::unit_of_work::metrics;
+        use metrique_writer::test_util::test_metric;
+
+        use super::TokioRuntimeSnapshot;
+
+        #[metrics(rename_all = "PascalCase")]
+        struct RequestMetrics {
+            operation: &'static str,
+            #[metrics(flatten)]
+            runtime: crate::State<TokioRuntimeSnapshot>,
+        }
+
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        let runtime = Sink::embed_tokio_runtime_metrics(
+            TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // No sleep — the first sample is consumed synchronously by
+        // `embed_tokio_runtime_metrics` before it returns, so the state is
+        // already populated.
+        let entry = test_metric(RequestMetrics {
+            operation: "Read",
+            runtime: runtime.clone(),
+        });
+
+        check!(entry.values["Operation"] == "Read");
+        check!(entry.metrics["WorkersCount"] == 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn embed_aborted_on_handle_drop() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let handle = Sink::attach((sink, ()));
+
+        let runtime = Sink::embed_tokio_runtime_metrics(
+            TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // Let the sampler tick at least once, then abort it.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        drop(handle);
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        // After abort, fresh snapshots taken over a span longer than the
+        // would-be sampling interval must resolve to the same Arc — proving
+        // no new sample was stored.
+        let a = runtime.clone().snapshot();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let b = runtime.clone().snapshot();
+        check!(std::sync::Arc::ptr_eq(&a, &b));
     }
 
     #[tokio::test(start_paused = true)]
