@@ -28,7 +28,7 @@ static SYSTEM_METRICS: OnceLock<State<SysinfoSnapshot>> = OnceLock::new();
 struct RequestMetrics {
     operation: &'static str,
     success: bool,
-    #[metrics(flatten)]
+    #[metrics(flatten, prefix = "sys_info_")]
     system: State<SysinfoSnapshot>,
 }
 
@@ -50,8 +50,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Each call to `handle_request` emits one EMF record carrying both the
-    // user fields (`Operation`, `Success`) and the folded system fields
-    // (`CpuUsage`, `TotalMemory`, `UsedMemory`, `Uptime`, ...).
+    // user fields (`Operation`, `Success`) and the prefixed, folded system
+    // fields (`SysInfoCpuUsage`, `SysInfoTotalMemory`, `SysInfoUsedMemory`,
+    // `SysInfoUptime`, ...).
     for op in ["Read", "Write", "Read"] {
         handle_request(op).await;
     }

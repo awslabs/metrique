@@ -24,7 +24,7 @@ use metrique_util::{
 struct RequestMetrics {
     operation: &'static str,
     success: bool,
-    #[metrics(flatten)]
+    #[metrics(flatten, prefix = "sys_info_")]
     system: State<SysinfoSnapshot>,
 }
 
@@ -45,9 +45,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // Each loop iteration emits one EMF record like:
     //   {"Operation":"Read", "Success":1,
-    //    "TotalMemory":16777216000, "UsedMemory":8123456789, "CpuUsage":12.3,
-    //    "Uptime":104537, ...}
-    // — user fields and folded system fields on the same line.
+    //    "SysInfoTotalMemory":16777216000, "SysInfoUsedMemory":8123456789,
+    //    "SysInfoCpuUsage":12.3, "SysInfoUptime":104537, ...}
+    // — user fields and prefixed, folded system fields on the same line.
     for op in ["Read", "Write", "Read"] {
         let _m = RequestMetrics {
             operation: op,
