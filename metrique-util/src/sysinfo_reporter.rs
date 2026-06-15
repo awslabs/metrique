@@ -1,9 +1,11 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, channel};
 use std::time::Duration;
 
+use crate::State;
 use crate::dynamic_inflection::DynamicInflectionEntry;
 use metrique::CloseValue;
 use metrique::unit_of_work::metrics;
@@ -198,6 +200,45 @@ pub struct SysinfoMetrics {
     pub components: Option<ComponentMetrics>,
 }
 
+impl SysinfoMetrics {
+    /// A zeroed placeholder snapshot used only as the initial value of
+    /// [`embed_sysinfo_metrics`](AttachGlobalEntrySinkSysinfoExt::embed_sysinfo_metrics)'s
+    /// [`State`] before the first real sample lands. These zeros are not a
+    /// meaningful "default" reading (0% CPU, 0 bytes of memory describes no
+    /// real system), which is why this is an explicit private constructor
+    /// rather than a public `Default` impl.
+    const fn zeroed() -> Self {
+        Self {
+            cpu_usage: 0.0,
+            total_memory: 0,
+            used_memory: 0,
+            available_memory: 0,
+            free_memory: 0,
+            total_swap: 0,
+            used_swap: 0,
+            free_swap: 0,
+            load_average_one: None,
+            load_average_five: None,
+            load_average_fifteen: None,
+            uptime: 0,
+            process_memory: 0,
+            process_virtual_memory: 0,
+            process_cpu_usage: 0.0,
+            process_accumulated_cpu_time: 0,
+            process_run_time: 0,
+            process_disk_read_bytes: 0,
+            process_disk_total_read_bytes: 0,
+            process_disk_written_bytes: 0,
+            process_disk_total_written_bytes: 0,
+            process_open_files: None,
+            process_open_files_limit: None,
+            disks: None,
+            networks: None,
+            components: None,
+        }
+    }
+}
+
 /// Aggregated disk metrics across all mounted disks. Emitted as part of
 /// [`SysinfoMetrics`] when [`SysinfoMetricsConfig::with_disks`] is set.
 #[metrics(subfield_owned)]
@@ -270,7 +311,50 @@ pub struct ComponentMetrics {
     pub component_max_temperature_recorded_name: Option<String>,
 }
 
-/// Extension methods for subscribing system metrics to a global entry sink.
+type SyClosed = <SysinfoMetrics as CloseValue>::Closed;
+
+/// Pre-closed system-metrics snapshot, embedded in a [`State`] so each entry
+/// can flatten in the latest sample without cloning the underlying data.
+///
+/// Obtain a `State<SysinfoSnapshot>` by calling
+/// [`AttachGlobalEntrySinkSysinfoExt::embed_sysinfo_metrics`] on your global
+/// entry sink. The sampler is aborted when the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped.
+/// Embed the [`State`] in your entry with `#[metrics(flatten)]`.
+///
+/// Cloning the [`State`] (per request) and closing the entry are both
+/// cheap reference-count operations.
+#[derive(Clone)]
+pub struct SysinfoSnapshot(Arc<SyClosed>);
+
+impl CloseValue for SysinfoSnapshot {
+    type Closed = Arc<SyClosed>;
+    fn close(self) -> Self::Closed {
+        self.0
+    }
+}
+
+impl CloseValue for &'_ SysinfoSnapshot {
+    type Closed = Arc<SyClosed>;
+    fn close(self) -> Self::Closed {
+        self.0.clone()
+    }
+}
+
+/// Extension methods for plugging system metrics into a global entry sink.
+///
+/// Two flavors are available, both backed by a single background sampler
+/// task whose lifecycle is tied to the sink's
+/// [`AttachHandle`](metrique::writer::sink::AttachHandle):
+///
+/// - [`subscribe_sysinfo_metrics`](Self::subscribe_sysinfo_metrics) appends
+///   each [`SysinfoMetrics`] snapshot to the sink as a standalone entry —
+///   best when you want a separate system-metrics record stream.
+/// - [`embed_sysinfo_metrics`](Self::embed_sysinfo_metrics) returns a
+///   [`State<SysinfoSnapshot>`](SysinfoSnapshot) you embed into your own
+///   metric structs via `#[metrics(flatten)]` — best when you want every
+///   emitted record to carry the latest system sample alongside its own
+///   fields.
 pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// Subscribe to system metrics, adding the subscription to this handle.
     ///
@@ -289,6 +373,10 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// so it runs on a dedicated thread. Inside a Tokio runtime it uses
     /// [`tokio::task::spawn_blocking`]; outside one it falls back to a plain
     /// [`std::thread::spawn`].
+    ///
+    /// If you'd rather fold the latest system sample into your own metric
+    /// structs instead of emitting standalone sysinfo entries, use
+    /// [`embed_sysinfo_metrics`](Self::embed_sysinfo_metrics).
     ///
     /// # Example
     ///
@@ -314,8 +402,42 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     /// ```
     fn subscribe_sysinfo_metrics(config: SysinfoMetricsConfig) {
         let sink = BoxEntrySink::lazy(Self::try_sink);
-        let shutdown = spawn_sysinfo_metrics_task(sink, config);
+        let name_style = config.name_style;
+        let shutdown = spawn_sysinfo_metrics_loop(config, move |snapshot| {
+            sink.append(DynamicInflectionEntry {
+                entry: snapshot.close(),
+                name_style,
+            });
+        });
         Self::register_shutdown_fn(ShutdownFn::new(shutdown));
+    }
+
+    /// Spawn a sysinfo sampler that drives a shared [`State`] for folding
+    /// into per-request entries via `#[metrics(flatten)]`.
+    ///
+    /// The sampler is aborted when the
+    /// [`AttachHandle`](metrique::writer::sink::AttachHandle) is dropped,
+    /// the same way [`subscribe_sysinfo_metrics`](Self::subscribe_sysinfo_metrics)
+    /// is. After shutdown the returned [`State`] still resolves (to the last
+    /// sample stored before the abort), but no longer refreshes.
+    ///
+    /// Unlike `subscribe_sysinfo_metrics`, this does not emit standalone
+    /// system-metric entries — callers fold the returned [`State`] into
+    /// their own entries instead.
+    ///
+    /// Note that the first real sample doesn't land in the [`State`] until
+    /// after the worker's CPU-prime sleep (~200ms by default). Entries that
+    /// close before then fold in a zeroed placeholder snapshot (all zeros
+    /// / `None`).
+    fn embed_sysinfo_metrics(config: SysinfoMetricsConfig) -> State<SysinfoSnapshot> {
+        let initial = SysinfoSnapshot(Arc::new(SysinfoMetrics::zeroed().close()));
+        let state = State::new(initial);
+        let task_state = state.clone();
+        let shutdown = spawn_sysinfo_metrics_loop(config, move |snapshot| {
+            task_state.store(Arc::new(SysinfoSnapshot(Arc::new(snapshot.close()))));
+        });
+        Self::register_shutdown_fn(ShutdownFn::new(shutdown));
+        state
     }
 }
 
@@ -448,12 +570,14 @@ fn sample(
     }
 }
 
-fn spawn_sysinfo_metrics_task(
-    sink: BoxEntrySink,
+fn spawn_sysinfo_metrics_loop<F>(
     config: SysinfoMetricsConfig,
-) -> impl FnOnce() + Send + 'static {
+    mut on_sample: F,
+) -> impl FnOnce() + Send + 'static
+where
+    F: FnMut(SysinfoMetrics) + Send + 'static,
+{
     let interval = config.interval;
-    let name_style = config.name_style;
     let track_disks = config.track_disks;
     let track_networks = config.track_networks;
     let track_components = config.track_components;
@@ -496,10 +620,7 @@ fn spawn_sysinfo_metrics_task(
                     components.as_mut(),
                     pid,
                 );
-                sink.append(DynamicInflectionEntry {
-                    entry: snapshot.close(),
-                    name_style,
-                });
+                on_sample(snapshot);
                 if !sleep_or_cancel(&cancel_rx, interval) {
                     return;
                 }
@@ -518,7 +639,10 @@ fn spawn_sysinfo_metrics_task(
     if let Ok(handle) = Handle::try_current() {
         handle.spawn_blocking(worker);
     } else {
-        std::thread::spawn(worker);
+        std::thread::Builder::new()
+            .name("sysinfo-metrics".to_string())
+            .spawn(worker)
+            .expect("failed to spawn sysinfo metrics reporter thread");
     }
 
     // Dropping the sender disconnects the receiver, waking the worker.
@@ -533,13 +657,54 @@ fn sleep_or_cancel(cancel: &Receiver<()>, dur: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use assert2::check;
     use metrique_writer::sink::AttachGlobalEntrySink;
     use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
 
     use super::{AttachGlobalEntrySinkSysinfoExt, MetricNameStyle, SysinfoMetricsConfig};
+
+    /// How long [`wait_for`] polls before giving up.
+    const POLL_DEADLINE: Duration = Duration::from_secs(5);
+    /// How often [`wait_for`] re-checks its condition.
+    const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    /// Poll `cond` until it returns `Some`, up to [`POLL_DEADLINE`].
+    ///
+    /// The reporter runs on a separate blocking thread, so tests can't drive
+    /// it with Tokio's virtual clock. Polling lets a test wait exactly as long
+    /// as the reporter needs to produce a sample instead of guessing a fixed
+    /// sleep (which races against the sampler and flakes under load).
+    async fn wait_for<T>(mut cond: impl FnMut() -> Option<T>) -> T {
+        let deadline = Instant::now() + POLL_DEADLINE;
+        loop {
+            if let Some(v) = cond() {
+                return v;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "condition not met within {POLL_DEADLINE:?}"
+            );
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+    }
+
+    /// Blocking variant of [`wait_for`] for tests that run without a Tokio
+    /// runtime.
+    fn wait_for_blocking<T>(mut cond: impl FnMut() -> Option<T>) -> T {
+        let deadline = Instant::now() + POLL_DEADLINE;
+        loop {
+            if let Some(v) = cond() {
+                return v;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "condition not met within {POLL_DEADLINE:?}"
+            );
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
 
     #[tokio::test]
     async fn subscribe_appends_metrics_identity() {
@@ -551,12 +716,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["total_memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
     }
@@ -573,12 +733,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::PascalCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["TotalMemory"] > 0);
         check!(entry.metrics["Uptime"] > 0);
     }
@@ -595,12 +750,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::SnakeCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["total_memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
     }
@@ -617,12 +767,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::KebabCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["total-memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
     }
@@ -641,11 +786,7 @@ mod tests {
                 .with_components(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["disk_count"] > 0);
         check!(entry.metrics["total_disk_space"] > 0);
         check!(entry.metrics["network_interface_count"] >= 0);
@@ -662,9 +803,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
 
         // The reporter resolves the current PID, so each process_* key should
         // be present (indexing panics when a key is missing, so a `>= 0`
@@ -693,9 +832,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         if super::LOAD_AVERAGE_SUPPORTED {
             check!(entry.metrics["load_average_one"] >= 0.0);
             check!(entry.metrics["load_average_five"] >= 0.0);
@@ -719,9 +856,7 @@ mod tests {
                 .with_disks(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics.keys().any(|k| k.starts_with("disk_")));
     }
 
@@ -737,9 +872,7 @@ mod tests {
                 .with_networks(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics.keys().any(|k| k.starts_with("network_")));
     }
 
@@ -755,9 +888,7 @@ mod tests {
                 .with_components(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics.keys().any(|k| k.starts_with("component_")));
     }
 
@@ -771,9 +902,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         let keys: Vec<&String> = entry.metrics.keys().collect();
         check!(!keys.iter().any(|k| k.starts_with("disk_")));
         check!(!keys.iter().any(|k| k.starts_with("network_")));
@@ -790,15 +919,19 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        // Let some entries accumulate.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let count_before = inspector.entries().len();
-        check!(count_before > 0);
+        // Wait for at least one entry, then abort.
+        let count_before = wait_for(|| {
+            let n = inspector.entries().len();
+            (n > 0).then_some(n)
+        })
+        .await;
 
         // Dropping the handle should abort the reporter task.
         drop(handle);
 
-        // Advance time further, no new entries should be appended.
+        // Proving a negative (no further entries) inherently needs a real
+        // wait: let well over a sampling interval elapse, then confirm the
+        // count is unchanged.
         tokio::time::sleep(Duration::from_millis(500)).await;
         check!(inspector.entries().len() == count_before);
     }
@@ -835,8 +968,78 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        std::thread::sleep(Duration::from_millis(500));
+        let entries = wait_for_blocking(|| {
+            let e = inspector.entries();
+            (!e.is_empty()).then_some(e)
+        });
+        check!(!entries.is_empty());
+    }
 
-        check!(!inspector.entries().is_empty());
+    #[tokio::test]
+    async fn embedded_folds_latest_sample_into_entry() {
+        use metrique::unit_of_work::metrics;
+        use metrique_writer::test_util::test_metric;
+
+        use super::SysinfoSnapshot;
+
+        #[metrics(rename_all = "PascalCase")]
+        struct RequestMetrics {
+            operation: &'static str,
+            #[metrics(flatten)]
+            system: crate::State<SysinfoSnapshot>,
+        }
+
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let _handle = Sink::attach((sink, ()));
+
+        let system = Sink::embed_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // Wait until a real sample has been folded in (TotalMemory > 0) rather
+        // than the zeroed startup placeholder.
+        let entry = wait_for(|| {
+            let entry = test_metric(RequestMetrics {
+                operation: "Read",
+                system: system.clone(),
+            });
+            (entry.metrics["TotalMemory"] > 0).then_some(entry)
+        })
+        .await;
+
+        check!(entry.values["Operation"] == "Read");
+        check!(entry.metrics["TotalMemory"] > 0);
+        check!(entry.metrics["Uptime"] > 0);
+    }
+
+    #[tokio::test]
+    async fn embed_aborted_on_handle_drop() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let handle = Sink::attach((sink, ()));
+
+        let system = Sink::embed_sysinfo_metrics(
+            SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
+        );
+
+        // Wait until the sampler stores its first real sample (a new Arc
+        // replaces the zeroed initial), then abort it.
+        let initial = system.clone().snapshot();
+        wait_for(|| {
+            let current = system.clone().snapshot();
+            (!std::sync::Arc::ptr_eq(&current, &initial)).then_some(())
+        })
+        .await;
+        drop(handle);
+
+        // After abort, fresh snapshots taken over a span longer than the
+        // would-be sampling interval must resolve to the same Arc — proving
+        // no new sample was stored. Proving this negative needs a real wait.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let a = system.clone().snapshot();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        let b = system.clone().snapshot();
+        check!(std::sync::Arc::ptr_eq(&a, &b));
     }
 }

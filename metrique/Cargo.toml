@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.25"
+version = "0.1.26"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating wide event metrics"
@@ -67,7 +67,6 @@ tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
 metrique = { path = ".", features = ["emf", "test-util", "local-format"] }
-metrique-util = { workspace = true, features = ["state", "tokio-metrics-bridge", "sysinfo-bridge"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -76,19 +75,8 @@ regex-lite = { workspace = true }
 rstest = { workspace = true }
 
 [[example]]
-name = "global-state"
-required-features = ["emf", "service-metrics"]
-# Uses metrique-util (dev-dep only), which is unavailable during doc scraping on docs.rs
-doc-scrape-examples = false
-
-[[example]]
 name = "json"
 required-features = ["json"]
-
-[[example]]
-name = "extras"
-required-features = ["emf", "service-metrics"]
-doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true

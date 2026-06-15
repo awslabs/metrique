@@ -23,12 +23,16 @@ pub use metrique_core::DynamicNameStyle as MetricNameStyle;
 #[cfg(feature = "tokio-metrics-bridge")]
 mod tokio_metrics_reporter;
 #[cfg(feature = "tokio-metrics-bridge")]
-pub use tokio_metrics_reporter::{AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig};
+pub use tokio_metrics_reporter::{
+    AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig, TokioRuntimeSnapshot,
+};
 
 #[cfg(feature = "sysinfo-bridge")]
 mod sysinfo_reporter;
 #[cfg(feature = "sysinfo-bridge")]
-pub use sysinfo_reporter::{AttachGlobalEntrySinkSysinfoExt, SysinfoMetrics, SysinfoMetricsConfig};
+pub use sysinfo_reporter::{
+    AttachGlobalEntrySinkSysinfoExt, SysinfoMetrics, SysinfoMetricsConfig, SysinfoSnapshot,
+};
 
 #[cfg(feature = "pending-sink")]
 #[cfg_attr(docsrs, doc(cfg(feature = "pending-sink")))]
