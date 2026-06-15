@@ -3,7 +3,7 @@
 use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregator::KeyedAggregator;
-use metrique_aggregation::traits::{AggregateStrategy, FlushableSink, Key, Merge};
+use metrique_aggregation::traits::{AggregateStrategy, FlushableSink, Key, Merge, MergeRef};
 use metrique_writer::test_util::test_entry_sink;
 use std::borrow::Cow;
 
@@ -40,6 +40,15 @@ impl Merge for Event {
     }
 
     fn merge(accum: &mut Self::Merged, input: Self) {
+        accum.total += input.value;
+        if input.value > 0 {
+            accum.count_above_threshold += 1;
+        }
+    }
+}
+
+impl MergeRef for Event {
+    fn merge_ref(accum: &mut Self::Merged, input: &Self) {
         accum.total += input.value;
         if input.value > 0 {
             accum.count_above_threshold += 1;
@@ -102,5 +111,31 @@ fn test_keyed_aggregator_with_non_default_config() {
     check!(entries.len() == 1);
 
     // total should be min_threshold (100) + 5 + 10 = 115, proving the config was used
+    check!(entries[0].metrics["total"] == 115u64);
+}
+
+#[test]
+fn test_keyed_aggregator_with_non_default_config_merge_ref() {
+    let test_sink = test_entry_sink();
+    let config = ThresholdConfig { min_threshold: 100 };
+    let mut aggregator: KeyedAggregator<Event, _> =
+        KeyedAggregator::new_with_config(test_sink.sink, config);
+
+    use metrique_aggregation::traits::AggregateSinkRef;
+    aggregator.merge_ref(&Event {
+        endpoint: "api1".to_string(),
+        value: 5,
+    });
+    aggregator.merge_ref(&Event {
+        endpoint: "api1".to_string(),
+        value: 10,
+    });
+    aggregator.flush();
+
+    let entries = test_sink.inspector.entries();
+    check!(entries.len() == 1);
+
+    // total should be min_threshold (100) + 5 + 10 = 115, proving the config was used
+    // via the merge_ref path
     check!(entries[0].metrics["total"] == 115u64);
 }
