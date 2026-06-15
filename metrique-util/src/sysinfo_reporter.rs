@@ -639,7 +639,10 @@ where
     if let Ok(handle) = Handle::try_current() {
         handle.spawn_blocking(worker);
     } else {
-        std::thread::spawn(worker);
+        std::thread::Builder::new()
+            .name("sysinfo-metrics".to_string())
+            .spawn(worker)
+            .expect("failed to spawn sysinfo metrics reporter thread");
     }
 
     // Dropping the sender disconnects the receiver, waking the worker.
