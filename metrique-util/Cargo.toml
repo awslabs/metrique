@@ -21,7 +21,7 @@ tokio-metrics-bridge = [
     "dep:tokio-metrics",
     "dep:tracing",
 ]
-sysinfo-bridge = ["dep:metrique", "dep:tokio", "dep:sysinfo", "dep:tracing"]
+sysinfo-bridge = ["state", "dep:metrique", "dep:tokio", "dep:sysinfo", "dep:tracing"]
 # Enables BoxEntrySink::pending() for deferred sink attachment with bounded buffering
 pending-sink = ["dep:metrique-writer-core", "dep:crossbeam-queue"]
 
@@ -67,6 +67,16 @@ doc-scrape-examples = false
 [[example]]
 name = "tokio-metrics-folded-static"
 required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "sysinfo-folded"
+required-features = ["sysinfo-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "sysinfo-folded-static"
+required-features = ["sysinfo-bridge"]
 doc-scrape-examples = false
 
 [package.metadata.docs.rs]

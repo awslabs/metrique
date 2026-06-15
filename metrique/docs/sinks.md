@@ -246,10 +246,6 @@ Available integrations (via [`metrique-util`]):
   `metrique-util` and call [`subscribe_tokio_runtime_metrics`] to
   start appending [`RuntimeMetrics`] snapshots (worker
   utilization, queue depths, poll durations, and more).
-- **System metrics** — enable the `sysinfo-bridge` feature on
-  `metrique-util` and call [`subscribe_sysinfo_metrics`] to start
-  appending [`SysinfoMetrics`] snapshots (CPU usage, memory, and
-  per-process counters, and more), sampled via [`sysinfo`].
 
   If you'd rather fold the latest runtime sample into each of your own
   entries (so every emitted record carries runtime context without an
@@ -258,6 +254,17 @@ Available integrations (via [`metrique-util`]):
   [`State<TokioRuntimeSnapshot>`] that you embed in your metric struct
   with `#[metrics(flatten)]`; the sampler shares the same
   [`AttachHandle`]-tied lifecycle as `subscribe_tokio_runtime_metrics`.
+- **System metrics** — enable the `sysinfo-bridge` feature on
+  `metrique-util` and call [`subscribe_sysinfo_metrics`] to start
+  appending [`SysinfoMetrics`] snapshots (CPU usage, memory, and
+  per-process counters, and more), sampled via [`sysinfo`].
+
+  If you'd rather fold the latest system sample into each of your own
+  entries (so every emitted record carries system context without an
+  extra join at query time), use [`embed_sysinfo_metrics`] instead. It
+  returns a [`State<SysinfoSnapshot>`] that you embed in your metric
+  struct with `#[metrics(flatten)]`; the sampler shares the same
+  [`AttachHandle`]-tied lifecycle as `subscribe_sysinfo_metrics`.
 
 [`AttachHandle`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.AttachHandle.html
 [`metrique-util`]: https://docs.rs/metrique-util/latest/metrique_util/
@@ -266,6 +273,8 @@ Available integrations (via [`metrique-util`]):
 [`State<TokioRuntimeSnapshot>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.TokioRuntimeSnapshot.html
 [`RuntimeMetrics`]: https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.RuntimeMetrics.html
 [`subscribe_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.subscribe_sysinfo_metrics
+[`embed_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.embed_sysinfo_metrics
+[`State<SysinfoSnapshot>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoSnapshot.html
 [`SysinfoMetrics`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoMetrics.html
 [`sysinfo`]: https://docs.rs/sysinfo
 
