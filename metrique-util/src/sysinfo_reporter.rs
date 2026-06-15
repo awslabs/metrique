@@ -654,13 +654,54 @@ fn sleep_or_cancel(cancel: &Receiver<()>, dur: Duration) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use assert2::check;
     use metrique_writer::sink::AttachGlobalEntrySink;
     use metrique_writer::test_util::{TestEntrySink, test_entry_sink};
 
     use super::{AttachGlobalEntrySinkSysinfoExt, MetricNameStyle, SysinfoMetricsConfig};
+
+    /// How long [`wait_for`] polls before giving up.
+    const POLL_DEADLINE: Duration = Duration::from_secs(5);
+    /// How often [`wait_for`] re-checks its condition.
+    const POLL_INTERVAL: Duration = Duration::from_millis(10);
+
+    /// Poll `cond` until it returns `Some`, up to [`POLL_DEADLINE`].
+    ///
+    /// The reporter runs on a separate blocking thread, so tests can't drive
+    /// it with Tokio's virtual clock. Polling lets a test wait exactly as long
+    /// as the reporter needs to produce a sample instead of guessing a fixed
+    /// sleep (which races against the sampler and flakes under load).
+    async fn wait_for<T>(mut cond: impl FnMut() -> Option<T>) -> T {
+        let deadline = Instant::now() + POLL_DEADLINE;
+        loop {
+            if let Some(v) = cond() {
+                return v;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "condition not met within {POLL_DEADLINE:?}"
+            );
+            tokio::time::sleep(POLL_INTERVAL).await;
+        }
+    }
+
+    /// Blocking variant of [`wait_for`] for tests that run without a Tokio
+    /// runtime.
+    fn wait_for_blocking<T>(mut cond: impl FnMut() -> Option<T>) -> T {
+        let deadline = Instant::now() + POLL_DEADLINE;
+        loop {
+            if let Some(v) = cond() {
+                return v;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "condition not met within {POLL_DEADLINE:?}"
+            );
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
 
     #[tokio::test]
     async fn subscribe_appends_metrics_identity() {
@@ -672,12 +713,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["total_memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
     }
@@ -694,12 +730,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::PascalCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["TotalMemory"] > 0);
         check!(entry.metrics["Uptime"] > 0);
     }
@@ -716,12 +747,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::SnakeCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["total_memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
     }
@@ -738,12 +764,7 @@ mod tests {
                 .with_name_style(MetricNameStyle::KebabCase),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["total-memory"] > 0);
         check!(entry.metrics["uptime"] > 0);
     }
@@ -762,11 +783,7 @@ mod tests {
                 .with_components(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entries = inspector.entries();
-        check!(!entries.is_empty());
-        let entry = entries.last().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics["disk_count"] > 0);
         check!(entry.metrics["total_disk_space"] > 0);
         check!(entry.metrics["network_interface_count"] >= 0);
@@ -783,9 +800,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
 
         // The reporter resolves the current PID, so each process_* key should
         // be present (indexing panics when a key is missing, so a `>= 0`
@@ -814,9 +829,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         if super::LOAD_AVERAGE_SUPPORTED {
             check!(entry.metrics["load_average_one"] >= 0.0);
             check!(entry.metrics["load_average_five"] >= 0.0);
@@ -840,9 +853,7 @@ mod tests {
                 .with_disks(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics.keys().any(|k| k.starts_with("disk_")));
     }
 
@@ -858,9 +869,7 @@ mod tests {
                 .with_networks(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics.keys().any(|k| k.starts_with("network_")));
     }
 
@@ -876,9 +885,7 @@ mod tests {
                 .with_components(),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         check!(entry.metrics.keys().any(|k| k.starts_with("component_")));
     }
 
@@ -892,9 +899,7 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = inspector.entries().last().cloned().unwrap();
+        let entry = wait_for(|| inspector.entries().last().cloned()).await;
         let keys: Vec<&String> = entry.metrics.keys().collect();
         check!(!keys.iter().any(|k| k.starts_with("disk_")));
         check!(!keys.iter().any(|k| k.starts_with("network_")));
@@ -911,15 +916,19 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        // Let some entries accumulate.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let count_before = inspector.entries().len();
-        check!(count_before > 0);
+        // Wait for at least one entry, then abort.
+        let count_before = wait_for(|| {
+            let n = inspector.entries().len();
+            (n > 0).then_some(n)
+        })
+        .await;
 
         // Dropping the handle should abort the reporter task.
         drop(handle);
 
-        // Advance time further, no new entries should be appended.
+        // Proving a negative (no further entries) inherently needs a real
+        // wait: let well over a sampling interval elapse, then confirm the
+        // count is unchanged.
         tokio::time::sleep(Duration::from_millis(500)).await;
         check!(inspector.entries().len() == count_before);
     }
@@ -956,9 +965,11 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        std::thread::sleep(Duration::from_millis(500));
-
-        check!(!inspector.entries().is_empty());
+        let entries = wait_for_blocking(|| {
+            let e = inspector.entries();
+            (!e.is_empty()).then_some(e)
+        });
+        check!(!entries.is_empty());
     }
 
     #[tokio::test]
@@ -983,13 +994,16 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        // Wait past the worker's CPU prime sleep so a real sample lands.
-        tokio::time::sleep(Duration::from_millis(500)).await;
-
-        let entry = test_metric(RequestMetrics {
-            operation: "Read",
-            system: system.clone(),
-        });
+        // Wait until a real sample has been folded in (TotalMemory > 0) rather
+        // than the zeroed startup placeholder.
+        let entry = wait_for(|| {
+            let entry = test_metric(RequestMetrics {
+                operation: "Read",
+                system: system.clone(),
+            });
+            (entry.metrics["TotalMemory"] > 0).then_some(entry)
+        })
+        .await;
 
         check!(entry.values["Operation"] == "Read");
         check!(entry.metrics["TotalMemory"] > 0);
@@ -1006,14 +1020,20 @@ mod tests {
             SysinfoMetricsConfig::default().with_interval(Duration::from_millis(50)),
         );
 
-        // Let the sampler tick at least once, then abort it.
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Wait until the sampler stores its first real sample (a new Arc
+        // replaces the zeroed initial), then abort it.
+        let initial = system.clone().snapshot();
+        wait_for(|| {
+            let current = system.clone().snapshot();
+            (!std::sync::Arc::ptr_eq(&current, &initial)).then_some(())
+        })
+        .await;
         drop(handle);
-        tokio::time::sleep(Duration::from_millis(300)).await;
 
         // After abort, fresh snapshots taken over a span longer than the
         // would-be sampling interval must resolve to the same Arc — proving
-        // no new sample was stored.
+        // no new sample was stored. Proving this negative needs a real wait.
+        tokio::time::sleep(Duration::from_millis(300)).await;
         let a = system.clone().snapshot();
         tokio::time::sleep(Duration::from_millis(200)).await;
         let b = system.clone().snapshot();
