@@ -120,7 +120,6 @@ impl SysinfoMetricsConfig {
 ///
 /// [sysinfo docs]: https://docs.rs/sysinfo
 #[metrics(subfield_owned)]
-#[derive(Default)]
 #[non_exhaustive]
 pub struct SysinfoMetrics {
     // ----- CPU -----
@@ -199,6 +198,45 @@ pub struct SysinfoMetrics {
     /// output) unless [`SysinfoMetricsConfig::with_components`] is set.
     #[metrics(flatten)]
     pub components: Option<ComponentMetrics>,
+}
+
+impl SysinfoMetrics {
+    /// A zeroed placeholder snapshot used only as the initial value of
+    /// [`embed_sysinfo_metrics`](AttachGlobalEntrySinkSysinfoExt::embed_sysinfo_metrics)'s
+    /// [`State`] before the first real sample lands. These zeros are not a
+    /// meaningful "default" reading (0% CPU, 0 bytes of memory describes no
+    /// real system), which is why this is an explicit private constructor
+    /// rather than a public `Default` impl.
+    const fn zeroed() -> Self {
+        Self {
+            cpu_usage: 0.0,
+            total_memory: 0,
+            used_memory: 0,
+            available_memory: 0,
+            free_memory: 0,
+            total_swap: 0,
+            used_swap: 0,
+            free_swap: 0,
+            load_average_one: None,
+            load_average_five: None,
+            load_average_fifteen: None,
+            uptime: 0,
+            process_memory: 0,
+            process_virtual_memory: 0,
+            process_cpu_usage: 0.0,
+            process_accumulated_cpu_time: 0,
+            process_run_time: 0,
+            process_disk_read_bytes: 0,
+            process_disk_total_read_bytes: 0,
+            process_disk_written_bytes: 0,
+            process_disk_total_written_bytes: 0,
+            process_open_files: None,
+            process_open_files_limit: None,
+            disks: None,
+            networks: None,
+            components: None,
+        }
+    }
 }
 
 /// Aggregated disk metrics across all mounted disks. Emitted as part of
@@ -389,10 +427,10 @@ pub trait AttachGlobalEntrySinkSysinfoExt: AttachGlobalEntrySink + 'static {
     ///
     /// Note that the first real sample doesn't land in the [`State`] until
     /// after the worker's CPU-prime sleep (~200ms by default). Entries that
-    /// close before then fold in the default [`SysinfoMetrics`] (all zeros
+    /// close before then fold in a zeroed placeholder snapshot (all zeros
     /// / `None`).
     fn embed_sysinfo_metrics(config: SysinfoMetricsConfig) -> State<SysinfoSnapshot> {
-        let initial = SysinfoSnapshot(Arc::new(SysinfoMetrics::default().close()));
+        let initial = SysinfoSnapshot(Arc::new(SysinfoMetrics::zeroed().close()));
         let state = State::new(initial);
         let task_state = state.clone();
         let shutdown = spawn_sysinfo_metrics_loop(config, move |snapshot| {
