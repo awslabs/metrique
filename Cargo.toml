@@ -98,3 +98,6 @@ metrique-timesource = { path = "metrique-timesource" }
 metrique-writer = { path = "metrique-writer" }
 metrique-writer-core = { path = "metrique-writer-core" }
 metrique-writer-macro = { path = "metrique-writer-macro" }
+# Local-only: develop against the sibling tokio-metrics checkout that carries the
+# RequestMonitor / per-request metrics changes (not yet published). Do not commit.
+tokio-metrics = { path = "../tokio-metrics" }
