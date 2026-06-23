@@ -32,6 +32,31 @@ async fn handle_request_fanout(metrics: &mut RequestMetrics) {
 
 The `metrique` crate provides some tools to help more complex situations.
 
+### Choosing between guard types
+
+The `#[metrics]` macro generates an `append_on_drop` method that returns an
+[`AppendAndCloseOnDrop`] guard. This guard supports [`flush_guard`],
+[`force_flush_guard`], and [`Handle`] for complex concurrency scenarios, but
+it pays for that flexibility with a heap allocation (two `Arc`s) on
+construction.
+
+If you don't need flush guards or handles — i.e., your metric is owned by a
+single scope and emits when that scope exits — use [`NoAllocAppendOnDrop`]
+instead. It stores the entry and sink inline with zero heap allocation:
+
+```rust,ignore
+use metrique::NoAllocAppendOnDrop;
+
+let mut metrics = NoAllocAppendOnDrop::new(
+    RequestMetrics { operation: "DoSomething", ..Default::default() },
+    ServiceMetrics::sink(),
+);
+metrics.number_of_ducks = 5;
+// emits on drop — no flush guard, no handle, no allocation
+```
+
+If you later need concurrency features, switch to `append_on_drop`.
+
 ### Controlling the point of metric emission
 
 Sometimes, your code does not have a single exit point at which you want to report your metrics. Maybe
@@ -277,6 +302,7 @@ combining `Counter::increment_scoped` with `State` for shared state.
 [`force_flush_guard`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html#method.force_flush_guard
 [`ForceFlushGuard`]: https://docs.rs/metrique/latest/metrique/struct.ForceFlushGuard.html
 [`Handle`]: https://docs.rs/metrique/latest/metrique/struct.AppendAndCloseOnDrop.html#method.handle
+[`NoAllocAppendOnDrop`]: https://docs.rs/metrique/latest/metrique/struct.NoAllocAppendOnDrop.html
 [`OnceLock<T>`]: https://doc.rust-lang.org/std/sync/struct.OnceLock.html
 [`OnParentDrop::Wait`]: https://docs.rs/metrique/latest/metrique/enum.OnParentDrop.html#variant.Wait
 [`Slot::wait_for_data`]: https://docs.rs/metrique/latest/metrique/struct.Slot.html#method.wait_for_data
