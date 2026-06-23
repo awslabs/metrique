@@ -240,7 +240,7 @@ impl<T: Value> Value for Box<T> {
     }
 }
 
-impl<T: Value> Value for Arc<T> {
+impl<T: Value + ?Sized> Value for Arc<T> {
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
@@ -264,7 +264,7 @@ impl<T: MetricValue> MetricValue for Box<T> {
     type Unit = T::Unit;
 }
 
-impl<T: MetricValue> MetricValue for Arc<T> {
+impl<T: MetricValue + ?Sized> MetricValue for Arc<T> {
     type Unit = T::Unit;
 }
 

@@ -46,6 +46,7 @@ struct Nested {
     c: Option<bool>,
 
     d: Arc<bool>,
+    d2: Option<Arc<str>>,
     e: Cow<'static, str>,
 
     #[metrics(format=ToString)]
@@ -190,6 +191,7 @@ fn flatten_flush_as_expected() {
     metric.entry.foo = 1;
     metric.optional_closed = Some(Nested {
         b: true,
+        d2: Some(Arc::from("arc_str_value")),
         sub: TestFlag::from(WithDimensions::new(MySubfield::default(), "Foo", "Bar")),
         nested_with_prefix: Prefix1 {
             inner: Prefix2 {
@@ -216,6 +218,7 @@ fn flatten_flush_as_expected() {
     );
     assert_eq!(entry.metrics["F"].test_flag, true);
     assert_eq!(entry.values["G"], "false");
+    assert_eq!(entry.values["D2"], "arc_str_value");
 
     assert_eq!(entry.metrics["NestedMetric"], 2);
     assert_eq!(entry.metrics["NestedValValue"], 3);
