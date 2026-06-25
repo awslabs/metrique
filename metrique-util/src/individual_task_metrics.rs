@@ -11,19 +11,21 @@
 //! metrics.
 
 use std::future::Future;
-use std::time::Duration;
 
 use metrique::CloseValue;
-use tokio_metrics::{InstrumentedRequest, RequestMonitor, RequestTaskMetrics};
+use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 
-/// A metrique field capturing the Tokio task metrics of a single request.
+/// A metrique field holding the captured Tokio task metrics of a single request.
 ///
-/// Wrap the request's future with [`instrument`](TaskTiming::instrument), await
-/// it, then fold the `TaskTiming` into your metric struct with
-/// `#[metrics(flatten)]`. On close it emits the request's poll, idle,
-/// first-poll, and scheduling metrics (see
-/// [`RequestTaskMetrics`](tokio_metrics::RequestTaskMetrics) for the full field
-/// list).
+/// Wrap the request's future with [`TaskTiming::instrument`]; awaiting the
+/// returned future yields the future's output together with a `TaskTiming`. Fold
+/// that into your metric struct with `#[metrics(flatten)]` and, on close, it
+/// emits the request's poll, idle, first-poll, and scheduling metrics (see
+/// [`RequestTaskMetrics`](tokio_metrics::RequestTaskMetrics) for the full list).
+///
+/// `instrument` is a one-shot associated function that takes ownership of the
+/// future, so a `TaskTiming` always describes exactly one request — there is no
+/// way to accidentally reuse it across futures.
 ///
 /// Idle, poll, and first-poll metrics are measured locally from the request's
 /// own future, so they stay accurate even when the surrounding task interleaves
@@ -60,8 +62,7 @@ use tokio_metrics::{InstrumentedRequest, RequestMonitor, RequestTaskMetrics};
 ///     let task_monitor = builder.build();
 ///     task_monitor
 ///         .instrument(async {
-///             let timing = TaskTiming::new();
-///             let success = timing.instrument(handle_request()).await;
+///             let (success, timing) = TaskTiming::instrument(handle_request()).await;
 ///             let _m = RequestMetrics {
 ///                 operation: "Read",
 ///                 success,
@@ -72,35 +73,24 @@ use tokio_metrics::{InstrumentedRequest, RequestMonitor, RequestTaskMetrics};
 ///         .await;
 /// }
 /// ```
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct TaskTiming {
-    monitor: RequestMonitor,
+    metrics: RequestTaskMetrics,
 }
 
 impl TaskTiming {
-    /// Creates a new `TaskTiming` for a single request.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Creates a `TaskTiming` whose local poll metrics use a custom slow-poll
-    /// threshold (see
-    /// [`TaskMonitor::with_slow_poll_threshold`](tokio_metrics::TaskMonitor::with_slow_poll_threshold)).
-    pub fn with_slow_poll_threshold(threshold: Duration) -> Self {
-        Self {
-            monitor: RequestMonitor::with_slow_poll_threshold(threshold),
+    /// Instruments the request's future. Awaiting the returned future yields the
+    /// future's output paired with the `TaskTiming` to fold into your metrics.
+    pub fn instrument<F: Future>(task: F) -> impl Future<Output = (F::Output, TaskTiming)> {
+        async move {
+            let (output, metrics) = RequestMonitor::new().instrument(task).await;
+            (output, TaskTiming { metrics })
         }
     }
 
-    /// Instruments the request's future. Await the returned future, then fold
-    /// this `TaskTiming` into your metric struct.
-    pub fn instrument<F: Future>(&self, task: F) -> InstrumentedRequest<F> {
-        self.monitor.instrument(task)
-    }
-
-    /// Returns the metrics captured for this request so far.
-    pub fn metrics(&self) -> RequestTaskMetrics {
-        self.monitor.metrics()
+    /// The metrics captured for this request.
+    pub fn metrics(&self) -> &RequestTaskMetrics {
+        &self.metrics
     }
 }
 
@@ -108,7 +98,7 @@ impl CloseValue for TaskTiming {
     type Closed = <RequestTaskMetrics as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
-        self.monitor.metrics().close()
+        self.metrics.close()
     }
 }
 
@@ -116,7 +106,7 @@ impl CloseValue for &'_ TaskTiming {
     type Closed = <RequestTaskMetrics as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
-        self.monitor.metrics().close()
+        self.metrics.clone().close()
     }
 }
 
@@ -143,13 +133,11 @@ mod tests {
         let task_monitor = builder.build();
         task_monitor
             .instrument(async {
-                let timing = TaskTiming::new();
-                timing
-                    .instrument(async {
-                        tokio::task::yield_now().await; // extra poll
-                        tokio::time::sleep(std::time::Duration::from_secs(1)).await; // idle
-                    })
-                    .await;
+                let (_, timing) = TaskTiming::instrument(async {
+                    tokio::task::yield_now().await; // extra poll
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await; // idle
+                })
+                .await;
 
                 let entry = test_metric(RequestMetrics {
                     operation: "Read",

@@ -58,8 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             //    "TaskTotalIdleDuration":0.02, "TaskFirstPollDelay":0.0,
             //    "TaskTotalScheduledDuration":0.0001, ...}
             for op in ["Read", "Write", "Read"] {
-                let timing = TaskTiming::new();
-                let success = timing.instrument(handle_request(op)).await;
+                let (success, timing) = TaskTiming::instrument(handle_request(op)).await;
 
                 let _m = RequestMetrics {
                     operation: op,
