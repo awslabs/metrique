@@ -49,26 +49,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     builder.record_request_scheduling();
     let worker_monitor = builder.build();
 
-    worker_monitor
-        .instrument(async {
-            // Each loop iteration emits one EMF record carrying that request's
-            // own task metrics, e.g.:
-            //   {"Operation":"Read", "Success":1,
-            //    "TaskPollCount":3, "TaskTotalPollDuration":0.0001,
-            //    "TaskTotalIdleDuration":0.02, "TaskFirstPollDelay":0.0,
-            //    "TaskTotalScheduledDuration":0.0001, ...}
-            for op in ["Read", "Write", "Read"] {
-                let (success, timing) = TaskTiming::instrument(handle_request(op)).await;
+    // Instrument the worker as a *spawned* task. Task metrics (especially
+    // scheduling delay) only reflect reality when the instrumented future is the
+    // root of a task the runtime actually schedules — i.e. wrapped at
+    // `tokio::spawn` — rather than awaited inline as a sub-future of `main`.
+    tokio::spawn(worker_monitor.instrument(async {
+        // Each loop iteration emits one EMF record carrying that request's
+        // own task metrics, e.g.:
+        //   {"Operation":"Read", "Success":1,
+        //    "TaskPollCount":3, "TaskTotalPollDuration":0.0001,
+        //    "TaskTotalIdleDuration":0.02, "TaskFirstPollDelay":0.0,
+        //    "TaskTotalScheduledDuration":0.0001, ...}
+        for op in ["Read", "Write", "Read"] {
+            let (success, timing) = TaskTiming::instrument(handle_request(op)).await;
 
-                let _m = RequestMetrics {
-                    operation: op,
-                    success,
-                    timing,
-                }
-                .append_on_drop(ServiceMetrics::sink());
+            let _m = RequestMetrics {
+                operation: op,
+                success,
+                timing,
             }
-        })
-        .await;
+            .append_on_drop(ServiceMetrics::sink());
+        }
+    }))
+    .await?;
 
     Ok(())
 }

@@ -56,21 +56,23 @@ use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 /// # async fn handle_request() -> bool { true }
 /// async fn run() {
 ///     // build the worker monitor with scheduling capture enabled, then
-///     // instrument the larger task once
+///     // instrument the larger task. Instrument the *spawned* task: metrics are
+///     // only accurate when the instrumented future is the root of a task the
+///     // runtime schedules, not when it is awaited inline.
 ///     let mut builder = TaskMonitor::builder();
 ///     builder.record_request_scheduling();
 ///     let task_monitor = builder.build();
-///     task_monitor
-///         .instrument(async {
-///             let (success, timing) = TaskTiming::instrument(handle_request()).await;
-///             let _m = RequestMetrics {
-///                 operation: "Read",
-///                 success,
-///                 timing,
-///             };
-///             // `_m.append_on_drop(sink)` in real code
-///         })
-///         .await;
+///     tokio::spawn(task_monitor.instrument(async {
+///         let (success, timing) = TaskTiming::instrument(handle_request()).await;
+///         let _m = RequestMetrics {
+///             operation: "Read",
+///             success,
+///             timing,
+///         };
+///         // `_m.append_on_drop(sink)` in real code
+///     }))
+///     .await
+///     .unwrap();
 /// }
 /// ```
 #[derive(Clone, Debug)]
