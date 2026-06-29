@@ -143,8 +143,20 @@ mod tests {
                 });
 
                 check!(entry.values["Operation"] == "Read");
-                check!(entry.metrics["TaskPollCount"] >= 2);
-                check!(entry.metrics["TaskTotalIdleDuration"] >= 1.0);
+                // The request future yields once (poll 1 -> 2) then sleeps 1s
+                // (poll 2 -> 3). Under `start_paused` the virtual clock makes
+                // every field exact, and indexing asserts each is present.
+                check!(entry.metrics["TaskPollCount"] == 3);
+                check!(entry.metrics["TaskTotalPollDuration"] == 0.0);
+                check!(entry.metrics["TaskSlowPollCount"] == 0);
+                check!(entry.metrics["TaskIdleCount"] == 1);
+                check!(entry.metrics["TaskTotalIdleDuration"] == 1000.0);
+                check!(entry.metrics["TaskMaxIdleDuration"] == 1000.0);
+                check!(entry.metrics["TaskFirstPollDelay"] == 0.0);
+                check!(entry.metrics["TaskTotalDuration"] == 1000.0);
+                check!(entry.metrics["TaskScheduledCount"] == 1);
+                check!(entry.metrics["TaskTotalScheduledDuration"] == 0.0);
+                check!(entry.metrics["TaskLongDelayCount"] == 0);
             })
             .await;
     }
