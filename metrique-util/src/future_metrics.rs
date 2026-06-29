@@ -13,7 +13,7 @@
 use std::future::Future;
 
 use metrique::CloseValue;
-use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
+use tokio_metrics::{FutureMonitor, FutureMetrics};
 
 /// A metrique field holding the captured Tokio task metrics of a single request.
 ///
@@ -21,7 +21,7 @@ use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 /// returned future yields the future's output together with a `TaskTiming`. Fold
 /// that into your metric struct with `#[metrics(flatten)]` and, on close, it
 /// emits the request's poll, idle, first-poll, and scheduling metrics (see
-/// [`RequestTaskMetrics`](tokio_metrics::RequestTaskMetrics) for the full list).
+/// [`FutureMetrics`](tokio_metrics::FutureMetrics) for the full list).
 ///
 /// `instrument` is a one-shot associated function that takes ownership of the
 /// future, so a `TaskTiming` always describes exactly one request — there is no
@@ -85,7 +85,7 @@ use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 /// ```
 #[derive(Clone, Debug)]
 pub struct TaskTiming {
-    metrics: RequestTaskMetrics,
+    metrics: FutureMetrics,
 }
 
 impl TaskTiming {
@@ -93,19 +93,19 @@ impl TaskTiming {
     /// future's output paired with the `TaskTiming` to fold into your metrics.
     pub fn instrument<F: Future>(task: F) -> impl Future<Output = (F::Output, TaskTiming)> {
         async move {
-            let (output, metrics) = RequestMonitor::new().instrument(task).await;
+            let (output, metrics) = FutureMonitor::new().instrument(task).await;
             (output, TaskTiming { metrics })
         }
     }
 
     /// The metrics captured for this request.
-    pub fn metrics(&self) -> &RequestTaskMetrics {
+    pub fn metrics(&self) -> &FutureMetrics {
         &self.metrics
     }
 }
 
 impl CloseValue for TaskTiming {
-    type Closed = <RequestTaskMetrics as CloseValue>::Closed;
+    type Closed = <FutureMetrics as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
         self.metrics.close()
@@ -113,7 +113,7 @@ impl CloseValue for TaskTiming {
 }
 
 impl CloseValue for &'_ TaskTiming {
-    type Closed = <RequestTaskMetrics as CloseValue>::Closed;
+    type Closed = <FutureMetrics as CloseValue>::Closed;
 
     fn close(self) -> Self::Closed {
         self.metrics.clone().close()
