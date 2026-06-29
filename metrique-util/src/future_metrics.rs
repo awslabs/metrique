@@ -27,14 +27,24 @@ use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 /// future, so a `TaskTiming` always describes exactly one request — there is no
 /// way to accidentally reuse it across futures.
 ///
-/// Idle, poll, and first-poll metrics are measured locally from the request's
-/// own future, so they stay accurate even when the surrounding task interleaves
-/// other work. **Scheduling delay can only be observed by the root future the
-/// runtime schedules**, so for `scheduled_count`/`total_scheduled_duration`/
-/// `long_delay_count` to be populated, the surrounding task must be instrumented
-/// with a monitor built via
-/// [`TaskMonitorBuilder::record_request_scheduling`](tokio_metrics::TaskMonitorBuilder::record_request_scheduling).
-/// Without that, those fields are zero and the rest still work.
+/// # Accuracy
+///
+/// **The poll, idle, and first-poll metrics are always accurate.** They are
+/// measured locally from the request's own future — its poll count, how long
+/// each poll ran, and the gaps between its polls — so they hold regardless of
+/// where or how the future is run, even when the surrounding task interleaves
+/// other work.
+///
+/// **Scheduling delay is the one exception.** The time a task spends queued
+/// between being woken and being polled can only be observed by the *root*
+/// future the runtime actually schedules — a nested future can't see it. So
+/// `scheduled_count` / `total_scheduled_duration` / `long_delay_count` are only
+/// populated when the surrounding (root) task is instrumented with a monitor
+/// built via
+/// [`TaskMonitorBuilder::record_request_scheduling`](tokio_metrics::TaskMonitorBuilder::record_request_scheduling),
+/// **and** that instrumented future is the root of a spawned task (see the
+/// example). Without that, those three fields read zero while everything else
+/// stays accurate.
 ///
 /// # Example
 ///
