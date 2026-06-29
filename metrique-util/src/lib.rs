@@ -28,9 +28,9 @@ pub use tokio_metrics_reporter::{
 };
 
 #[cfg(feature = "tokio-metrics-bridge")]
-mod individual_task_metrics;
+mod future_metrics;
 #[cfg(feature = "tokio-metrics-bridge")]
-pub use individual_task_metrics::TaskTiming;
+pub use future_metrics::TaskTiming;
 
 #[cfg(feature = "sysinfo-bridge")]
 mod sysinfo_reporter;
