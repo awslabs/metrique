@@ -42,10 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             .output_to(std::io::stderr()),
     );
 
-    // The worker task is instrumented once. `record_request_scheduling` opts the
+    // The worker task is instrumented once. `publish_scheduling_delay` opts the
     // monitor into publishing scheduling delay so each request's `TaskTiming`
     // can observe it; without it, the scheduling fields would be zero.
-    let worker_monitor = TaskMonitor::builder().record_request_scheduling().build();
+    let worker_monitor = TaskMonitor::builder().publish_scheduling_delay().build();
 
     // Instrument the worker as a *spawned* task. Task metrics (especially
     // scheduling delay) only reflect reality when the instrumented future is the

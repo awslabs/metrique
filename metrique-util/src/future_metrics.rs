@@ -41,7 +41,7 @@ use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 /// `scheduled_count` / `total_scheduled_duration` / `long_delay_count` are only
 /// populated when the surrounding (root) task is instrumented with a monitor
 /// built via
-/// [`TaskMonitorBuilder::record_request_scheduling`](tokio_metrics::TaskMonitorBuilder::record_request_scheduling),
+/// [`TaskMonitorBuilder::publish_scheduling_delay`](tokio_metrics::TaskMonitorBuilder::publish_scheduling_delay),
 /// **and** that instrumented future is the root of a spawned task (see the
 /// example). Without that, those three fields read zero while everything else
 /// stays accurate.
@@ -69,7 +69,7 @@ use tokio_metrics::{RequestMonitor, RequestTaskMetrics};
 ///     // instrument the larger task. Instrument the *spawned* task: metrics are
 ///     // only accurate when the instrumented future is the root of a task the
 ///     // runtime schedules, not when it is awaited inline.
-///     let task_monitor = TaskMonitor::builder().record_request_scheduling().build();
+///     let task_monitor = TaskMonitor::builder().publish_scheduling_delay().build();
 ///     tokio::spawn(task_monitor.instrument(async {
 ///         let (success, timing) = TaskTiming::instrument(handle_request()).await;
 ///         let _m = RequestMetrics {
@@ -138,7 +138,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn folds_per_request_metrics_into_entry() {
-        let task_monitor = TaskMonitor::builder().record_request_scheduling().build();
+        let task_monitor = TaskMonitor::builder().publish_scheduling_delay().build();
         task_monitor
             .instrument(async {
                 let (_, timing) = TaskTiming::instrument(async {
