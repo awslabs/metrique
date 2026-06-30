@@ -6,6 +6,7 @@ rust-version = "1.89"
 license = "Apache-2.0"
 description = "Library for wide event metrics - OpenTelemetry (OTLP) backend for metrique"
 repository = "https://github.com/awslabs/metrique"
+readme = "README.md"
 publish = true
 
 [package.metadata.docs.rs]
