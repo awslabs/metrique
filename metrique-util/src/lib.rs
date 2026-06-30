@@ -27,6 +27,11 @@ pub use tokio_metrics_reporter::{
     AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig, TokioRuntimeSnapshot,
 };
 
+#[cfg(feature = "tokio-metrics-bridge")]
+mod future_metrics;
+#[cfg(feature = "tokio-metrics-bridge")]
+pub use future_metrics::TaskTiming;
+
 #[cfg(feature = "sysinfo-bridge")]
 mod sysinfo_reporter;
 #[cfg(feature = "sysinfo-bridge")]

@@ -65,6 +65,11 @@ required-features = ["tokio-metrics-bridge"]
 doc-scrape-examples = false
 
 [[example]]
+name = "individual-task-metrics"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
 name = "tokio-metrics-folded-static"
 required-features = ["tokio-metrics-bridge"]
 doc-scrape-examples = false
