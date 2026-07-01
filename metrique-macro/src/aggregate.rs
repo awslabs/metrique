@@ -13,11 +13,24 @@ struct AggregateField {
     is_ignored: bool,
     use_clone: bool,
     metrics_attrs: Vec<Attribute>,
+    is_dimensional: bool,
 }
 
 #[derive(Debug)]
 struct ParsedAggregate {
     fields: Vec<AggregateField>,
+    dimensions_as_key: bool,
+}
+
+/// Check if a type's trailing path segment is one of the WithDimensions variants
+fn is_dimensional_type(ty: &Type) -> bool {
+    if let Type::Path(type_path) = ty
+        && let Some(last_seg) = type_path.path.segments.last()
+    {
+        let name = last_seg.ident.to_string();
+        return name == "WithDimensions" || name == "WithDimension" || name == "WithVecDimensions";
+    }
+    false
 }
 
 fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
@@ -35,6 +48,25 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             ));
         }
     };
+
+    // Parse container-level attributes for dimensions_as_key
+    let mut dimensions_as_key = true;
+    for attr in &input.attrs {
+        if attr.path().is_ident("aggregate") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("dimensions_as_key") {
+                    if let Ok(value) = meta.value() {
+                        let lit: syn::LitBool = value.parse()?;
+                        dimensions_as_key = lit.value;
+                    }
+                    // bare `dimensions_as_key` without `= ...` means true
+                    Ok(())
+                } else {
+                    Ok(()) // ignore other container attrs (they may be for other purposes)
+                }
+            })?;
+        }
+    }
 
     let mut parsed_fields = Vec::new();
     let mut seen_names = std::collections::HashSet::new();
@@ -124,6 +156,8 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             .cloned()
             .collect();
 
+        let is_dimensional = is_dimensional_type(&field.ty);
+
         parsed_fields.push(AggregateField {
             name,
             ty: field.ty.clone(),
@@ -132,11 +166,13 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             is_ignored,
             use_clone,
             metrics_attrs,
+            is_dimensional,
         });
     }
 
     Ok(ParsedAggregate {
         fields: parsed_fields,
+        dimensions_as_key,
     })
 }
 
@@ -150,7 +186,17 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
         let metrics_attrs = &f.metrics_attrs;
         let strategy = f.strategy.as_ref().unwrap();
         let source_ty = &f.ty;
-        let value_ty = if entry_mode {
+
+        // For dimensional fields, the value type is the inner V, not WithDimensions<V, N>
+        let value_ty = if f.is_dimensional {
+            if entry_mode {
+                // In entry mode, closed form of WithDimensions<V, N> is WithDimensions<V::Closed, N>
+                // We need the inner V::Closed
+                quote! { <<#source_ty as metrique::CloseValue>::Closed as ::metrique_writer::value::WithDimensionsExt>::Inner }
+            } else {
+                quote! { <#source_ty as ::metrique_writer::value::WithDimensionsExt>::Inner }
+            }
+        } else if entry_mode {
             quote! { <#source_ty as metrique::CloseValue>::Closed }
         } else {
             quote! { #source_ty }
@@ -199,6 +245,10 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
+    // Determine if we have dimensional fields and dimensions_as_key is enabled
+    let has_dimensional_fields = parsed.fields.iter().any(|f| f.is_dimensional);
+    let use_dimension_keys = has_dimensional_fields && parsed.dimensions_as_key;
+
     // Determine the source type for AggregateStrategy
     let source_ty = if entry_mode {
         quote! { <#original_name as metrique::CloseValue>::Closed }
@@ -212,7 +262,13 @@ pub(crate) fn generate_aggregate_strategy_impl(
         let strategy = f.strategy.as_ref().unwrap();
         let field_ty = &f.ty;
 
-        let value_ty = if entry_mode {
+        let value_ty = if f.is_dimensional {
+            if entry_mode {
+                quote! { <<#field_ty as metrique::CloseValue>::Closed as ::metrique_writer::value::WithDimensionsExt>::Inner }
+            } else {
+                quote! { <#field_ty as ::metrique_writer::value::WithDimensionsExt>::Inner }
+            }
+        } else if entry_mode {
             quote! { <#field_ty as metrique::CloseValue>::Closed }
         } else {
             quote! { #field_ty }
@@ -232,8 +288,12 @@ pub(crate) fn generate_aggregate_strategy_impl(
         .and_then(|attrs| attrs.unit)
         .is_some();
 
-        // In entry mode with unit, need to unwrap WithUnit wrapper
-        let entry_value = if has_unit {
+        // Determine how to extract the value from the input field
+        let entry_value = if f.is_dimensional && has_unit {
+            quote! { input.#name.into_inner().into_value() }
+        } else if f.is_dimensional {
+            quote! { input.#name.into_value() }
+        } else if has_unit {
             quote! { input.#name.into_inner() }
         } else {
             quote! { input.#name }
@@ -269,73 +329,245 @@ pub(crate) fn generate_aggregate_strategy_impl(
         }
     };
 
-    // Generate Key struct and impl if there are key fields
-    let (key_struct, key_impl, strategy_key_type) = if key_fields.is_empty() {
+    // Generate Key struct and impl
+    let (key_struct, key_impl, strategy_key_type) = if !key_fields.is_empty() || use_dimension_keys
+    {
+        if use_dimension_keys {
+            // Dimensional key: don't use #[metrics], implement traits manually
+            let has_static_keys = !key_fields.is_empty();
+
+            let key_field_defs = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    let ty = &f.ty;
+                    quote! { #name: ::std::borrow::Cow<'a, #ty> }
+                })
+                .collect::<Vec<_>>();
+
+            let from_source_fields = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    quote! { #name: ::std::borrow::Cow::Borrowed(&source.#name) }
+                })
+                .collect::<Vec<_>>();
+
+            let static_key_fields = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    quote! { #name: ::std::borrow::Cow::Owned(key.#name.clone().into_owned()) }
+                })
+                .collect::<Vec<_>>();
+
+            let close_key_fields = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    quote! { #name: ::std::borrow::Cow::Owned(self.#name.clone().into_owned()) }
+                })
+                .collect::<Vec<_>>();
+
+            let hash_fields = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    quote! { self.#name.hash(state); }
+                })
+                .collect::<Vec<_>>();
+
+            let static_key_writes = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    let name_str = name.to_string();
+                    use inflector::Inflector as _;
+                    let pascal_name = name_str.to_pascal_case();
+                    quote! { writer.value(#pascal_name, &*self.#name); }
+                })
+                .collect::<Vec<_>>();
+
+            // Use lifetime only if there are static key fields
+            let (key_generics, key_generics_static) = if has_static_keys {
+                (quote! { <'a> }, quote! { <'static> })
+            } else {
+                (quote! {}, quote! {})
+            };
+
+            let eq_fields = key_fields
+                .iter()
+                .map(|f| {
+                    let name = &f.name;
+                    quote! { && self.#name == other.#name }
+                })
+                .collect::<Vec<_>>();
+
+            let key_struct = quote! {
+                #[derive(Clone)]
+                pub struct #key_name #key_generics {
+                    #(#key_field_defs,)*
+                    __dyn_keys: ::metrique_aggregation::__macro_plumbing::SmallVec<[(::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>); 4]>,
+                    __entry_dimensions: Option<::metrique_aggregation::__macro_plumbing::EntryDimensions>,
+                }
+
+                impl #key_generics ::std::cmp::PartialEq for #key_name #key_generics {
+                    fn eq(&self, other: &Self) -> bool {
+                        self.__dyn_keys == other.__dyn_keys #(#eq_fields)*
+                    }
+                }
+
+                impl #key_generics ::std::cmp::Eq for #key_name #key_generics {}
+
+                impl #key_generics ::std::hash::Hash for #key_name #key_generics {
+                    fn hash<H: ::std::hash::Hasher>(&self, state: &mut H) {
+                        #(#hash_fields)*
+                        self.__dyn_keys.as_slice().hash(state);
+                    }
+                }
+
+                impl #key_generics metrique::CloseValue for #key_name #key_generics {
+                    type Closed = #key_name #key_generics_static;
+                    fn close(self) -> Self::Closed {
+                        #key_name {
+                            #(#close_key_fields,)*
+                            __dyn_keys: self.__dyn_keys,
+                            __entry_dimensions: self.__entry_dimensions,
+                        }
+                    }
+                }
+
+                impl #key_generics metrique::InflectableEntry for #key_name #key_generics {
+                    fn write<'__w>(&'__w self, writer: &mut impl ::metrique_writer::EntryWriter<'__w>) {
+                        // Write EntryDimensions config first (if present)
+                        if let Some(ref dims) = self.__entry_dimensions {
+                            writer.config(dims);
+                        }
+                        // Write static key fields
+                        #(#static_key_writes)*
+                        // Write dynamic dimension pairs as values
+                        for (class, instance) in &self.__dyn_keys {
+                            writer.value(class.clone(), &**instance);
+                        }
+                    }
+                }
+
+                impl #key_generics ::metrique_writer::Entry for #key_name #key_generics {
+                    fn write<'__w>(&'__w self, writer: &mut impl ::metrique_writer::EntryWriter<'__w>) {
+                        <Self as metrique::InflectableEntry>::write(self, writer);
+                    }
+                }
+            };
+
+            let key_impl = quote! {
+                #vis struct #key_extractor_name;
+
+                impl ::metrique_aggregation::__macro_plumbing::Key<#source_ty> for #key_extractor_name {
+                    type Key<'a> = #key_name #key_generics;
+
+                    fn from_source(source: &#source_ty) -> Self::Key<'_> {
+                        let __dyn_keys = ::metrique_aggregation::__macro_plumbing::extract_dimensions(source);
+                        let __entry_dimensions = if __dyn_keys.is_empty() {
+                            None
+                        } else {
+                            let classes: Vec<::std::borrow::Cow<'static, str>> = __dyn_keys.iter()
+                                .map(|(c, _)| c.clone())
+                                .collect::<::std::collections::BTreeSet<_>>()
+                                .into_iter()
+                                .collect();
+                            let dim_set: ::std::borrow::Cow<'static, [::std::borrow::Cow<'static, str>]> =
+                                ::std::borrow::Cow::Owned(classes);
+                            Some(::metrique_aggregation::__macro_plumbing::EntryDimensions::new(
+                                ::std::borrow::Cow::Owned(vec![dim_set])
+                            ))
+                        };
+                        #[allow(deprecated)]
+                        #key_name {
+                            #(#from_source_fields,)*
+                            __dyn_keys,
+                            __entry_dimensions,
+                        }
+                    }
+
+                    fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+                        #key_name {
+                            #(#static_key_fields,)*
+                            __dyn_keys: key.__dyn_keys.clone(),
+                            __entry_dimensions: key.__entry_dimensions.clone(),
+                        }
+                    }
+
+                    fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+                        owned == borrowed
+                    }
+                }
+            };
+
+            (key_struct, key_impl, quote! { #key_extractor_name })
+        } else {
+            // Static keys only (existing behavior)
+            let key_field_defs = key_fields.iter().map(|f| {
+                let name = &f.name;
+                let ty = &f.ty;
+                let metrics_attrs = &f.metrics_attrs;
+                quote! {
+                    #(#metrics_attrs)*
+                    #name: ::std::borrow::Cow<'a, #ty>
+                }
+            });
+
+            let from_source_fields = key_fields.iter().map(|f| {
+                let name = &f.name;
+                quote! { #name: ::std::borrow::Cow::Borrowed(&source.#name) }
+            });
+
+            let static_key_fields = key_fields.iter().map(|f| {
+                let name = &f.name;
+                quote! { #name: ::std::borrow::Cow::Owned(key.#name.clone().into_owned()) }
+            });
+
+            let key_struct = quote! {
+                #[derive(Clone, Hash, PartialEq, Eq)]
+                #[metrics]
+                // key struct needs to be pub because it is used in a trait
+                pub struct #key_name<'a> {
+                    #(#key_field_defs),*
+                }
+            };
+
+            let key_impl = quote! {
+                #vis struct #key_extractor_name;
+
+                impl ::metrique_aggregation::__macro_plumbing::Key<#source_ty> for #key_extractor_name {
+                    type Key<'a> = #key_name<'a>;
+
+                    fn from_source(source: &#source_ty) -> Self::Key<'_> {
+                        #[allow(deprecated)]
+                        #key_name {
+                            #(#from_source_fields),*
+                        }
+                    }
+
+                    fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
+                        #key_name {
+                            #(#static_key_fields),*
+                        }
+                    }
+
+                    fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
+                        owned == borrowed
+                    }
+                }
+            };
+
+            (key_struct, key_impl, quote! { #key_extractor_name })
+        }
+    } else {
         (
             quote! {},
             quote! {},
             quote! { ::metrique_aggregation::__macro_plumbing::NoKey },
         )
-    } else {
-        let key_field_defs = key_fields.iter().map(|f| {
-            let name = &f.name;
-            let ty = &f.ty;
-            let metrics_attrs = &f.metrics_attrs;
-            quote! {
-                #(#metrics_attrs)*
-                #name: ::std::borrow::Cow<'a, #ty>
-            }
-        });
-
-        let from_source_fields = key_fields.iter().map(|f| {
-            let name = &f.name;
-            quote! {
-                #name: ::std::borrow::Cow::Borrowed(&source.#name)
-            }
-        });
-
-        let static_key_fields = key_fields.iter().map(|f| {
-            let name = &f.name;
-            quote! {
-                #name: ::std::borrow::Cow::Owned(key.#name.clone().into_owned())
-            }
-        });
-
-        let key_struct = quote! {
-            #[derive(Clone, Hash, PartialEq, Eq)]
-            #[metrics]
-            // key struct needs to be pub because it is used in a trait
-            pub struct #key_name<'a> {
-                #(#key_field_defs),*
-            }
-        };
-
-        let key_impl = quote! {
-            #vis struct #key_extractor_name;
-
-            impl ::metrique_aggregation::__macro_plumbing::Key<#source_ty> for #key_extractor_name {
-                type Key<'a> = #key_name<'a>;
-
-                fn from_source(source: &#source_ty) -> Self::Key<'_> {
-                    #[allow(deprecated)]
-                    #key_name {
-                        #(#from_source_fields),*
-                    }
-                }
-
-                fn static_key<'a>(key: &Self::Key<'a>) -> Self::Key<'static> {
-                    #key_name {
-                        #(#static_key_fields),*
-                    }
-                }
-
-                fn static_key_matches<'a>(owned: &Self::Key<'static>, borrowed: &Self::Key<'a>) -> bool {
-                    owned == borrowed
-                }
-            }
-        };
-
-        (key_struct, key_impl, quote! { #key_extractor_name })
     };
 
     // Generate AggregateStrategy impl
@@ -381,7 +613,13 @@ pub(crate) fn generate_merge_ref_impl(
         let strategy = f.strategy.as_ref().unwrap();
         let field_ty = &f.ty;
 
-        let value_ty = if entry_mode {
+        let value_ty = if f.is_dimensional {
+            if entry_mode {
+                quote! { <<#field_ty as metrique::CloseValue>::Closed as ::metrique_writer::value::WithDimensionsExt>::Inner }
+            } else {
+                quote! { <#field_ty as ::metrique_writer::value::WithDimensionsExt>::Inner }
+            }
+        } else if entry_mode {
             quote! { <#field_ty as metrique::CloseValue>::Closed }
         } else {
             quote! { #field_ty }
@@ -395,7 +633,13 @@ pub(crate) fn generate_merge_ref_impl(
             quote! {}
         };
 
-        if f.use_clone {
+        if f.is_dimensional {
+            // For dimensional fields, use inner() to borrow the inner value
+            quote_spanned! { field_span=>
+                #expect_deprecated
+                <::metrique_aggregation::__macro_plumbing::CopyWrapper<#strategy> as ::metrique_aggregation::__macro_plumbing::AggregateValue<&#value_ty>>::insert(&mut accum.#name, input.#name.inner());
+            }
+        } else if f.use_clone {
             // Use clone for this field
             quote_spanned! { field_span=>
                 #expect_deprecated
@@ -738,5 +982,19 @@ mod tests {
                 .to_string()
                 .contains("requires #[aggregate(strategy = ...)]")
         );
+    }
+
+    #[test]
+    fn test_aggregate_with_dimensions() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase")]
+            struct MyMetrics {
+                #[aggregate(strategy = Sum)]
+                count: WithDimension<u64>,
+            }
+        };
+
+        let parsed_file = aggregate_impl_string(input);
+        insta::assert_snapshot!("aggregate_with_dimensions", parsed_file);
     }
 }
