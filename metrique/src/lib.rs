@@ -102,10 +102,7 @@ pub use metrique_core::{
 };
 
 #[doc(hidden)]
-pub use metrique_core::{
-    Identity, KebabCase, PascalCase, STYLE_KEBAB, STYLE_PASCAL, STYLE_PRESERVE, STYLE_SNAKE,
-    SnakeCase,
-};
+pub use metrique_core::{Identity, KebabCase, PascalCase, SnakeCase, Styles};
 
 /// Unit types and utilities for metrics.
 ///

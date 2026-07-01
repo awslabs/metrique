@@ -17,6 +17,50 @@ use smallvec::SmallVec;
 
 use crate::Unit;
 
+/// A descriptor name style definition.
+#[derive(Debug, Clone, Copy)]
+#[non_exhaustive]
+pub struct Style {
+    /// Index into per-style name arrays.
+    pub index: u8,
+    /// Human-readable name for this style (used in codegen identifiers).
+    pub name: &'static str,
+}
+
+/// All supported descriptor name styles. Single source of truth for style ordering.
+///
+/// Adding a new style means adding an entry here and a corresponding method on
+/// [`FieldDescriptorBuilder`].
+#[non_exhaustive]
+pub struct Styles;
+
+impl Styles {
+    /// No transformation (field name used as declared).
+    pub const PRESERVE: Style = Style {
+        index: 0,
+        name: "preserve",
+    };
+    /// PascalCase.
+    pub const PASCAL: Style = Style {
+        index: 1,
+        name: "PascalCase",
+    };
+    /// snake_case.
+    pub const SNAKE: Style = Style {
+        index: 2,
+        name: "snake_case",
+    };
+    /// kebab-case.
+    pub const KEBAB: Style = Style {
+        index: 3,
+        name: "kebab-case",
+    };
+    /// All styles in index order.
+    pub const ALL: [Style; 4] = [Self::PRESERVE, Self::PASCAL, Self::SNAKE, Self::KEBAB];
+    /// Number of styles.
+    pub const COUNT: usize = Self::ALL.len();
+}
+
 /// Static descriptor storage for a macro-derived entry.
 #[derive(Debug)]
 pub struct EntryDescriptor {
@@ -39,20 +83,24 @@ impl EntryDescriptor {
     }
 }
 
-/// Static field storage. Stores a single resolved name for one name style.
+/// Static field storage. Stores resolved names for all name styles.
 #[derive(Debug)]
 pub struct FieldDescriptor {
-    name: &'static str,
+    names: [&'static str; Styles::COUNT],
     flags: &'static [FieldFlag],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
 
 impl FieldDescriptor {
-    /// Create a builder for a [`FieldDescriptor`] with the given name.
+    /// Create a builder for a [`FieldDescriptor`] with a fixed name used for all styles.
+    ///
+    /// The name is used verbatim regardless of the parent's `rename_all` style.
+    /// Call `.pascal()`, `.snake()`, `.kebab()` on the builder to set
+    /// style-specific names if needed.
     pub const fn builder(name: &'static str) -> FieldDescriptorBuilder {
         FieldDescriptorBuilder {
-            name,
+            names: [name; Styles::COUNT],
             flags: &[],
             shape: FieldShape::Opaque,
             unit: None,
@@ -221,17 +269,22 @@ pub struct DescriptorRef<'a> {
     descriptor: &'a EntryDescriptor,
     id: DescriptorId,
     prefixes: SmallVec<[&'static str; 1]>,
+    style_index: u8,
 }
 
 impl<'a> DescriptorRef<'a> {
     /// Create a `DescriptorRef` from a `&'static EntryDescriptor`.
     #[doc(hidden)]
-    pub fn from_static(descriptor: &'static EntryDescriptor) -> DescriptorRef<'static> {
+    pub fn from_static(
+        descriptor: &'static EntryDescriptor,
+        style_index: u8,
+    ) -> DescriptorRef<'static> {
         let id = DescriptorId::compute(descriptor, &[]);
         DescriptorRef {
             descriptor,
             id,
             prefixes: SmallVec::new(),
+            style_index,
         }
     }
 
@@ -281,16 +334,14 @@ impl<'a> FieldView<'a> {
     /// Name parts in order: prefixes (outermost first) then base name.
     /// Concatenate to get the full resolved field name.
     pub fn name_parts(&self) -> impl Iterator<Item = &str> {
-        self.desc
-            .prefixes
-            .iter()
-            .copied()
-            .chain(std::iter::once(self.desc.descriptor.fields[self.idx].name))
+        self.desc.prefixes.iter().copied().chain(std::iter::once(
+            self.desc.descriptor.fields[self.idx].names[self.desc.style_index as usize],
+        ))
     }
 
     /// Just the base field name without any prefixes.
     pub fn base_name(&self) -> &'static str {
-        self.desc.descriptor.fields[self.idx].name
+        self.desc.descriptor.fields[self.idx].names[self.desc.style_index as usize]
     }
     /// Flags applied to this field.
     pub fn flags(&self) -> impl Iterator<Item = &'a FieldFlag> {
@@ -510,13 +561,31 @@ impl EntryDescriptorBuilder {
 
 /// Builder for [`FieldDescriptor`].
 pub struct FieldDescriptorBuilder {
-    name: &'static str,
+    names: [&'static str; Styles::COUNT],
     flags: &'static [FieldFlag],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
 
 impl FieldDescriptorBuilder {
+    /// Set the PascalCase name for this field.
+    pub const fn pascal(mut self, name: &'static str) -> Self {
+        self.names[Styles::PASCAL.index as usize] = name;
+        self
+    }
+
+    /// Set the snake_case name for this field.
+    pub const fn snake(mut self, name: &'static str) -> Self {
+        self.names[Styles::SNAKE.index as usize] = name;
+        self
+    }
+
+    /// Set the kebab-case name for this field.
+    pub const fn kebab(mut self, name: &'static str) -> Self {
+        self.names[Styles::KEBAB.index as usize] = name;
+        self
+    }
+
     /// Set the flags for this field.
     pub const fn flags(mut self, flags: &'static [FieldFlag]) -> Self {
         self.flags = flags;
@@ -544,7 +613,7 @@ impl FieldDescriptorBuilder {
     /// Build the [`FieldDescriptor`].
     pub const fn build(self) -> FieldDescriptor {
         FieldDescriptor {
-            name: self.name,
+            names: self.names,
             flags: self.flags,
             shape: self.shape,
             unit: self.unit,
@@ -552,6 +621,13 @@ impl FieldDescriptorBuilder {
     }
 }
 
+// Static assert: the number of named style setters on FieldDescriptorBuilder
+// (pascal, snake, kebab = 3, plus the base preserve slot = 4) must match Styles::COUNT.
+// If you add a new Style to Styles::ALL, add a corresponding builder method.
+const _: () = assert!(
+    Styles::COUNT == 4,
+    "Styles::COUNT changed; update FieldDescriptorBuilder with a new style method"
+);
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -559,8 +635,8 @@ mod tests {
     #[test]
     fn descriptor_ref_stable_id() {
         static DESC: EntryDescriptor = EntryDescriptor::builder("Test", &[]).build();
-        let r1 = DescriptorRef::from_static(&DESC);
-        let r2 = DescriptorRef::from_static(&DESC);
+        let r1 = DescriptorRef::from_static(&DESC, 0);
+        let r2 = DescriptorRef::from_static(&DESC, 0);
         assert_eq!(r1.id(), r2.id());
         assert_eq!(r1.name(), "Test");
     }
@@ -570,16 +646,16 @@ mod tests {
         static A: EntryDescriptor = EntryDescriptor::builder("A", &[]).build();
         static B: EntryDescriptor = EntryDescriptor::builder("B", &[]).build();
         assert_ne!(
-            DescriptorRef::from_static(&A).id(),
-            DescriptorRef::from_static(&B).id()
+            DescriptorRef::from_static(&A, 0).id(),
+            DescriptorRef::from_static(&B, 0).id()
         );
     }
 
     #[test]
     fn prefix_changes_id() {
         static DESC: EntryDescriptor = EntryDescriptor::builder("T", &[]).build();
-        let plain = DescriptorRef::from_static(&DESC);
-        let prefixed = DescriptorRef::from_static(&DESC).with_prefix("Api");
+        let plain = DescriptorRef::from_static(&DESC, 0);
+        let prefixed = DescriptorRef::from_static(&DESC, 0).with_prefix("Api");
         assert_ne!(plain.id(), prefixed.id());
     }
 
@@ -588,7 +664,7 @@ mod tests {
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::builder("MyField").build()];
         static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
-        let d = DescriptorRef::from_static(&DESC);
+        let d = DescriptorRef::from_static(&DESC, 0);
         assert_eq!(d.fields().next().unwrap().base_name(), "MyField");
     }
 
@@ -597,7 +673,7 @@ mod tests {
         static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::builder("Latency").build()];
         static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
-        let d = DescriptorRef::from_static(&DESC).with_prefix("Api");
+        let d = DescriptorRef::from_static(&DESC, 0).with_prefix("Api");
         let fields: Vec<_> = d.fields().collect();
         let parts: Vec<&str> = fields[0].name_parts().collect();
         assert_eq!(parts, vec!["Api", "Latency"]);
@@ -609,7 +685,7 @@ mod tests {
         static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
         // Simulates: inner child applies "Api", then outer parent applies "Http"
-        let d = DescriptorRef::from_static(&DESC)
+        let d = DescriptorRef::from_static(&DESC, 0)
             .with_prefix("Api")
             .with_prefix("Http");
         let fields: Vec<_> = d.fields().collect();
@@ -625,7 +701,7 @@ mod tests {
         ];
         static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
 
-        let d = DescriptorRef::from_static(&DESC);
+        let d = DescriptorRef::from_static(&DESC, 0);
         let fields: Vec<_> = d.fields().collect();
         assert_eq!(fields.len(), 2);
         assert_eq!(fields[0].base_name(), "Alpha");
@@ -638,7 +714,7 @@ mod tests {
         static DESC: EntryDescriptor = EntryDescriptor::builder("E", &[])
             .timestamp(TimestampDescriptor::new("ts"))
             .build();
-        let d = DescriptorRef::from_static(&DESC);
+        let d = DescriptorRef::from_static(&DESC, 0);
         assert_eq!(d.timestamp().unwrap().name(), "ts");
     }
 
@@ -660,7 +736,7 @@ mod tests {
         impl Entry for WithDesc {
             fn write<'a>(&'a self, _w: &mut impl EntryWriter<'a>) {}
             fn descriptors(&self) -> Descriptors<'_> {
-                Descriptors::available(std::iter::once(DescriptorRef::from_static(&DESC)))
+                Descriptors::available(std::iter::once(DescriptorRef::from_static(&DESC, 0)))
             }
         }
         let boxed = BoxEntry::new(WithDesc);

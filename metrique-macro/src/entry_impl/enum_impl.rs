@@ -382,7 +382,7 @@ fn generate_enum_descriptor(
                 }
             }
 
-            // Generate this variant's 4-style descriptor statics using the shared helper.
+            // Generate this variant's descriptor static using the shared helper.
             let variant_name = format!("{}::{}", struct_name, variant_ident);
             let ident_prefix = format!("V{}", v_idx);
             let desc_block = super::generate_style_matched_descriptor(
@@ -393,12 +393,12 @@ fn generate_enum_descriptor(
             );
 
             let base = quote! {
-                {
-                    let style = <#ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
-                    ::metrique::writer::core::Descriptors::available(
-                        ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(#desc_block))
-                    )
-                }
+                ::metrique::writer::core::Descriptors::available(
+                    ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                        #desc_block,
+                        <#ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ))
+                )
             };
 
             let (pattern, chain_expr) = build_variant_descriptor_arm(entry_name, variant, &base, &ns);

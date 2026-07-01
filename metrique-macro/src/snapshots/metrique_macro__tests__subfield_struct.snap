@@ -18,75 +18,25 @@ const _: () = {
     impl NestedMetricsEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor(
-            __style: u8,
-        ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            let style = __style;
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                match style {
-                    ::metrique::STYLE_PRESERVE => {
-                        static __METRIQUE__FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("counter")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "NestedMetrics",
-                                &__METRIQUE__FIELDS_PRESERVE,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_PRESERVE
-                    }
-                    ::metrique::STYLE_PASCAL => {
-                        static __METRIQUE__FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("Counter")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "NestedMetrics",
-                                &__METRIQUE__FIELDS_PASCAL,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_PASCAL
-                    }
-                    ::metrique::STYLE_SNAKE => {
-                        static __METRIQUE__FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("counter")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "NestedMetrics",
-                                &__METRIQUE__FIELDS_SNAKE,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_SNAKE
-                    }
-                    ::metrique::STYLE_KEBAB => {
-                        static __METRIQUE__FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("counter")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "NestedMetrics",
-                                &__METRIQUE__FIELDS_KEBAB,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_KEBAB
-                    }
-                    _ => unreachable!(),
-                }
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("counter")
+                        .pascal("Counter")
+                        .snake("counter")
+                        .kebab("counter")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "NestedMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
             }
         }
     }
@@ -141,9 +91,8 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                 ::std::iter::once(
                     ::metrique::writer::core::DescriptorRef::from_static(
-                        NestedMetricsEntry::__metrique_descriptor(
-                            <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
-                        ),
+                        NestedMetricsEntry::__metrique_descriptor(),
+                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                     ),
                 ),
             )

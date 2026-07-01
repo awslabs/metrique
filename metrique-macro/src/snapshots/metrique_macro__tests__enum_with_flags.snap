@@ -153,158 +153,62 @@ const _: () = {
             #[allow(deprecated)]
             match self {
                 FlaggedEnumEntry::Alpha { .. } => {
-                    let style = <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
-                            ::metrique::writer::core::DescriptorRef::from_static({
-                                static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
-                                    ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
-                                ];
-                                match style {
-                                    ::metrique::STYLE_PRESERVE => {
-                                        static __METRIQUE_V0_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("value")
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Alpha",
-                                                &__METRIQUE_V0_FIELDS_PRESERVE,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V0_DESC_PRESERVE
-                                    }
-                                    ::metrique::STYLE_PASCAL => {
-                                        static __METRIQUE_V0_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("Value")
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Alpha",
-                                                &__METRIQUE_V0_FIELDS_PASCAL,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V0_DESC_PASCAL
-                                    }
-                                    ::metrique::STYLE_SNAKE => {
-                                        static __METRIQUE_V0_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("value")
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Alpha",
-                                                &__METRIQUE_V0_FIELDS_SNAKE,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V0_DESC_SNAKE
-                                    }
-                                    ::metrique::STYLE_KEBAB => {
-                                        static __METRIQUE_V0_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("value")
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Alpha",
-                                                &__METRIQUE_V0_FIELDS_KEBAB,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V0_DESC_KEBAB
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }),
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
+                                        ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
+                                    ];
+                                    static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder("value")
+                                            .pascal("Value")
+                                            .snake("value")
+                                            .kebab("value")
+                                            .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "FlaggedEnum::Alpha",
+                                            &__METRIQUE_V0_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V0_DESC
+                                },
+                                <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
                         ),
                     )
                 }
                 FlaggedEnumEntry::Beta { .. } => {
-                    let style = <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
-                            ::metrique::writer::core::DescriptorRef::from_static({
-                                static __METRIQUE_V1_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                                match style {
-                                    ::metrique::STYLE_PRESERVE => {
-                                        static __METRIQUE_V1_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "skipped",
-                                                )
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Beta",
-                                                &__METRIQUE_V1_FIELDS_PRESERVE,
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V1_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "skipped",
                                             )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V1_DESC_PRESERVE
-                                    }
-                                    ::metrique::STYLE_PASCAL => {
-                                        static __METRIQUE_V1_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "Skipped",
-                                                )
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Beta",
-                                                &__METRIQUE_V1_FIELDS_PASCAL,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V1_DESC_PASCAL
-                                    }
-                                    ::metrique::STYLE_SNAKE => {
-                                        static __METRIQUE_V1_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "skipped",
-                                                )
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Beta",
-                                                &__METRIQUE_V1_FIELDS_SNAKE,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V1_DESC_SNAKE
-                                    }
-                                    ::metrique::STYLE_KEBAB => {
-                                        static __METRIQUE_V1_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "skipped",
-                                                )
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "FlaggedEnum::Beta",
-                                                &__METRIQUE_V1_FIELDS_KEBAB,
-                                            )
-                                            .maybe_timestamp(None)
-                                            .build();
-                                        &__METRIQUE_V1_DESC_KEBAB
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }),
+                                            .pascal("Skipped")
+                                            .snake("skipped")
+                                            .kebab("skipped")
+                                            .flags(&__METRIQUE_V1_FLAGS_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V1_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "FlaggedEnum::Beta",
+                                            &__METRIQUE_V1_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V1_DESC
+                                },
+                                <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
                         ),
                     )
                 }

@@ -173,204 +173,72 @@ const _: () = {
             #[allow(deprecated)]
             match self {
                 TimestampEnumEntry::Read { .. } => {
-                    let style = <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
-                            ::metrique::writer::core::DescriptorRef::from_static({
-                                static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                                match style {
-                                    ::metrique::STYLE_PRESERVE => {
-                                        static __METRIQUE_V0_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "latency",
-                                                )
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(
-                                                    Some(
-                                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                                                    ),
-                                                )
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Read",
-                                                &__METRIQUE_V0_FIELDS_PRESERVE,
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "latency",
                                             )
-                                            .maybe_timestamp(
+                                            .pascal("Latency")
+                                            .snake("latency")
+                                            .kebab("latency")
+                                            .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .maybe_unit(
                                                 Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
+                                                    <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
                                                 ),
                                             )
-                                            .build();
-                                        &__METRIQUE_V0_DESC_PRESERVE
-                                    }
-                                    ::metrique::STYLE_PASCAL => {
-                                        static __METRIQUE_V0_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "Latency",
-                                                )
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(
-                                                    Some(
-                                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                                                    ),
-                                                )
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Read",
-                                                &__METRIQUE_V0_FIELDS_PASCAL,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V0_DESC_PASCAL
-                                    }
-                                    ::metrique::STYLE_SNAKE => {
-                                        static __METRIQUE_V0_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "latency",
-                                                )
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(
-                                                    Some(
-                                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                                                    ),
-                                                )
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Read",
-                                                &__METRIQUE_V0_FIELDS_SNAKE,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V0_DESC_SNAKE
-                                    }
-                                    ::metrique::STYLE_KEBAB => {
-                                        static __METRIQUE_V0_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder(
-                                                    "latency",
-                                                )
-                                                .flags(&__METRIQUE_V0_FLAGS_0)
-                                                .maybe_unit(
-                                                    Some(
-                                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
-                                                    ),
-                                                )
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V0_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Read",
-                                                &__METRIQUE_V0_FIELDS_KEBAB,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V0_DESC_KEBAB
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }),
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "TimestampEnum::Read",
+                                            &__METRIQUE_V0_FIELDS,
+                                        )
+                                        .maybe_timestamp(
+                                            Some(
+                                                ::metrique::writer::core::TimestampDescriptor::new("ts"),
+                                            ),
+                                        )
+                                        .build();
+                                    &__METRIQUE_V0_DESC
+                                },
+                                <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
                         ),
                     )
                 }
                 TimestampEnumEntry::Write { .. } => {
-                    let style = <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX;
                     ::metrique::writer::core::Descriptors::available(
                         ::std::iter::once(
-                            ::metrique::writer::core::DescriptorRef::from_static({
-                                static __METRIQUE_V1_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
-                                match style {
-                                    ::metrique::STYLE_PRESERVE => {
-                                        static __METRIQUE_V1_FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("bytes")
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Write",
-                                                &__METRIQUE_V1_FIELDS_PRESERVE,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V1_DESC_PRESERVE
-                                    }
-                                    ::metrique::STYLE_PASCAL => {
-                                        static __METRIQUE_V1_FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("Bytes")
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Write",
-                                                &__METRIQUE_V1_FIELDS_PASCAL,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V1_DESC_PASCAL
-                                    }
-                                    ::metrique::STYLE_SNAKE => {
-                                        static __METRIQUE_V1_FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("bytes")
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Write",
-                                                &__METRIQUE_V1_FIELDS_SNAKE,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V1_DESC_SNAKE
-                                    }
-                                    ::metrique::STYLE_KEBAB => {
-                                        static __METRIQUE_V1_FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
-                                            ::metrique::writer::core::FieldDescriptor::builder("bytes")
-                                                .flags(&__METRIQUE_V1_FLAGS_0)
-                                                .maybe_unit(None)
-                                                .build(),
-                                        ];
-                                        static __METRIQUE_V1_DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                                "TimestampEnum::Write",
-                                                &__METRIQUE_V1_FIELDS_KEBAB,
-                                            )
-                                            .maybe_timestamp(
-                                                Some(
-                                                    ::metrique::writer::core::TimestampDescriptor::new("ts"),
-                                                ),
-                                            )
-                                            .build();
-                                        &__METRIQUE_V1_DESC_KEBAB
-                                    }
-                                    _ => unreachable!(),
-                                }
-                            }),
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V1_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder("bytes")
+                                            .pascal("Bytes")
+                                            .snake("bytes")
+                                            .kebab("bytes")
+                                            .flags(&__METRIQUE_V1_FLAGS_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V1_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "TimestampEnum::Write",
+                                            &__METRIQUE_V1_FIELDS,
+                                        )
+                                        .maybe_timestamp(
+                                            Some(
+                                                ::metrique::writer::core::TimestampDescriptor::new("ts"),
+                                            ),
+                                        )
+                                        .build();
+                                    &__METRIQUE_V1_DESC
+                                },
+                                <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
                         ),
                     )
                 }

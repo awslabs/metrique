@@ -30,10 +30,7 @@ const _: () = {
     impl FlaggedMetricsEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor(
-            __style: u8,
-        ) -> &'static ::metrique::writer::core::EntryDescriptor {
-            let style = __style;
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
                     ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
@@ -43,101 +40,36 @@ const _: () = {
                     ::metrique::writer::core::FieldFlag::new::<OtherFlag>(),
                     ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
                 ];
-                match style {
-                    ::metrique::STYLE_PRESERVE => {
-                        static __METRIQUE__FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("count")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("debug")
-                                .flags(&__METRIQUE__FLAGS_1)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("special")
-                                .flags(&__METRIQUE__FLAGS_2)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "FlaggedMetrics",
-                                &__METRIQUE__FIELDS_PRESERVE,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_PRESERVE
-                    }
-                    ::metrique::STYLE_PASCAL => {
-                        static __METRIQUE__FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("Count")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("Debug")
-                                .flags(&__METRIQUE__FLAGS_1)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("Special")
-                                .flags(&__METRIQUE__FLAGS_2)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "FlaggedMetrics",
-                                &__METRIQUE__FIELDS_PASCAL,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_PASCAL
-                    }
-                    ::metrique::STYLE_SNAKE => {
-                        static __METRIQUE__FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("count")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("debug")
-                                .flags(&__METRIQUE__FLAGS_1)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("special")
-                                .flags(&__METRIQUE__FLAGS_2)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "FlaggedMetrics",
-                                &__METRIQUE__FIELDS_SNAKE,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_SNAKE
-                    }
-                    ::metrique::STYLE_KEBAB => {
-                        static __METRIQUE__FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
-                            ::metrique::writer::core::FieldDescriptor::builder("count")
-                                .flags(&__METRIQUE__FLAGS_0)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("debug")
-                                .flags(&__METRIQUE__FLAGS_1)
-                                .maybe_unit(None)
-                                .build(),
-                            ::metrique::writer::core::FieldDescriptor::builder("special")
-                                .flags(&__METRIQUE__FLAGS_2)
-                                .maybe_unit(None)
-                                .build(),
-                        ];
-                        static __METRIQUE__DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
-                                "FlaggedMetrics",
-                                &__METRIQUE__FIELDS_KEBAB,
-                            )
-                            .maybe_timestamp(None)
-                            .build();
-                        &__METRIQUE__DESC_KEBAB
-                    }
-                    _ => unreachable!(),
-                }
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("count")
+                        .pascal("Count")
+                        .snake("count")
+                        .kebab("count")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .maybe_unit(None)
+                        .build(),
+                    ::metrique::writer::core::FieldDescriptor::builder("debug")
+                        .pascal("Debug")
+                        .snake("debug")
+                        .kebab("debug")
+                        .flags(&__METRIQUE__FLAGS_1)
+                        .maybe_unit(None)
+                        .build(),
+                    ::metrique::writer::core::FieldDescriptor::builder("special")
+                        .pascal("Special")
+                        .snake("special")
+                        .kebab("special")
+                        .flags(&__METRIQUE__FLAGS_2)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "FlaggedMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
             }
         }
     }
@@ -263,9 +195,8 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                 ::std::iter::once(
                     ::metrique::writer::core::DescriptorRef::from_static(
-                        FlaggedMetricsEntry::__metrique_descriptor(
-                            <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
-                        ),
+                        FlaggedMetricsEntry::__metrique_descriptor(),
+                        <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                     ),
                 ),
             )

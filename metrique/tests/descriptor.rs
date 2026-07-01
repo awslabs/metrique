@@ -1073,7 +1073,7 @@ fn conflicting_styles_parent_wins_for_flatten() {
 // ============================================================
 
 #[metrics(subfield, rename_all = "snake_case")]
-struct EnumVariantPfxChild {
+pub struct EnumVariantPfxChild {
     child_val: u64,
 }
 

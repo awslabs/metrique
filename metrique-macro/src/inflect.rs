@@ -31,13 +31,13 @@ pub(crate) enum NameStyle {
 }
 
 impl NameStyle {
-    /// All styles in index order (matching `metrique_core::STYLE_*` constants).
-    pub(crate) const ALL: [NameStyle; metrique_core::STYLE_COUNT] = {
-        let mut arr = [NameStyle::Preserve; metrique_core::STYLE_COUNT];
-        arr[metrique_core::STYLE_PRESERVE as usize] = NameStyle::Preserve;
-        arr[metrique_core::STYLE_PASCAL as usize] = NameStyle::PascalCase;
-        arr[metrique_core::STYLE_SNAKE as usize] = NameStyle::SnakeCase;
-        arr[metrique_core::STYLE_KEBAB as usize] = NameStyle::KebabCase;
+    /// All styles in index order (matching `Styles::ALL`).
+    pub(crate) const ALL: [NameStyle; metrique_core::Styles::COUNT] = {
+        let mut arr = [NameStyle::Preserve; metrique_core::Styles::COUNT];
+        arr[metrique_core::Styles::PRESERVE.index as usize] = NameStyle::Preserve;
+        arr[metrique_core::Styles::PASCAL.index as usize] = NameStyle::PascalCase;
+        arr[metrique_core::Styles::SNAKE.index as usize] = NameStyle::SnakeCase;
+        arr[metrique_core::Styles::KEBAB.index as usize] = NameStyle::KebabCase;
         arr
     };
 
