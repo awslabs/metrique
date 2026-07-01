@@ -4,9 +4,12 @@
 //! Entry descriptors: compile-time structural metadata for macro-derived entries.
 //!
 //! Sinks interact with [`DescriptorRef`], which provides resolved field names,
-//! tags, shapes, and units. The underlying storage types ([`EntryDescriptor`],
+//! flags, shapes, and units. The underlying storage types ([`EntryDescriptor`],
 //! [`FieldDescriptor`]) are public for macro construction but sinks should use
 //! [`DescriptorRef`] and [`FieldView`] accessors.
+//!
+//! See the "Recipe: a descriptor-aware sink" section in the extending guide for
+//! usage patterns and best practices.
 
 use std::any::TypeId;
 
