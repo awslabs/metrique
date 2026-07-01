@@ -246,7 +246,8 @@ fn assemble_descriptors_method(
     let base_expr = quote! {
         ::metrique::writer::core::Descriptors::available(
             ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(<#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX)
+                #entry_name::__metrique_descriptor(),
+                <#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
             ))
         )
     };

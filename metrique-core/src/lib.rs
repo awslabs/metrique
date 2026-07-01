@@ -15,8 +15,7 @@ mod namestyle;
 
 pub use atomics::{Counter, CounterGuard, OwnedCounterGuard};
 pub use namestyle::{
-    DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, STYLE_COUNT, STYLE_KEBAB,
-    STYLE_NAMES, STYLE_PASCAL, STYLE_PRESERVE, STYLE_SNAKE, SnakeCase,
+    DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, SnakeCase, Style, Styles,
 };
 
 /// Close a given value

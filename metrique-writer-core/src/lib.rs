@@ -8,7 +8,7 @@
 pub use crate::descriptor::{
     AvailableDescriptors, DescriptorId, DescriptorIter, DescriptorRef, Descriptors,
     EntryDescriptor, EntryDescriptorBuilder, FieldDescriptor, FieldDescriptorBuilder, FieldFlag,
-    FieldShape, FieldView, KnownShape, ShapeRef, StringShape, TimestampDescriptor,
+    FieldShape, FieldView, KnownShape, ShapeRef, StringShape, Style, Styles, TimestampDescriptor,
 };
 pub use crate::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use crate::global::GlobalEntrySink;
