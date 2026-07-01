@@ -610,13 +610,11 @@ pub(crate) fn resolve_field_flags(
         if already_specified {
             continue;
         }
-        if default_flag.skip {
-            // skip on a default: don't emit
-        } else {
-            flags.push(quote! {
-                ::metrique::writer::core::FieldFlag::new::<#path>()
-            });
-        }
+        // skip(...) in default_flags is rejected by the parser, so this is always false
+        debug_assert!(!default_flag.skip);
+        flags.push(quote! {
+            ::metrique::writer::core::FieldFlag::new::<#path>()
+        });
     }
 
     ResolvedFlags {
