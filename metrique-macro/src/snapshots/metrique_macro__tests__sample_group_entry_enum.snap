@@ -104,6 +104,43 @@ pub struct MetadataEntry {
     request_id: <String as metrique::CloseValue>::Closed,
 }
 const _: () = {
+    impl MetadataEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("operation")
+                        .pascal("Operation")
+                        .snake("operation")
+                        .kebab("operation")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
+                        .maybe_unit(None)
+                        .build(),
+                    ::metrique::writer::core::FieldDescriptor::builder("request_id")
+                        .pascal("RequestId")
+                        .snake("request_id")
+                        .kebab("request-id")
+                        .flags(&__METRIQUE__FLAGS_1)
+                        .skipped_flags(&__METRIQUE__SKIPPED_1)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "Metadata",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for MetadataEntry {
         fn write<'__metrique_write>(
@@ -209,6 +246,16 @@ const _: () = {
                     ),
                 ))
             }
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        MetadataEntry::__metrique_descriptor(),
+                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ),
+                ),
+            )
         }
     }
 };
@@ -554,6 +601,138 @@ const _: () = {
                         ::metrique::InflectableEntry::<NS>::sample_group(v0)
                             .chain(::metrique::writer::Entry::sample_group(v1)),
                     )
+                }
+            }
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #[allow(deprecated)]
+            match self {
+                RequestResultEntry::Success { .. } => {
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "operation",
+                                            )
+                                            .pascal("Operation")
+                                            .snake("operation")
+                                            .kebab("operation")
+                                            .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                        ::metrique::writer::core::FieldDescriptor::builder("bytes")
+                                            .pascal("Bytes")
+                                            .snake("bytes")
+                                            .kebab("bytes")
+                                            .flags(&__METRIQUE_V0_FLAGS_1)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "RequestResult::Success",
+                                            &__METRIQUE_V0_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V0_DESC
+                                },
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
+                        ),
+                    )
+                }
+                RequestResultEntry::Error { .. } => {
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V1_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "operation",
+                                            )
+                                            .pascal("Operation")
+                                            .snake("operation")
+                                            .kebab("operation")
+                                            .flags(&__METRIQUE_V1_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "error_code",
+                                            )
+                                            .pascal("ErrorCode")
+                                            .snake("error_code")
+                                            .kebab("error-code")
+                                            .flags(&__METRIQUE_V1_FLAGS_1)
+                                            .skipped_flags(&__METRIQUE_V1_SKIPPED_1)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V1_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "RequestResult::Error",
+                                            &__METRIQUE_V1_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V1_DESC
+                                },
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
+                        ),
+                    )
+                }
+                RequestResultEntry::Timeout(__v0) => {
+                    ::metrique::writer::core::Descriptors::available(
+                            ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    {
+                                        static __METRIQUE_V2_FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                                        static __METRIQUE_V2_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                                "RequestResult::Timeout",
+                                                &__METRIQUE_V2_FIELDS,
+                                            )
+                                            .maybe_timestamp(None)
+                                            .build();
+                                        &__METRIQUE_V2_DESC
+                                    },
+                                    <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                                ),
+                            ),
+                        )
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
+                }
+                RequestResultEntry::Cancelled(__v0, __v1) => {
+                    ::metrique::writer::core::Descriptors::available(
+                            ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    {
+                                        static __METRIQUE_V3_FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                                        static __METRIQUE_V3_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                                "RequestResult::Cancelled",
+                                                &__METRIQUE_V3_FIELDS,
+                                            )
+                                            .maybe_timestamp(None)
+                                            .build();
+                                        &__METRIQUE_V3_DESC
+                                    },
+                                    <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                                ),
+                            ),
+                        )
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
+                        .chain(::metrique::writer::Entry::descriptors(__v1))
                 }
             }
         }

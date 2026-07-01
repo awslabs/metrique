@@ -8,8 +8,8 @@ error: Only structs are supported with value, use value(string) with enums
 error: Only structs are supported with value, use value(string) with enums
   --> tests/ui/fail/bad_metrics_value.rs:8:1
    |
-8  | / enum EnumWithNakedValue {
-9  | |     Foo
+ 8 | / enum EnumWithNakedValue {
+ 9 | |     Foo
 10 | | }
    | |_^
 
@@ -81,10 +81,10 @@ error[E0412]: cannot find type `Second` in this scope
    |
 24 |     #[metrics(unit = Second)]
    |                      ^^^^^^
+   |
   --> $RUST/core/src/marker.rs
    |
    = note: similarly named trait `Send` defined here
-   |
 help: a trait with a similar name exists
    |
 24 -     #[metrics(unit = Second)]
@@ -92,18 +92,18 @@ help: a trait with a similar name exists
    |
 help: consider importing one of these structs
    |
-1  + use metrique::writer::unit::Second;
+ 1 + use metrique::writer::unit::Second;
    |
-1  + use metrique_writer::unit::Second;
+ 1 + use metrique_writer::unit::Second;
    |
-1  + use metrique_writer_core::unit::Second;
+ 1 + use metrique_writer_core::unit::Second;
    |
 
-error[E0277]: `String` cannot be used as a sample group
+error[E0277]: `std::string::String` cannot be used as a sample group
   --> tests/ui/fail/bad_metrics_value.rs:81:1
    |
 81 | #[metrics]
-   | ^^^^^^^^^^ the trait `SampleGroup` is not implemented for `String`
+   | ^^^^^^^^^^ the trait `SampleGroup` is not implemented for `std::string::String`
 82 | struct WithStringSampleGroup {
 83 |     #[metrics(sample_group)]
    |               ------------ required by a bound introduced by this call
@@ -130,15 +130,15 @@ error[E0277]: `FormattedValue<'_, u32, Foo, _>` is not a metric value
              ForceFlag<T, FLAGS>
            and $N others
 
-error[E0277]: CloseValue is not implemented for &String
+error[E0277]: CloseValue is not implemented for &std::string::String
   --> tests/ui/fail/bad_metrics_value.rs:78:5
    |
 78 |     field: String,
    |     ^^^^^ This type must implement `CloseValue`
    |
-   = help: the trait `CloseValue` is not implemented for `&String`
-   = note: You may need to add `#[metrics]` to `&String` or implement `CloseValue` directly.
-   = note: if &String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = help: the trait `CloseValue` is not implemented for `&std::string::String`
+   = note: You may need to add `#[metrics]` to `&std::string::String` or implement `CloseValue` directly.
+   = note: if &std::string::String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
    = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
 help: consider dereferencing here
    |

@@ -21,6 +21,45 @@ pub struct RequestMetricsEntry {
     number_of_ducks: <usize as metrique::CloseValue>::Closed,
 }
 const _: () = {
+    impl RequestMetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("API@operation")
+                        .pascal("API@Operation")
+                        .snake("API@operation")
+                        .kebab("API@operation")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
+                        .maybe_unit(None)
+                        .build(),
+                    ::metrique::writer::core::FieldDescriptor::builder(
+                            "API@number_of_ducks",
+                        )
+                        .pascal("API@NumberOfDucks")
+                        .snake("API@number_of_ducks")
+                        .kebab("API@number-of-ducks")
+                        .flags(&__METRIQUE__FLAGS_1)
+                        .skipped_flags(&__METRIQUE__SKIPPED_1)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "RequestMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestMetricsEntry {
@@ -97,6 +136,16 @@ const _: () = {
         > {
             let __metrique_self = self;
             ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        RequestMetricsEntry::__metrique_descriptor(),
+                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ),
+                ),
+            )
         }
     }
 };

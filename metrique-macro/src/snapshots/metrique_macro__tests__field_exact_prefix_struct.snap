@@ -21,6 +21,33 @@ pub struct RequestMetricsEntry {
     operation: <&'static str as metrique::CloseValue>::Closed,
 }
 const _: () = {
+    impl RequestMetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("operation")
+                        .pascal("Operation")
+                        .snake("operation")
+                        .kebab("operation")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "RequestMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestMetricsEntry {
@@ -74,6 +101,31 @@ const _: () = {
         > {
             let __metrique_self = self;
             ::metrique::InflectableEntry::<NS>::sample_group(&__metrique_self.nested)
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                    ::std::iter::once(
+                        ::metrique::writer::core::DescriptorRef::from_static(
+                            RequestMetricsEntry::__metrique_descriptor(),
+                            <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                        ),
+                    ),
+                )
+                .chain(
+                    ::metrique::InflectableEntry::<NS>::descriptors(&self.nested)
+                        .map_available(|d| {
+                            d
+                                .with_prefix(
+                                    [
+                                        "API@",
+                                        "API@",
+                                        "API@",
+                                        "API@",
+                                    ][<NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX
+                                        as usize],
+                                )
+                        }),
+                )
         }
     }
 };

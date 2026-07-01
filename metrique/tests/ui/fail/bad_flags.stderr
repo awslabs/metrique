@@ -1,23 +1,17 @@
-error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
-  --> tests/ui/fail/bad_flags.rs:12:15
+error: conflicting `flags`: `MyTag` is both present and skipped
+  --> tests/ui/fail/bad_flags.rs:11:28
    |
-12 |     #[metrics(flatten, flags(FakeFlagCtor))]
+11 |     #[metrics(flags(MyTag, skip(MyTag)))]
+   |                            ^^^^
+
+error: skip(...) is not allowed in default_flags. To exclude a flag from a specific field, use flags(skip(T)) on that field.
+  --> tests/ui/fail/bad_flags.rs:16:25
+   |
+16 | #[metrics(default_flags(skip(MyTag)))]
+   |                         ^^^^
+
+error: flags(...) cannot be used on flatten or flatten_entry fields. Apply flags on the child struct directly with default_flags(...).
+  --> tests/ui/fail/bad_flags.rs:29:15
+   |
+29 |     #[metrics(flatten, flags(MyTag))]
    |               ^^^^^^^
-
-error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
-  --> tests/ui/fail/bad_flags.rs:23:15
-   |
-23 |     #[metrics(flatten_entry, flags(FakeFlagCtor))]
-   |               ^^^^^^^^^^^^^
-
-error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
-  --> tests/ui/fail/bad_flags.rs:34:15
-   |
-34 |     #[metrics(ignore, flags(FakeFlagCtor))]
-   |               ^^^^^^
-
-error: flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.
-  --> tests/ui/fail/bad_flags.rs:40:15
-   |
-40 |     #[metrics(timestamp, flags(FakeFlagCtor))]
-   |               ^^^^^^^^^

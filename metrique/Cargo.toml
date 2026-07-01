@@ -6,7 +6,7 @@ license = "Apache-2.0"
 description = "Library for generating wide event metrics"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
-rust-version = "1.89" # See build.yml for why this MSRV
+rust-version = "1.91" # See .github/workflows/build.yml
 
 [features]
 default = ["service-metrics"]

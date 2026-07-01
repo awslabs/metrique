@@ -18,6 +18,10 @@ impl<E1: Entry, E2: Entry> Entry for Merged<E1, E2> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         self.0.sample_group().chain(self.1.sample_group())
     }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        self.0.descriptors().chain(self.1.descriptors())
+    }
 }
 
 /// Merges 2 [Entry] objects by reference. See [Entry::merge_by_ref].
@@ -32,6 +36,10 @@ impl<E1: Entry + ?Sized, E2: Entry + ?Sized> Entry for MergedRef<'_, E1, E2> {
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         self.0.sample_group().chain(self.1.sample_group())
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        self.0.descriptors().chain(self.1.descriptors())
     }
 }
 

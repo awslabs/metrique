@@ -2,7 +2,7 @@
 name = "metrique-aggregation"
 version = "0.1.13"
 edition = "2024"
-rust-version = "1.89" # build.yml
+rust-version = "1.91" # See .github/workflows/build.yml
 license = "Apache-2.0"
 description = "Library for aggregating metrique events"
 repository = "https://github.com/awslabs/metrique"

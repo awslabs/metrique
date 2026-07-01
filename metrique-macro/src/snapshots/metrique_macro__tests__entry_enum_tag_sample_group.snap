@@ -149,6 +149,53 @@ const _: () = {
                 }
             }
         }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #[allow(deprecated)]
+            match self {
+                OperationEntry::Read { .. } => {
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "operation",
+                                            )
+                                            .pascal("operation")
+                                            .snake("operation")
+                                            .kebab("operation")
+                                            .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                        ::metrique::writer::core::FieldDescriptor::builder("bytes")
+                                            .pascal("Bytes")
+                                            .snake("bytes")
+                                            .kebab("bytes")
+                                            .flags(&__METRIQUE_V0_FLAGS_1)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "Operation::Read",
+                                            &__METRIQUE_V0_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V0_DESC
+                                },
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
+                        ),
+                    )
+                }
+            }
+        }
     }
 };
 impl metrique::CloseValue for Operation {

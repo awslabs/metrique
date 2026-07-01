@@ -135,6 +135,11 @@ impl<NS: metrique_core::NameStyle> metrique_core::InflectableEntry<NS> for NoKey
 impl metrique_writer::Entry for NoKey {
     fn write<'a>(&'a self, _w: &mut impl metrique_writer::EntryWriter<'a>) {}
 
+    // NoKey has zero fields; Available-empty is correct (it IS described, just empty).
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::available(std::iter::empty())
+    }
+
     fn sample_group(
         &self,
     ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {

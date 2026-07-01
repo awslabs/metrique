@@ -262,17 +262,21 @@ use metrique::emf::flags::HighStorageResolution;
 #[metrics(
     rename_all = "PascalCase",
     emf::dimension_sets = [["Operation"]],
+    default_flags(HighStorageResolution),
 )]
 struct LatencySensitiveMetrics {
     operation: String,
-    #[metrics(flags(HighStorageResolution))]
     latency_ms: u64,
+    #[metrics(flags(skip(HighStorageResolution)))]
+    total_count: u64, // standard resolution is fine for counters
 }
 ```
 
-## Excluding Fields from CloudWatch Metrics (NoMetric)
+Use `default_flags(HighStorageResolution)` to apply to all fields, or `flags(HighStorageResolution)` on individual fields. Use `flags(skip(HighStorageResolution))` to opt specific fields out of a struct-level default.
 
-To emit a numeric value as a JSON property without creating a CloudWatch metric, apply the `NoMetric` flag:
+## Forcing Properties (No-Metric)
+
+To emit a numeric value as a JSON property without creating a CloudWatch metric for it, apply the `NoMetric` flag:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -290,7 +294,7 @@ struct RequestMetrics {
 }
 ```
 
-This is useful for numeric context values that you want available in CloudWatch Logs Insights or Contributor Insights queries but don't need as CloudWatch metrics.
+This is useful for numeric context values that you want available in CloudWatch Logs Insights queries but don't need as aggregated CloudWatch metrics.
 
 ## Platform Specific Guidance
 

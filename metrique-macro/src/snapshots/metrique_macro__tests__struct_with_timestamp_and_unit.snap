@@ -1,0 +1,211 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct TimestampMetrics {
+    ts: std::time::SystemTime,
+    latency: u64,
+    count: u64,
+}
+#[doc(hidden)]
+#[allow(clippy::type_complexity)]
+pub struct TimestampMetricsEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    ts: <std::time::SystemTime as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    latency: <<u64 as metrique::CloseValue>::Closed as ::metrique::unit::AttachUnit>::Output<
+        Millisecond,
+    >,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    count: <u64 as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    impl TimestampMetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("latency")
+                        .pascal("Latency")
+                        .snake("latency")
+                        .kebab("latency")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
+                        .maybe_unit(
+                            Some(
+                                <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                            ),
+                        )
+                        .build(),
+                    ::metrique::writer::core::FieldDescriptor::builder("count")
+                        .pascal("Count")
+                        .snake("count")
+                        .kebab("count")
+                        .flags(&__METRIQUE__FLAGS_1)
+                        .skipped_flags(&__METRIQUE__SKIPPED_1)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "TimestampMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(
+                        Some(::metrique::writer::core::TimestampDescriptor::new("ts")),
+                    )
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+    }
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for TimestampMetricsEntry {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
+            let __metrique_self = self;
+            #[allow(clippy::useless_conversion)]
+            {
+                ::metrique::writer::EntryWriter::timestamp(
+                    writer,
+                    (*&__metrique_self.ts).into(),
+                );
+            }
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct LatencyPreserve;
+                    impl ::metrique::concat::ConstStr for LatencyPreserve {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyKebab;
+                    impl ::metrique::concat::ConstStr for LatencyKebab {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyPascal;
+                    impl ::metrique::concat::ConstStr for LatencyPascal {
+                        const VAL: &'static str = "Latency";
+                    }
+                    struct LatencySnake;
+                    impl ::metrique::concat::ConstStr for LatencySnake {
+                        const VAL: &'static str = "latency";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            LatencyPreserve,
+                            LatencyPascal,
+                            LatencySnake,
+                            LatencyKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.latency,
+            );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct CountPreserve;
+                    impl ::metrique::concat::ConstStr for CountPreserve {
+                        const VAL: &'static str = "count";
+                    }
+                    struct CountKebab;
+                    impl ::metrique::concat::ConstStr for CountKebab {
+                        const VAL: &'static str = "count";
+                    }
+                    struct CountPascal;
+                    impl ::metrique::concat::ConstStr for CountPascal {
+                        const VAL: &'static str = "Count";
+                    }
+                    struct CountSnake;
+                    impl ::metrique::concat::ConstStr for CountSnake {
+                        const VAL: &'static str = "count";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            CountPreserve,
+                            CountPascal,
+                            CountSnake,
+                            CountKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.count,
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            let __metrique_self = self;
+            ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        TimestampMetricsEntry::__metrique_descriptor(),
+                        <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ),
+                ),
+            )
+        }
+    }
+};
+impl metrique::CloseValue for TimestampMetrics {
+    type Closed = TimestampMetricsEntry;
+    fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
+        #[allow(deprecated)]
+        TimestampMetricsEntry {
+            ts: metrique::CloseValue::close(__metrique_self_expr!().ts),
+            latency: metrique::CloseValue::close(__metrique_self_expr!().latency).into(),
+            count: metrique::CloseValue::close(__metrique_self_expr!().count),
+        }
+    }
+}
+#[doc = concat!(
+    "Metrics guard returned from [`", "TimestampMetrics",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type TimestampMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    TimestampMetrics,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "TimestampMetricsGuard",
+    "::handle`], similar to an `Arc<", "TimestampMetricsGuard", ">`."
+)]
+type TimestampMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    TimestampMetrics,
+    Q,
+>;
+impl TimestampMetrics {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<TimestampMetricsEntry>>
+            + Send + Sync + 'static,
+    >(self, sink: Q) -> TimestampMetricsGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

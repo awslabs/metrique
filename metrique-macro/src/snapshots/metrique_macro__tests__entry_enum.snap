@@ -15,6 +15,33 @@ pub struct NestedEntry {
     value: <u32 as metrique::CloseValue>::Closed,
 }
 const _: () = {
+    impl NestedEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("value")
+                        .pascal("Value")
+                        .snake("value")
+                        .kebab("value")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
+                        .maybe_unit(None)
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "Nested",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for NestedEntry {
         fn write<'__metrique_write>(
@@ -60,6 +87,16 @@ const _: () = {
         > {
             let __metrique_self = self;
             ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        NestedEntry::__metrique_descriptor(),
+                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ),
+                ),
+            )
         }
     }
 };
@@ -259,6 +296,97 @@ const _: () = {
                 }
             }
         }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #[allow(deprecated)]
+            match self {
+                StatusEntry::Active { .. } => {
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder("count")
+                                            .pascal("Count")
+                                            .snake("count")
+                                            .kebab("count")
+                                            .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                        ::metrique::writer::core::FieldDescriptor::builder(
+                                                "latency",
+                                            )
+                                            .pascal("Latency")
+                                            .snake("latency")
+                                            .kebab("latency")
+                                            .flags(&__METRIQUE_V0_FLAGS_1)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
+                                            .maybe_unit(
+                                                Some(
+                                                    <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                                                ),
+                                            )
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "Status::Active",
+                                            &__METRIQUE_V0_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V0_DESC
+                                },
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
+                        ),
+                    )
+                }
+                StatusEntry::Pending(__v0) => {
+                    ::metrique::writer::core::Descriptors::available(
+                            ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    {
+                                        static __METRIQUE_V1_FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                                        static __METRIQUE_V1_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                                "Status::Pending",
+                                                &__METRIQUE_V1_FIELDS,
+                                            )
+                                            .maybe_timestamp(None)
+                                            .build();
+                                        &__METRIQUE_V1_DESC
+                                    },
+                                    <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                                ),
+                            ),
+                        )
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
+                }
+                StatusEntry::Multi(__v0, _) => {
+                    ::metrique::writer::core::Descriptors::available(
+                            ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    {
+                                        static __METRIQUE_V2_FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                                        static __METRIQUE_V2_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                                "Status::Multi",
+                                                &__METRIQUE_V2_FIELDS,
+                                            )
+                                            .maybe_timestamp(None)
+                                            .build();
+                                        &__METRIQUE_V2_DESC
+                                    },
+                                    <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                                ),
+                            ),
+                        )
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
+                }
+            }
+        }
     }
 };
 impl metrique::CloseValue for &'_ Status {
@@ -426,6 +554,61 @@ const _: () = {
                     OperationEntrySampleGroupIter::V1(
                         ::metrique::InflectableEntry::<NS>::sample_group(v0),
                     )
+                }
+            }
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            #[allow(deprecated)]
+            match self {
+                OperationEntry::Read { .. } => {
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                {
+                                    static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                                        ::metrique::writer::core::FieldDescriptor::builder("bytes")
+                                            .pascal("Bytes")
+                                            .snake("bytes")
+                                            .kebab("bytes")
+                                            .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
+                                            .maybe_unit(None)
+                                            .build(),
+                                    ];
+                                    static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                            "Operation::Read",
+                                            &__METRIQUE_V0_FIELDS,
+                                        )
+                                        .maybe_timestamp(None)
+                                        .build();
+                                    &__METRIQUE_V0_DESC
+                                },
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
+                        ),
+                    )
+                }
+                OperationEntry::Write(__v0) => {
+                    ::metrique::writer::core::Descriptors::available(
+                            ::std::iter::once(
+                                ::metrique::writer::core::DescriptorRef::from_static(
+                                    {
+                                        static __METRIQUE_V1_FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                                        static __METRIQUE_V1_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                                "Operation::Write",
+                                                &__METRIQUE_V1_FIELDS,
+                                            )
+                                            .maybe_timestamp(None)
+                                            .build();
+                                        &__METRIQUE_V1_DESC
+                                    },
+                                    <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                                ),
+                            ),
+                        )
+                        .chain(::metrique::InflectableEntry::<NS>::descriptors(__v0))
                 }
             }
         }
