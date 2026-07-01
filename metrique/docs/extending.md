@@ -237,10 +237,10 @@ Entry descriptors let a sink inspect an entry's structure before (or without) wr
 
 Call `entry.descriptors()` on any `Entry`. The result is a `Descriptors` enum:
 
-```rust
+```rust,ignore
 use metrique_writer_core::{Entry, Descriptors};
 
-fn handle_entry(entry: &dyn Entry) {
+fn handle_entry(entry: &impl Entry) {
     match entry.descriptors() {
         Descriptors::Available(descs) => {
             // Full structural metadata is available.
@@ -274,7 +274,7 @@ Descriptor fields are ordered to match `Entry::write` callback order. When walki
 
 Flags carry both identity and data. Use `.is::<T>()` for identity checks and `.construct()` to access the full flag value:
 
-```rust
+```rust,ignore
 for field in segment.fields() {
     if let Some(flag) = field.flags().find(|f| f.is::<MyFormatFlag>()) {
         let metric_flags = flag.construct();
