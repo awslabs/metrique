@@ -207,9 +207,10 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///
 /// ```rust
 /// # use metrique::unit_of_work::metrics;
-/// use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
+/// use metrique::writer::value::{FlagConstructor, MetricFlags, MetricOptions};
 ///
 /// // Define a flag type
+/// #[derive(Debug)]
 /// struct AuditOpts;
 /// impl MetricOptions for AuditOpts {}
 /// struct AuditExport;
@@ -231,8 +232,8 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///
 /// ```rust
 /// # use metrique::unit_of_work::metrics;
-/// # use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
-/// # struct AuditOpts; impl MetricOptions for AuditOpts {}
+/// # use metrique::writer::value::{FlagConstructor, MetricFlags, MetricOptions};
+/// # #[derive(Debug)] struct AuditOpts; impl MetricOptions for AuditOpts {}
 /// # struct AuditExport;
 /// # impl FlagConstructor for AuditExport {
 /// #     fn construct() -> MetricFlags<'static> { MetricFlags::upcast(&AuditOpts) }
