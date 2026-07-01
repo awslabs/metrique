@@ -17,6 +17,10 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for &T {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for Option<T> {
@@ -27,10 +31,13 @@ impl<NS: NameStyle, T: InflectableEntry<NS>> InflectableEntry<NS> for Option<T> 
     }
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
-        if let Some(entry) = self.as_ref() {
-            itertools::Either::Left(entry.sample_group())
-        } else {
-            itertools::Either::Right([].into_iter())
+        self.as_ref().into_iter().flat_map(|e| e.sample_group())
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        match self.as_ref() {
+            Some(e) => e.descriptors(),
+            None => metrique_writer_core::Descriptors::available(std::iter::empty()),
         }
     }
 }
@@ -43,6 +50,10 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for B
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for Arc<T> {
@@ -52,6 +63,10 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ?Sized> InflectableEntry<NS> for A
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        (**self).descriptors()
     }
 }
 
@@ -64,5 +79,9 @@ impl<NS: NameStyle, T: InflectableEntry<NS> + ToOwned + ?Sized> InflectableEntry
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        (**self).descriptors()
     }
 }

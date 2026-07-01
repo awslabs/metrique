@@ -38,7 +38,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | Attribute | Type | Description | Example |
 /// |-----------|------|-------------|---------|
 /// | `rename_all` | String | Changes the case style of all field names | `#[metrics(rename_all = "PascalCase")]` |
-/// | `prefix` | String | Adds a prefix to all field names (prefix gets inflected) | `#[metrics(prefix = "api_")]` |
+/// | `prefix` | String | Adds a prefix to all direct field names (prefix gets inflected). Does not propagate to flattened children. | `#[metrics(prefix = "api_")]` |
 /// | `exact_prefix` | String | Adds a prefix to all field names without inflection | `#[metrics(exact_prefix = "API_")]` |
 /// | `emf::dimension_sets` | Array | Defines dimension sets for CloudWatch metrics | `#[metrics(emf::dimension_sets = [["Status", "Operation"]])]` |
 /// | `tag` | Nested | On entry enums, adds a tag field with the variant name. Tag value respects `rename_all` and variant `name`, but not `prefix`. | |
@@ -50,6 +50,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
+/// | `default_flags` | Path | Applies a flag to all direct fields in this struct for format and sink usage. Does not propagate to flattened children. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::flags::MyFlag))]` |
 ///
 /// # Field Attributes
 ///
@@ -66,6 +67,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
+/// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
 ///
 /// # Variant Attributes
 ///
@@ -691,26 +693,83 @@ impl From<RawTag> for Tag {
     }
 }
 
-/// Wrapper for parsing `flags(Path1, Path2, ...)` as a single darling field.
+/// A parsed `flags(Path)` or `flags(skip(Path))` attribute.
+#[derive(Debug, Clone)]
+pub(crate) struct FieldTagAttr {
+    pub(crate) path: syn::Path,
+    pub(crate) skip: bool,
+    pub(crate) span: Span,
+}
+
+/// Wrapper for parsing `flags(X, Y, skip(Z))` as a single darling field.
 ///
-/// Implements `FromMeta` by parsing the token stream directly via `parse_args_with`.
-/// This works around a darling limitation where custom `FromMeta` types are silently
-/// dropped when they appear alongside darling `Flag` fields (like `flatten`, `no_close`)
-/// in the same attribute struct.
+/// We implement `FromMeta` by handling `Meta::List` and parsing the comma-separated
+/// token stream ourselves. This works around a darling limitation where custom
+/// `FromMeta` types using `from_list` are silently dropped when they appear alongside
+/// darling `Flag` fields (like `flatten`, `no_close`) in the same attribute.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct FlagsList(pub(crate) Vec<syn::Path>);
+pub(crate) struct FlagsList(pub(crate) Vec<FieldTagAttr>);
 
 impl FromMeta for FlagsList {
+    fn from_list(items: &[darling::ast::NestedMeta]) -> darling::Result<Self> {
+        let mut flags = Vec::new();
+        for item in items {
+            match item {
+                darling::ast::NestedMeta::Meta(meta) => {
+                    flags.push(parse_single_flag(meta)?);
+                }
+                darling::ast::NestedMeta::Lit(lit) => {
+                    return Err(darling::Error::custom(
+                        "expected a path or skip(Path) in flags(...)",
+                    )
+                    .with_span(lit));
+                }
+            }
+        }
+        Ok(FlagsList(flags))
+    }
+
     fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+        // Handle Meta::List by parsing tokens directly as comma-separated items.
+        // This bypasses darling's NestedMeta parsing which fails alongside Flag fields.
         match item {
             syn::Meta::List(list) => {
-                let parsed: syn::punctuated::Punctuated<syn::Path, syn::Token![,]> = list
+                let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
                     .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
                     .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
-                Ok(FlagsList(parsed.into_iter().collect()))
+                let mut flags = Vec::new();
+                for meta in &parsed {
+                    flags.push(parse_single_flag(meta)?);
+                }
+                Ok(FlagsList(flags))
             }
-            _ => Err(darling::Error::custom("expected flags(Path, ...)").with_span(item)),
+            _ => Err(
+                darling::Error::custom("expected flags(Path, ...) or flags(skip(Path), ...)")
+                    .with_span(item),
+            ),
         }
+    }
+}
+
+fn parse_single_flag(meta: &syn::Meta) -> darling::Result<FieldTagAttr> {
+    match meta {
+        syn::Meta::Path(path) => Ok(FieldTagAttr {
+            path: path.clone(),
+            skip: false,
+            span: path.span(),
+        }),
+        syn::Meta::List(list) if list.path.is_ident("skip") => {
+            let inner: syn::Path = syn::parse2(list.tokens.clone())
+                .map_err(|_| darling::Error::custom("expected skip(Path)").with_span(list))?;
+            Ok(FieldTagAttr {
+                path: inner,
+                skip: true,
+                span: list.span(),
+            })
+        }
+        _ => Err(
+            darling::Error::custom("expected a path or skip(Path) in flags(...)").with_span(meta),
+        ),
     }
 }
 
@@ -733,6 +792,9 @@ struct RawRootAttributes {
     #[darling(rename = "sample_group")]
     sample_group: Flag,
     value: Option<ValueAttributes>,
+
+    #[darling(default)]
+    default_flags: FlagsList,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -758,6 +820,8 @@ struct RootAttributes {
     sample_group: bool,
 
     mode: MetricMode,
+
+    default_flags: Vec<FieldTagAttr>,
 }
 
 impl RawRootAttributes {
@@ -814,6 +878,19 @@ impl RawRootAttributes {
             })
             .transpose()?;
 
+        // Validate default_flags: no conflicting present+skip for the same path
+        validate_flags_conflicts(&self.default_flags.0, "default_flags")?;
+        // skip(...) is not allowed in default_flags: just don't list the flag.
+        for flag in &self.default_flags.0 {
+            if flag.skip {
+                return Err(darling::Error::custom(
+                    "skip(...) is not allowed in default_flags. \
+                     To exclude a flag from a specific field, use flags(skip(T)) on that field.",
+                )
+                .with_span(&flag.span));
+            }
+        }
+
         Ok(RootAttributes {
             prefix: Prefix::from_inflectable_and_exact(
                 &self.prefix,
@@ -826,6 +903,7 @@ impl RawRootAttributes {
             tag,
             sample_group,
             mode,
+            default_flags: self.default_flags.0,
         })
     }
 }
@@ -1015,6 +1093,22 @@ fn get_field_flag(
     }
 }
 
+/// Validates that no tag path appears both as present and skipped in the same attribute list.
+fn validate_flags_conflicts(tags: &[FieldTagAttr], attr_name: &str) -> darling::Result<()> {
+    for (i, tag) in tags.iter().enumerate() {
+        for other in &tags[i + 1..] {
+            if tag.path == other.path && tag.skip != other.skip {
+                return Err(darling::Error::custom(format!(
+                    "conflicting `{attr_name}`: `{}` is both present and skipped",
+                    tag.path.to_token_stream()
+                ))
+                .with_span(&other.span));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl RawMetricsFieldAttrs {
     fn validate(self) -> darling::Result<MetricsFieldAttrs> {
         let mut out: Option<(MetricsFieldKind, &'static str)> = None;
@@ -1067,18 +1161,15 @@ impl RawMetricsFieldAttrs {
             }
         }
 
-        // flags(...) on flatten/flatten_entry/timestamp/ignore is not yet supported.
+        // flags(...) is not allowed on flatten/flatten_entry fields.
+        // Each struct manages its own flags independently.
         if !self.flags.0.is_empty()
-            && let Some((
-                MetricsFieldKind::Flatten { span, .. }
-                | MetricsFieldKind::FlattenEntry(span)
-                | MetricsFieldKind::Timestamp(span)
-                | MetricsFieldKind::Ignore(span),
-                _,
-            )) = &out
+            && let Some((MetricsFieldKind::Flatten { span, .. }, _))
+            | Some((MetricsFieldKind::FlattenEntry(span), _)) = &out
         {
             return Err(darling::Error::custom(
-                "flags(...) is not yet supported on flatten, flatten_entry, timestamp, or ignore fields.",
+                "flags(...) cannot be used on flatten or flatten_entry fields. \
+                     Apply flags on the child struct directly with default_flags(...).",
             )
             .with_span(span));
         }
@@ -1094,7 +1185,10 @@ impl RawMetricsFieldAttrs {
                     format: format.cloned(),
                 },
             },
-            flags: self.flags.0,
+            flags: {
+                validate_flags_conflicts(&self.flags.0, "flags")?;
+                self.flags.0
+            },
         })
     }
 }
@@ -1121,7 +1215,7 @@ fn validate_name_inner(name: &str) -> std::result::Result<(), &'static str> {
 struct MetricsFieldAttrs {
     close: bool,
     kind: MetricsFieldKind,
-    flags: Vec<syn::Path>,
+    flags: Vec<FieldTagAttr>,
 }
 
 pub(crate) struct MetricsField {
@@ -1269,6 +1363,17 @@ impl Prefix {
                 let prefixed = format!("{}{}", prefix, base);
                 name_style.apply(&prefixed)
             }
+        }
+    }
+
+    /// Returns just the inflected prefix string for use in descriptor modifiers.
+    /// For exact prefixes, returns the prefix as-is.
+    /// For inflectable prefixes, returns the prefix inflected to the given style
+    /// with the appropriate delimiter.
+    pub(crate) fn apply_prefix_only(&self, name_style: NameStyle) -> String {
+        match self {
+            Prefix::Exact(exact_prefix) => exact_prefix.clone(),
+            Prefix::Inflectable { prefix } => name_style.apply_prefix(prefix),
         }
     }
 
@@ -1694,7 +1799,9 @@ mod tests {
         let input = quote! {
             struct RequestMetrics {
                 operation: &'static str,
-                number_of_ducks: usize
+                number_of_ducks: usize,
+                #[metrics(unit = Millisecond)]
+                latency: std::time::Duration
             }
         };
 
@@ -2032,5 +2139,85 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics(value(string))));
         assert_snapshot!("debug_derive_passthrough_enum", parsed_file);
+    }
+
+    #[test]
+    fn test_struct_with_flags() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase", default_flags(MyFlag))]
+            struct FlaggedMetrics {
+                count: u64,
+                #[metrics(flags(skip(MyFlag)))]
+                debug: String,
+                #[metrics(flags(OtherFlag))]
+                special: u64,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(
+            input,
+            quote!(metrics(rename_all = "PascalCase", default_flags(MyFlag))),
+        );
+        assert_snapshot!("struct_with_flags", parsed_file);
+    }
+
+    #[test]
+    fn test_enum_with_flags() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase", default_flags(MyFlag))]
+            enum FlaggedEnum {
+                Alpha { value: u64 },
+                Beta {
+                    #[metrics(flags(skip(MyFlag)))]
+                    skipped: u64,
+                },
+            }
+        };
+
+        let parsed_file = metrics_impl_string(
+            input,
+            quote!(metrics(rename_all = "PascalCase", default_flags(MyFlag))),
+        );
+        assert_snapshot!("enum_with_flags", parsed_file);
+    }
+
+    #[test]
+    fn test_struct_with_timestamp_and_unit() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase")]
+            struct TimestampMetrics {
+                #[metrics(timestamp)]
+                ts: std::time::SystemTime,
+                #[metrics(unit = Millisecond)]
+                latency: u64,
+                count: u64,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(rename_all = "PascalCase")));
+        assert_snapshot!("struct_with_timestamp_and_unit", parsed_file);
+    }
+
+    #[test]
+    fn test_enum_with_timestamp_and_unit() {
+        let input = quote! {
+            #[metrics(rename_all = "PascalCase")]
+            enum TimestampEnum {
+                Read {
+                    #[metrics(timestamp)]
+                    ts: std::time::SystemTime,
+                    #[metrics(unit = Millisecond)]
+                    latency: u64,
+                },
+                Write {
+                    #[metrics(timestamp)]
+                    ts: std::time::SystemTime,
+                    bytes: u64,
+                },
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(rename_all = "PascalCase")));
+        assert_snapshot!("enum_with_timestamp_and_unit", parsed_file);
     }
 }

@@ -18,11 +18,12 @@ pub use emf::{
 
 /// Re-exports of `FlagConstructor` types for use in `#[metrics(flags(...))]` attributes.
 ///
+/// These provide ergonomic names for the flag types when used in descriptor attributes:
 /// ```ignore
-/// use metrique::emf::flags::HighStorageResolution;
+/// use metrique_writer_format_emf::flags::HighStorageResolution;
 ///
 /// #[metrics(flags(HighStorageResolution))]
-/// event_count: u64,
+/// event_count: Counter,
 /// ```
 pub mod flags {
     pub use super::HighStorageResolutionCtor as HighStorageResolution;

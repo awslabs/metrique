@@ -16,6 +16,8 @@ mod struct_impl;
 pub(crate) use enum_impl::generate_enum_entry_impl;
 pub(crate) use struct_impl::generate_struct_entry_impl;
 
+use crate::FieldTagAttr;
+
 /// Hygiene helper for generated method-local identifiers.
 ///
 /// When `#[metrics]` is expanded inside `macro_rules!`, field names from macro parameters
@@ -228,12 +230,32 @@ fn generate_field_writes(
                 let field_access = field_access(&field.ident);
                 let value = crate::value_impl::format_value(format, field_span, field_access);
 
-                let wrapped_value = if field.attrs.flags.is_empty() {
+                // Wrap value in ForceFlag for each present flag (non-skip field-level
+                // and non-skip defaults not overridden at field level)
+                let present_flags: Vec<_> =
+                    resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags).flags;
+                let wrapped_value = if present_flags.is_empty() {
                     quote! { #value }
                 } else {
-                    let flags = &field.attrs.flags;
+                    // Collect the FlagConstructor paths (non-skip)
+                    let flag_paths: Vec<_> = field
+                        .attrs
+                        .flags
+                        .iter()
+                        .filter(|f| !f.skip)
+                        .map(|f| &f.path)
+                        .chain(
+                            root_attrs
+                                .default_flags
+                                .iter()
+                                .filter(|d| {
+                                    !d.skip && !field.attrs.flags.iter().any(|ft| ft.path == d.path)
+                                })
+                                .map(|d| &d.path),
+                        )
+                        .collect();
                     let mut expr = quote! { #value };
-                    for path in flags {
+                    for path in &flag_paths {
                         expr = quote! {
                             ::metrique::writer::value::ForceFlag::<_, #path>::from(#expr)
                         };
@@ -261,13 +283,7 @@ fn generate_field_writes(
     writes
 }
 
-/// Return an iterator that chains the iterators in `iterators`.
-///
-/// This calls `chain` in a binary tree fashion to avoid problems with the recursion limit,
-/// e.g. `I1.chain(I2).chain(I3.chain(I4))`
-/// Chains iterators into a balanced binary tree of `.chain()` calls.
-/// Returns `::std::iter::empty()` for empty input.
-fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
+pub(crate) fn make_binary_tree_chain(iterators: Vec<Ts2>) -> Ts2 {
     if iterators.is_empty() {
         return quote! { ::std::iter::empty() };
     }
@@ -358,4 +374,217 @@ fn collect_field_sample_group<'a>(
         };
         Some((field_ident, wrapped))
     }
+}
+
+/// Output of descriptor generation for a struct or enum entry.
+pub(crate) struct DescriptorOutput {
+    /// The `__metrique_descriptor(style)` inherent impl with 4 statics.
+    /// Goes outside the `InflectableEntry` impl block but inside `const _: ()`.
+    pub(crate) trait_impls: Ts2,
+    /// The `fn descriptors()` method body.
+    /// Goes inside the `InflectableEntry` impl block.
+    pub(crate) method: Ts2,
+}
+
+/// Metadata for a single field in the descriptor, collected at macro time.
+pub(crate) struct DescriptorFieldMeta {
+    /// Field name in each style: [preserve, pascal, snake, kebab]
+    pub(crate) names: [String; 4],
+    /// Resolved flag token streams for this field
+    pub(crate) flags: Vec<Ts2>,
+
+    /// Unit expression (None or Some(<Unit>::UNIT))
+    pub(crate) unit_expr: Ts2,
+}
+
+/// Build a `Descriptors` chain from a base expression and cfg-aware children.
+/// Each child is `(cfg_attrs, child_descriptors_expr)`. If cfg_attrs is non-empty,
+/// the chain call is wrapped in the cfg attribute via let-rebinding.
+pub(crate) fn build_descriptors_chain(base: Ts2, children: &[(Vec<Ts2>, Ts2)]) -> Ts2 {
+    if children.is_empty() {
+        return base;
+    }
+
+    let has_cfg = children.iter().any(|(cfg, _)| !cfg.is_empty());
+
+    if !has_cfg {
+        // Simple case: no cfg gating, just chain linearly
+        let mut expr = base;
+        for (_, child) in children {
+            expr = quote! { #expr.chain(#child) };
+        }
+        expr
+    } else {
+        // Cfg case: use let-rebinding to preserve declaration order
+        let mut stmts = Vec::new();
+        stmts.push(quote! { let __desc = #base; });
+        for (cfg_attrs, child) in children {
+            if cfg_attrs.is_empty() {
+                stmts.push(quote! { let __desc = __desc.chain(#child); });
+            } else {
+                stmts.push(quote! { #(#cfg_attrs)* let __desc = __desc.chain(#child); });
+            }
+        }
+        quote! { { #(#stmts)* __desc } }
+    }
+}
+
+/// Generate a block that selects one of 4 pre-computed EntryDescriptor statics based on a style u8.
+///
+/// Returns a token stream like:
+/// ```ignore
+/// {
+///     static FLAGS_0: [...] = [...];
+///     match style {
+///         STYLE_PRESERVE => { static FIELDS: [...]; static DESC: ...; &DESC }
+///         ...
+///     }
+/// }
+/// ```
+pub(crate) fn generate_style_matched_descriptor(
+    fields: &[DescriptorFieldMeta],
+    desc_name: &str,
+    timestamp_expr: &Ts2,
+    ident_prefix: &str,
+) -> Ts2 {
+    let num_fields = fields.len();
+
+    // Flag statics (shared across all 4 styles)
+    let flag_statics: Vec<Ts2> = fields
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
+            let flags = &f.flags;
+            let num_flags = flags.len();
+            quote! {
+                static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [
+                    #(#flags),*
+                ];
+            }
+        })
+        .collect();
+
+    let style_names = metrique_core::STYLE_NAMES;
+    let style_arms: Vec<Ts2> = (0..style_names.len())
+        .map(|style_idx| {
+            let style_const = style_const_for(crate::inflect::NameStyle::ALL[style_idx]);
+            let desc_ident = format_ident!("__METRIQUE_{}_DESC_{}", ident_prefix, style_names[style_idx]);
+            let fields_ident = format_ident!("__METRIQUE_{}_FIELDS_{}", ident_prefix, style_names[style_idx]);
+
+            let field_exprs: Vec<Ts2> = fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let name = &f.names[style_idx];
+                    let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
+                    let unit_expr = &f.unit_expr;
+                    quote! {
+                        ::metrique::writer::core::FieldDescriptor::builder(#name)
+                            .flags(&#flags_ident)
+                            .maybe_unit(#unit_expr)
+                            .build()
+                    }
+                })
+                .collect();
+
+            quote! {
+                #style_const => {
+                    static #fields_ident: [::metrique::writer::core::FieldDescriptor; #num_fields] = [
+                        #(#field_exprs),*
+                    ];
+                    static #desc_ident: ::metrique::writer::core::EntryDescriptor =
+                        ::metrique::writer::core::EntryDescriptor::builder(#desc_name, &#fields_ident)
+                            .maybe_timestamp(#timestamp_expr)
+                            .build();
+                    &#desc_ident
+                }
+            }
+        })
+        .collect();
+
+    quote! {
+        {
+            #(#flag_statics)*
+            match style {
+                #(#style_arms),*
+                _ => unreachable!()
+            }
+        }
+    }
+}
+
+pub(crate) fn generate_descriptor_impl(
+    entry_name: &Ident,
+    generics: &syn::Generics,
+    struct_name: &str,
+    fields: &[DescriptorFieldMeta],
+    timestamp_descriptor: &Ts2,
+) -> Ts2 {
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let body = generate_style_matched_descriptor(fields, struct_name, timestamp_descriptor, "");
+
+    quote! {
+        impl #impl_generics #entry_name #ty_generics #where_clause {
+            #[doc(hidden)]
+            #[inline(always)]
+            fn __metrique_descriptor(__style: u8) -> &'static ::metrique::writer::core::EntryDescriptor {
+                let style = __style;
+                #body
+            }
+        }
+    }
+}
+
+/// Returns the style constant token stream for a given `NameStyle`.
+/// Maps the macro-internal `NameStyle` enum to the runtime `::metrique::STYLE_*` constants.
+fn style_const_for(style: crate::inflect::NameStyle) -> Ts2 {
+    match style {
+        crate::inflect::NameStyle::Preserve => quote! { ::metrique::STYLE_PRESERVE },
+        crate::inflect::NameStyle::PascalCase => quote! { ::metrique::STYLE_PASCAL },
+        crate::inflect::NameStyle::SnakeCase => quote! { ::metrique::STYLE_SNAKE },
+        crate::inflect::NameStyle::KebabCase => quote! { ::metrique::STYLE_KEBAB },
+    }
+}
+
+/// Resolved flags and suppressed type ids for a field.
+pub(crate) struct ResolvedFlags {
+    pub(crate) flags: Vec<Ts2>,
+}
+
+pub(crate) fn resolve_field_flags(
+    field_flags: &[FieldTagAttr],
+    default_flags: &[FieldTagAttr],
+) -> ResolvedFlags {
+    let mut flags = Vec::new();
+
+    // Field-level flags: present ones go to flags, skipped ones are just not emitted
+    for flag in field_flags {
+        let path = &flag.path;
+        if flag.skip {
+            // skip: don't emit this flag (it suppresses the default within this struct)
+        } else {
+            flags.push(quote! {
+                ::metrique::writer::core::FieldFlag::new::<#path>()
+            });
+        }
+    }
+
+    // Default flags fill in for paths not already specified at field level
+    for default_flag in default_flags {
+        let path = &default_flag.path;
+        let already_specified = field_flags.iter().any(|ft| ft.path == *path);
+        if already_specified {
+            continue;
+        }
+        if default_flag.skip {
+            // skip on a default: don't emit
+        } else {
+            flags.push(quote! {
+                ::metrique::writer::core::FieldFlag::new::<#path>()
+            });
+        }
+    }
+
+    ResolvedFlags { flags }
 }

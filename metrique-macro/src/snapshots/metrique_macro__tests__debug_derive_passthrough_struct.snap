@@ -17,6 +17,81 @@ pub struct MetricsEntry {
     field: <usize as metrique::CloseValue>::Closed,
 }
 const _: () = {
+    impl MetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor(
+            __style: u8,
+        ) -> &'static ::metrique::writer::core::EntryDescriptor {
+            let style = __style;
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                match style {
+                    ::metrique::STYLE_PRESERVE => {
+                        static __METRIQUE__FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("field")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Metrics",
+                                &__METRIQUE__FIELDS_PRESERVE,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_PRESERVE
+                    }
+                    ::metrique::STYLE_PASCAL => {
+                        static __METRIQUE__FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("Field")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Metrics",
+                                &__METRIQUE__FIELDS_PASCAL,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_PASCAL
+                    }
+                    ::metrique::STYLE_SNAKE => {
+                        static __METRIQUE__FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("field")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Metrics",
+                                &__METRIQUE__FIELDS_SNAKE,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_SNAKE
+                    }
+                    ::metrique::STYLE_KEBAB => {
+                        static __METRIQUE__FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 1usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("field")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "Metrics",
+                                &__METRIQUE__FIELDS_KEBAB,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_KEBAB
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS> for MetricsEntry {
         fn write<'__metrique_write>(
@@ -62,6 +137,17 @@ const _: () = {
         > {
             let __metrique_self = self;
             ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        MetricsEntry::__metrique_descriptor(
+                            <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                        ),
+                    ),
+                ),
+            )
         }
     }
 };
