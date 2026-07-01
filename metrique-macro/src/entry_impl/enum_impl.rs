@@ -173,16 +173,45 @@ fn generate_tuple_writes(
         .map(|(idx, td)| {
             let binding = quote::format_ident!("v{}", idx);
             let write = match &td.kind {
-                MetricsFieldKind::Flatten { span, prefix } => {
+                MetricsFieldKind::Flatten { span, prefix, default_flags: flatten_default_flags } => {
                     let base_ns = make_ns(root_attrs.rename_all, *span);
                     let (extra, ns) = match prefix {
                         None => (quote!(), base_ns),
                         Some(prefix) => prefix.append_to(&base_ns, variant_span),
                     };
-                    quote::quote_spanned!(*span=>
-                        #extra
-                        ::metrique::InflectableEntry::<#ns>::write(#binding, #writer_ident);
-                    )
+                    if flatten_default_flags.is_empty() {
+                        quote::quote_spanned!(*span=>
+                            #extra
+                            ::metrique::InflectableEntry::<#ns>::write(#binding, #writer_ident);
+                        )
+                    } else {
+                        let flag_paths: Vec<_> = flatten_default_flags.iter().map(|f| &f.path).collect();
+                        let num_wrappers = flag_paths.len();
+                        let wrapper_idents: Vec<_> = (0..num_wrappers)
+                            .map(|i| quote::format_ident!("__metrique_fw_{}", i))
+                            .collect();
+                        let mut bindings = Vec::new();
+                        for (i, path) in flag_paths.iter().enumerate() {
+                            let ident = &wrapper_idents[i];
+                            let prev = if i == 0 {
+                                quote::quote! { #writer_ident }
+                            } else {
+                                let prev_ident = &wrapper_idents[i - 1];
+                                quote::quote! { &mut #prev_ident }
+                            };
+                            bindings.push(quote::quote! {
+                                let mut #ident = ::metrique::writer::value::ForceFlagEntryWriter::<_, #path>::new(#prev);
+                            });
+                        }
+                        let last_wrapper = &wrapper_idents[num_wrappers - 1];
+                        quote::quote_spanned!(*span=>
+                            #extra
+                            {
+                                #(#bindings)*
+                                ::metrique::InflectableEntry::<#ns>::write(#binding, &mut #last_wrapper);
+                            }
+                        )
+                    }
                 }
                 MetricsFieldKind::FlattenEntry(span) => {
                     quote::quote_spanned!(*span=>

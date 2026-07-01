@@ -157,9 +157,23 @@ impl<T: MetricValue, FLAGS: FlagConstructor> MetricValue for ForceFlag<T, FLAGS>
 
 // This one is private for now since there is no obvious use for it.
 #[doc(hidden)]
-struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
+/// Writer wrapper that injects a flag into all value writes.
+/// Used internally by flatten-site `default_flags` codegen.
+#[doc(hidden)]
+pub struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
     writer: &'a mut W,
     phantom: PhantomData<FLAGS>,
+}
+
+impl<'a, W, FLAGS: FlagConstructor> ForceFlagEntryWriter<'a, W, FLAGS> {
+    /// Create a new `ForceFlagEntryWriter` wrapping the given writer.
+    #[doc(hidden)]
+    pub fn new(writer: &'a mut W) -> Self {
+        Self {
+            writer,
+            phantom: PhantomData,
+        }
+    }
 }
 
 impl<'a, W: EntryWriter<'a>, FLAGS: FlagConstructor> EntryWriter<'a>
