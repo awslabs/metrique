@@ -79,7 +79,8 @@ impl TimestampDescriptor {
 }
 
 /// Result of calling `Entry::descriptors()`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Descriptors<'a> {
     /// Descriptors are available for this entry.
     Available(AvailableDescriptors<'a>),
@@ -88,7 +89,7 @@ pub enum Descriptors<'a> {
 }
 
 /// Opaque container of available descriptor segments.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct AvailableDescriptors<'a>(SmallVec<[DescriptorRef<'a>; 2]>);
 
 impl<'a> AvailableDescriptors<'a> {
@@ -124,6 +125,7 @@ impl<'a> IntoIterator for AvailableDescriptors<'a> {
 }
 
 /// Owned iterator over descriptor segments. Returned by `AvailableDescriptors::into_iter()`.
+#[derive(Debug)]
 pub struct DescriptorIter<'a>(smallvec::IntoIter<[DescriptorRef<'a>; 2]>);
 
 impl<'a> Iterator for DescriptorIter<'a> {
@@ -136,6 +138,8 @@ impl<'a> Iterator for DescriptorIter<'a> {
         self.0.size_hint()
     }
 }
+
+impl<'a> ExactSizeIterator for DescriptorIter<'a> {}
 
 impl<'a> Descriptors<'a> {
     /// Create an `Available` result from an iterator of descriptors.
@@ -178,7 +182,14 @@ impl<'a> Descriptors<'a> {
         }
     }
 
-    /// Chain two descriptor results. Returns `Unavailable` if either is `Unavailable`.
+    /// Chain two descriptor results. If both are `Available`, their segments are
+    /// concatenated in write order. If either is `Unavailable`, the result is
+    /// `Unavailable` (poisoning semantics).
+    ///
+    /// This ensures that a parent entry only advertises full structural metadata when
+    /// ALL of its flattened children also provide descriptors. Sinks relying on
+    /// positional correspondence between descriptor fields and write callbacks can
+    /// trust that `Available` means complete coverage.
     pub fn chain(self, other: Descriptors<'a>) -> Self {
         match (self, other) {
             (Descriptors::Available(mut a), Descriptors::Available(b)) => {
@@ -407,6 +418,15 @@ impl<'a> ShapeRef<'a> {
 ///
 /// Identifies a flag applied to a field, storing both the `TypeId` for identity
 /// comparison and a constructor for obtaining the flag's runtime value.
+///
+/// # Dylib caveat
+///
+/// `TypeId` is not guaranteed stable across separately compiled shared libraries.
+/// If your application loads metrique-using code via `dlopen`, flag identity checks
+/// may not work across the dylib boundary. This is a Rust language limitation, not
+/// specific to metrique.
+///
+/// # Examples
 ///
 /// Sinks check for specific flags using [`is`](Self::is):
 ///

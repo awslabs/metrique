@@ -229,7 +229,7 @@ struct MyMetric {
 ```
 
 
-## Recipe: a descriptor-aware sink
+## Recipe (advanced): a descriptor-aware sink
 
 Entry descriptors let a sink inspect an entry's structure before (or without) writing it. This enables schema pre-registration, per-field flag-based filtering, and format decisions based on field metadata.
 
