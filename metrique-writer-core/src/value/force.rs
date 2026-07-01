@@ -155,8 +155,6 @@ impl<T: MetricValue, FLAGS: FlagConstructor> MetricValue for ForceFlag<T, FLAGS>
     type Unit = T::Unit;
 }
 
-// This one is private for now since there is no obvious use for it.
-#[doc(hidden)]
 /// Writer wrapper that injects a flag into all value writes.
 /// Used internally by flatten-site `default_flags` codegen.
 #[doc(hidden)]

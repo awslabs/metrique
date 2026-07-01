@@ -56,7 +56,7 @@ impl Styles {
         name: "kebab-case",
     };
     /// All styles in index order.
-    pub const ALL: [Style; 4] = [Self::PRESERVE, Self::PASCAL, Self::SNAKE, Self::KEBAB];
+    pub const ALL: &'static [Style] = &[Self::PRESERVE, Self::PASCAL, Self::SNAKE, Self::KEBAB];
     /// Number of styles.
     pub const COUNT: usize = Self::ALL.len();
 }
