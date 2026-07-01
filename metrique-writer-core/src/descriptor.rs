@@ -8,8 +8,8 @@
 //! [`FieldDescriptor`]) are public for macro construction but sinks should use
 //! [`DescriptorRef`] and [`FieldView`] accessors.
 //!
-//! See the "Recipe: a descriptor-aware sink" section in the extending guide for
-//! usage patterns and best practices.
+//! See the ["Recipe: a descriptor-aware sink"](https://docs.rs/metrique/latest/metrique/_guide/extending/index.html#recipe-a-descriptor-aware-sink)
+//! section in the extending guide for usage patterns and best practices.
 
 use std::any::TypeId;
 
