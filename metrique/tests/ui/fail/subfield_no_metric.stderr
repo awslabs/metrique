@@ -1,162 +1,186 @@
 error[E0277]: CloseValue is not implemented for ChildMetrics
- --> tests/ui/fail/subfield_no_metric.rs:8:5
-  |
-8 |     child: ChildMetrics,
-  |     ^^^^^ This type must implement `CloseValue`
-  |
-  = help: the trait `CloseValue` is not implemented for `ChildMetrics`
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
-  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-  = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-  = help: the following other types implement trait `CloseValue`:
-            &AtomicBool
-            &AtomicU16
-            &AtomicU32
-            &AtomicU64
-            &AtomicU8
-            &AtomicUsize
-            &Counter
-            &Duration
-          and $N others
+  --> tests/ui/fail/subfield_no_metric.rs:8:5
+   |
+ 8 |     child: ChildMetrics,
+   |     ^^^^^ This type must implement `CloseValue`
+   |
+help: the trait `CloseValue` is not implemented for `ChildMetrics`
+  --> tests/ui/fail/subfield_no_metric.rs:11:1
+   |
+11 | struct ChildMetrics {
+   | ^^^^^^^^^^^^^^^^^^^
+   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+   = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the following other types implement trait `CloseValue`:
+             &AtomicBool
+             &AtomicU16
+             &AtomicU32
+             &AtomicU64
+             &AtomicU8
+             &AtomicUsize
+             &Counter
+             &Duration
+           and $N others
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
- --> tests/ui/fail/subfield_no_metric.rs:7:8
-  |
-7 | struct RootMetrics {
-  |        ^^^^^^^^^^^ This type must implement `CloseValue`
-  |
-  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
-  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-  = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-  = help: the following other types implement trait `CloseValue`:
-            &AtomicBool
-            &AtomicU16
-            &AtomicU32
-            &AtomicU64
-            &AtomicU8
-            &AtomicUsize
-            &Counter
-            &Duration
-          and $N others
+  --> tests/ui/fail/subfield_no_metric.rs:7:8
+   |
+ 7 | struct RootMetrics {
+   |        ^^^^^^^^^^^ This type must implement `CloseValue`
+   |
+help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  --> tests/ui/fail/subfield_no_metric.rs:11:1
+   |
+11 | struct ChildMetrics {
+   | ^^^^^^^^^^^^^^^^^^^
+   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+   = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the following other types implement trait `CloseValue`:
+             &AtomicBool
+             &AtomicU16
+             &AtomicU32
+             &AtomicU64
+             &AtomicU8
+             &AtomicUsize
+             &Counter
+             &Duration
+           and $N others
 note: required because it appears within the type `RootMetricsEntry`
- --> tests/ui/fail/subfield_no_metric.rs:7:8
-  |
-7 | struct RootMetrics {
-  |        ^^^^^^^^^^^
+  --> tests/ui/fail/subfield_no_metric.rs:7:8
+   |
+ 7 | struct RootMetrics {
+   |        ^^^^^^^^^^^
 note: required by a bound in `metrique::CloseValue::Closed`
- --> $WORKSPACE/metrique-core/src/lib.rs
-  |
-  |     type Closed;
-  |     ^^^^^^^^^^^^ required by this bound in `CloseValue::Closed`
+  --> $WORKSPACE/metrique-core/src/lib.rs
+   |
+   |     type Closed;
+   |     ^^^^^^^^^^^^ required by this bound in `CloseValue::Closed`
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
- --> tests/ui/fail/subfield_no_metric.rs:6:1
-  |
-6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
-  |
-  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
-  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-  = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-  = help: the following other types implement trait `CloseValue`:
-            &AtomicBool
-            &AtomicU16
-            &AtomicU32
-            &AtomicU64
-            &AtomicU8
-            &AtomicUsize
-            &Counter
-            &Duration
-          and $N others
+  --> tests/ui/fail/subfield_no_metric.rs:6:1
+   |
+ 6 | #[metrics(rename_all = "snake_case")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
+   |
+help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  --> tests/ui/fail/subfield_no_metric.rs:11:1
+   |
+11 | struct ChildMetrics {
+   | ^^^^^^^^^^^^^^^^^^^
+   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+   = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the following other types implement trait `CloseValue`:
+             &AtomicBool
+             &AtomicU16
+             &AtomicU32
+             &AtomicU64
+             &AtomicU8
+             &AtomicUsize
+             &Counter
+             &Duration
+           and $N others
 note: required because it appears within the type `RootMetricsEntry`
- --> tests/ui/fail/subfield_no_metric.rs:7:8
-  |
-7 | struct RootMetrics {
-  |        ^^^^^^^^^^^
-  = note: the return type of a function must have a statically known size
-  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> tests/ui/fail/subfield_no_metric.rs:7:8
+   |
+ 7 | struct RootMetrics {
+   |        ^^^^^^^^^^^
+   = note: the return type of a function must have a statically known size
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
- --> tests/ui/fail/subfield_no_metric.rs:6:1
-  |
-6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
-  |
-  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
-  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-  = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-  = help: the following other types implement trait `CloseValue`:
-            &AtomicBool
-            &AtomicU16
-            &AtomicU32
-            &AtomicU64
-            &AtomicU8
-            &AtomicUsize
-            &Counter
-            &Duration
-          and $N others
+  --> tests/ui/fail/subfield_no_metric.rs:6:1
+   |
+ 6 | #[metrics(rename_all = "snake_case")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
+   |
+help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  --> tests/ui/fail/subfield_no_metric.rs:11:1
+   |
+11 | struct ChildMetrics {
+   | ^^^^^^^^^^^^^^^^^^^
+   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+   = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the following other types implement trait `CloseValue`:
+             &AtomicBool
+             &AtomicU16
+             &AtomicU32
+             &AtomicU64
+             &AtomicU8
+             &AtomicUsize
+             &Counter
+             &Duration
+           and $N others
 note: required because it appears within the type `RootMetricsEntry`
- --> tests/ui/fail/subfield_no_metric.rs:7:8
-  |
-7 | struct RootMetrics {
-  |        ^^^^^^^^^^^
-  = note: required for `RootEntry<RootMetricsEntry>` to implement `metrique::writer::Entry`
+  --> tests/ui/fail/subfield_no_metric.rs:7:8
+   |
+ 7 | struct RootMetrics {
+   |        ^^^^^^^^^^^
+   = note: required for `RootEntry<RootMetricsEntry>` to implement `metrique::writer::Entry`
 note: required by a bound in `EntrySink`
- --> $WORKSPACE/metrique-writer-core/src/sink.rs
-  |
-  | pub trait EntrySink<E: Entry> {
-  |                        ^^^^^ required by this bound in `EntrySink`
-  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> $WORKSPACE/metrique-writer-core/src/sink.rs
+   |
+   | pub trait EntrySink<E: Entry> {
+   |                        ^^^^^ required by this bound in `EntrySink`
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
- --> tests/ui/fail/subfield_no_metric.rs:6:1
-  |
-6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
-  |
-  = help: the trait `CloseValue` is not implemented for `ChildMetrics`
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
-  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-  = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-  = help: the following other types implement trait `CloseValue`:
-            &AtomicBool
-            &AtomicU16
-            &AtomicU32
-            &AtomicU64
-            &AtomicU8
-            &AtomicUsize
-            &Counter
-            &Duration
-          and $N others
-  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> tests/ui/fail/subfield_no_metric.rs:6:1
+   |
+ 6 | #[metrics(rename_all = "snake_case")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
+   |
+help: the trait `CloseValue` is not implemented for `ChildMetrics`
+  --> tests/ui/fail/subfield_no_metric.rs:11:1
+   |
+11 | struct ChildMetrics {
+   | ^^^^^^^^^^^^^^^^^^^
+   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+   = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the following other types implement trait `CloseValue`:
+             &AtomicBool
+             &AtomicU16
+             &AtomicU32
+             &AtomicU64
+             &AtomicU8
+             &AtomicUsize
+             &Counter
+             &Duration
+           and $N others
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: CloseValue is not implemented for ChildMetrics
- --> tests/ui/fail/subfield_no_metric.rs:6:1
-  |
-6 | #[metrics(rename_all = "snake_case")]
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
-  |
-  = help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
-  = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
-  = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-  = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-  = help: the following other types implement trait `CloseValue`:
-            &AtomicBool
-            &AtomicU16
-            &AtomicU32
-            &AtomicU64
-            &AtomicU8
-            &AtomicUsize
-            &Counter
-            &Duration
-          and $N others
+  --> tests/ui/fail/subfield_no_metric.rs:6:1
+   |
+ 6 | #[metrics(rename_all = "snake_case")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ This type must implement `CloseValue`
+   |
+help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `ChildMetrics`
+  --> tests/ui/fail/subfield_no_metric.rs:11:1
+   |
+11 | struct ChildMetrics {
+   | ^^^^^^^^^^^^^^^^^^^
+   = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
+   = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
+   = help: the following other types implement trait `CloseValue`:
+             &AtomicBool
+             &AtomicU16
+             &AtomicU32
+             &AtomicU64
+             &AtomicU8
+             &AtomicUsize
+             &Counter
+             &Duration
+           and $N others
 note: required because it appears within the type `RootMetricsEntry`
- --> tests/ui/fail/subfield_no_metric.rs:7:8
-  |
-7 | struct RootMetrics {
-  |        ^^^^^^^^^^^
-  = note: structs must have a statically known size to be initialized
-  = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+  --> tests/ui/fail/subfield_no_metric.rs:7:8
+   |
+ 7 | struct RootMetrics {
+   |        ^^^^^^^^^^^
+   = note: structs must have a statically known size to be initialized
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)

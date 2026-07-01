@@ -44,6 +44,18 @@ where
             }
         }
     }
+
+    fn descriptors(&self) -> metrique::writer::core::Descriptors<'_> {
+        match self.name_style {
+            DynamicNameStyle::Identity => InflectableEntry::<Identity>::descriptors(&self.entry),
+            DynamicNameStyle::PascalCase => {
+                InflectableEntry::<PascalCase>::descriptors(&self.entry)
+            }
+            DynamicNameStyle::SnakeCase => InflectableEntry::<SnakeCase>::descriptors(&self.entry),
+            DynamicNameStyle::KebabCase => InflectableEntry::<KebabCase>::descriptors(&self.entry),
+            _ => InflectableEntry::<Identity>::descriptors(&self.entry),
+        }
+    }
 }
 
 #[cfg(test)]

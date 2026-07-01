@@ -1,0 +1,315 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct FlaggedMetrics {
+    count: u64,
+    debug: String,
+    special: u64,
+}
+#[doc(hidden)]
+#[allow(clippy::type_complexity)]
+pub struct FlaggedMetricsEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    count: <u64 as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    debug: <String as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    special: <u64 as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    impl FlaggedMetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor(
+            __style: u8,
+        ) -> &'static ::metrique::writer::core::EntryDescriptor {
+            let style = __style;
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
+                    ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
+                ];
+                static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_2: [::metrique::writer::core::FieldFlag; 2usize] = [
+                    ::metrique::writer::core::FieldFlag::new::<OtherFlag>(),
+                    ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
+                ];
+                match style {
+                    ::metrique::STYLE_PRESERVE => {
+                        static __METRIQUE__FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("count")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("debug")
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("special")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "FlaggedMetrics",
+                                &__METRIQUE__FIELDS_PRESERVE,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_PRESERVE
+                    }
+                    ::metrique::STYLE_PASCAL => {
+                        static __METRIQUE__FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("Count")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("Debug")
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("Special")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "FlaggedMetrics",
+                                &__METRIQUE__FIELDS_PASCAL,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_PASCAL
+                    }
+                    ::metrique::STYLE_SNAKE => {
+                        static __METRIQUE__FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("count")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("debug")
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("special")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "FlaggedMetrics",
+                                &__METRIQUE__FIELDS_SNAKE,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_SNAKE
+                    }
+                    ::metrique::STYLE_KEBAB => {
+                        static __METRIQUE__FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder("count")
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("debug")
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("special")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(None)
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "FlaggedMetrics",
+                                &__METRIQUE__FIELDS_KEBAB,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_KEBAB
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for FlaggedMetricsEntry {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
+            let __metrique_self = self;
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct CountPreserve;
+                    impl ::metrique::concat::ConstStr for CountPreserve {
+                        const VAL: &'static str = "count";
+                    }
+                    struct CountKebab;
+                    impl ::metrique::concat::ConstStr for CountKebab {
+                        const VAL: &'static str = "count";
+                    }
+                    struct CountPascal;
+                    impl ::metrique::concat::ConstStr for CountPascal {
+                        const VAL: &'static str = "Count";
+                    }
+                    struct CountSnake;
+                    impl ::metrique::concat::ConstStr for CountSnake {
+                        const VAL: &'static str = "count";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            CountPreserve,
+                            CountPascal,
+                            CountSnake,
+                            CountKebab,
+                        >,
+                    >()
+                },
+                &::metrique::writer::value::ForceFlag::<
+                    _,
+                    MyFlag,
+                >::from(&__metrique_self.count),
+            );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct DebugPreserve;
+                    impl ::metrique::concat::ConstStr for DebugPreserve {
+                        const VAL: &'static str = "debug";
+                    }
+                    struct DebugKebab;
+                    impl ::metrique::concat::ConstStr for DebugKebab {
+                        const VAL: &'static str = "debug";
+                    }
+                    struct DebugPascal;
+                    impl ::metrique::concat::ConstStr for DebugPascal {
+                        const VAL: &'static str = "Debug";
+                    }
+                    struct DebugSnake;
+                    impl ::metrique::concat::ConstStr for DebugSnake {
+                        const VAL: &'static str = "debug";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            DebugPreserve,
+                            DebugPascal,
+                            DebugSnake,
+                            DebugKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.debug,
+            );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct SpecialPreserve;
+                    impl ::metrique::concat::ConstStr for SpecialPreserve {
+                        const VAL: &'static str = "special";
+                    }
+                    struct SpecialKebab;
+                    impl ::metrique::concat::ConstStr for SpecialKebab {
+                        const VAL: &'static str = "special";
+                    }
+                    struct SpecialPascal;
+                    impl ::metrique::concat::ConstStr for SpecialPascal {
+                        const VAL: &'static str = "Special";
+                    }
+                    struct SpecialSnake;
+                    impl ::metrique::concat::ConstStr for SpecialSnake {
+                        const VAL: &'static str = "special";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS::PascalCase as ::metrique::NameStyle>::Inflect<
+                            SpecialPreserve,
+                            SpecialPascal,
+                            SpecialSnake,
+                            SpecialKebab,
+                        >,
+                    >()
+                },
+                &::metrique::writer::value::ForceFlag::<
+                    _,
+                    MyFlag,
+                >::from(
+                    ::metrique::writer::value::ForceFlag::<
+                        _,
+                        OtherFlag,
+                    >::from(&__metrique_self.special),
+                ),
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            let __metrique_self = self;
+            ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        FlaggedMetricsEntry::__metrique_descriptor(
+                            <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                        ),
+                    ),
+                ),
+            )
+        }
+    }
+};
+impl metrique::CloseValue for FlaggedMetrics {
+    type Closed = FlaggedMetricsEntry;
+    fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
+        #[allow(deprecated)]
+        FlaggedMetricsEntry {
+            count: metrique::CloseValue::close(__metrique_self_expr!().count),
+            debug: metrique::CloseValue::close(__metrique_self_expr!().debug),
+            special: metrique::CloseValue::close(__metrique_self_expr!().special),
+        }
+    }
+}
+#[doc = concat!(
+    "Metrics guard returned from [`", "FlaggedMetrics",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type FlaggedMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    FlaggedMetrics,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "FlaggedMetricsGuard",
+    "::handle`], similar to an `Arc<", "FlaggedMetricsGuard", ">`."
+)]
+type FlaggedMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    FlaggedMetrics,
+    Q,
+>;
+impl FlaggedMetrics {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<FlaggedMetricsEntry>>
+            + Send + Sync + 'static,
+    >(self, sink: Q) -> FlaggedMetricsGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}

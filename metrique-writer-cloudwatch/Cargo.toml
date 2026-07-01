@@ -2,7 +2,7 @@
 name = "metrique-writer-cloudwatch"
 version = "0.2.0"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.91"
 license = "Apache-2.0"
 description = "A metrique EntryIoStream backend that submits EMF metrics to CloudWatch Logs via PutLogEvents"
 readme = "README.md"

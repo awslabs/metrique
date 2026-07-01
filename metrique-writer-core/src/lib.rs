@@ -5,6 +5,11 @@
 #![deny(missing_docs)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+pub use crate::descriptor::{
+    AvailableDescriptors, DescriptorId, DescriptorIter, DescriptorRef, Descriptors,
+    EntryDescriptor, EntryDescriptorBuilder, FieldDescriptor, FieldDescriptorBuilder, FieldFlag,
+    FieldShape, FieldView, KnownShape, ShapeRef, StringShape, TimestampDescriptor,
+};
 pub use crate::entry::{BoxEntry, Entry, EntryConfig, EntryWriter};
 pub use crate::global::GlobalEntrySink;
 pub use crate::sample::SampleGroup;
@@ -17,6 +22,7 @@ pub use crate::value::{Distribution, MetricFlags, MetricValue, Observation, Valu
 pub(crate) type CowStr = std::borrow::Cow<'static, str>;
 
 pub mod config;
+pub mod descriptor;
 pub mod entry;
 pub mod format;
 pub mod global;

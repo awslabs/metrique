@@ -4,7 +4,7 @@
 use std::{
     io,
     marker::PhantomData,
-    ops::{AddAssign, Deref, DerefMut, SubAssign},
+    ops::{Deref, DerefMut},
 };
 
 use derive_where::derive_where;
@@ -51,15 +51,31 @@ pub trait FlagConstructor {
     fn construct() -> MetricFlags<'static>;
 }
 
-/// Helper to force enable metric flags on a value
+/// Helper to force enable metric flags on a value.
 ///
-/// The `#[metrics(flags(...))]` attribute provides an alternative syntax:
+/// This is intentionally "punned" to work with [Entry], [Value], and [EntryIoStream] to
+/// avoid duplication of the format-specific flag types like `HighStorageResolution`.
+///
+/// Prefer using `#[metrics(flags(...))]` instead of wrapping field types directly.
+/// The macro attribute both applies the flag at write time and records it in the
+/// entry descriptor, giving formats and sinks full visibility:
+///
 /// ```ignore
-/// #[metrics(flags(HighStorageResolution))]
-/// latency: u64,
+/// use my_format::flags::HighStorageResolution;
+///
+/// // Instead of:
+/// #[metrics]
+/// struct MyMetrics {
+///     event_count: HighStorageResolution<Counter>,
+/// }
+///
+/// // Prefer:
+/// #[metrics]
+/// struct MyMetrics {
+///     #[metrics(flags(HighStorageResolution))]
+///     event_count: Counter,
+/// }
 /// ```
-// Intentionally "punned" to work with Entry, Value, and EntryIoStream to
-// avoid duplication of the format-specific flag types like HighStorageResolution.
 #[derive_where(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash; T)]
 pub struct ForceFlag<T, FLAGS: FlagConstructor>(T, PhantomData<FLAGS>);
 
@@ -139,35 +155,8 @@ impl<T: MetricValue, FLAGS: FlagConstructor> MetricValue for ForceFlag<T, FLAGS>
     type Unit = T::Unit;
 }
 
-// Forward `+=` / `-=` through the wrapper so flag-tagged values stay usable
-// as accumulators (e.g. `metrique-aggregation`'s `Sum` strategy needs
-// `T: AddAssign`). Both sides receive the same `FLAGS` ctor; mixing tags is
-// nonsense and the type system prevents it.
-impl<T: AddAssign, FLAGS: FlagConstructor> AddAssign for ForceFlag<T, FLAGS> {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0;
-    }
-}
-
-impl<T: AddAssign, FLAGS: FlagConstructor> AddAssign<T> for ForceFlag<T, FLAGS> {
-    fn add_assign(&mut self, rhs: T) {
-        self.0 += rhs;
-    }
-}
-
-impl<T: SubAssign, FLAGS: FlagConstructor> SubAssign for ForceFlag<T, FLAGS> {
-    fn sub_assign(&mut self, rhs: Self) {
-        self.0 -= rhs.0;
-    }
-}
-
-impl<T: SubAssign, FLAGS: FlagConstructor> SubAssign<T> for ForceFlag<T, FLAGS> {
-    fn sub_assign(&mut self, rhs: T) {
-        self.0 -= rhs;
-    }
-}
-
 // This one is private for now since there is no obvious use for it.
+#[doc(hidden)]
 struct ForceFlagEntryWriter<'a, W, FLAGS: FlagConstructor> {
     writer: &'a mut W,
     phantom: PhantomData<FLAGS>,
@@ -199,6 +188,10 @@ impl<E: Entry, FLAGS: FlagConstructor> Entry for ForceFlag<E, FLAGS> {
             writer,
             phantom: self.1,
         })
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        self.0.descriptors()
     }
 }
 

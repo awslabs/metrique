@@ -18,6 +18,11 @@ pub(crate) mod private {
 ///
 /// [`InflectableEntry`]: crate::InflectableEntry
 pub trait NameStyle: private::NameStyleInternal {
+    /// Index into the per-style descriptor statics. Used by the macro to select
+    /// the correct pre-computed descriptor for this name style.
+    #[doc(hidden)]
+    const DESCRIPTOR_STYLE_INDEX: u8;
+
     #[doc(hidden)]
     type KebabCase: NameStyle;
 
@@ -39,10 +44,31 @@ pub trait NameStyle: private::NameStyleInternal {
     type InflectAffix<ID: MaybeConstStr, PASCAL: MaybeConstStr, SNAKE: MaybeConstStr, KEBAB: MaybeConstStr>: MaybeConstStr;
 }
 
+// Style index constants used by descriptor codegen to select the right static.
+// The macro crate mirrors these in `metrique-macro/src/inflect.rs` (DESCRIPTOR_STYLES
+// The macro crate imports these directly via `metrique-core` dependency.
+#[doc(hidden)]
+pub const STYLE_PRESERVE: u8 = 0;
+#[doc(hidden)]
+pub const STYLE_PASCAL: u8 = 1;
+#[doc(hidden)]
+pub const STYLE_SNAKE: u8 = 2;
+#[doc(hidden)]
+pub const STYLE_KEBAB: u8 = 3;
+
+/// Number of descriptor name styles.
+#[doc(hidden)]
+pub const STYLE_COUNT: usize = 4;
+
+/// Suffix names for generated descriptor statics, indexed by STYLE_* constants.
+#[doc(hidden)]
+pub const STYLE_NAMES: [&str; STYLE_COUNT] = ["PRESERVE", "PASCAL", "SNAKE", "KEBAB"];
+
 /// Inflects names to the identity case
 pub struct Identity<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for Identity<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for Identity<PREFIX> {
+    const DESCRIPTOR_STYLE_INDEX: u8 = STYLE_PRESERVE;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;
@@ -65,6 +91,7 @@ impl<PREFIX: MaybeConstStr> NameStyle for Identity<PREFIX> {
 pub struct PascalCase<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for PascalCase<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for PascalCase<PREFIX> {
+    const DESCRIPTOR_STYLE_INDEX: u8 = STYLE_PASCAL;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;
@@ -87,6 +114,7 @@ impl<PREFIX: MaybeConstStr> NameStyle for PascalCase<PREFIX> {
 pub struct SnakeCase<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for SnakeCase<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for SnakeCase<PREFIX> {
+    const DESCRIPTOR_STYLE_INDEX: u8 = STYLE_SNAKE;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;
@@ -109,6 +137,7 @@ impl<PREFIX: MaybeConstStr> NameStyle for SnakeCase<PREFIX> {
 pub struct KebabCase<PREFIX: MaybeConstStr = EmptyConstStr>(PhantomData<PREFIX>);
 impl<PREFIX: MaybeConstStr> private::NameStyleInternal for KebabCase<PREFIX> {}
 impl<PREFIX: MaybeConstStr> NameStyle for KebabCase<PREFIX> {
+    const DESCRIPTOR_STYLE_INDEX: u8 = STYLE_KEBAB;
     type KebabCase = KebabCase<PREFIX>;
     type PascalCase = PascalCase<PREFIX>;
     type SnakeCase = SnakeCase<PREFIX>;

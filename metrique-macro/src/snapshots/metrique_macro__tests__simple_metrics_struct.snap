@@ -5,6 +5,7 @@ expression: parsed_file
 struct RequestMetrics {
     operation: &'static str,
     number_of_ducks: usize,
+    latency: std::time::Duration,
 }
 #[doc(hidden)]
 #[allow(clippy::type_complexity)]
@@ -19,8 +20,156 @@ pub struct RequestMetricsEntry {
     )]
     #[doc(hidden)]
     number_of_ducks: <usize as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    latency: <<std::time::Duration as metrique::CloseValue>::Closed as ::metrique::unit::AttachUnit>::Output<
+        Millisecond,
+    >,
 }
 const _: () = {
+    impl RequestMetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor(
+            __style: u8,
+        ) -> &'static ::metrique::writer::core::EntryDescriptor {
+            let style = __style;
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_2: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                match style {
+                    ::metrique::STYLE_PRESERVE => {
+                        static __METRIQUE__FIELDS_PRESERVE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "operation",
+                                )
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "number_of_ducks",
+                                )
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("latency")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(
+                                    Some(
+                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                                    ),
+                                )
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_PRESERVE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "RequestMetrics",
+                                &__METRIQUE__FIELDS_PRESERVE,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_PRESERVE
+                    }
+                    ::metrique::STYLE_PASCAL => {
+                        static __METRIQUE__FIELDS_PASCAL: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "Operation",
+                                )
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "NumberOfDucks",
+                                )
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("Latency")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(
+                                    Some(
+                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                                    ),
+                                )
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_PASCAL: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "RequestMetrics",
+                                &__METRIQUE__FIELDS_PASCAL,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_PASCAL
+                    }
+                    ::metrique::STYLE_SNAKE => {
+                        static __METRIQUE__FIELDS_SNAKE: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "operation",
+                                )
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "number_of_ducks",
+                                )
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("latency")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(
+                                    Some(
+                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                                    ),
+                                )
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_SNAKE: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "RequestMetrics",
+                                &__METRIQUE__FIELDS_SNAKE,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_SNAKE
+                    }
+                    ::metrique::STYLE_KEBAB => {
+                        static __METRIQUE__FIELDS_KEBAB: [::metrique::writer::core::FieldDescriptor; 3usize] = [
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "operation",
+                                )
+                                .flags(&__METRIQUE__FLAGS_0)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder(
+                                    "number-of-ducks",
+                                )
+                                .flags(&__METRIQUE__FLAGS_1)
+                                .maybe_unit(None)
+                                .build(),
+                            ::metrique::writer::core::FieldDescriptor::builder("latency")
+                                .flags(&__METRIQUE__FLAGS_2)
+                                .maybe_unit(
+                                    Some(
+                                        <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
+                                    ),
+                                )
+                                .build(),
+                        ];
+                        static __METRIQUE__DESC_KEBAB: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                                "RequestMetrics",
+                                &__METRIQUE__FIELDS_KEBAB,
+                            )
+                            .maybe_timestamp(None)
+                            .build();
+                        &__METRIQUE__DESC_KEBAB
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+    }
     #[expect(deprecated)]
     impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
     for RequestMetricsEntry {
@@ -89,6 +238,36 @@ const _: () = {
                 },
                 &__metrique_self.number_of_ducks,
             );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct LatencyPreserve;
+                    impl ::metrique::concat::ConstStr for LatencyPreserve {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyKebab;
+                    impl ::metrique::concat::ConstStr for LatencyKebab {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyPascal;
+                    impl ::metrique::concat::ConstStr for LatencyPascal {
+                        const VAL: &'static str = "Latency";
+                    }
+                    struct LatencySnake;
+                    impl ::metrique::concat::ConstStr for LatencySnake {
+                        const VAL: &'static str = "latency";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            LatencyPreserve,
+                            LatencyPascal,
+                            LatencySnake,
+                            LatencyKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.latency,
+            );
         }
         fn sample_group(
             &self,
@@ -97,6 +276,17 @@ const _: () = {
         > {
             let __metrique_self = self;
             ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        RequestMetricsEntry::__metrique_descriptor(
+                            <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                        ),
+                    ),
+                ),
+            )
         }
     }
 };
@@ -114,6 +304,7 @@ impl metrique::CloseValue for RequestMetrics {
             number_of_ducks: metrique::CloseValue::close(
                 __metrique_self_expr!().number_of_ducks,
             ),
+            latency: metrique::CloseValue::close(__metrique_self_expr!().latency).into(),
         }
     }
 }

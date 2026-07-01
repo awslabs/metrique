@@ -2,7 +2,7 @@ use rstest::rstest;
 use std::fs;
 use std::path::PathBuf;
 
-const MSRV: &'static str = "1.89.0";
+const MSRV: &'static str = "1.91.0";
 
 // return just major and minor versions of msrv
 fn msrv_major_minor() -> String {
@@ -111,7 +111,7 @@ fn test_cargo_toml_format(
     }
 
     // Check that each package has docs.rs metadata
-    if let Some(package) = package {
+    if package.is_some() {
         let metadata = toml
             .get("package")
             .and_then(|p| p.get("metadata"))

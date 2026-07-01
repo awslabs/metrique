@@ -249,6 +249,7 @@ impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
     }
 }
 
+// Descriptors intentionally Unavailable: fields are accumulated dynamically at runtime.
 impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         struct MultiObservation<'a, T> {

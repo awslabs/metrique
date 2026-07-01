@@ -101,6 +101,12 @@ pub use metrique_core::{
     OwnedCounterGuard,
 };
 
+#[doc(hidden)]
+pub use metrique_core::{
+    Identity, KebabCase, PascalCase, STYLE_KEBAB, STYLE_PASCAL, STYLE_PRESERVE, STYLE_SNAKE,
+    SnakeCase,
+};
+
 /// Unit types and utilities for metrics.
 ///
 /// This module provides various unit types for metrics, such as time units (Second, Millisecond),
@@ -661,6 +667,10 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         self.metric.sample_group()
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        self.metric.descriptors()
     }
 }
 

@@ -7,7 +7,7 @@ error[E0271]: type mismatch resolving `<WithKeys as AggregateStrategy>::Key == N
 note: expected this to be `NoKey`
   --> tests/ui/fail/aggregate_with_keys.rs:9:8
    |
-9  | struct WithKeys {
+ 9 | struct WithKeys {
    |        ^^^^^^^^
 note: required by a bound in `Aggregate::<T>::insert`
   --> src/aggregator.rs
