@@ -88,6 +88,7 @@ impl EntryDescriptor {
 pub struct FieldDescriptor {
     names: [&'static str; Styles::COUNT],
     flags: &'static [FieldFlag],
+    skipped_flags: &'static [FieldFlag],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
@@ -102,6 +103,7 @@ impl FieldDescriptor {
         FieldDescriptorBuilder {
             names: [name; Styles::COUNT],
             flags: &[],
+            skipped_flags: &[],
             shape: FieldShape::Opaque,
             unit: None,
         }
@@ -270,6 +272,7 @@ pub struct DescriptorRef<'a> {
     id: DescriptorId,
     prefixes: SmallVec<[&'static str; 1]>,
     style_index: u8,
+    extra_flags: &'static [FieldFlag],
 }
 
 impl<'a> DescriptorRef<'a> {
@@ -285,6 +288,7 @@ impl<'a> DescriptorRef<'a> {
             id,
             prefixes: SmallVec::new(),
             style_index,
+            extra_flags: &[],
         }
     }
 
@@ -294,6 +298,15 @@ impl<'a> DescriptorRef<'a> {
     pub fn with_prefix(mut self, prefix: &'static str) -> Self {
         self.prefixes.insert(0, prefix);
         self.id = DescriptorId::compute(self.descriptor, &self.prefixes);
+        self
+    }
+
+    /// Add extra flags to all fields in this segment (from flatten-site `default_flags`).
+    /// These are merged with each field's own flags at access time, respecting
+    /// field-level skips (flags in a field's `skipped_flags` are never added).
+    #[doc(hidden)]
+    pub fn with_extra_flags(mut self, flags: &'static [FieldFlag]) -> Self {
+        self.extra_flags = flags;
         self
     }
 
@@ -343,9 +356,17 @@ impl<'a> FieldView<'a> {
     pub fn base_name(&self) -> &'static str {
         self.desc.descriptor.fields[self.idx].names[self.desc.style_index as usize]
     }
-    /// Flags applied to this field.
+    /// Flags applied to this field, including any extra flags from flatten-site defaults.
+    /// Field-level skips take precedence: flags in the field's `skipped_flags` are never included.
     pub fn flags(&self) -> impl Iterator<Item = &'a FieldFlag> {
-        self.desc.descriptor.fields[self.idx].flags.iter()
+        let field = &self.desc.descriptor.fields[self.idx];
+        let skipped = field.skipped_flags;
+        field.flags.iter().chain(
+            self.desc
+                .extra_flags
+                .iter()
+                .filter(move |ef| !skipped.iter().any(|s| s.type_id() == ef.type_id())),
+        )
     }
 
     /// Shape of this field.
@@ -563,6 +584,7 @@ impl EntryDescriptorBuilder {
 pub struct FieldDescriptorBuilder {
     names: [&'static str; Styles::COUNT],
     flags: &'static [FieldFlag],
+    skipped_flags: &'static [FieldFlag],
     shape: FieldShape<'static>,
     unit: Option<Unit>,
 }
@@ -592,6 +614,13 @@ impl FieldDescriptorBuilder {
         self
     }
 
+    /// Set the skipped flags for this field. These flags were explicitly opted out
+    /// at field level and will not be added by flatten-site `default_flags`.
+    pub const fn skipped_flags(mut self, flags: &'static [FieldFlag]) -> Self {
+        self.skipped_flags = flags;
+        self
+    }
+
     /// Set the shape for this field.
     pub const fn shape(mut self, shape: FieldShape<'static>) -> Self {
         self.shape = shape;
@@ -615,6 +644,7 @@ impl FieldDescriptorBuilder {
         FieldDescriptor {
             names: self.names,
             flags: self.flags,
+            skipped_flags: self.skipped_flags,
             shape: self.shape,
             unit: self.unit,
         }

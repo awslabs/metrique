@@ -135,6 +135,7 @@ fn generate_descriptor(
                 field_metas.push(DescriptorFieldMeta {
                     names,
                     flags: resolved.flags,
+                    skipped_flags: resolved.skipped_flags,
                     unit_expr,
                 });
             }

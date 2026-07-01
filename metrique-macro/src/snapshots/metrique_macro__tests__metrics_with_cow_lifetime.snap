@@ -27,13 +27,16 @@ const _: () = {
         fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
                     ::metrique::writer::core::FieldDescriptor::builder("a")
                         .pascal("A")
                         .snake("a")
                         .kebab("a")
                         .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
                         .build(),
                     ::metrique::writer::core::FieldDescriptor::builder("b")
@@ -41,6 +44,7 @@ const _: () = {
                         .snake("b")
                         .kebab("b")
                         .flags(&__METRIQUE__FLAGS_1)
+                        .skipped_flags(&__METRIQUE__SKIPPED_1)
                         .maybe_unit(None)
                         .build(),
                 ];
