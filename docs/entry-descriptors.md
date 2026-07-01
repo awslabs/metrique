@@ -15,7 +15,7 @@ This adds `descriptors()` to the `Entry` and `InflectableEntry` traits (with def
 
 - **Entry descriptor** (`EntryDescriptor`): a metrique-emitted description of a macro-derived entry's closed shape. Sinks read it to learn what fields the entry can emit, in what order, with what flags and units, and what the entry is canonically called.
 - **Field flag**: a `FlagConstructor` type (e.g. `emf::flags::HighStorageResolution`, `dial9::flags::Export`) that a format or sink crate declares and that users apply to fields via `#[metrics(flags(T))]`. Flags appear in the descriptor for sink introspection and are applied at write time for format behavior.
-- **`default_flags` / `flags`**: struct-level and field-level attributes for applying flags. `skip(T)` suppresses a default. `default_flags` applies to direct fields only and does not propagate to flattened children.
+- **`default_flags` / `flags`**: struct-level and field-level attributes for applying flags. `skip(T)` suppresses a default. `default_flags` at struct level applies to direct fields only. `default_flags` on a flatten site applies to all flattened child fields, but child field-level skips take precedence.
 - **`FieldShape`**: the closed/emitted shape of a field (scalar, optional, list, dynamic-key map, or opaque). Describes what the sink will see, not the raw Rust type.
 - **`DescriptorRef`**: the handle yielded by `Entry::descriptors()`. Provides field access via `FieldView`, carries a stable `DescriptorId` for cache keying.
 - **`DescriptorId`**: an opaque identifier for a descriptor, stable within a single process lifetime. Used by sinks to cache derived data.
