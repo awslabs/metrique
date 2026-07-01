@@ -392,7 +392,8 @@ pub(crate) struct DescriptorFieldMeta {
     pub(crate) names: [String; 4],
     /// Resolved flag token streams for this field
     pub(crate) flags: Vec<Ts2>,
-
+    /// Skipped flag token streams for this field (field-level skip overrides flatten-site defaults)
+    pub(crate) skipped_flags: Vec<Ts2>,
     /// Unit expression (None or Some(<Unit>::UNIT))
     pub(crate) unit_expr: Ts2,
 }
@@ -457,9 +458,15 @@ pub(crate) fn generate_style_matched_descriptor(
             let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
             let flags = &f.flags;
             let num_flags = flags.len();
+            let skipped_ident = format_ident!("__METRIQUE_{}_SKIPPED_{}", ident_prefix, i);
+            let skipped = &f.skipped_flags;
+            let num_skipped = skipped.len();
             quote! {
                 static #flags_ident: [::metrique::writer::core::FieldFlag; #num_flags] = [
                     #(#flags),*
+                ];
+                static #skipped_ident: [::metrique::writer::core::FieldFlag; #num_skipped] = [
+                    #(#skipped),*
                 ];
             }
         })
@@ -478,6 +485,7 @@ pub(crate) fn generate_style_matched_descriptor(
             let snake = &f.names[metrique_core::Styles::SNAKE.index as usize];
             let kebab = &f.names[metrique_core::Styles::KEBAB.index as usize];
             let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
+            let skipped_ident = format_ident!("__METRIQUE_{}_SKIPPED_{}", ident_prefix, i);
             let unit_expr = &f.unit_expr;
             quote! {
                 ::metrique::writer::core::FieldDescriptor::builder(#preserve)
@@ -485,6 +493,7 @@ pub(crate) fn generate_style_matched_descriptor(
                     .snake(#snake)
                     .kebab(#kebab)
                     .flags(&#flags_ident)
+                    .skipped_flags(&#skipped_ident)
                     .maybe_unit(#unit_expr)
                     .build()
             }
@@ -532,6 +541,7 @@ pub(crate) fn generate_descriptor_impl(
 /// Resolved flags and suppressed type ids for a field.
 pub(crate) struct ResolvedFlags {
     pub(crate) flags: Vec<Ts2>,
+    pub(crate) skipped_flags: Vec<Ts2>,
 }
 
 pub(crate) fn resolve_field_flags(
@@ -539,12 +549,16 @@ pub(crate) fn resolve_field_flags(
     default_flags: &[FieldTagAttr],
 ) -> ResolvedFlags {
     let mut flags = Vec::new();
+    let mut skipped_flags = Vec::new();
 
-    // Field-level flags: present ones go to flags, skipped ones are just not emitted
+    // Field-level flags: present ones go to flags, skipped ones are recorded
     for flag in field_flags {
         let path = &flag.path;
         if flag.skip {
-            // skip: don't emit this flag (it suppresses the default within this struct)
+            // skip: record this so flatten-site defaults won't re-add it
+            skipped_flags.push(quote! {
+                ::metrique::writer::core::FieldFlag::new::<#path>()
+            });
         } else {
             flags.push(quote! {
                 ::metrique::writer::core::FieldFlag::new::<#path>()
@@ -568,5 +582,8 @@ pub(crate) fn resolve_field_flags(
         }
     }
 
-    ResolvedFlags { flags }
+    ResolvedFlags {
+        flags,
+        skipped_flags,
+    }
 }

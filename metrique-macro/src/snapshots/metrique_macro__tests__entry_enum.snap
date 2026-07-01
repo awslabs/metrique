@@ -21,12 +21,14 @@ const _: () = {
         fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                     ::metrique::writer::core::FieldDescriptor::builder("value")
                         .pascal("Value")
                         .snake("value")
                         .kebab("value")
                         .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
                         .build(),
                 ];
@@ -303,13 +305,16 @@ const _: () = {
                             ::metrique::writer::core::DescriptorRef::from_static(
                                 {
                                     static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                                     static __METRIQUE_V0_FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
                                     static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
                                         ::metrique::writer::core::FieldDescriptor::builder("count")
                                             .pascal("Count")
                                             .snake("count")
                                             .kebab("count")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(None)
                                             .build(),
                                         ::metrique::writer::core::FieldDescriptor::builder(
@@ -319,6 +324,7 @@ const _: () = {
                                             .snake("latency")
                                             .kebab("latency")
                                             .flags(&__METRIQUE_V0_FLAGS_1)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
                                             .maybe_unit(
                                                 Some(
                                                     <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
@@ -560,12 +566,14 @@ const _: () = {
                             ::metrique::writer::core::DescriptorRef::from_static(
                                 {
                                     static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                                     static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                                         ::metrique::writer::core::FieldDescriptor::builder("bytes")
                                             .pascal("Bytes")
                                             .snake("bytes")
                                             .kebab("bytes")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(None)
                                             .build(),
                                     ];

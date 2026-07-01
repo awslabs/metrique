@@ -35,14 +35,18 @@ const _: () = {
         fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FLAGS_2: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_2: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 3usize] = [
                     ::metrique::writer::core::FieldDescriptor::builder("operation")
                         .pascal("Operation")
                         .snake("operation")
                         .kebab("operation")
                         .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
                         .build(),
                     ::metrique::writer::core::FieldDescriptor::builder("number_of_ducks")
@@ -50,6 +54,7 @@ const _: () = {
                         .snake("number_of_ducks")
                         .kebab("number-of-ducks")
                         .flags(&__METRIQUE__FLAGS_1)
+                        .skipped_flags(&__METRIQUE__SKIPPED_1)
                         .maybe_unit(None)
                         .build(),
                     ::metrique::writer::core::FieldDescriptor::builder("latency")
@@ -57,6 +62,7 @@ const _: () = {
                         .snake("latency")
                         .kebab("latency")
                         .flags(&__METRIQUE__FLAGS_2)
+                        .skipped_flags(&__METRIQUE__SKIPPED_2)
                         .maybe_unit(
                             Some(
                                 <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,

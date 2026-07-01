@@ -160,12 +160,14 @@ const _: () = {
                                     static __METRIQUE_V0_FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
                                         ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
                                     ];
+                                    static __METRIQUE_V0_SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                                     static __METRIQUE_V0_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                                         ::metrique::writer::core::FieldDescriptor::builder("value")
                                             .pascal("Value")
                                             .snake("value")
                                             .kebab("value")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(None)
                                             .build(),
                                     ];
@@ -188,6 +190,9 @@ const _: () = {
                             ::metrique::writer::core::DescriptorRef::from_static(
                                 {
                                     static __METRIQUE_V1_FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                                    static __METRIQUE_V1_SKIPPED_0: [::metrique::writer::core::FieldFlag; 1usize] = [
+                                        ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
+                                    ];
                                     static __METRIQUE_V1_FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
                                         ::metrique::writer::core::FieldDescriptor::builder(
                                                 "skipped",
@@ -196,6 +201,7 @@ const _: () = {
                                             .snake("skipped")
                                             .kebab("skipped")
                                             .flags(&__METRIQUE_V1_FLAGS_0)
+                                            .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
                                             .maybe_unit(None)
                                             .build(),
                                     ];

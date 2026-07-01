@@ -357,7 +357,7 @@ fn generate_enum_descriptor(
             let mut v_timestamp_expr = quote! { None };
             if let Some(tag) = &root_attrs.tag {
                 let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
-                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], unit_expr: quote! { None } });
+                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], skipped_flags: vec![], unit_expr: quote! { None } });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
@@ -369,7 +369,7 @@ fn generate_enum_descriptor(
                                 Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },
                                 None => quote! { None },
                             };
-                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, unit_expr });
+                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, skipped_flags: resolved.skipped_flags, unit_expr });
                         }
                         MetricsFieldKind::Timestamp(_) => {
                             let ts_name = field.name.as_deref().unwrap_or("timestamp");
