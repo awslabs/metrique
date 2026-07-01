@@ -247,7 +247,10 @@ fn handle_entry(entry: &dyn Entry) {
             // Cache by DescriptorId for repeated entries of the same type.
             for segment in descs.iter() {
                 for field in segment.fields() {
-                    let name = field.base_name();
+                    // The fully resolved name (with prefixes, inflected to the entry's style):
+                    let name: String = field.name_parts().collect();
+                    // Or just the base (un-prefixed) name:
+                    let base = field.base_name();
                     let unit = field.unit();
                     // Check flags for format-specific behavior:
                     // field.flags().any(|f| f.is::<MyFlag>())
@@ -274,7 +277,6 @@ Flags carry both identity and data. Use `.is::<T>()` for identity checks and `.c
 ```rust
 for field in segment.fields() {
     if let Some(flag) = field.flags().find(|f| f.is::<MyFormatFlag>()) {
-        // Access the flag's runtime data without the write path
         let metric_flags = flag.construct();
         if let Some(opts) = metric_flags.downcast::<MyFormatOptions>() {
             // Use opts for format-specific decisions
@@ -282,8 +284,6 @@ for field in segment.fields() {
     }
 }
 ```
-
-New sinks should prefer reading flags from descriptors rather than from the write-path `MetricFlags` parameter. The write-path mechanism is maintained for backward compatibility but descriptors are the canonical source going forward.
 
 ### Caching
 
