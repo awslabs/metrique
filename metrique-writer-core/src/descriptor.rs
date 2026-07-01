@@ -184,12 +184,7 @@ impl<'a> Descriptors<'a> {
 
     /// Chain two descriptor results. If both are `Available`, their segments are
     /// concatenated in write order. If either is `Unavailable`, the result is
-    /// `Unavailable` (poisoning semantics).
-    ///
-    /// This ensures that a parent entry only advertises full structural metadata when
-    /// ALL of its flattened children also provide descriptors. Sinks relying on
-    /// positional correspondence between descriptor fields and write callbacks can
-    /// trust that `Available` means complete coverage.
+    /// `Unavailable`.
     pub fn chain(self, other: Descriptors<'a>) -> Self {
         match (self, other) {
             (Descriptors::Available(mut a), Descriptors::Available(b)) => {
