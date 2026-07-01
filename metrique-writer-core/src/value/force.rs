@@ -202,6 +202,10 @@ impl<E: Entry, FLAGS: FlagConstructor> Entry for ForceFlag<E, FLAGS> {
         })
     }
 
+    fn sample_group(&self) -> impl Iterator<Item = crate::entry::SampleGroupElement> {
+        self.0.sample_group()
+    }
+
     fn descriptors(&self) -> crate::Descriptors<'_> {
         self.0.descriptors()
     }
