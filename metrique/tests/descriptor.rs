@@ -1214,3 +1214,151 @@ fn metric_flags_supports_non_static_lifetime() {
     // FieldFlag::construct() returns MetricFlags<'static> because FlagConstructor
     // types reference static data, but the MetricFlags type itself is flexible.
 }
+
+// --- Flatten-site default_flags tests ---
+
+#[metrics(subfield)]
+struct InnerMetrics {
+    latency: u64,
+    count: u64,
+}
+
+#[metrics(subfield, default_flags(Dial9Emit))]
+struct InnerWithOwnDefaults {
+    normal_field: u64,
+    #[metrics(flags(skip(Dial9Emit)))]
+    excluded_field: u64,
+}
+
+#[test]
+fn flatten_only_parent_emits_empty_own_segment() {
+    #[metrics(rename_all = "PascalCase")]
+    struct Parent {
+        #[metrics(flatten)]
+        inner: InnerMetrics,
+    }
+
+    let m = Parent {
+        inner: InnerMetrics {
+            latency: 1,
+            count: 2,
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    assert_eq!(descs.len(), 2);
+    assert_eq!(descs[0].name(), "Parent");
+    assert_eq!(descs[0].fields_len(), 0);
+    assert_eq!(descs[1].name(), "InnerMetrics");
+    assert_eq!(descs[1].fields_len(), 2);
+}
+
+#[test]
+fn flatten_site_default_flags_propagates_to_child() {
+    #[metrics(rename_all = "PascalCase")]
+    struct Parent {
+        own_field: u64,
+        #[metrics(flatten, default_flags(AuditExport))]
+        inner: InnerMetrics,
+    }
+
+    let m = Parent {
+        own_field: 1,
+        inner: InnerMetrics {
+            latency: 10,
+            count: 5,
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    assert_eq!(descs.len(), 2);
+
+    // Parent's own field has no flags
+    let parent_fields: Vec<_> = descs[0].fields().collect();
+    assert_eq!(parent_fields[0].flags().count(), 0);
+
+    // Child's fields get AuditExport from flatten-site default_flags
+    for f in descs[1].fields() {
+        assert!(
+            f.flags()
+                .any(|fl| fl.type_id() == TypeId::of::<AuditExport>()),
+            "child field '{}' missing AuditExport from flatten-site default_flags",
+            f.base_name()
+        );
+    }
+}
+
+#[test]
+fn flatten_site_default_flags_respects_child_field_skip() {
+    #[metrics(rename_all = "PascalCase")]
+    struct Parent {
+        #[metrics(flatten, default_flags(Dial9Emit))]
+        inner: InnerWithOwnDefaults,
+    }
+
+    let m = Parent {
+        inner: InnerWithOwnDefaults {
+            normal_field: 1,
+            excluded_field: 2,
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    let child = &descs[1];
+    let fields: Vec<_> = child.fields().collect();
+
+    // normal_field has Dial9Emit (from child's own default, not re-added)
+    assert!(
+        fields[0]
+            .flags()
+            .any(|fl| fl.type_id() == TypeId::of::<Dial9Emit>()),
+        "normal_field should have Dial9Emit"
+    );
+
+    // excluded_field skipped Dial9Emit at field level: flatten-site must NOT re-add it
+    assert!(
+        !fields[1]
+            .flags()
+            .any(|fl| fl.type_id() == TypeId::of::<Dial9Emit>()),
+        "excluded_field skip must take precedence over flatten-site default_flags"
+    );
+}
+
+#[test]
+fn flatten_site_default_flags_combines_with_prefix() {
+    #[metrics(rename_all = "PascalCase")]
+    struct Parent {
+        #[metrics(flatten, prefix = "Api", default_flags(AuditExport))]
+        inner: InnerMetrics,
+    }
+
+    let m = Parent {
+        inner: InnerMetrics {
+            latency: 10,
+            count: 5,
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descs = entry.descriptors().unwrap();
+
+    let child = &descs[1];
+    let latency = child.fields().next().unwrap();
+
+    // Prefix applied
+    let name: String = latency.name_parts().collect();
+    assert_eq!(name, "ApiLatency");
+
+    // Flag applied
+    assert!(
+        latency
+            .flags()
+            .any(|fl| fl.type_id() == TypeId::of::<AuditExport>())
+    );
+}

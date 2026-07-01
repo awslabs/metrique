@@ -211,15 +211,54 @@ fn generate_field_writes(
                     ::metrique::writer::Entry::write(#field_access, #writer_ident);
                 }
             }
-            MetricsFieldKind::Flatten { span, prefix } => {
+            MetricsFieldKind::Flatten {
+                span,
+                prefix,
+                default_flags: flatten_default_flags,
+            } => {
                 let (extra, ns) = match prefix {
                     None => (quote!(), ns),
                     Some(prefix) => prefix.append_to(&ns, field_span),
                 };
                 let field_access = field_access(&field.ident);
-                quote_spanned! {*span=>
-                    #extra
-                    ::metrique::InflectableEntry::<#ns>::write(#field_access, #writer_ident);
+                if flatten_default_flags.is_empty() {
+                    quote_spanned! {*span=>
+                        #extra
+                        ::metrique::InflectableEntry::<#ns>::write(#field_access, #writer_ident);
+                    }
+                } else {
+                    // Nest ForceFlagEntryWriter wrappers: one per flag, innermost first
+                    let flag_paths: Vec<_> =
+                        flatten_default_flags.iter().map(|f| &f.path).collect();
+                    let num_wrappers = flag_paths.len();
+                    // Generate nested let bindings:
+                    //   let mut w0 = ForceFlagEntryWriter::<_, Flag1>::new(writer);
+                    //   let mut w1 = ForceFlagEntryWriter::<_, Flag2>::new(&mut w0);
+                    //   InflectableEntry::write(field, &mut w1);
+                    let wrapper_idents: Vec<_> = (0..num_wrappers)
+                        .map(|i| format_ident!("__metrique_fw_{}", i))
+                        .collect();
+                    let mut bindings = Vec::new();
+                    for (i, path) in flag_paths.iter().enumerate() {
+                        let ident = &wrapper_idents[i];
+                        let prev = if i == 0 {
+                            quote! { #writer_ident }
+                        } else {
+                            let prev_ident = &wrapper_idents[i - 1];
+                            quote! { &mut #prev_ident }
+                        };
+                        bindings.push(quote! {
+                            let mut #ident = ::metrique::writer::value::ForceFlagEntryWriter::<_, #path>::new(#prev);
+                        });
+                    }
+                    let last_wrapper = &wrapper_idents[num_wrappers - 1];
+                    quote_spanned! {*span=>
+                        #extra
+                        {
+                            #(#bindings)*
+                            ::metrique::InflectableEntry::<#ns>::write(#field_access, &mut #last_wrapper);
+                        }
+                    }
                 }
             }
             MetricsFieldKind::Ignore(_) => {
@@ -535,8 +574,6 @@ pub(crate) fn generate_descriptor_impl(
         }
     }
 }
-
-/// Returns the style constant token stream for a given `NameStyle`.
 
 /// Resolved flags and suppressed type ids for a field.
 pub(crate) struct ResolvedFlags {

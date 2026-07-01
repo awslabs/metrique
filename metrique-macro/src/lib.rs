@@ -50,7 +50,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `value` | Flag | Used for *structs*. Makes the struct a value newtype | `#[metrics(value)]` |
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
-/// | `default_flags` | Path | Applies a flag to all direct fields in this struct for format and sink usage. Does not propagate to flattened children. Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::flags::MyFlag))]` |
+/// | `default_flags` | Path | Applies a flag to all direct fields in this struct for format and sink usage. Does not propagate to flattened children (use field-level `default_flags` on the flatten site for that). Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::flags::MyFlag))]` |
 ///
 /// # Field Attributes
 ///
@@ -68,6 +68,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 /// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
+/// | `default_flags` | Path(s) | On a flatten field, applies flags to all child fields. Child field-level skips take precedence. | `#[metrics(flatten, default_flags(my_crate::flags::Export))]` |
 ///
 /// # Variant Attributes
 ///
@@ -197,6 +198,62 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// let entry = metrique::test_util::to_test_entry(&entries[0]);
 /// assert_eq!(entry.metrics["waterfowl_NDucks"], 0);
 /// ```
+///
+/// # Flags
+///
+/// Flags are type-based markers that attach metadata to fields without affecting serialized values.
+/// Sinks and formats can inspect flags via descriptors to decide how to handle each field
+/// (e.g., which fields to export, which to aggregate differently).
+///
+/// ```rust
+/// # use metrique::unit_of_work::metrics;
+/// use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
+///
+/// // Define a flag type
+/// struct AuditOpts;
+/// impl MetricOptions for AuditOpts {}
+/// struct AuditExport;
+/// impl FlagConstructor for AuditExport {
+///     fn construct() -> MetricFlags<'static> { MetricFlags::upcast(&AuditOpts) }
+/// }
+///
+/// #[metrics(subfield, default_flags(AuditExport))]
+/// struct RequestMetrics {
+///     request_count: u64,
+///     #[metrics(flags(skip(AuditExport)))]
+///     debug_scratch: u64, // excluded from audit
+/// }
+/// ```
+///
+/// ## Flatten-site default_flags
+///
+/// When flattening a child struct, you can apply flags to all of its fields from the parent:
+///
+/// ```rust
+/// # use metrique::unit_of_work::metrics;
+/// # use metrique_writer_core::value::{FlagConstructor, MetricFlags, MetricOptions};
+/// # struct AuditOpts; impl MetricOptions for AuditOpts {}
+/// # struct AuditExport;
+/// # impl FlagConstructor for AuditExport {
+/// #     fn construct() -> MetricFlags<'static> { MetricFlags::upcast(&AuditOpts) }
+/// # }
+/// #[metrics(subfield)]
+/// struct LibraryMetrics {
+///     latency: u64,
+///     count: u64,
+/// }
+///
+/// #[metrics(rename_all = "PascalCase")]
+/// struct AppMetrics {
+///     #[metrics(flatten, default_flags(AuditExport))]
+///     lib: LibraryMetrics, // all fields get AuditExport
+/// }
+/// ```
+///
+/// Precedence (most specific wins):
+/// 1. Field-level `flags(skip(X))` on the child field
+/// 2. Child struct's own `default_flags`
+/// 3. Flatten-site `default_flags` (from the parent)
 ///
 /// # Example
 ///
@@ -982,6 +1039,9 @@ struct RawMetricsFieldAttrs {
 
     #[darling(default)]
     flags: FlagsList,
+
+    #[darling(default)]
+    default_flags: FlagsList,
 }
 
 /// Wrapper type to allow recovering both the key and value span when parsing an attribute
@@ -1110,10 +1170,14 @@ fn validate_flags_conflicts(tags: &[FieldTagAttr], attr_name: &str) -> darling::
 }
 
 impl RawMetricsFieldAttrs {
-    fn validate(self) -> darling::Result<MetricsFieldAttrs> {
+    fn validate(mut self) -> darling::Result<MetricsFieldAttrs> {
         let mut out: Option<(MetricsFieldKind, &'static str)> = None;
         out = set_exclusive(
-            |span| MetricsFieldKind::Flatten { span, prefix: None },
+            |span| MetricsFieldKind::Flatten {
+                span,
+                prefix: None,
+                default_flags: vec![],
+            },
             "flatten",
             out,
             &self.flatten,
@@ -1172,6 +1236,32 @@ impl RawMetricsFieldAttrs {
                      Apply flags on the child struct directly with default_flags(...).",
             )
             .with_span(span));
+        }
+
+        // default_flags on a flatten field: validate and patch
+        if !self.default_flags.0.is_empty() {
+            match &mut out {
+                Some((MetricsFieldKind::Flatten { default_flags, .. }, _)) => {
+                    validate_flags_conflicts(&self.default_flags.0, "default_flags")?;
+                    for flag in &self.default_flags.0 {
+                        if flag.skip {
+                            return Err(darling::Error::custom(
+                                "skip(...) is not allowed in default_flags.",
+                            )
+                            .with_span(&flag.path));
+                        }
+                    }
+                    *default_flags = std::mem::take(&mut self.default_flags.0);
+                }
+                _ => {
+                    return Err(darling::Error::custom(
+                        "default_flags on a field can only be used with `flatten`. \
+                         For struct-level defaults, place default_flags on the \
+                         #[metrics(...)] container attribute.",
+                    )
+                    .with_span(&self.default_flags.0[0].path));
+                }
+            }
         }
 
         Ok(MetricsFieldAttrs {
@@ -1471,6 +1561,7 @@ enum MetricsFieldKind {
     Flatten {
         span: Span,
         prefix: Option<Prefix>,
+        default_flags: Vec<FieldTagAttr>,
     },
     FlattenEntry(Span),
     Timestamp(Span),

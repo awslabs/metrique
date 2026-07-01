@@ -180,7 +180,11 @@ fn build_flatten_chains(
 
     for field in fields {
         match &field.attrs.kind {
-            MetricsFieldKind::Flatten { prefix, .. } => {
+            MetricsFieldKind::Flatten {
+                prefix,
+                default_flags: flatten_default_flags,
+                ..
+            } => {
                 let field_ident = &field.ident;
                 let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
                 let ns = make_ns(root_attrs.rename_all, field.span);
@@ -199,10 +203,32 @@ fn build_flatten_chains(
                     }
                 });
 
-                let child_expr = if prefix_expr.is_some() {
+                let extra_flags_expr = if flatten_default_flags.is_empty() {
+                    None
+                } else {
+                    let flag_exprs: Vec<_> = flatten_default_flags
+                        .iter()
+                        .map(|f| {
+                            let path = &f.path;
+                            quote! { ::metrique::writer::core::FieldFlag::new::<#path>() }
+                        })
+                        .collect();
+                    let num_flags = flag_exprs.len();
+                    Some(quote! {
+                        .with_extra_flags({
+                            static __FLATTEN_FLAGS: [::metrique::writer::core::FieldFlag; #num_flags] = [
+                                #(#flag_exprs),*
+                            ];
+                            &__FLATTEN_FLAGS
+                        })
+                    })
+                };
+
+                let has_transforms = prefix_expr.is_some() || extra_flags_expr.is_some();
+                let child_expr = if has_transforms {
                     quote! {
                         ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                            .map_available(|d| d #prefix_expr)
+                            .map_available(|d| d #prefix_expr #extra_flags_expr)
                     }
                 } else {
                     quote! {
