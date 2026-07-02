@@ -24,6 +24,8 @@ pub(crate) enum NameStyle {
     PascalCase,
     #[darling(rename = "snake_case")]
     SnakeCase,
+    #[darling(rename = "SCREAMING_SNAKE_CASE")]
+    ScreamingSnakeCase,
     #[darling(rename = "kebab-case")]
     KebabCase,
     #[default]
@@ -36,6 +38,7 @@ impl NameStyle {
         match self {
             NameStyle::PascalCase => name.to_pascal_case(),
             NameStyle::SnakeCase => name.to_snake_case(),
+            NameStyle::ScreamingSnakeCase => name.to_screaming_snake_case(),
             NameStyle::Preserve => name.to_string(),
             NameStyle::KebabCase => name.to_kebab_case(),
         }
@@ -47,6 +50,13 @@ impl NameStyle {
             NameStyle::PascalCase => name.to_pascal_case(),
             NameStyle::SnakeCase => {
                 let mut res = name.to_snake_case();
+                if !res.ends_with("_") {
+                    res.push('_');
+                }
+                res
+            }
+            NameStyle::ScreamingSnakeCase => {
+                let mut res = name.to_screaming_snake_case();
                 if !res.ends_with("_") {
                     res.push('_');
                 }
@@ -67,6 +77,7 @@ impl NameStyle {
         match self {
             NameStyle::PascalCase => "Pascal",
             NameStyle::SnakeCase => "Snake",
+            NameStyle::ScreamingSnakeCase => "ScreamingSnake",
             NameStyle::Preserve => "Preserve",
             NameStyle::KebabCase => "Kebab",
         }

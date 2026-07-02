@@ -92,6 +92,23 @@ impl CloseValue for Arc<String> {
 }
 
 #[diagnostic::do_not_recommend]
+impl CloseValue for &Arc<str> {
+    type Closed = Arc<str>;
+
+    fn close(self) -> Self::Closed {
+        self.clone()
+    }
+}
+
+impl CloseValue for Arc<str> {
+    type Closed = Arc<str>;
+
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
+
+#[diagnostic::do_not_recommend]
 impl<'a, T: ToOwned + ?Sized> CloseValue for Cow<'a, T> {
     type Closed = Cow<'a, T>;
 
@@ -336,6 +353,18 @@ mod tests {
     fn close_arc() {
         let x = Arc::new(Closeable);
         assert_eq!(x.close(), 42);
+    }
+
+    #[test]
+    fn close_arc_str() {
+        let x: Arc<str> = Arc::from("hello");
+        assert_eq!(x.close(), Arc::from("hello"));
+    }
+
+    #[test]
+    fn close_arc_str_ref() {
+        let x: Arc<str> = Arc::from("hello");
+        assert_eq!((&x).close(), Arc::from("hello"));
     }
 
     #[test]

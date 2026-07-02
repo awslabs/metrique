@@ -100,7 +100,17 @@ pub use namestyle::{DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase
 ///         child: ChildMetrics,
 ///     }
 ///     ```
-/// 3. If you are fine with allocating, you could make your own string wrapper type.
+/// 3. Use `Arc<str>` instead of `String`.
+///     ```rust
+///     # use std::sync::Arc;
+///     # use metrique::unit_of_work::metrics;
+///     #[metrics(subfield)]
+///     struct ChildMetrics {
+///         field: Arc<str>,
+///     }
+///     ```
+/// 4. If you are fine with allocating, you could make your own string
+///    wrapper type.
 ///     ```rust
 ///     # use metrique::unit_of_work::metrics;
 ///     struct StringValue(String);

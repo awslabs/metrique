@@ -69,6 +69,9 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
+use aws_sdk_cloudwatchlogs::error::SdkError;
+use aws_sdk_cloudwatchlogs::operation::create_log_group::CreateLogGroupError;
+use aws_sdk_cloudwatchlogs::operation::create_log_stream::CreateLogStreamError;
 use aws_sdk_cloudwatchlogs::types::InputLogEvent;
 use bon::bon;
 use metrique_writer_core::format::Format;
@@ -515,13 +518,16 @@ async fn create_log_resources(
         .await
     {
         Ok(_) => debug!("Created log group: {log_group_name}"),
+        Err(SdkError::ServiceError(ref e))
+            if matches!(
+                e.err(),
+                CreateLogGroupError::ResourceAlreadyExistsException(_)
+            ) =>
+        {
+            debug!("Log group already exists: {log_group_name}");
+        }
         Err(e) => {
-            let msg = format!("{e}");
-            if msg.contains("ResourceAlreadyExistsException") {
-                debug!("Log group already exists: {log_group_name}");
-            } else {
-                warn!("Failed to create log group {log_group_name}: {e}");
-            }
+            warn!("Failed to create log group {log_group_name}: {e}");
         }
     }
 
@@ -533,13 +539,16 @@ async fn create_log_resources(
         .await
     {
         Ok(_) => debug!("Created log stream: {log_stream_name}"),
+        Err(SdkError::ServiceError(ref e))
+            if matches!(
+                e.err(),
+                CreateLogStreamError::ResourceAlreadyExistsException(_)
+            ) =>
+        {
+            debug!("Log stream already exists: {log_stream_name}");
+        }
         Err(e) => {
-            let msg = format!("{e}");
-            if msg.contains("ResourceAlreadyExistsException") {
-                debug!("Log stream already exists: {log_stream_name}");
-            } else {
-                warn!("Failed to create log stream {log_stream_name}: {e}");
-            }
+            warn!("Failed to create log stream {log_stream_name}: {e}");
         }
     }
 }
