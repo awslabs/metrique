@@ -69,7 +69,9 @@ use tokio_metrics::{FutureMonitor, FutureMetrics};
 ///     // instrument the larger task. Instrument the *spawned* task: metrics are
 ///     // only accurate when the instrumented future is the root of a task the
 ///     // runtime schedules, not when it is awaited inline.
-///     let task_monitor = TaskMonitor::builder().publish_scheduling_delay().build();
+///     let mut builder = TaskMonitor::builder();
+///     builder.publish_scheduling_delay();
+///     let task_monitor = builder.build();
 ///     tokio::spawn(task_monitor.instrument(async {
 ///         let (success, timing) = TaskTiming::instrument(handle_request()).await;
 ///         let _m = RequestMetrics {
@@ -138,7 +140,9 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread", start_paused = true)]
     async fn folds_per_request_metrics_into_entry() {
-        let task_monitor = TaskMonitor::builder().publish_scheduling_delay().build();
+        let mut builder = TaskMonitor::builder();
+        builder.publish_scheduling_delay();
+        let task_monitor = builder.build();
         task_monitor
             .instrument(async {
                 let (_, timing) = TaskTiming::instrument(async {
