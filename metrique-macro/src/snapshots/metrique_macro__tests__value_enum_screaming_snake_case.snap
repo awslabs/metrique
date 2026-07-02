@@ -1,0 +1,95 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+enum Operation {
+    ReadData,
+    WriteData,
+    Delete,
+}
+#[doc(hidden)]
+#[derive(Debug, Clone, Copy)]
+pub enum OperationValue {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    ReadData,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    WriteData,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    Delete,
+}
+impl ::std::convert::From<&'_ OperationValue> for &'static str {
+    fn from(value: &OperationValue) -> Self {
+        #[allow(deprecated)]
+        match value {
+            OperationValue::ReadData => "READ_DATA",
+            OperationValue::WriteData => "WRITE_DATA",
+            OperationValue::Delete => "CUSTOM_NAME",
+        }
+    }
+}
+impl ::std::convert::From<OperationValue> for &'static str {
+    fn from(value: OperationValue) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for OperationValue {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}
+impl ::metrique::writer::Value for OperationValue {
+    fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
+        writer.string(::std::convert::Into::<&str>::into(self));
+    }
+}
+impl metrique::CloseValue for &'_ Operation {
+    type Closed = OperationValue;
+    fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
+        #[allow(deprecated)]
+        match __metrique_self_expr!() {
+            Operation::ReadData => OperationValue::ReadData,
+            Operation::WriteData => OperationValue::WriteData,
+            Operation::Delete => OperationValue::Delete,
+        }
+    }
+}
+impl metrique::CloseValue for Operation {
+    type Closed = OperationValue;
+    fn close(self) -> Self::Closed {
+        <&Self>::close(&self)
+    }
+}
+impl ::std::convert::From<&'_ Operation> for &'static str {
+    fn from(value: &Operation) -> Self {
+        #[allow(deprecated)]
+        match value {
+            Operation::ReadData => "READ_DATA",
+            Operation::WriteData => "WRITE_DATA",
+            Operation::Delete => "CUSTOM_NAME",
+        }
+    }
+}
+impl ::std::convert::From<Operation> for &'static str {
+    fn from(value: Operation) -> Self {
+        <&str as ::std::convert::From<&_>>::from(&value)
+    }
+}
+impl ::metrique::writer::core::SampleGroup for Operation {
+    fn as_sample_group(&self) -> ::std::borrow::Cow<'static, str> {
+        ::std::borrow::Cow::Borrowed(::std::convert::Into::<&str>::into(self))
+    }
+}

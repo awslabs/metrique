@@ -38,7 +38,9 @@ pub(crate) fn mixed_site_self() -> Ident {
 fn make_ns(ns: NameStyle, span: proc_macro2::Span) -> Ts2 {
     match ns {
         NameStyle::PascalCase => quote_spanned! {span=> NS::PascalCase },
-        NameStyle::SnakeCase => quote_spanned! {span=> NS::SnakeCase },
+        NameStyle::SnakeCase | NameStyle::ScreamingSnakeCase => {
+            quote_spanned! {span=> NS::SnakeCase }
+        }
         NameStyle::KebabCase => quote_spanned! {span=> NS::KebabCase },
         NameStyle::Preserve => quote_spanned! {span=> NS },
     }
