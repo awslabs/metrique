@@ -186,6 +186,7 @@ const _: () = {
                                             .pascal("Latency")
                                             .snake("latency")
                                             .kebab("latency")
+                                            .screaming_snake("LATENCY")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(
@@ -224,6 +225,7 @@ const _: () = {
                                             .pascal("Bytes")
                                             .snake("bytes")
                                             .kebab("bytes")
+                                            .screaming_snake("BYTES")
                                             .flags(&__METRIQUE_V1_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
                                             .maybe_unit(None)

@@ -45,6 +45,7 @@ const _: () = {
                         .pascal("Operation")
                         .snake("operation")
                         .kebab("operation")
+                        .screaming_snake("OPERATION")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
@@ -53,6 +54,7 @@ const _: () = {
                         .pascal("NumberOfDucks")
                         .snake("number_of_ducks")
                         .kebab("number-of-ducks")
+                        .screaming_snake("NUMBER_OF_DUCKS")
                         .flags(&__METRIQUE__FLAGS_1)
                         .skipped_flags(&__METRIQUE__SKIPPED_1)
                         .maybe_unit(None)
@@ -61,6 +63,7 @@ const _: () = {
                         .pascal("Latency")
                         .snake("latency")
                         .kebab("latency")
+                        .screaming_snake("LATENCY")
                         .flags(&__METRIQUE__FLAGS_2)
                         .skipped_flags(&__METRIQUE__SKIPPED_2)
                         .maybe_unit(

@@ -55,8 +55,19 @@ impl Styles {
         index: 3,
         name: "kebab-case",
     };
+    /// SCREAMING_SNAKE_CASE.
+    pub const SCREAMING_SNAKE: Style = Style {
+        index: 4,
+        name: "SCREAMING_SNAKE_CASE",
+    };
     /// All styles in index order.
-    pub const ALL: &'static [Style] = &[Self::PRESERVE, Self::PASCAL, Self::SNAKE, Self::KEBAB];
+    pub const ALL: &'static [Style] = &[
+        Self::PRESERVE,
+        Self::PASCAL,
+        Self::SNAKE,
+        Self::KEBAB,
+        Self::SCREAMING_SNAKE,
+    ];
     /// Number of styles.
     pub const COUNT: usize = Self::ALL.len();
 }
@@ -608,6 +619,12 @@ impl FieldDescriptorBuilder {
         self
     }
 
+    /// Set the SCREAMING_SNAKE_CASE name for this field.
+    pub const fn screaming_snake(mut self, name: &'static str) -> Self {
+        self.names[Styles::SCREAMING_SNAKE.index as usize] = name;
+        self
+    }
+
     /// Set the flags for this field.
     pub const fn flags(mut self, flags: &'static [FieldFlag]) -> Self {
         self.flags = flags;
@@ -655,7 +672,7 @@ impl FieldDescriptorBuilder {
 // (pascal, snake, kebab = 3, plus the base preserve slot = 4) must match Styles::COUNT.
 // If you add a new Style to Styles::ALL, add a corresponding builder method.
 const _: () = assert!(
-    Styles::COUNT == 4,
+    Styles::COUNT == 5,
     "Styles::COUNT changed; update FieldDescriptorBuilder with a new style method"
 );
 #[cfg(test)]

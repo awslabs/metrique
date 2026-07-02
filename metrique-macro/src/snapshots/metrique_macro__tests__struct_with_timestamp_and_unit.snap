@@ -43,6 +43,7 @@ const _: () = {
                         .pascal("Latency")
                         .snake("latency")
                         .kebab("latency")
+                        .screaming_snake("LATENCY")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(
@@ -55,6 +56,7 @@ const _: () = {
                         .pascal("Count")
                         .snake("count")
                         .kebab("count")
+                        .screaming_snake("COUNT")
                         .flags(&__METRIQUE__FLAGS_1)
                         .skipped_flags(&__METRIQUE__SKIPPED_1)
                         .maybe_unit(None)

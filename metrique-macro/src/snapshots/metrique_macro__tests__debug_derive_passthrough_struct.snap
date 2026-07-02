@@ -29,6 +29,7 @@ const _: () = {
                         .pascal("Field")
                         .snake("field")
                         .kebab("field")
+                        .screaming_snake("FIELD")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)

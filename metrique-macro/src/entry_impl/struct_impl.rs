@@ -123,7 +123,7 @@ fn generate_descriptor(
                 };
             }
             MetricsFieldKind::Field { unit, .. } => {
-                let names: [String; 4] =
+                let names: [String; metrique_core::Styles::COUNT] =
                     std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                 let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
                 let unit_expr = match unit {

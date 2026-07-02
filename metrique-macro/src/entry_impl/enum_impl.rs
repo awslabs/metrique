@@ -385,14 +385,14 @@ fn generate_enum_descriptor(
             let mut v_field_metas: Vec<super::DescriptorFieldMeta> = Vec::new();
             let mut v_timestamp_expr = quote! { None };
             if let Some(tag) = &root_attrs.tag {
-                let names: [String; 4] = std::array::from_fn(|_| tag.field_name(root_attrs));
+                let names: [String; metrique_core::Styles::COUNT] = std::array::from_fn(|_| tag.field_name(root_attrs));
                 v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], skipped_flags: vec![], unit_expr: quote! { None } });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
                     match &field.attrs.kind {
                         MetricsFieldKind::Field { unit, .. } => {
-                            let names: [String; 4] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
+                            let names: [String; metrique_core::Styles::COUNT] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                             let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
                             let unit_expr = match unit {
                                 Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },

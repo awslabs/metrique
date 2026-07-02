@@ -33,6 +33,7 @@ const _: () = {
                         .pascal("Operation")
                         .snake("operation")
                         .kebab("operation")
+                        .screaming_snake("OPERATION")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
@@ -140,6 +141,7 @@ const _: () = {
                                         "Api",
                                         "api_",
                                         "api-",
+                                        "API_",
                                     ][<NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX
                                         as usize],
                                 )

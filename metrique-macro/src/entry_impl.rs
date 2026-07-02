@@ -429,8 +429,8 @@ pub(crate) struct DescriptorOutput {
 
 /// Metadata for a single field in the descriptor, collected at macro time.
 pub(crate) struct DescriptorFieldMeta {
-    /// Field name in each style: [preserve, pascal, snake, kebab]
-    pub(crate) names: [String; 4],
+    /// Field name in each style: [preserve, pascal, snake, kebab, screaming_snake]
+    pub(crate) names: [String; metrique_core::Styles::COUNT],
     /// Resolved flag token streams for this field
     pub(crate) flags: Vec<Ts2>,
     /// Skipped flag token streams for this field (field-level skip overrides flatten-site defaults)
@@ -525,6 +525,7 @@ pub(crate) fn generate_style_matched_descriptor(
             let pascal = &f.names[metrique_core::Styles::PASCAL.index as usize];
             let snake = &f.names[metrique_core::Styles::SNAKE.index as usize];
             let kebab = &f.names[metrique_core::Styles::KEBAB.index as usize];
+            let screaming_snake = &f.names[metrique_core::Styles::SCREAMING_SNAKE.index as usize];
             let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
             let skipped_ident = format_ident!("__METRIQUE_{}_SKIPPED_{}", ident_prefix, i);
             let unit_expr = &f.unit_expr;
@@ -533,6 +534,7 @@ pub(crate) fn generate_style_matched_descriptor(
                     .pascal(#pascal)
                     .snake(#snake)
                     .kebab(#kebab)
+                    .screaming_snake(#screaming_snake)
                     .flags(&#flags_ident)
                     .skipped_flags(&#skipped_ident)
                     .maybe_unit(#unit_expr)

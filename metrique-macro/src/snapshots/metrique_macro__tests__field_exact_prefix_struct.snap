@@ -33,6 +33,7 @@ const _: () = {
                         .pascal("Operation")
                         .snake("operation")
                         .kebab("operation")
+                        .screaming_snake("OPERATION")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
@@ -117,6 +118,7 @@ const _: () = {
                             d
                                 .with_prefix(
                                     [
+                                        "API@",
                                         "API@",
                                         "API@",
                                         "API@",

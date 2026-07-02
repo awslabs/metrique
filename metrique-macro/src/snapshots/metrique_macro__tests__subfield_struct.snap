@@ -27,6 +27,7 @@ const _: () = {
                         .pascal("Counter")
                         .snake("counter")
                         .kebab("counter")
+                        .screaming_snake("COUNTER")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)

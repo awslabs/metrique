@@ -40,6 +40,7 @@ impl NameStyle {
         arr[metrique_core::Styles::PASCAL.index as usize] = NameStyle::PascalCase;
         arr[metrique_core::Styles::SNAKE.index as usize] = NameStyle::SnakeCase;
         arr[metrique_core::Styles::KEBAB.index as usize] = NameStyle::KebabCase;
+        arr[metrique_core::Styles::SCREAMING_SNAKE.index as usize] = NameStyle::ScreamingSnakeCase;
         arr
     };
 
@@ -170,6 +171,7 @@ mod test {
                 NameStyle::PascalCase => 1,
                 NameStyle::SnakeCase => 2,
                 NameStyle::KebabCase => 3,
+                NameStyle::ScreamingSnakeCase => 4,
             }
         }
     }
