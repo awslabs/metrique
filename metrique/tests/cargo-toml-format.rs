@@ -187,21 +187,15 @@ fn test_msrv_ui(
 }
 
 #[rstest]
-/// Check that build yml tests on the MSRV
-fn test_build_yml(
+/// Check that the CI workflow tests on the MSRV
+fn test_ci_yml(
     // .. since workspace root is parent of package root
     #[files("../Cargo.toml")] base_path: PathBuf,
 ) {
-    let rs_path = base_path
-        .parent()
-        .unwrap()
-        .join(".github/workflows/build.yml");
+    let rs_path = base_path.parent().unwrap().join(".github/workflows/ci.yml");
     let msrv_string = format!("- \"{MSRV}\" # Current MSRV");
     let file = std::fs::read_to_string(rs_path).unwrap();
-    assert!(
-        file.contains(&msrv_string),
-        "build.yml must run at the msrv"
-    );
+    assert!(file.contains(&msrv_string), "ci.yml must run at the msrv");
 }
 
 /// Verify that the globs in test_cargo_toml_format cover every workspace member.
