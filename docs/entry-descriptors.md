@@ -178,6 +178,8 @@ Sinks walking `descriptors()` see two segments in write order: key fields first,
 
 The metrique macro emits exactly one `EntryWriter::value(name, ..)` callback per `FieldDescriptor`, in the same order as the fields listed in each descriptor returned by `descriptors()`. For composed entries, each descriptor covers a contiguous segment of the write output; consumers walk descriptors in sequence, consuming fields from each.
 
+`value()` is always invoked, even when the field holds `None` or an empty collection. In that case the `Value` impl calls neither `string()` nor `metric()` on the `ValueWriter`, but the callback itself still fires. Position-indexed consumers can safely count `value()` calls to stay in sync with the descriptor.
+
 Multi-element fields (`Vec<T>`, `Flex<(String, T)>`, and similar) still produce exactly one `value()` callback per `FieldDescriptor`. The multiplicity is handled inside the `Value` impl, which the adapter's `ValueWriter` observes through `ValueWriter::values()` (for `Vec<T>` / `[T]`) or similar dispatch methods. Descriptor-aware sinks that want typed encoding for these fields override the corresponding `ValueWriter` method; the default implementations collapse multi-element data into a single scalar (comma-joined string for `values()`), which is a valid but lossy fallback.
 
 The contract is guaranteed by construction for macro-derived entries (the macro emits both from the same iteration). A debug-mode check inside metrique's test harness validates correspondence; CI tests assert it on every release. Hand-written entries that ship a descriptor (a deferred feature) must uphold the same correspondence.

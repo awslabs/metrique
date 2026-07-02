@@ -323,6 +323,10 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
     }
 
     fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        // Both halves must have descriptors for the composed result to be meaningful.
+        // If either is Unavailable (e.g. a hand-written Entry without descriptor support),
+        // the positional correspondence between descriptors and write output is broken,
+        // so we report the whole thing as Unavailable.
         match (self.key.descriptors(), self.aggregated.descriptors()) {
             (
                 metrique_writer_core::Descriptors::Available(a),

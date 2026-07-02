@@ -364,6 +364,9 @@ impl<'a> FieldView<'a> {
     }
 
     /// Just the base field name without any prefixes.
+    ///
+    /// Guaranteed to return `&'static str` regardless of how the descriptor is
+    /// stored internally. Safe to cache or use as a long-lived key.
     pub fn base_name(&self) -> &'static str {
         self.desc.descriptor.fields[self.idx].names[self.desc.style_index as usize]
     }

@@ -174,6 +174,15 @@ mod test {
                 NameStyle::ScreamingSnakeCase => 4,
             }
         }
+
+        // Verify that every variant has the correct index in ALL.
+        for (i, &style) in NameStyle::ALL.iter().enumerate() {
+            assert_eq!(
+                _assert_exhaustive(style),
+                i,
+                "NameStyle::ALL[{i}] does not match _assert_exhaustive index"
+            );
+        }
     }
 
     #[test]

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - MSRV raised from 1.89 to 1.91 (required for `const TypeId::of`).
 
+### Fixed
+
+- *(metrique-aggregation)* `#[aggregate]` now propagates the parent's `rename_all` to the generated key struct. Previously key fields (dimensions) kept their Rust field names even when `rename_all` was set on the parent.
+
 ## [0.1.25](https://github.com/awslabs/metrique/compare/metrique-v0.1.24...metrique-v0.1.25) - 2026-04-20
 
 ### Added
