@@ -136,6 +136,16 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
                         }
                     };
 
+                    // Reject cfg on any field in enum variants.
+                    let has_cfg = field.attrs.iter().any(|a| a.path().is_ident("cfg") || a.path().is_ident("cfg_attr"));
+                    if has_cfg {
+                        return Err(syn::Error::new_spanned(
+                            field,
+                            "cfg attributes on fields inside enum variants are not supported. \
+                             Use a cfg-gated variant or an Option field instead.",
+                        ));
+                    }
+
                     Ok(TupleData {
                         ty: field.ty.clone(),
                         kind: attrs.kind,
@@ -148,6 +158,18 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
         }
         syn::Fields::Named(fields) => {
             let parsed_fields = parse_metric_fields(&fields.named)?;
+            // Reject cfg on any field inside enum variants.
+            // The macro generates match patterns that bind fields, and Rust doesn't
+            // support cfg-gated bindings in patterns.
+            for field in &parsed_fields {
+                if field.cfg_attrs().next().is_some() {
+                    return Err(syn::Error::new(
+                        field.span,
+                        "cfg attributes on fields inside enum variants are not supported. \
+                         Use a cfg-gated variant or an Option field instead.",
+                    ));
+                }
+            }
             Ok(Some(VariantData::Struct(parsed_fields)))
         }
     }

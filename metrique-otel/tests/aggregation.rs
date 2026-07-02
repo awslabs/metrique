@@ -104,7 +104,7 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
                             attrs.sort();
                             let op = attrs
                                 .iter()
-                                .find(|(k, _)| k == "operation")
+                                .find(|(k, _)| k == "Operation")
                                 .map(|(_, v)| v.clone())
                                 .unwrap_or_default();
                             counter_values_by_op.push((op, dp.value()));
@@ -138,14 +138,14 @@ async fn aggregated_pipeline_emits_counters_and_histograms() {
     assert!(
         counter_attrs
             .iter()
-            .all(|attrs| attrs.iter().any(|(k, _)| k == "operation")),
+            .all(|attrs| attrs.iter().any(|(k, _)| k == "Operation")),
         "every counter point should carry the Operation attribute, got {counter_attrs:?}"
     );
 
     assert!(
         histogram_attrs.iter().any(|attrs| attrs
             .iter()
-            .any(|(k, v)| k == "operation" && (v == "GET" || v == "POST"))),
+            .any(|(k, v)| k == "Operation" && (v == "GET" || v == "POST"))),
         "expected Operation attribute on histogram points, got {histogram_attrs:?}"
     );
     assert_eq!(

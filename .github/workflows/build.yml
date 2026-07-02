@@ -14,8 +14,8 @@ jobs:
           # 1.86 - trait upcasts (required)
           # 1.87 - `extend_from_string`
           # 1.88 - darling 0.23
-          # 1.89 - required since 1.88 does not work in trybuild
-          - "1.89.0" # Current MSRV
+          # 1.91 - required for const TypeId::of
+          - "1.91.0" # Current MSRV
           - stable
           - nightly
         flags:

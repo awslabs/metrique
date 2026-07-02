@@ -1,0 +1,11 @@
+error: cfg attributes on fields inside enum variants are not supported. Use a cfg-gated variant or an Option field instead.
+  --> tests/ui/fail/enum_cfg_fields.rs:11:9
+   |
+11 |         field: u64,
+   |         ^^^^^
+
+error: cfg attributes on fields inside enum variants are not supported. Use a cfg-gated variant or an Option field instead.
+  --> tests/ui/fail/enum_cfg_fields.rs:24:9
+   |
+24 |         #[cfg(test)]
+   |         ^

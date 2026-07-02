@@ -2,7 +2,7 @@
 name = "metrique-writer-core"
 version = "0.1.17"
 edition = "2024"
-rust-version = "1.89" # See build.yml for why this MSRV
+rust-version = "1.91" # See .github/workflows/build.yml
 license = "Apache-2.0"
 description = "Library for wide event metrics - writer-side interface core traits"
 repository = "https://github.com/awslabs/metrique"

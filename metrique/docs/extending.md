@@ -228,6 +228,67 @@ struct MyMetric {
 }
 ```
 
+
+## Recipe (advanced): a descriptor-aware sink
+
+Entry descriptors let a sink inspect an entry's structure before (or without) writing it. This enables schema pre-registration, per-field flag-based filtering, and format decisions based on field metadata.
+
+### Reading descriptors
+
+Call `entry.descriptors()` on any `Entry`. The result is a `Descriptors` enum:
+
+```rust,ignore
+use metrique_writer_core::{Entry, Descriptors};
+
+fn handle_entry(entry: &impl Entry) {
+    match entry.descriptors() {
+        Descriptors::Available(descs) => {
+            // Full structural metadata is available.
+            // Cache by DescriptorId for repeated entries of the same type.
+            for segment in descs.iter() {
+                for field in segment.fields() {
+                    // The fully resolved name (with prefixes, inflected to the entry's style):
+                    let name: String = field.name_parts().collect();
+                    // Or just the base (un-prefixed) name:
+                    let base = field.base_name();
+                    let unit = field.unit();
+                    // Check flags for format-specific behavior:
+                    // field.flags().any(|f| f.is::<MyFlag>())
+                }
+            }
+        }
+        Descriptors::Unavailable => {
+            // This entry cannot describe its structure statically (e.g. dynamic maps,
+            // hand-written entries). The write path still works normally; the sink
+            // just cannot pre-register fields or make structural decisions ahead of time.
+        }
+    }
+}
+```
+
+### Positional correspondence
+
+Descriptor fields are ordered to match `Entry::write` callback order. When walking the write path, you can correlate the Nth value callback with the Nth field in the descriptor. Multi-segment descriptors (from flattened children) concatenate in write order.
+
+### Reading flag data from descriptors
+
+Flags carry both identity and data. Use `.is::<T>()` for identity checks and `.construct()` to access the full flag value:
+
+```rust,ignore
+for field in segment.fields() {
+    if let Some(flag) = field.flags().find(|f| f.is::<MyFormatFlag>()) {
+        let metric_flags = flag.construct();
+        if let Some(opts) = metric_flags.downcast::<MyFormatOptions>() {
+            // Use opts for format-specific decisions
+        }
+    }
+}
+```
+
+### Caching
+
+`DescriptorId` is stable for the lifetime of the process. Sinks should cache per-entry-type work (schema registration, field mappings) keyed on `DescriptorId` to avoid re-processing on every write.
+
 ## When to reach for the macro instead
 
 Reach for these recipes for **leaf types** (a new accumulator, a wrapper around an external

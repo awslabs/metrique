@@ -7,7 +7,7 @@ use std::fmt::Debug;
 /// A trait to define options that can be passed to a metric. This
 /// is basically a fancier `Any`, the formatter implementation should downcast
 /// this to what it cares about.
-pub trait MetricOptions: Any + Debug {
+pub trait MetricOptions: Any + Debug + Send + Sync {
     /// Try and merge this with another MetricOptions. Return None if merging is not supported
     ///
     /// This is currently an unstable detail and might change in future versions.
