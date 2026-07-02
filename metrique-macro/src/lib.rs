@@ -2033,4 +2033,22 @@ mod tests {
         let parsed_file = metrics_impl_string(input, quote!(metrics(value(string))));
         assert_snapshot!("debug_derive_passthrough_enum", parsed_file);
     }
+
+    #[test]
+    fn test_value_enum_screaming_snake_case() {
+        let input = quote! {
+            enum Operation {
+                ReadData,
+                WriteData,
+                #[metrics(name = "CUSTOM_NAME")]
+                Delete,
+            }
+        };
+
+        let parsed_file = metrics_impl_string(
+            input,
+            quote!(metrics(value(string), rename_all = "SCREAMING_SNAKE_CASE")),
+        );
+        assert_snapshot!("value_enum_screaming_snake_case", parsed_file);
+    }
 }
