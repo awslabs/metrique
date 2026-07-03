@@ -75,6 +75,13 @@ impl Liftability for NotLifted {}
 /// }
 /// ```
 pub trait ValueFormatter<V: ?Sized, L: Liftability = Lifted> {
+    /// The shape of values produced by this formatter.
+    ///
+    /// Defaults to [`FieldShape::Opaque`]. Override when the formatter always
+    /// produces a known wire shape (e.g. formatters that call `writer.string()`
+    /// should return `Known(String)`).
+    const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
+
     /// Write `value` to `writer`
     fn format_value(writer: impl ValueWriter, value: &V);
 }
@@ -95,6 +102,9 @@ pub trait ValueFormatter<V: ?Sized, L: Liftability = Lifted> {
 pub struct ToString;
 
 impl<T: Display + ?Sized> ValueFormatter<T, NotLifted> for ToString {
+    const SHAPE: crate::descriptor::FieldShape<'static> =
+        crate::descriptor::FieldShape::Known(crate::descriptor::KnownShape::String);
+
     fn format_value(writer: impl ValueWriter, value: &T) {
         writer.string(&value.to_string());
     }
@@ -104,6 +114,8 @@ impl<V: ?Sized, F: ?Sized> ValueFormatter<&V> for F
 where
     F: ValueFormatter<V>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = <F as ValueFormatter<V>>::SHAPE;
+
     fn format_value(writer: impl ValueWriter, value: &&V) {
         <Self as ValueFormatter<V>>::format_value(writer, value)
     }
@@ -113,6 +125,10 @@ impl<V, F: ?Sized> ValueFormatter<Option<V>> for F
 where
     F: ValueFormatter<V>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Optional(
+        crate::descriptor::ShapeRef::new(&<F as ValueFormatter<V>>::SHAPE),
+    );
+
     fn format_value(writer: impl ValueWriter, value: &Option<V>) {
         if let Some(value) = value {
             <Self as ValueFormatter<V>>::format_value(writer, value)
@@ -124,6 +140,8 @@ impl<V: ?Sized, F: ?Sized> ValueFormatter<Box<V>> for F
 where
     F: ValueFormatter<V>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = <F as ValueFormatter<V>>::SHAPE;
+
     fn format_value(writer: impl ValueWriter, value: &Box<V>) {
         <Self as ValueFormatter<V>>::format_value(writer, value)
     }
@@ -133,6 +151,8 @@ impl<V: ?Sized, F: ?Sized> ValueFormatter<Arc<V>> for F
 where
     F: ValueFormatter<V>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = <F as ValueFormatter<V>>::SHAPE;
+
     fn format_value(writer: impl ValueWriter, value: &Arc<V>) {
         <Self as ValueFormatter<V>>::format_value(writer, value)
     }
@@ -142,6 +162,8 @@ impl<V: ToOwned + ?Sized, F: ?Sized> ValueFormatter<Cow<'_, V>> for F
 where
     F: ValueFormatter<V>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = <F as ValueFormatter<V>>::SHAPE;
+
     fn format_value(writer: impl ValueWriter, value: &Cow<V>) {
         <Self as ValueFormatter<V>>::format_value(writer, value)
     }
@@ -164,6 +186,8 @@ impl<V, VF, L: Liftability> super::Value for FormattedValue<'_, V, VF, L>
 where
     VF: ValueFormatter<V, L>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = <VF as ValueFormatter<V, L>>::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         VF::format_value(writer, self.1);
     }

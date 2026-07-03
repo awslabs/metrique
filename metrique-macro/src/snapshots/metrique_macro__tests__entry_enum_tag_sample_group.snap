@@ -171,7 +171,11 @@ const _: () = {
                                             .screaming_snake("operation")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
@@ -183,7 +187,11 @@ const _: () = {
                                             .screaming_snake("BYTES")
                                             .flags(&__METRIQUE_V0_FLAGS_1)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )

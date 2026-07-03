@@ -89,6 +89,14 @@ impl serde::Serialize for Unit {
 }
 
 impl Unit {
+    /// Converts to `Some(self)` unless unitless (`Unit::None`).
+    pub const fn to_option(self) -> Option<Unit> {
+        match self {
+            Unit::None => Option::None,
+            other => Option::Some(other),
+        }
+    }
+
     /// The public name defined by CloudWatch for the unit.
     pub const fn name(self) -> &'static str {
         macro_rules! positive_scale {

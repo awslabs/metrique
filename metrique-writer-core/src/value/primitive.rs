@@ -110,6 +110,7 @@ float!(f64, KnownShape::F64);
 
 impl Value for Duration {
     const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::F64);
+    const UNIT: crate::Unit = crate::Unit::Second(Milli);
 
     #[inline]
     fn write(&self, writer: impl ValueWriter) {

@@ -1427,10 +1427,27 @@ mod shape_tests {
         let closed = metrique::CloseValue::close(m);
         let entry = metrique::RootEntry::new(closed);
 
+        let descs = entry.descriptors().unwrap();
+        let fields: Vec<_> = descs[0].fields().collect();
+
         // Duration writes as f64 (millis)
         assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::F64));
         // Timer closes to Duration, same shape
         assert_field_shape(&entry, 1, FieldShape::Known(KnownShape::F64));
+
+        // Both resolve Millisecond unit from the type (no explicit #[metrics(unit = ...)] needed)
+        assert_eq!(
+            fields[0].unit(),
+            Some(metrique_writer_core::Unit::Second(
+                metrique_writer_core::unit::NegativeScale::Milli
+            ))
+        );
+        assert_eq!(
+            fields[1].unit(),
+            Some(metrique_writer_core::Unit::Second(
+                metrique_writer_core::unit::NegativeScale::Milli
+            ))
+        );
     }
 
     // -- Optional --
@@ -1676,5 +1693,36 @@ mod shape_tests {
         assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::U8));
         // Operation is a string-value enum -> Known(String)
         assert_field_shape(&entry, 1, FieldShape::Known(KnownShape::String));
+    }
+
+    // -- Formatted fields: shape falls back to Opaque (formatter controls wire representation) --
+
+    struct AsString;
+    impl metrique::writer::value::ValueFormatter<bool> for AsString {
+        const SHAPE: metrique_writer_core::descriptor::FieldShape<'static> =
+            metrique_writer_core::descriptor::FieldShape::Known(
+                metrique_writer_core::descriptor::KnownShape::String,
+            );
+        fn format_value(writer: impl metrique::writer::ValueWriter, value: &bool) {
+            writer.string(if *value { "true" } else { "false" });
+        }
+    }
+
+    #[metrics]
+    #[derive(Default)]
+    struct FormattedShapes {
+        #[metrics(format = AsString)]
+        formatted_bool: bool,
+    }
+
+    #[test]
+    fn formatted_field_shape_is_opaque() {
+        let m = FormattedShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // Formatted fields fall back to Opaque because the raw type may not impl Value.
+        // ValueFormatter::SHAPE is available for sinks that want to query it separately.
+        assert_field_shape(&entry, 0, FieldShape::Opaque);
     }
 }

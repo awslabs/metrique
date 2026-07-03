@@ -116,7 +116,7 @@ impl CloseValue for ConcurrentCounter {
 ```
 
 `Closed` is `u64`, which already implements [`metrique_writer::Value`], so `ConcurrentCounter`
-drops straight into a `#[metrics]` struct as a field. The descriptor shape resolves automatically through the closed type: `u64` has `Value::SHAPE = Known(U64)`, so the field's descriptor reports that shape with no extra work. Just like the built-in scalars, a custom
+drops straight into a `#[metrics]` struct as a field. The descriptor shape comes from the closed type: `u64` has `Value::SHAPE = Known(U64)`, so the field's descriptor reports that shape. Similarly, `Value::UNIT` provides the inherent unit (e.g. `Duration` reports `Millisecond`); types without a natural unit default to unitless. Just like the built-in scalars, a custom
 leaf type takes a unit through `#[metrics(unit = ...)]`:
 
 ```rust
@@ -174,7 +174,7 @@ struct MyMetric {
 }
 ```
 
-Since `StringValue` closes to `String`, the descriptor reports `Known(String)` for this field automatically.
+Since `StringValue` closes to `String`, the descriptor reports `Known(String)` for this field.
 
 ## Recipe: a custom value formatter
 
@@ -204,6 +204,20 @@ struct MyMetric {
     my_field: SystemTime,
 }
 ```
+
+Formatters that always produce a known wire type should override `ValueFormatter::SHAPE` so descriptor-aware sinks can pre-register the field correctly. `AsUtcDate` always writes a string, so:
+
+```rust,ignore
+impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
+    const SHAPE: metrique_writer_core::descriptor::FieldShape<'static> =
+        metrique_writer_core::descriptor::FieldShape::Known(
+            metrique_writer_core::descriptor::KnownShape::String,
+        );
+    fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) { /* ... */ }
+}
+```
+
+The built-in `ToString` formatter already provides `Known(String)`.
 
 ## Recipe (advanced): a manual entry
 
@@ -293,8 +307,6 @@ for field in segment.fields() {
     }
 }
 ```
-
-Shape resolution happens through `Value::SHAPE`, a defaulted associated const. All built-in types provide shapes; custom `Value` types default to `Opaque` unless they override the const.
 
 ### Reading flag data from descriptors
 

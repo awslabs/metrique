@@ -45,6 +45,13 @@ pub trait Value {
     /// determine wire encoding without observing a live write.
     const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
 
+    /// The unit this value type is reported in.
+    ///
+    /// Defaults to [`Unit::None`] (unitless). Types with inherent units (like
+    /// `Duration`, which reports in milliseconds) override this. Explicit
+    /// `#[metrics(unit = X)]` takes precedence.
+    const UNIT: crate::Unit = crate::Unit::None;
+
     /// Write the value to the metric entry. This must never panic, but invalid values may trigger a validaiton panic on
     /// [`crate::EntrySink::append()`] for test sinks or a `tracing` event on production queues.
     fn write(&self, writer: impl ValueWriter);

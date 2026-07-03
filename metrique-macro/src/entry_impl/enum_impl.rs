@@ -386,20 +386,35 @@ fn generate_enum_descriptor(
             let mut v_field_metas: Vec<super::DescriptorFieldMeta> = Vec::new();
             let mut v_timestamp_expr = quote! { None };
             if let Some(tag) = &root_attrs.tag {
-                let names: [String; metrique_core::Styles::COUNT] = std::array::from_fn(|_| tag.field_name(root_attrs));
-                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], skipped_flags: vec![], unit_expr: quote! { None }, field_type: syn::parse_quote!(&'static str), close: true });
+                let names: [String; metrique_core::Styles::COUNT] =
+                    std::array::from_fn(|_| tag.field_name(root_attrs));
+                v_field_metas.push(DescriptorFieldMeta {
+                    names,
+                    flags: vec![],
+                    skipped_flags: vec![],
+                    explicit_unit: None,
+                    field_type: syn::parse_quote!(&'static str),
+                    close: true,
+                    format: None,
+                });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
                     match &field.attrs.kind {
-                        MetricsFieldKind::Field { unit, .. } => {
-                            let names: [String; metrique_core::Styles::COUNT] = std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
-                            let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
-                            let unit_expr = match unit {
-                                Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },
-                                None => quote! { None },
-                            };
-                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, skipped_flags: resolved.skipped_flags, unit_expr, field_type: field.ty.clone(), close: field.attrs.close });
+                        MetricsFieldKind::Field { unit, format, .. } => {
+                            let names: [String; metrique_core::Styles::COUNT] =
+                                std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
+                            let resolved =
+                                resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
+                            v_field_metas.push(DescriptorFieldMeta {
+                                names,
+                                flags: resolved.flags,
+                                skipped_flags: resolved.skipped_flags,
+                                explicit_unit: unit.clone(),
+                                field_type: field.ty.clone(),
+                                close: field.attrs.close,
+                                format: format.clone(),
+                            });
                         }
                         MetricsFieldKind::Timestamp(_) => {
                             let ts_name = field.name.as_deref().unwrap_or("timestamp");
@@ -431,7 +446,8 @@ fn generate_enum_descriptor(
                 )
             };
 
-            let (pattern, chain_expr) = build_variant_descriptor_arm(entry_name, variant, &base, &ns);
+            let (pattern, chain_expr) =
+                build_variant_descriptor_arm(entry_name, variant, &base, &ns);
             quote! { #pattern => #chain_expr }
         })
         .collect();

@@ -124,7 +124,11 @@ const _: () = {
                         .screaming_snake("OPERATION")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<Operation as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
                         .shape(
                             <<Operation as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                         )
@@ -136,7 +140,11 @@ const _: () = {
                         .screaming_snake("REQUEST_ID")
                         .flags(&__METRIQUE__FLAGS_1)
                         .skipped_flags(&__METRIQUE__SKIPPED_1)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<String as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
                         .shape(
                             <<String as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                         )
@@ -637,7 +645,11 @@ const _: () = {
                                             .screaming_snake("OPERATION")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<Operation as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<Operation as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
@@ -649,7 +661,11 @@ const _: () = {
                                             .screaming_snake("BYTES")
                                             .flags(&__METRIQUE_V0_FLAGS_1)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
@@ -687,7 +703,11 @@ const _: () = {
                                             .screaming_snake("OPERATION")
                                             .flags(&__METRIQUE_V1_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<Operation as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<Operation as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
@@ -701,7 +721,11 @@ const _: () = {
                                             .screaming_snake("ERROR_CODE")
                                             .flags(&__METRIQUE_V1_FLAGS_1)
                                             .skipped_flags(&__METRIQUE_V1_SKIPPED_1)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<u32 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<u32 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )

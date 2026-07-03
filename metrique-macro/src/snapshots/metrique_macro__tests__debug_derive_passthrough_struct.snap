@@ -32,7 +32,11 @@ const _: () = {
                         .screaming_snake("FIELD")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
                         .shape(
                             <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                         )

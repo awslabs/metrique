@@ -122,23 +122,18 @@ fn generate_descriptor(
                     Some(::metrique::writer::core::TimestampDescriptor::new(#name))
                 };
             }
-            MetricsFieldKind::Field { unit, .. } => {
+            MetricsFieldKind::Field { unit, format, .. } => {
                 let names: [String; metrique_core::Styles::COUNT] =
                     std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                 let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
-                let unit_expr = match unit {
-                    Some(u) => {
-                        quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) }
-                    }
-                    None => quote! { None },
-                };
                 field_metas.push(DescriptorFieldMeta {
                     names,
                     flags: resolved.flags,
                     skipped_flags: resolved.skipped_flags,
-                    unit_expr,
+                    explicit_unit: unit.clone(),
                     field_type: field.ty.clone(),
                     close: field.attrs.close,
+                    format: format.clone(),
                 });
             }
         }

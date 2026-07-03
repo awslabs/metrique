@@ -3,6 +3,31 @@ error[E0277]: `ChildMetricsEntry` is not a metric value
    |
 13 | #[metrics(rename_all = "PascalCase")]
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+help: the trait `Value` is not implemented for `ChildMetricsEntry`
+  --> tests/ui/fail/missing_flatten_attribute.rs:7:1
+   |
+ 7 | #[metrics(rename_all = "snake_case")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = note: If `ChildMetricsEntry` is a metric *entry*, flatten it using `#[metrics(flatten)]`
+   = help: the following other types implement trait `Value`:
+             &T
+             Arc<T>
+             Box<T>
+             Cow<'_, T>
+             Duration
+             ForceFlag<T, FLAGS>
+             Mean<U>
+             Observation
+           and $N others
+   = note: required for `Option<ChildMetricsEntry>` to implement `Value`
+   = note: this error originates in the attribute macro `metrics` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: `ChildMetricsEntry` is not a metric value
+  --> tests/ui/fail/missing_flatten_attribute.rs:13:1
+   |
+13 | #[metrics(rename_all = "PascalCase")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
 ...
 19 |     downstream_operation: Slot<ChildMetrics>,
    |     -------------------- required by a bound introduced by this call

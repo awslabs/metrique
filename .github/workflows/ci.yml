@@ -31,7 +31,7 @@ jobs:
       - name: Run clippy check
         id: cargoClippy
         shell: bash
-        run: cargo clippy --workspace --all-features -- -D warnings
+        run: RUSTFLAGS="--cfg tokio_unstable" cargo clippy --workspace --all-features -- -D warnings
 
   build:
     name: Build

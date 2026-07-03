@@ -30,7 +30,11 @@ const _: () = {
                         .screaming_snake("COUNTER")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<u32 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
                         .shape(
                             <<u32 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                         )

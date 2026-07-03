@@ -62,7 +62,11 @@ const _: () = {
                         .screaming_snake("COUNT")
                         .flags(&__METRIQUE__FLAGS_1)
                         .skipped_flags(&__METRIQUE__SKIPPED_1)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
                         .shape(
                             <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                         )

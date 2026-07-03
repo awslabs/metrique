@@ -169,7 +169,11 @@ const _: () = {
                                             .screaming_snake("VALUE")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
@@ -207,7 +211,11 @@ const _: () = {
                                             .screaming_snake("SKIPPED")
                                             .flags(&__METRIQUE_V1_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
                                             .shape(
                                                 <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
