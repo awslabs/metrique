@@ -116,7 +116,7 @@ impl CloseValue for ConcurrentCounter {
 ```
 
 `Closed` is `u64`, which already implements [`metrique_writer::Value`], so `ConcurrentCounter`
-drops straight into a `#[metrics]` struct as a field. Just like the built-in scalars, a custom
+drops straight into a `#[metrics]` struct as a field. The descriptor shape resolves automatically through the closed type: `u64` has `Value::SHAPE = Known(U64)`, so the field's descriptor reports that shape with no extra work. Just like the built-in scalars, a custom
 leaf type takes a unit through `#[metrics(unit = ...)]`:
 
 ```rust
@@ -173,6 +173,8 @@ struct MyMetric {
     field: StringValue,
 }
 ```
+
+Since `StringValue` closes to `String`, the descriptor reports `Known(String)` for this field automatically.
 
 ## Recipe: a custom value formatter
 
@@ -252,6 +254,8 @@ fn handle_entry(entry: &impl Entry) {
                     // Or just the base (un-prefixed) name:
                     let base = field.base_name();
                     let unit = field.unit();
+                    // Field shape tells the sink what wire type to expect:
+                    let shape = field.shape();
                     // Check flags for format-specific behavior:
                     // field.flags().any(|f| f.is::<MyFlag>())
                 }
@@ -269,6 +273,28 @@ fn handle_entry(entry: &impl Entry) {
 ### Positional correspondence
 
 Descriptor fields are ordered to match `Entry::write` callback order. When walking the write path, you can correlate the Nth value callback with the Nth field in the descriptor. Multi-segment descriptors (from flattened children) concatenate in write order.
+
+### Using field shapes
+
+`field.shape()` returns the statically-known wire shape of the field's closed value. Use it to select encoding strategies, register schema types, or skip unsupported shapes:
+
+```rust,ignore
+use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+
+for field in segment.fields() {
+    match field.shape() {
+        FieldShape::Known(KnownShape::U64) => { /* register as integer gauge */ }
+        FieldShape::Known(KnownShape::F64) => { /* register as float gauge */ }
+        FieldShape::Known(KnownShape::String) => { /* register as attribute */ }
+        FieldShape::Optional(inner) => { /* nullable variant of inner.get() */ }
+        FieldShape::List(inner) => { /* repeated field of inner.get() */ }
+        FieldShape::Opaque => { /* fall back to write-path observation */ }
+        _ => { /* forward compat */ }
+    }
+}
+```
+
+Shape resolution happens through `Value::SHAPE`, a defaulted associated const. All built-in types provide shapes; custom `Value` types default to `Opaque` unless they override the const.
 
 ### Reading flag data from descriptors
 

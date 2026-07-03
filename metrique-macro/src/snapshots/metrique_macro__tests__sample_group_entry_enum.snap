@@ -40,6 +40,9 @@ impl ::metrique::writer::core::SampleGroup for OperationValue {
     }
 }
 impl ::metrique::writer::Value for OperationValue {
+    const SHAPE: ::metrique::writer::core::descriptor::FieldShape<'static> = ::metrique::writer::core::descriptor::FieldShape::Known(
+        ::metrique::writer::core::descriptor::KnownShape::String,
+    );
     fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
         writer.string(::std::convert::Into::<&str>::into(self));
     }

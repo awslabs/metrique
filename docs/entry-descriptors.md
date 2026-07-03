@@ -109,16 +109,40 @@ Accessor return types are conservative (borrows tied to the handle, not `&'stati
 `FieldShape` describes the closed/emitted shape, not the raw Rust field type. Examples:
 
 - `bool` / `u64` / `i32` / `f64` / `String` / `Vec<u8>` lower to the corresponding `Known(KnownShape::..)` variant.
-- `Timer` lowers to `Known(U64)`.
-- `Option<Duration>` lowers to `Optional(Known(U64))`.
+- `Timer` lowers to `Known(F64)` (Timer closes to Duration, which writes as a floating-point millisecond value).
+- `Option<Duration>` lowers to `Optional(Known(F64))`.
 - `Vec<String>` and `&[String]` lower to `List(Known(String))`.
 - `Vec<Option<String>>` lowers to `List(Optional(Known(String)))`.
 - `Flex<(String, u64)>` lowers to `Flex { key: String, value: Known(U64) }`.
-- `Flex<(String, Option<Duration>)>` lowers to `Flex { key: String, value: Optional(Known(U64)) }`.
+- `Flex<(String, Option<Duration>)>` lowers to `Flex { key: String, value: Optional(Known(F64)) }`.
 
-`#[metrics(value)]` newtypes lower to their wrapped scalar's shape when the wrapped type is macro-known. `#[metrics(value)] struct Percent(u8)` lowers to `Known(U8)`. Newtypes wrapping user `Value` types fall through to `Opaque`.
+### Resolution mechanism
 
-The macro recognises one layer of `Optional` inside `List` or `Flex.value`. Deeper combinations (`Vec<Vec<T>>`, `Vec<Flex<..>>`, `Flex<(String, Vec<T>)>`, `Option<Option<T>>`) lower to `FieldShape::Opaque`; the descriptor enum can represent arbitrary nesting, the macro's syntactic recognition is what is currently restricted.
+Shape resolution uses `Value::SHAPE`, a defaulted associated const on the `Value` trait:
+
+```rust,ignore
+pub trait Value {
+    const SHAPE: FieldShape<'static> = FieldShape::Opaque;
+    fn write(&self, writer: impl ValueWriter);
+}
+```
+
+The macro emits `<<FieldType as CloseValue>::Closed as Value>::SHAPE` for each field. The compiler resolves the full chain at const-eval time: the field type closes (via `CloseValue`) to a closed type, and that closed type's `Value::SHAPE` provides the shape.
+
+Generic wrappers compose naturally: `Option<T>` returns `Optional(&T::SHAPE)`, `Vec<T>` returns `List(&T::SHAPE)`, transparent wrappers like `ForceFlag<T, F>` and `Box<T>` forward `T::SHAPE` unchanged.
+
+Custom types that close to a known type (like `Timer` closing to `Duration`) automatically get the correct shape without any extra work. Custom `Value` types that don't override `SHAPE` get `Opaque` by default. To provide a shape for a custom `Value` impl, override the const:
+
+```rust,ignore
+impl Value for MyCustomValue {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+    fn write(&self, writer: impl ValueWriter) { /* ... */ }
+}
+```
+
+`#[metrics(value)]` newtypes lower to their wrapped scalar's shape when the wrapped type implements `Value` with a non-Opaque `SHAPE`. `#[metrics(value)] struct Percent(u8)` lowers to `Known(U8)`.
+
+Nesting composes arbitrarily through the trait system (`Option<Vec<Option<u64>>>` resolves correctly). There is no syntactic depth limit.
 
 Flattening an `Option<SubEntry>` into a parent entry propagates optionality to each flattened field. If `SubEntry { baz: Option<usize> }` is flattened through an `Option<SubEntry>`, the descriptor lists `baz: Optional(Known(U64))`. `Optional` wraps the emit-or-not decision; it is not re-stacked.
 

@@ -576,6 +576,8 @@ fn shape_expr(f: &DescriptorFieldMeta) -> Ts2 {
 
 /// Replace all named lifetime parameters with `'_` so the type can be
 /// used inside a `static` initializer for shape resolution.
+/// Also rewrites explicit `'static` to `'_`, which is harmless since
+/// trait resolution infers the same lifetime regardless.
 fn anonymize_lifetimes(ty: &syn::Type) -> syn::Type {
     struct Anonymizer;
     impl syn::visit_mut::VisitMut for Anonymizer {
