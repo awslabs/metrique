@@ -6,6 +6,7 @@ use std::time::Duration;
 use super::{MetricValue, Observation, Value, ValueWriter};
 use crate::{
     Unit,
+    descriptor::{FieldShape, KnownShape, ShapeRef},
     unit::{self, NegativeScale::Milli},
 };
 
@@ -19,6 +20,8 @@ fn duration_as_millis_with_nano_precision(duration: Duration) -> f64 {
 }
 
 impl Value for str {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
         writer.string(self)
@@ -26,6 +29,8 @@ impl Value for str {
 }
 
 impl Value for String {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
         writer.string(self)
@@ -33,8 +38,10 @@ impl Value for String {
 }
 
 macro_rules! counter {
-    ($t:ty) => {
+    ($t:ty, $shape:expr) => {
         impl Value for $t {
+            const SHAPE: FieldShape<'static> = FieldShape::Known($shape);
+
             #[inline]
             fn write(&self, writer: impl ValueWriter) {
                 writer.metric(
@@ -52,13 +59,15 @@ macro_rules! counter {
     };
 }
 
-counter!(u64);
-counter!(u32);
-counter!(u16);
-counter!(u8);
-counter!(bool);
+counter!(u64, KnownShape::U64);
+counter!(u32, KnownShape::U32);
+counter!(u16, KnownShape::U16);
+counter!(u8, KnownShape::U8);
+counter!(bool, KnownShape::Bool);
 
 impl Value for usize {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::U64);
+
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
         writer.metric(
@@ -75,8 +84,10 @@ impl MetricValue for usize {
 }
 
 macro_rules! float {
-    ($t:ty) => {
+    ($t:ty, $shape:expr) => {
         impl Value for $t {
+            const SHAPE: FieldShape<'static> = FieldShape::Known($shape);
+
             #[inline]
             fn write(&self, writer: impl ValueWriter) {
                 writer.metric(
@@ -94,10 +105,12 @@ macro_rules! float {
     };
 }
 
-float!(f32);
-float!(f64);
+float!(f32, KnownShape::F32);
+float!(f64, KnownShape::F64);
 
 impl Value for Duration {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::F64);
+
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
         writer.metric(
@@ -124,12 +137,16 @@ impl MetricValue for Duration {
 }
 
 impl<V: Value> Value for Vec<V> {
+    const SHAPE: FieldShape<'static> = FieldShape::List(ShapeRef::new(&V::SHAPE));
+
     fn write(&self, writer: impl ValueWriter) {
         writer.values(self.iter());
     }
 }
 
 impl<V: Value> Value for [V] {
+    const SHAPE: FieldShape<'static> = FieldShape::List(ShapeRef::new(&V::SHAPE));
+
     fn write(&self, writer: impl ValueWriter) {
         writer.values(self.iter());
     }

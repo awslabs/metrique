@@ -172,6 +172,9 @@ const _: () = {
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(None)
+                                            .shape(
+                                                <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                                            )
                                             .build(),
                                         ::metrique::writer::core::FieldDescriptor::builder("bytes")
                                             .pascal("Bytes")
@@ -181,6 +184,9 @@ const _: () = {
                                             .flags(&__METRIQUE_V0_FLAGS_1)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_1)
                                             .maybe_unit(None)
+                                            .shape(
+                                                <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                                            )
                                             .build(),
                                     ];
                                     static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(

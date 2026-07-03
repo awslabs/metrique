@@ -340,6 +340,8 @@ impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
 }
 
 impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         self.value.write(Wrapper {
             value: writer,

@@ -137,6 +137,8 @@ fn generate_descriptor(
                     flags: resolved.flags,
                     skipped_flags: resolved.skipped_flags,
                     unit_expr,
+                    field_type: field.ty.clone(),
+                    close: field.attrs.close,
                 });
             }
         }

@@ -119,6 +119,8 @@ impl<T, FLAGS: FlagConstructor> ForceFlag<T, FLAGS> {
 }
 
 impl<T: Value, FLAGS: FlagConstructor> Value for ForceFlag<T, FLAGS> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         struct Wrapper<W, FLAGS: FlagConstructor>(W, PhantomData<FLAGS>);
 

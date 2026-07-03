@@ -31,6 +31,9 @@ const _: () = {
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
                         .maybe_unit(None)
+                        .shape(
+                            <<u32 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
                         .build(),
                 ];
                 static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
@@ -318,6 +321,9 @@ const _: () = {
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(None)
+                                            .shape(
+                                                <<u32 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                                            )
                                             .build(),
                                         ::metrique::writer::core::FieldDescriptor::builder(
                                                 "latency",
@@ -332,6 +338,9 @@ const _: () = {
                                                 Some(
                                                     <metrique::writer::unit::Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
                                                 ),
+                                            )
+                                            .shape(
+                                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
                                             )
                                             .build(),
                                     ];
@@ -579,6 +588,9 @@ const _: () = {
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(None)
+                                            .shape(
+                                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                                            )
                                             .build(),
                                     ];
                                     static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(

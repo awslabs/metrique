@@ -68,7 +68,7 @@ pub(crate) fn generate_enum_entry_impl(
         }
     };
 
-    let descriptor = generate_enum_descriptor(entry_name, variants, root_attrs);
+    let descriptor = generate_enum_descriptor(entry_name, generics, variants, root_attrs);
     let descriptor_trait_impls = &descriptor.trait_impls;
     let descriptors_method = &descriptor.method;
 
@@ -366,6 +366,7 @@ fn collect_tuple_sample_group(
 /// Same pattern as sample_group: one variant per enum arm, unified via Iterator impl.
 fn generate_enum_descriptor(
     entry_name: &Ident,
+    _generics: &syn::Generics,
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> super::DescriptorOutput {
@@ -386,7 +387,7 @@ fn generate_enum_descriptor(
             let mut v_timestamp_expr = quote! { None };
             if let Some(tag) = &root_attrs.tag {
                 let names: [String; metrique_core::Styles::COUNT] = std::array::from_fn(|_| tag.field_name(root_attrs));
-                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], skipped_flags: vec![], unit_expr: quote! { None } });
+                v_field_metas.push(DescriptorFieldMeta { names, flags: vec![], skipped_flags: vec![], unit_expr: quote! { None }, field_type: syn::parse_quote!(&'static str), close: true });
             }
             if let Some(VariantData::Struct(fields)) = &variant.data {
                 for field in fields {
@@ -398,7 +399,7 @@ fn generate_enum_descriptor(
                                 Some(u) => quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) },
                                 None => quote! { None },
                             };
-                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, skipped_flags: resolved.skipped_flags, unit_expr });
+                            v_field_metas.push(DescriptorFieldMeta { names, flags: resolved.flags, skipped_flags: resolved.skipped_flags, unit_expr, field_type: field.ty.clone(), close: field.attrs.close });
                         }
                         MetricsFieldKind::Timestamp(_) => {
                             let ts_name = field.name.as_deref().unwrap_or("timestamp");

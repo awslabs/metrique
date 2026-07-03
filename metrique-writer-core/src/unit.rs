@@ -513,6 +513,8 @@ impl<V: MetricValue, U: UnitTag> Value for WithUnit<V, U>
 where
     V::Unit: Convert<U>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         struct Wrapper<W, From, To> {
             writer: W,

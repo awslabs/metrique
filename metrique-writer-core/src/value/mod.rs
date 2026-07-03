@@ -39,6 +39,12 @@ use crate::{
     note = "If `{Self}` is a metric *entry*, flatten it using `#[metrics(flatten)]`"
 )]
 pub trait Value {
+    /// The statically-known shape of this value type for descriptor-aware sinks.
+    ///
+    /// Defaults to [`FieldShape::Opaque`] when not overridden. Sinks use this to
+    /// determine wire encoding without observing a live write.
+    const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
+
     /// Write the value to the metric entry. This must never panic, but invalid values may trigger a validaiton panic on
     /// [`crate::EntrySink::append()`] for test sinks or a `tracing` event on production queues.
     fn write(&self, writer: impl ValueWriter);
@@ -221,12 +227,17 @@ pub trait MetricValue: Value {
 // Delegate Value impls for references and standard containers
 
 impl<T: Value + ?Sized> Value for &T {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
 }
 
 impl<T: Value> Value for Option<T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> =
+        crate::descriptor::FieldShape::Optional(crate::descriptor::ShapeRef::new(&T::SHAPE));
+
     fn write(&self, writer: impl ValueWriter) {
         if let Some(data) = self.as_ref() {
             data.write(writer)
@@ -235,18 +246,24 @@ impl<T: Value> Value for Option<T> {
 }
 
 impl<T: Value> Value for Box<T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
 }
 
 impl<T: Value + ?Sized> Value for Arc<T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
 }
 
 impl<T: Value + ToOwned + ?Sized> Value for Cow<'_, T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
