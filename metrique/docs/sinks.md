@@ -68,10 +68,9 @@ struct MyMetrics {
 
 fn main() {
     let _handle = ServiceMetrics::write_directly_to(
-        Emf::no_validations(
-            "MyNS".to_string(),
-            vec![vec![/*your dimensions here*/]],
-        ).output_to(std::io::stdout()),
+        Emf::builder("MyNS".to_string(), vec![vec![/*your dimensions here*/]])
+            .build()
+            .output_to(std::io::stdout()),
     );
     handle_request();
 }
