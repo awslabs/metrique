@@ -28,7 +28,7 @@
     assert!(entries.iter().any(|e| e.metrics["Field"] == expected));
     ```
   
-- Both `metrique` and `metrique-aggregation` have their own set of UI tests in metrique/tests/ui and metrique-aggregation/tests/ui. These both only run on Rust 1.91 (or whatever the current pinned Rust version is for ui tests). The current version is defined in build.yml
+- Both `metrique` and `metrique-aggregation` have their own set of UI tests in metrique/tests/ui and metrique-aggregation/tests/ui. These both only run on Rust 1.91 (or whatever the current pinned Rust version is for ui tests). The current version is defined in .github/workflows/ci.yml
 
 ## Finishing Up
 When instructed to "finish up", follow this process:
