@@ -58,8 +58,7 @@ and requires a custom graceful shutdown to drain. For these cases, consider usin
 ```rust
 use metrique::emf::Emf;
 use metrique::ServiceMetrics;
-use metrique::writer::{AttachGlobalEntrySink, FormatExt, GlobalEntrySink};
-use metrique::writer::sink::FlushImmediately;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique::unit_of_work::metrics;
 
 #[metrics]
@@ -68,14 +67,12 @@ struct MyMetrics {
 }
 
 fn main() {
-    let sink = FlushImmediately::new_boxed(
+    let _handle = ServiceMetrics::write_directly_to(
         Emf::no_validations(
             "MyNS".to_string(),
-            vec![vec![/*your dimensions here */]],
-        )
-        .output_to(std::io::stdout()),
+            vec![vec![/*your dimensions here*/]],
+        ).output_to(std::io::stdout()),
     );
-    let _handle = ServiceMetrics::attach((sink, ()));
     handle_request();
 }
 
