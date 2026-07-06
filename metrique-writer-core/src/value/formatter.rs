@@ -80,7 +80,11 @@ pub trait ValueFormatter<V: ?Sized, L: Liftability = Lifted> {
     /// Defaults to [`FieldShape::Opaque`]. Override when the formatter always
     /// produces a known wire shape (e.g. formatters that call `writer.string()`
     /// should return `Known(String)`).
+    #[cfg(not(metrique_require_explicit_impls))]
     const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
+    /// The shape of values produced by this formatter.
+    #[cfg(metrique_require_explicit_impls)]
+    const SHAPE: crate::descriptor::FieldShape<'static>;
 
     /// Write `value` to `writer`
     fn format_value(writer: impl ValueWriter, value: &V);

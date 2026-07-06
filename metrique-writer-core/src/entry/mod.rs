@@ -190,9 +190,13 @@ pub trait Entry {
     /// Each descriptor covers a contiguous segment of the `Entry::write` output.
     /// Simple entries yield one descriptor. Composed entries (like aggregation results)
     /// yield multiple. Hand-written entries return an empty iterator by default.
+    #[cfg(not(metrique_require_explicit_impls))]
     fn descriptors(&self) -> Descriptors<'_> {
         Descriptors::Unavailable
     }
+    /// Returns descriptors for this entry in write order.
+    #[cfg(metrique_require_explicit_impls)]
+    fn descriptors(&self) -> Descriptors<'_>;
 
     /// Move the entry to the heap and rely on dynamic dispatch.
     ///

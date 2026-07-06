@@ -97,10 +97,20 @@ jobs:
   # instead of naming every individual job. This job fails if any of its
   # dependencies failed or were cancelled; skipped jobs (e.g. docs-rs on release
   # branches) do not count as failures.
+  value-consts:
+    name: Value impl completeness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Check all Value impls define SHAPE and UNIT
+        run: RUSTFLAGS="--cfg metrique_require_explicit_impls" cargo check --workspace --all-features
+
   ci-pass:
     name: CI Pass
     runs-on: ubuntu-latest
-    needs: [fmt, clippy, build, docs-rs, fuzz]
+    needs: [fmt, clippy, build, docs-rs, fuzz, value-consts]
     if: always()
     steps:
       - run: |

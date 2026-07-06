@@ -8,6 +8,9 @@ description = "Library for wide event metrics - writer-side interface core trait
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)'] }
+
 [dependencies]
 smallvec = { workspace = true, features = ["union", "const_generics", "const_new"] }
 itertools = { workspace = true, default-features = false }

@@ -43,14 +43,22 @@ pub trait Value {
     ///
     /// Defaults to [`FieldShape::Opaque`] when not overridden. Sinks use this to
     /// determine wire encoding without observing a live write.
+    #[cfg(not(metrique_require_explicit_impls))]
     const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
+    /// The statically-known shape of this value type for descriptor-aware sinks.
+    #[cfg(metrique_require_explicit_impls)]
+    const SHAPE: crate::descriptor::FieldShape<'static>;
 
     /// The unit this value type is reported in.
     ///
     /// Defaults to [`Unit::None`] (unitless). Types with inherent units (like
     /// `Duration`, which reports in milliseconds) override this. Explicit
     /// `#[metrics(unit = X)]` takes precedence.
+    #[cfg(not(metrique_require_explicit_impls))]
     const UNIT: crate::Unit = crate::Unit::None;
+    /// The unit this value type is reported in.
+    #[cfg(metrique_require_explicit_impls)]
+    const UNIT: crate::Unit;
 
     /// Write the value to the metric entry. This must never panic, but invalid values may trigger a validaiton panic on
     /// [`crate::EntrySink::append()`] for test sinks or a `tracing` event on production queues.
@@ -235,6 +243,7 @@ pub trait MetricValue: Value {
 
 impl<T: Value + ?Sized> Value for &T {
     const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
