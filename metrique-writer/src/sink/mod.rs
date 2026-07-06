@@ -42,6 +42,16 @@ pub trait AttachGlobalEntrySinkExt: AttachGlobalEntrySink {
     fn attach_to_stream(output: impl EntryIoStream + Send + 'static) -> AttachHandle {
         Self::attach(BackgroundQueue::new(output))
     }
+
+    /// Attach the given output stream to a [`FlushImmediately`] sink and then to this
+    /// global sink reference. Unlike [`attach_to_stream`](Self::attach_to_stream), this
+    /// does not use a background thread - each entry is written and flushed inline.
+    /// Suitable for short-lived environments like AWS Lambda.
+    /// # Panics
+    /// Panics if a queue is already attached.
+    fn write_directly_to(output: impl EntryIoStream + Send + Sync + 'static) -> AttachHandle {
+        Self::attach((FlushImmediately::new_boxed(output), ()))
+    }
 }
 
 impl<Q: AttachGlobalEntrySink + ?Sized> AttachGlobalEntrySinkExt for Q {}
