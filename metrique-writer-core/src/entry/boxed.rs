@@ -144,6 +144,9 @@ impl<V: Value + ?Sized> DynValue for ValueToDyn<'_, V> {
 }
 
 impl Value for ValueFromDyn<'_> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
+    const UNIT: crate::Unit = crate::Unit::None;
+
     fn write(&self, writer: impl ValueWriter) {
         self.0.write(&mut ValueWriterToDyn(Some(writer)));
     }

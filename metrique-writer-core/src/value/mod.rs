@@ -39,6 +39,27 @@ use crate::{
     note = "If `{Self}` is a metric *entry*, flatten it using `#[metrics(flatten)]`"
 )]
 pub trait Value {
+    /// The statically-known shape of this value type for descriptor-aware sinks.
+    ///
+    /// Defaults to [`Opaque`](crate::descriptor::FieldShape::Opaque) when not overridden. Sinks use this to
+    /// determine wire encoding without observing a live write.
+    #[cfg(not(metrique_require_explicit_impls))]
+    const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
+    /// The statically-known shape of this value type for descriptor-aware sinks.
+    #[cfg(metrique_require_explicit_impls)]
+    const SHAPE: crate::descriptor::FieldShape<'static>;
+
+    /// The unit this value type is reported in.
+    ///
+    /// Defaults to [`Unit::None`] (unitless). Types with inherent units (like
+    /// `Duration`, which reports in milliseconds) override this. Explicit
+    /// `#[metrics(unit = X)]` takes precedence.
+    #[cfg(not(metrique_require_explicit_impls))]
+    const UNIT: crate::Unit = crate::Unit::None;
+    /// The unit this value type is reported in.
+    #[cfg(metrique_require_explicit_impls)]
+    const UNIT: crate::Unit;
+
     /// Write the value to the metric entry. This must never panic, but invalid values may trigger a validaiton panic on
     /// [`crate::EntrySink::append()`] for test sinks or a `tracing` event on production queues.
     fn write(&self, writer: impl ValueWriter);
@@ -167,6 +188,10 @@ pub enum Observation {
 }
 
 impl Value for Observation {
+    const SHAPE: crate::descriptor::FieldShape<'static> =
+        crate::descriptor::FieldShape::Known(crate::descriptor::KnownShape::F64);
+    const UNIT: crate::Unit = crate::Unit::None;
+
     fn write(&self, writer: impl ValueWriter) {
         writer.metric([*self], unit::None::UNIT, [], MetricFlags::empty())
     }
@@ -221,12 +246,19 @@ pub trait MetricValue: Value {
 // Delegate Value impls for references and standard containers
 
 impl<T: Value + ?Sized> Value for &T {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
 }
 
 impl<T: Value> Value for Option<T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> =
+        crate::descriptor::FieldShape::Optional(crate::descriptor::ShapeRef::new(&T::SHAPE));
+    const UNIT: crate::Unit = T::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         if let Some(data) = self.as_ref() {
             data.write(writer)
@@ -235,18 +267,27 @@ impl<T: Value> Value for Option<T> {
 }
 
 impl<T: Value> Value for Box<T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
 }
 
 impl<T: Value + ?Sized> Value for Arc<T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }
 }
 
 impl<T: Value + ToOwned + ?Sized> Value for Cow<'_, T> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
     }

@@ -38,7 +38,14 @@ const _: () = {
                         .screaming_snake("A")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
                         .build(),
                     ::metrique::writer::core::FieldDescriptor::builder("b")
                         .pascal("B")
@@ -47,7 +54,14 @@ const _: () = {
                         .screaming_snake("B")
                         .flags(&__METRIQUE__FLAGS_1)
                         .skipped_flags(&__METRIQUE__SKIPPED_1)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<usize as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
                         .build(),
                 ];
                 static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(

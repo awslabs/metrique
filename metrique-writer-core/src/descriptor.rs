@@ -451,13 +451,13 @@ pub enum KnownShape {
     U32,
     /// Unsigned 64-bit integer
     U64,
-    /// Signed 8-bit integer
+    /// Signed 8-bit integer.
     I8,
-    /// Signed 16-bit integer
+    /// Signed 16-bit integer.
     I16,
-    /// Signed 32-bit integer
+    /// Signed 32-bit integer.
     I32,
-    /// Signed 64-bit integer
+    /// Signed 64-bit integer.
     I64,
     /// 32-bit floating point
     F32,
@@ -465,7 +465,7 @@ pub enum KnownShape {
     F64,
     /// String
     String,
-    /// Byte slice
+    /// Byte slice.
     Bytes,
 }
 

@@ -1362,3 +1362,367 @@ fn flatten_site_default_flags_combines_with_prefix() {
             .any(|fl| fl.type_id() == TypeId::of::<AuditExport>())
     );
 }
+
+// ==================== Shape resolution tests ====================
+
+mod shape_tests {
+    use metrique::unit_of_work::metrics;
+    use metrique::writer::Entry;
+    use metrique_writer_core::descriptor::{FieldShape, KnownShape, ShapeRef};
+    use std::borrow::Cow;
+    use std::time::Duration;
+
+    /// Helper: assert the shape of the Nth field in the first descriptor segment.
+    fn assert_field_shape(entry: &impl Entry, idx: usize, expected: FieldShape<'static>) {
+        let descs = entry.descriptors().unwrap();
+        let shape = descs[0].fields().nth(idx).unwrap().shape();
+        assert_eq!(shape, expected, "field index {idx}");
+    }
+
+    // -- Scalars --
+
+    #[metrics]
+    #[derive(Default)]
+    struct ScalarShapes {
+        a_bool: bool,
+        a_u8: u8,
+        a_u16: u16,
+        a_u32: u32,
+        a_u64: u64,
+        a_usize: usize,
+        a_f32: f32,
+        a_f64: f64,
+        a_string: String,
+    }
+
+    #[test]
+    fn scalar_shapes() {
+        let m = ScalarShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::Bool));
+        assert_field_shape(&entry, 1, FieldShape::Known(KnownShape::U8));
+        assert_field_shape(&entry, 2, FieldShape::Known(KnownShape::U16));
+        assert_field_shape(&entry, 3, FieldShape::Known(KnownShape::U32));
+        assert_field_shape(&entry, 4, FieldShape::Known(KnownShape::U64));
+        assert_field_shape(&entry, 5, FieldShape::Known(KnownShape::U64)); // usize -> U64
+        assert_field_shape(&entry, 6, FieldShape::Known(KnownShape::F32));
+        assert_field_shape(&entry, 7, FieldShape::Known(KnownShape::F64));
+        assert_field_shape(&entry, 8, FieldShape::Known(KnownShape::String));
+    }
+
+    // -- Duration and Timer (close through CloseValue) --
+
+    #[metrics]
+    #[derive(Default)]
+    struct DurationShapes {
+        dur: Duration,
+        timer: metrique::timers::Timer,
+    }
+
+    #[test]
+    fn duration_and_timer_shapes() {
+        let m = DurationShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        let descs = entry.descriptors().unwrap();
+        let fields: Vec<_> = descs[0].fields().collect();
+
+        // Duration writes as f64 (millis)
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::F64));
+        // Timer closes to Duration, same shape
+        assert_field_shape(&entry, 1, FieldShape::Known(KnownShape::F64));
+
+        // Both resolve Millisecond unit from the type (no explicit #[metrics(unit = ...)] needed)
+        assert_eq!(
+            fields[0].unit(),
+            Some(metrique_writer_core::Unit::Second(
+                metrique_writer_core::unit::NegativeScale::Milli
+            ))
+        );
+        assert_eq!(
+            fields[1].unit(),
+            Some(metrique_writer_core::Unit::Second(
+                metrique_writer_core::unit::NegativeScale::Milli
+            ))
+        );
+    }
+
+    // -- Optional --
+
+    #[metrics]
+    #[derive(Default)]
+    struct OptionalShapes {
+        opt_u64: Option<u64>,
+        opt_string: Option<String>,
+        opt_duration: Option<Duration>,
+    }
+
+    #[test]
+    fn optional_shapes() {
+        let m = OptionalShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        static U64_SHAPE: FieldShape = FieldShape::Known(KnownShape::U64);
+        static STRING_SHAPE: FieldShape = FieldShape::Known(KnownShape::String);
+        static F64_SHAPE: FieldShape = FieldShape::Known(KnownShape::F64);
+        assert_field_shape(&entry, 0, FieldShape::Optional(ShapeRef::new(&U64_SHAPE)));
+        assert_field_shape(
+            &entry,
+            1,
+            FieldShape::Optional(ShapeRef::new(&STRING_SHAPE)),
+        );
+        assert_field_shape(&entry, 2, FieldShape::Optional(ShapeRef::new(&F64_SHAPE)));
+    }
+
+    // -- Vec / List --
+
+    #[metrics]
+    #[derive(Default)]
+    struct ListShapes {
+        vec_u64: Vec<u64>,
+        vec_string: Vec<String>,
+    }
+
+    #[test]
+    fn list_shapes() {
+        let m = ListShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        static U64_SHAPE: FieldShape = FieldShape::Known(KnownShape::U64);
+        static STRING_SHAPE: FieldShape = FieldShape::Known(KnownShape::String);
+        assert_field_shape(&entry, 0, FieldShape::List(ShapeRef::new(&U64_SHAPE)));
+        assert_field_shape(&entry, 1, FieldShape::List(ShapeRef::new(&STRING_SHAPE)));
+    }
+
+    // -- Nested composition: Option<Vec<T>>, Vec<Option<T>> --
+
+    #[metrics]
+    #[derive(Default)]
+    struct NestedShapes {
+        opt_vec: Option<Vec<u64>>,
+        vec_opt: Vec<Option<String>>,
+    }
+
+    #[test]
+    fn nested_composition_shapes() {
+        let m = NestedShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // Option<Vec<u64>> -> Optional(List(Known(U64)))
+        static INNER_U64: FieldShape = FieldShape::Known(KnownShape::U64);
+        static LIST_U64: FieldShape = FieldShape::List(ShapeRef::new(&INNER_U64));
+        assert_field_shape(&entry, 0, FieldShape::Optional(ShapeRef::new(&LIST_U64)));
+        // Vec<Option<String>> -> List(Optional(Known(String)))
+        static INNER_STRING: FieldShape = FieldShape::Known(KnownShape::String);
+        static OPT_STRING: FieldShape = FieldShape::Optional(ShapeRef::new(&INNER_STRING));
+        assert_field_shape(&entry, 1, FieldShape::List(ShapeRef::new(&OPT_STRING)));
+    }
+
+    // -- Lifetimed types (Cow) --
+
+    #[metrics]
+    struct LifetimedShapes<'a> {
+        cow_str: Cow<'a, str>,
+        opt_cow: Option<Cow<'a, str>>,
+    }
+
+    #[test]
+    fn lifetimed_shapes() {
+        let m = LifetimedShapes {
+            cow_str: Cow::Borrowed("hello"),
+            opt_cow: None,
+        };
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // Cow<'a, str> closes to Cow<'a, str> which is Value with SHAPE = str::SHAPE = String
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::String));
+        // Option<Cow<'a, str>> -> Optional(Known(String))
+        static INNER_STR: FieldShape = FieldShape::Known(KnownShape::String);
+        assert_field_shape(&entry, 1, FieldShape::Optional(ShapeRef::new(&INNER_STR)));
+    }
+
+    // -- Custom CloseValue resolves through closed type --
+
+    struct CustomGauge(f64);
+    impl Default for CustomGauge {
+        fn default() -> Self {
+            Self(0.0)
+        }
+    }
+    impl metrique::CloseValue for CustomGauge {
+        type Closed = f64;
+        fn close(self) -> f64 {
+            self.0
+        }
+    }
+    impl metrique::CloseValue for &'_ CustomGauge {
+        type Closed = f64;
+        fn close(self) -> f64 {
+            self.0
+        }
+    }
+
+    #[metrics]
+    #[derive(Default)]
+    struct CustomCloseShapes {
+        gauge: CustomGauge,
+    }
+
+    #[test]
+    fn custom_close_value_resolves_shape() {
+        let m = CustomCloseShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // CustomGauge closes to f64, which has SHAPE = Known(F64)
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::F64));
+    }
+
+    // -- no_close field: Value::SHAPE used directly --
+
+    #[derive(Clone, Default)]
+    struct OpaqueNoClose;
+    impl metrique::writer::Value for OpaqueNoClose {
+        fn write(&self, writer: impl metrique::writer::ValueWriter) {
+            writer.string("opaque");
+        }
+    }
+
+    #[metrics]
+    #[derive(Default)]
+    struct NoCloseShapes {
+        #[metrics(no_close)]
+        opaque: OpaqueNoClose,
+        normal: u64,
+    }
+
+    #[test]
+    fn no_close_field_uses_value_shape_directly() {
+        let m = NoCloseShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // OpaqueNoClose doesn't override SHAPE, gets default Opaque
+        assert_field_shape(&entry, 0, FieldShape::Opaque);
+        // Normal field still resolves
+        assert_field_shape(&entry, 1, FieldShape::Known(KnownShape::U64));
+    }
+
+    // -- Custom type with SHAPE override --
+
+    #[derive(Clone, Default)]
+    struct TypedNoClose;
+    impl metrique::writer::Value for TypedNoClose {
+        const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+        fn write(&self, writer: impl metrique::writer::ValueWriter) {
+            writer.string("typed");
+        }
+    }
+
+    #[metrics]
+    #[derive(Default)]
+    struct CustomShapeOverride {
+        #[metrics(no_close)]
+        typed: TypedNoClose,
+    }
+
+    #[test]
+    fn custom_value_shape_override() {
+        let m = CustomShapeOverride::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // TypedNoClose overrides SHAPE to Known(String)
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::String));
+    }
+
+    // -- Wrapper passthrough (via CloseValue chain) --
+
+    #[metrics]
+    #[derive(Default)]
+    struct WrapperShapes {
+        arc_str: std::sync::Arc<String>,
+    }
+
+    #[test]
+    fn wrapper_shapes_passthrough() {
+        let m = WrapperShapes {
+            arc_str: std::sync::Arc::new("hello".to_string()),
+        };
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // Arc<String> closes to Arc<String>, Value impl forwards to String shape
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::String));
+    }
+
+    // -- #[metrics(value)] struct and enum shape forwarding --
+
+    #[metrics(value)]
+    struct Percent(u8);
+
+    #[metrics(value(string))]
+    enum Operation {
+        CountDucks,
+        FeedDucks,
+    }
+
+    #[metrics]
+    struct ValueShapes {
+        pct: Percent,
+        op: Operation,
+    }
+
+    #[test]
+    fn metrics_value_forwards_shape() {
+        let m = ValueShapes {
+            pct: Percent(50),
+            op: Operation::CountDucks,
+        };
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // Percent(u8) wraps u8 -> Known(U8)
+        assert_field_shape(&entry, 0, FieldShape::Known(KnownShape::U8));
+        // Operation is a string-value enum -> Known(String)
+        assert_field_shape(&entry, 1, FieldShape::Known(KnownShape::String));
+    }
+
+    // -- Formatted fields: shape falls back to Opaque (formatter controls wire representation) --
+
+    struct AsString;
+    impl metrique::writer::value::ValueFormatter<bool> for AsString {
+        const SHAPE: metrique_writer_core::descriptor::FieldShape<'static> =
+            metrique_writer_core::descriptor::FieldShape::Known(
+                metrique_writer_core::descriptor::KnownShape::String,
+            );
+        fn format_value(writer: impl metrique::writer::ValueWriter, value: &bool) {
+            writer.string(if *value { "true" } else { "false" });
+        }
+    }
+
+    #[metrics]
+    #[derive(Default)]
+    struct FormattedShapes {
+        #[metrics(format = AsString)]
+        formatted_bool: bool,
+    }
+
+    #[test]
+    fn formatted_field_shape_is_opaque() {
+        let m = FormattedShapes::default();
+        let closed = metrique::CloseValue::close(m);
+        let entry = metrique::RootEntry::new(closed);
+
+        // Formatted fields fall back to Opaque because the raw type may not impl Value.
+        // ValueFormatter::SHAPE is available for sinks that want to query it separately.
+        assert_field_shape(&entry, 0, FieldShape::Opaque);
+    }
+}

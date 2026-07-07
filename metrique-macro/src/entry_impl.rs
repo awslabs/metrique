@@ -435,8 +435,15 @@ pub(crate) struct DescriptorFieldMeta {
     pub(crate) flags: Vec<Ts2>,
     /// Skipped flag token streams for this field (field-level skip overrides flatten-site defaults)
     pub(crate) skipped_flags: Vec<Ts2>,
-    /// Unit expression (None or Some(<Unit>::UNIT))
-    pub(crate) unit_expr: Ts2,
+    /// Explicit unit from `#[metrics(unit = X)]`. None means resolve from the type.
+    pub(crate) explicit_unit: Option<syn::Path>,
+    /// The field's Rust type (used for shape resolution via Value::SHAPE)
+    pub(crate) field_type: syn::Type,
+    /// Whether this field goes through CloseValue (true) or is used directly as Value (false)
+    pub(crate) close: bool,
+    /// Optional format path. When present and close is false, the raw type may not impl Value,
+    /// so shape/unit resolution falls back to Opaque/None.
+    pub(crate) format: Option<syn::Path>,
 }
 
 /// Build a `Descriptors` chain from a base expression and cfg-aware children.
@@ -528,7 +535,8 @@ pub(crate) fn generate_style_matched_descriptor(
             let screaming_snake = &f.names[metrique_core::Styles::SCREAMING_SNAKE.index as usize];
             let flags_ident = format_ident!("__METRIQUE_{}_FLAGS_{}", ident_prefix, i);
             let skipped_ident = format_ident!("__METRIQUE_{}_SKIPPED_{}", ident_prefix, i);
-            let unit_expr = &f.unit_expr;
+            let field_unit = unit_expr(f);
+            let field_shape = shape_expr(f);
             quote! {
                 ::metrique::writer::core::FieldDescriptor::builder(#preserve)
                     .pascal(#pascal)
@@ -537,7 +545,8 @@ pub(crate) fn generate_style_matched_descriptor(
                     .screaming_snake(#screaming_snake)
                     .flags(&#flags_ident)
                     .skipped_flags(&#skipped_ident)
-                    .maybe_unit(#unit_expr)
+                    .maybe_unit(#field_unit)
+                    .shape(#field_shape)
                     .build()
             }
         })
@@ -556,6 +565,56 @@ pub(crate) fn generate_style_matched_descriptor(
             &#desc_ident
         }
     }
+}
+
+/// Generate the shape expression for a single field.
+/// Shape describes the field's type-level closed shape. Formatted fields fall back to Opaque
+/// because the raw/closed type may not impl Value (formatters handle the writing).
+fn shape_expr(f: &DescriptorFieldMeta) -> Ts2 {
+    if f.format.is_some() {
+        return quote! { ::metrique::writer::core::descriptor::FieldShape::Opaque };
+    }
+    let field_type = anonymize_lifetimes(&f.field_type);
+    if f.close {
+        quote! { <<#field_type as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE }
+    } else {
+        quote! { <#field_type as ::metrique::writer::core::Value>::SHAPE }
+    }
+}
+
+/// Generate the unit expression for a single field.
+/// Explicit `#[metrics(unit = X)]` takes precedence. Otherwise, resolves from the type.
+fn unit_expr(f: &DescriptorFieldMeta) -> Ts2 {
+    if let Some(u) = &f.explicit_unit {
+        quote! { Some(<#u as ::metrique::writer::core::unit::UnitTag>::UNIT) }
+    } else if f.format.is_some() {
+        // Formatted fields: raw/closed type may not impl Value, can't resolve unit
+        quote! { Option::None }
+    } else {
+        let field_type = anonymize_lifetimes(&f.field_type);
+        let resolved = if f.close {
+            quote! { <<#field_type as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT }
+        } else {
+            quote! { <#field_type as ::metrique::writer::core::Value>::UNIT }
+        };
+        quote! { ::metrique::writer::core::Unit::to_option(#resolved) }
+    }
+}
+
+/// Replace all named lifetime parameters with `'_` so the type can be
+/// used inside a `static` initializer for shape resolution.
+/// Also rewrites explicit `'static` to `'_`, which is harmless since
+/// trait resolution infers the same lifetime regardless.
+fn anonymize_lifetimes(ty: &syn::Type) -> syn::Type {
+    struct Anonymizer;
+    impl syn::visit_mut::VisitMut for Anonymizer {
+        fn visit_lifetime_mut(&mut self, lt: &mut syn::Lifetime) {
+            *lt = syn::Lifetime::new("'_", lt.apostrophe);
+        }
+    }
+    let mut ty = ty.clone();
+    syn::visit_mut::VisitMut::visit_type_mut(&mut Anonymizer, &mut ty);
+    ty
 }
 
 pub(crate) fn generate_descriptor_impl(

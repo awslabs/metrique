@@ -16,6 +16,7 @@ pub struct RequestValueValue {
     value: <&'static str as metrique::CloseValue>::Closed,
 }
 impl ::metrique::writer::Value for RequestValueValue {
+    const SHAPE: ::metrique::writer::core::descriptor::FieldShape<'static> = <<&'static str as ::metrique::CloseValue>::Closed as ::metrique::writer::Value>::SHAPE;
     fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
         #[allow(deprecated)]
         {

@@ -53,7 +53,14 @@ const _: () = {
                         .screaming_snake("COUNT")
                         .flags(&__METRIQUE__FLAGS_0)
                         .skipped_flags(&__METRIQUE__SKIPPED_0)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
                         .build(),
                     ::metrique::writer::core::FieldDescriptor::builder("debug")
                         .pascal("Debug")
@@ -62,7 +69,14 @@ const _: () = {
                         .screaming_snake("DEBUG")
                         .flags(&__METRIQUE__FLAGS_1)
                         .skipped_flags(&__METRIQUE__SKIPPED_1)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<String as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<String as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
                         .build(),
                     ::metrique::writer::core::FieldDescriptor::builder("special")
                         .pascal("Special")
@@ -71,7 +85,14 @@ const _: () = {
                         .screaming_snake("SPECIAL")
                         .flags(&__METRIQUE__FLAGS_2)
                         .skipped_flags(&__METRIQUE__SKIPPED_2)
-                        .maybe_unit(None)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
                         .build(),
                 ];
                 static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(

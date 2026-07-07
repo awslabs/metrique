@@ -1,7 +1,5 @@
 # Entry descriptors and field flags
 
-> **Status: partially implemented.** Field flags, descriptors, and flatten chaining are implemented. Field shapes are deferred (all Opaque).
-
 A small system on top of metrique's existing `Entry` / `Value` / `CloseValue` traits that lets sinks introspect the structure of macro-derived entries.
 
 Two pieces, both opt-in for sinks:
@@ -109,16 +107,38 @@ Accessor return types are conservative (borrows tied to the handle, not `&'stati
 `FieldShape` describes the closed/emitted shape, not the raw Rust field type. Examples:
 
 - `bool` / `u64` / `i32` / `f64` / `String` / `Vec<u8>` lower to the corresponding `Known(KnownShape::..)` variant.
-- `Timer` lowers to `Known(U64)`.
-- `Option<Duration>` lowers to `Optional(Known(U64))`.
+- `Timer` lowers to `Known(F64)` (Timer closes to Duration, which writes as a floating-point millisecond value).
+- `Option<Duration>` lowers to `Optional(Known(F64))`.
 - `Vec<String>` and `&[String]` lower to `List(Known(String))`.
 - `Vec<Option<String>>` lowers to `List(Optional(Known(String)))`.
-- `Flex<(String, u64)>` lowers to `Flex { key: String, value: Known(U64) }`.
-- `Flex<(String, Option<Duration>)>` lowers to `Flex { key: String, value: Optional(Known(U64)) }`.
 
-`#[metrics(value)]` newtypes lower to their wrapped scalar's shape when the wrapped type is macro-known. `#[metrics(value)] struct Percent(u8)` lowers to `Known(U8)`. Newtypes wrapping user `Value` types fall through to `Opaque`.
+### Resolution mechanism
 
-The macro recognises one layer of `Optional` inside `List` or `Flex.value`. Deeper combinations (`Vec<Vec<T>>`, `Vec<Flex<..>>`, `Flex<(String, Vec<T>)>`, `Option<Option<T>>`) lower to `FieldShape::Opaque`; the descriptor enum can represent arbitrary nesting, the macro's syntactic recognition is what is currently restricted.
+Shape resolution uses `Value::SHAPE`, a defaulted associated const on the `Value` trait:
+
+```rust,ignore
+pub trait Value {
+    const SHAPE: FieldShape<'static> = FieldShape::Opaque;
+    fn write(&self, writer: impl ValueWriter);
+}
+```
+
+The macro emits `<<FieldType as CloseValue>::Closed as Value>::SHAPE` for each field. The compiler resolves the full chain at const-eval time: the field type closes (via `CloseValue`) to a closed type, and that closed type's `Value::SHAPE` provides the shape.
+
+Generic wrappers compose naturally: `Option<T>` returns `Optional(&T::SHAPE)`, `Vec<T>` returns `List(&T::SHAPE)`, transparent wrappers like `ForceFlag<T, F>` and `Box<T>` forward `T::SHAPE` unchanged.
+
+Custom types that close to a known type (like `Timer` closing to `Duration`) get the correct shape without any extra work. Custom `Value` types that don't override `SHAPE` get `Opaque` by default. To provide a shape for a custom `Value` impl, override the const:
+
+```rust,ignore
+impl Value for MyCustomValue {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+    fn write(&self, writer: impl ValueWriter) { /* ... */ }
+}
+```
+
+`#[metrics(value)]` newtypes lower to their wrapped scalar's shape when the wrapped type implements `Value` with a non-Opaque `SHAPE`. `#[metrics(value)] struct Percent(u8)` lowers to `Known(U8)`.
+
+Nesting composes arbitrarily through the trait system (`Option<Vec<Option<u64>>>` resolves correctly).
 
 Flattening an `Option<SubEntry>` into a parent entry propagates optionality to each flattened field. If `SubEntry { baz: Option<usize> }` is flattened through an `Option<SubEntry>`, the descriptor lists `baz: Optional(Known(U64))`. `Optional` wraps the emit-or-not decision; it is not re-stacked.
 
@@ -182,7 +202,7 @@ The metrique macro emits exactly one `EntryWriter::value(name, ..)` callback per
 
 Multi-element fields (`Vec<T>`, `Flex<(String, T)>`, and similar) still produce exactly one `value()` callback per `FieldDescriptor`. The multiplicity is handled inside the `Value` impl, which the adapter's `ValueWriter` observes through `ValueWriter::values()` (for `Vec<T>` / `[T]`) or similar dispatch methods. Descriptor-aware sinks that want typed encoding for these fields override the corresponding `ValueWriter` method; the default implementations collapse multi-element data into a single scalar (comma-joined string for `values()`), which is a valid but lossy fallback.
 
-The contract is guaranteed by construction for macro-derived entries (the macro emits both from the same iteration). A debug-mode check inside metrique's test harness validates correspondence; CI tests assert it on every release. Hand-written entries that ship a descriptor (a deferred feature) must uphold the same correspondence.
+The contract is guaranteed by construction for macro-derived entries (the macro emits both from the same iteration). Hand-written entries that ship a descriptor must uphold the same correspondence.
 
 ## Field flags
 
@@ -252,15 +272,15 @@ Flattened children manage their own flags independently. This matches the scopin
 
 Sinks decide how to surface units: a field-name suffix, a schema-level annotation, a separate metadata stream, whatever fits the wire format. Metrique reports units once, structurally, in the descriptor, so sinks do not have to infer them.
 
-## Flex and List
+Unit resolution follows the same pattern as shapes: `Value::UNIT` is a defaulted associated const (`Unit::None` by default). Types with inherent units override it (e.g. `Duration` provides `Unit::Second(Milli)`). The macro resolves `<<FieldType as CloseValue>::Closed as Value>::UNIT` for each field, converting `Unit::None` to `Option::None` in the descriptor. Explicit `#[metrics(unit = X)]` takes precedence over the type-resolved unit.
 
-`Flex<(String, T)>` lowers to `FieldShape::Flex { key: StringShape::String, value: .. }`.
+## Flex and List
 
 `Vec<T>` / `[T]` / `&[T]` lower to `FieldShape::List(..)`.
 
-One descriptor entry regardless of runtime cardinality. Sinks that understand `Flex` or `List` can register one schema field for the whole collection; sinks that do not can still fall back to per-element emission through `Entry::write`.
+One descriptor entry regardless of runtime cardinality. Sinks that understand `List` can register one schema field for the whole collection; sinks that do not can still fall back to per-element emission through `Entry::write`.
 
-The inner shape may be `Known(_)` or `Optional(Known(_))` in the initial release.
+`Flex<(String, T)>` fields are flattened entries, not regular value fields. They produce their own descriptor segment via `Entry::descriptors()` rather than appearing as a `FieldShape::Flex` on a parent field. The `FieldShape::Flex` variant exists for future use when Flex fields can self-describe their key/value shape.
 
 ## Interaction with existing `#[metrics(..)]` attributes
 
@@ -355,7 +375,6 @@ Short list of things explicitly left out of the initial design that fit the syst
 - **Typed source extraction.** See the appendix below. Would let sinks pull a typed structural snapshot (timestamp, task id, correlation id, ...) out of the closed entry before encoding fields. Deferred pending a concrete second consumer (OTEL, a richer dial9 integration).
 - **Hand-written `Entry` impls opting into descriptors** via a `DescribeEntry` trait users implement by hand; same mechanism macro-derived entries use internally. Would require promoting metrique's hidden macro-only constructors to a public surface.
 - **`FieldShape::Distribution(KnownShape)`** for distribution-typed fields (`Histogram<T>`, `SharedHistogram<T>`, and user types that emit many `Observation`s). Depends on a `DescribeValue` trait so value types can self-describe as distribution-shaped.
-- **Nested container recognition beyond one optional layer.** `Vec<Vec<T>>`, `Vec<Flex<..>>`, `Flex<(String, Vec<T>)>`, and double-optional all fall through to `Opaque` today; the descriptor enum accepts them, the macro's syntactic recognition just does not. Relaxing is an additive macro change.
 - **`#[metrics(entry_name = "...")]`** attribute for overriding the canonical entry name.
 - **`no_write` attribute** for fields that participate in close but not in `Entry::write`. Deferred until a concrete consumer needs it; the deferred source system is the likely trigger.
 - **Cross-process `DescriptorId` stability** via a content-hash accessor. Deferred until a consumer needs cross-process schema correlation.

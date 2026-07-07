@@ -116,7 +116,7 @@ impl CloseValue for ConcurrentCounter {
 ```
 
 `Closed` is `u64`, which already implements [`metrique_writer::Value`], so `ConcurrentCounter`
-drops straight into a `#[metrics]` struct as a field. Just like the built-in scalars, a custom
+drops straight into a `#[metrics]` struct as a field. The descriptor shape comes from the closed type: `u64` has `Value::SHAPE = Known(U64)`, so the field's descriptor reports that shape. Similarly, `Value::UNIT` provides the inherent unit (e.g. `Duration` reports `Millisecond`); types without a natural unit default to unitless. Just like the built-in scalars, a custom
 leaf type takes a unit through `#[metrics(unit = ...)]`:
 
 ```rust
@@ -174,11 +174,16 @@ struct MyMetric {
 }
 ```
 
+Since `StringValue` closes to `String`, the descriptor reports `Known(String)` for this field.
+
 ## Recipe: a custom value formatter
 
-When the value is fine but you want to control _how it is rendered_ (without a new type),
-implement [`ValueFormatter`] and point a field at it with `#[metrics(format = ...)]`. Here a
-[`SystemTime`] is emitted as an RFC 3339 UTC string:
+A [`ValueFormatter`] controls how a value is written without introducing a new type.
+Despite the name, a formatter is not limited to string output: `format_value` receives a
+[`ValueWriter`] and may call `writer.string()` for properties, `writer.metric()` for numeric
+observations, or even `writer.error()`. Use `#[metrics(format = ...)]` to attach one to a field.
+
+Here a [`SystemTime`] is emitted as an RFC 3339 UTC string:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -202,6 +207,21 @@ struct MyMetric {
     my_field: SystemTime,
 }
 ```
+
+Formatters that always produce a known wire type should override `ValueFormatter::SHAPE` so descriptor-aware sinks can pre-register the field correctly. `AsUtcDate` always calls `writer.string()`, so its shape is `Known(String)`:
+
+```rust,ignore
+use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+
+impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+    fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) { /* ... */ }
+}
+```
+
+A formatter that always calls `writer.metric()` should return `Known(F64)` (or the appropriate numeric shape). Formatters whose output varies at runtime should specify `FieldShape::Opaque` explicitly.
+
+The built-in `ToString` formatter already provides `Known(String)`.
 
 ## Recipe (advanced): a manual entry
 
@@ -252,6 +272,8 @@ fn handle_entry(entry: &impl Entry) {
                     // Or just the base (un-prefixed) name:
                     let base = field.base_name();
                     let unit = field.unit();
+                    // Field shape tells the sink what wire type to expect:
+                    let shape = field.shape();
                     // Check flags for format-specific behavior:
                     // field.flags().any(|f| f.is::<MyFlag>())
                 }
@@ -269,6 +291,26 @@ fn handle_entry(entry: &impl Entry) {
 ### Positional correspondence
 
 Descriptor fields are ordered to match `Entry::write` callback order. When walking the write path, you can correlate the Nth value callback with the Nth field in the descriptor. Multi-segment descriptors (from flattened children) concatenate in write order.
+
+### Using field shapes
+
+`field.shape()` returns the statically-known wire shape of the field's closed value. Use it to select encoding strategies, register schema types, or skip unsupported shapes:
+
+```rust,ignore
+use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+
+for field in segment.fields() {
+    match field.shape() {
+        FieldShape::Known(KnownShape::U64) => { /* register as integer gauge */ }
+        FieldShape::Known(KnownShape::F64) => { /* register as float gauge */ }
+        FieldShape::Known(KnownShape::String) => { /* register as attribute */ }
+        FieldShape::Optional(inner) => { /* nullable variant of inner.get() */ }
+        FieldShape::List(inner) => { /* repeated field of inner.get() */ }
+        FieldShape::Opaque => { /* fall back to write-path observation */ }
+        _ => { /* forward compat */ }
+    }
+}
+```
 
 ### Reading flag data from descriptors
 
@@ -314,3 +356,4 @@ the helpers in the [testing guide][`testing`] (`test_metric`) to assert on the c
 [`Histogram`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/struct.Histogram.html
 [`Duration`]: https://doc.rust-lang.org/std/time/struct.Duration.html
 [`SystemTime`]: https://doc.rust-lang.org/std/time/struct.SystemTime.html
+[`ValueWriter`]: https://docs.rs/metrique/latest/metrique/writer/trait.ValueWriter.html

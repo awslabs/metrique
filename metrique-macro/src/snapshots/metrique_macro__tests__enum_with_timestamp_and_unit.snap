@@ -194,6 +194,9 @@ const _: () = {
                                                     <Millisecond as ::metrique::writer::core::unit::UnitTag>::UNIT,
                                                 ),
                                             )
+                                            .shape(
+                                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                                            )
                                             .build(),
                                     ];
                                     static __METRIQUE_V0_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
@@ -228,7 +231,14 @@ const _: () = {
                                             .screaming_snake("BYTES")
                                             .flags(&__METRIQUE_V1_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
-                                            .maybe_unit(None)
+                                            .maybe_unit(
+                                                ::metrique::writer::core::Unit::to_option(
+                                                    <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                                                ),
+                                            )
+                                            .shape(
+                                                <<u64 as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                                            )
                                             .build(),
                                     ];
                                     static __METRIQUE_V1_DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(

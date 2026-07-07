@@ -89,6 +89,14 @@ impl serde::Serialize for Unit {
 }
 
 impl Unit {
+    /// Converts to `Some(self)` unless unitless (`Unit::None`).
+    pub const fn to_option(self) -> Option<Unit> {
+        match self {
+            Unit::None => Option::None,
+            other => Option::Some(other),
+        }
+    }
+
     /// The public name defined by CloudWatch for the unit.
     pub const fn name(self) -> &'static str {
         macro_rules! positive_scale {
@@ -513,6 +521,9 @@ impl<V: MetricValue, U: UnitTag> Value for WithUnit<V, U>
 where
     V::Unit: Convert<U>,
 {
+    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+    const UNIT: crate::Unit = U::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         struct Wrapper<W, From, To> {
             writer: W,

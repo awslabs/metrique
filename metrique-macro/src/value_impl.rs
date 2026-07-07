@@ -27,6 +27,11 @@ pub(crate) fn generate_value_impl_for_enum(
     Ok(quote!(
         #from_and_sample_group
         impl ::metrique::writer::Value for #value_name {
+            const SHAPE: ::metrique::writer::core::descriptor::FieldShape<'static> =
+                ::metrique::writer::core::descriptor::FieldShape::Known(
+                    ::metrique::writer::core::descriptor::KnownShape::String,
+                );
+
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 writer.string(::std::convert::Into::<&str>::into(self));
             }
@@ -162,8 +167,18 @@ pub(crate) fn generate_value_impl_for_struct(
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+    let shape_const = non_ignore_field.map(|field| {
+        let field_ty = &field.ty;
+        quote! {
+            const SHAPE: ::metrique::writer::core::descriptor::FieldShape<'static> =
+                <<#field_ty as ::metrique::CloseValue>::Closed as ::metrique::writer::Value>::SHAPE;
+        }
+    });
+
     Ok(quote! {
         impl #impl_generics ::metrique::writer::Value for #value_name #ty_generics #where_clause {
+            #shape_const
+
             fn write(&self, writer: impl ::metrique::writer::ValueWriter) {
                 #[allow(deprecated)] {
                     #body

@@ -141,6 +141,10 @@ impl<T: Value> Entry for FlexEntry<T> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         writer.value(Cow::Borrowed(self.key.as_ref()), &self.value);
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::Unavailable
+    }
 }
 
 impl<T: Value, NS: NameStyle> InflectableEntry<NS> for FlexEntry<T> {

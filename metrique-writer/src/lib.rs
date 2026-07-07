@@ -13,7 +13,9 @@ pub use metrique_writer_core::unit::{Convert, Unit};
 pub use metrique_writer_core::value::{
     Distribution, MetricFlags, MetricValue, Observation, Value, ValueWriter,
 };
-pub use metrique_writer_core::{ValidationError, ValidationErrorBuilder};
+pub use metrique_writer_core::{
+    Descriptors, FieldShape, KnownShape, ShapeRef, ValidationError, ValidationErrorBuilder,
+};
 pub use metrique_writer_macro::Entry;
 
 pub use crate::sink::AttachGlobalEntrySinkExt;
