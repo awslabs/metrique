@@ -356,3 +356,4 @@ the helpers in the [testing guide][`testing`] (`test_metric`) to assert on the c
 [`Histogram`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/struct.Histogram.html
 [`Duration`]: https://doc.rust-lang.org/std/time/struct.Duration.html
 [`SystemTime`]: https://doc.rust-lang.org/std/time/struct.SystemTime.html
+[`ValueWriter`]: https://docs.rs/metrique/latest/metrique/writer/trait.ValueWriter.html
