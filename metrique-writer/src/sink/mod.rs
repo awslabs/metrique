@@ -42,6 +42,16 @@ pub trait AttachGlobalEntrySinkExt: AttachGlobalEntrySink {
     fn attach_to_stream(output: impl EntryIoStream + Send + 'static) -> AttachHandle {
         Self::attach(BackgroundQueue::new(output))
     }
+
+    /// Attach the given output stream to a [`FlushImmediately`] sink and then to this
+    /// global sink reference. Unlike [`attach_to_stream`](Self::attach_to_stream), this
+    /// does not use a background thread - each entry is written and flushed inline.
+    /// Suitable for short-lived environments like AWS Lambda.
+    /// # Panics
+    /// Panics if a queue is already attached.
+    fn write_directly_to(output: impl EntryIoStream + Send + Sync + 'static) -> AttachHandle {
+        Self::attach((FlushImmediately::new_boxed(output), ()))
+    }
 }
 
 impl<Q: AttachGlobalEntrySink + ?Sized> AttachGlobalEntrySinkExt for Q {}
@@ -215,5 +225,46 @@ mod tests {
             status: "OK".into(),
         });
         futures::executor::block_on(EntrySink::<TestEntry>::flush_async(&sink));
+    }
+
+    #[test]
+    fn write_directly_to_flushes_synchronously() {
+        use metrique_writer_core::global::GlobalEntrySink;
+        use metrique_writer_core::test_stream::{TestEntry as StreamTestEntry, TestStream};
+
+        global_entry_sink! { TestGlobalSink }
+
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let _handle = TestGlobalSink::write_directly_to(Arc::clone(&output));
+
+        TestGlobalSink::append(StreamTestEntry(1));
+
+        assert_eq!(output.lock().unwrap().values, vec![1]);
+        assert_eq!(output.lock().unwrap().flushes, 1);
+    }
+
+    #[test]
+    fn write_directly_to_does_not_lose_entries_under_concurrent_appends() {
+        use metrique_writer_core::global::GlobalEntrySink;
+        use metrique_writer_core::test_stream::{TestEntry as StreamTestEntry, TestStream};
+
+        global_entry_sink! { ConcurrentTestGlobalSink }
+
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let _handle = ConcurrentTestGlobalSink::write_directly_to(Arc::clone(&output));
+
+        std::thread::scope(|scope| {
+            for t in 0..20 {
+                scope.spawn(move || {
+                    for i in 0..10 {
+                        ConcurrentTestGlobalSink::append(StreamTestEntry(t * 10 + i));
+                    }
+                });
+            }
+        });
+
+        let values = &mut output.lock().unwrap().values;
+        values.sort();
+        assert_eq!(*values, (0..200).collect::<Vec<_>>());
     }
 }
