@@ -300,6 +300,9 @@ impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for Wrapper<'_, W> {
 }
 
 impl<V: Value> Value for Wrapper<'_, V> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+    const UNIT: crate::Unit = V::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         self.value.write(Wrapper {
             value: writer,
@@ -341,6 +344,7 @@ impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
 
 impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
     const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+    const UNIT: crate::Unit = V::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         self.value.write(Wrapper {
@@ -357,6 +361,10 @@ impl<V: MetricValue, const N: usize> MetricValue for WithDimensions<V, N> {
 impl<E: Entry, const N: usize> Entry for WithDimensions<E, N> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         self.value.write(&mut self.entry_writer_wrapper(writer))
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        self.value.descriptors()
     }
 }
 

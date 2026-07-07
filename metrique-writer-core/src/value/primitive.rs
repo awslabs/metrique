@@ -21,6 +21,7 @@ fn duration_as_millis_with_nano_precision(duration: Duration) -> f64 {
 
 impl Value for str {
     const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+    const UNIT: crate::Unit = crate::Unit::None;
 
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
@@ -30,6 +31,7 @@ impl Value for str {
 
 impl Value for String {
     const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+    const UNIT: crate::Unit = crate::Unit::None;
 
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
@@ -41,6 +43,7 @@ macro_rules! counter {
     ($t:ty, $shape:expr) => {
         impl Value for $t {
             const SHAPE: FieldShape<'static> = FieldShape::Known($shape);
+            const UNIT: crate::Unit = crate::Unit::None;
 
             #[inline]
             fn write(&self, writer: impl ValueWriter) {
@@ -67,6 +70,7 @@ counter!(bool, KnownShape::Bool);
 
 impl Value for usize {
     const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::U64);
+    const UNIT: crate::Unit = crate::Unit::None;
 
     #[inline]
     fn write(&self, writer: impl ValueWriter) {
@@ -87,6 +91,7 @@ macro_rules! float {
     ($t:ty, $shape:expr) => {
         impl Value for $t {
             const SHAPE: FieldShape<'static> = FieldShape::Known($shape);
+            const UNIT: crate::Unit = crate::Unit::None;
 
             #[inline]
             fn write(&self, writer: impl ValueWriter) {
@@ -139,6 +144,7 @@ impl MetricValue for Duration {
 
 impl<V: Value> Value for Vec<V> {
     const SHAPE: FieldShape<'static> = FieldShape::List(ShapeRef::new(&V::SHAPE));
+    const UNIT: crate::Unit = V::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         writer.values(self.iter());
@@ -147,6 +153,7 @@ impl<V: Value> Value for Vec<V> {
 
 impl<V: Value> Value for [V] {
     const SHAPE: FieldShape<'static> = FieldShape::List(ShapeRef::new(&V::SHAPE));
+    const UNIT: crate::Unit = V::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         writer.values(self.iter());

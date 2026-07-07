@@ -137,6 +137,10 @@ pub struct TimestampValue {
 }
 
 impl Value for TimestampValue {
+    const SHAPE: metrique_writer_core::FieldShape<'static> =
+        metrique_writer_core::FieldShape::Known(metrique_writer_core::KnownShape::String);
+    const UNIT: metrique_writer_core::Unit = metrique_writer_core::Unit::None;
+
     fn write(&self, writer: impl metrique_writer_core::ValueWriter) {
         // by default, use the milliseconds format
         <Millisecond as TimestampToStr>::to_str(self.duration_since_epoch, |v| writer.string(v));

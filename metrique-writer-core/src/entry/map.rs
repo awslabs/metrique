@@ -15,6 +15,10 @@ impl<K: AsRef<str>, V: Value, S> Entry for HashMap<K, V, S> {
             writer.value(k.as_ref(), v);
         }
     }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
+    }
 }
 
 impl<K: AsRef<str>, V: Value> Entry for BTreeMap<K, V> {
@@ -22,6 +26,10 @@ impl<K: AsRef<str>, V: Value> Entry for BTreeMap<K, V> {
         for (k, v) in self {
             writer.value(k.as_ref(), v);
         }
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
     }
 }
 
@@ -32,5 +40,9 @@ impl<K: AsRef<str>, V: Value> Entry for [(K, V)] {
         for (k, v) in self {
             writer.value(k.as_ref(), v);
         }
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
     }
 }

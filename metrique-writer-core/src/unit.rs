@@ -522,6 +522,7 @@ where
     V::Unit: Convert<U>,
 {
     const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+    const UNIT: crate::Unit = U::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         struct Wrapper<W, From, To> {

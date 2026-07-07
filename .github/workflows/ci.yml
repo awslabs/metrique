@@ -105,7 +105,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Check all Value impls define SHAPE and UNIT
-        run: RUSTFLAGS="--cfg metrique_require_explicit_impls" cargo check --workspace --all-features
+        # metrique-util is excluded from the full check because tokio-metrics
+        # (pulled in by the tokio-metrics-bridge feature) has Value impls that
+        # don't yet provide SHAPE/UNIT. RUSTFLAGS propagates to all crates
+        # including dependencies, so we check metrique-util separately without
+        # that feature. Remove this workaround once tokio-metrics adds the consts.
+        run: |
+          RUSTFLAGS="--cfg metrique_require_explicit_impls --cfg tokio_unstable" \
+            cargo check --workspace --all-features \
+            --exclude metrique-util
+          RUSTFLAGS="--cfg metrique_require_explicit_impls --cfg tokio_unstable" \
+            cargo check -p metrique-util --features state,pending-sink,sysinfo-bridge
 
   ci-pass:
     name: CI Pass

@@ -188,6 +188,10 @@ pub enum Observation {
 }
 
 impl Value for Observation {
+    const SHAPE: crate::descriptor::FieldShape<'static> =
+        crate::descriptor::FieldShape::Known(crate::descriptor::KnownShape::F64);
+    const UNIT: crate::Unit = crate::Unit::None;
+
     fn write(&self, writer: impl ValueWriter) {
         writer.metric([*self], unit::None::UNIT, [], MetricFlags::empty())
     }
@@ -253,6 +257,7 @@ impl<T: Value + ?Sized> Value for &T {
 impl<T: Value> Value for Option<T> {
     const SHAPE: crate::descriptor::FieldShape<'static> =
         crate::descriptor::FieldShape::Optional(crate::descriptor::ShapeRef::new(&T::SHAPE));
+    const UNIT: crate::Unit = T::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         if let Some(data) = self.as_ref() {
@@ -263,6 +268,7 @@ impl<T: Value> Value for Option<T> {
 
 impl<T: Value> Value for Box<T> {
     const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
@@ -271,6 +277,7 @@ impl<T: Value> Value for Box<T> {
 
 impl<T: Value + ?Sized> Value for Arc<T> {
     const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)
@@ -279,6 +286,7 @@ impl<T: Value + ?Sized> Value for Arc<T> {
 
 impl<T: Value + ToOwned + ?Sized> Value for Cow<'_, T> {
     const SHAPE: crate::descriptor::FieldShape<'static> = T::SHAPE;
+    const UNIT: crate::Unit = T::UNIT;
 
     fn write(&self, writer: impl ValueWriter) {
         (**self).write(writer)

@@ -120,6 +120,10 @@ impl Entry for TestEntry {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         writer.value("value", &self.0);
     }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
+    }
 }
 
 /// A helper struct that implements `io::Write` to write to an `Arc<Mutex<Vec<u8>>>`, to be

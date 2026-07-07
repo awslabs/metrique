@@ -191,6 +191,7 @@ where
     VF: ValueFormatter<V, L>,
 {
     const SHAPE: crate::descriptor::FieldShape<'static> = <VF as ValueFormatter<V, L>>::SHAPE;
+    const UNIT: crate::Unit = crate::Unit::None;
 
     fn write(&self, writer: impl ValueWriter) {
         VF::format_value(writer, self.1);
