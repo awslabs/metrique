@@ -226,4 +226,20 @@ mod tests {
         });
         futures::executor::block_on(EntrySink::<TestEntry>::flush_async(&sink));
     }
+
+    #[test]
+    fn write_directly_to_flushes_synchronously() {
+        use metrique_writer_core::global::GlobalEntrySink;
+        use metrique_writer_core::test_stream::{TestEntry as StreamTestEntry, TestStream};
+
+        global_entry_sink! { TestGlobalSink }
+
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let _handle = TestGlobalSink::write_directly_to(Arc::clone(&output));
+
+        TestGlobalSink::append(StreamTestEntry(1));
+
+        assert_eq!(output.lock().unwrap().values, vec![1]);
+        assert_eq!(output.lock().unwrap().flushes, 1);
+    }
 }
