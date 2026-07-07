@@ -41,7 +41,7 @@ use crate::{
 pub trait Value {
     /// The statically-known shape of this value type for descriptor-aware sinks.
     ///
-    /// Defaults to [`FieldShape::Opaque`] when not overridden. Sinks use this to
+    /// Defaults to [`Opaque`](crate::descriptor::FieldShape::Opaque) when not overridden. Sinks use this to
     /// determine wire encoding without observing a live write.
     #[cfg(not(metrique_require_explicit_impls))]
     const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;

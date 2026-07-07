@@ -77,9 +77,10 @@ impl Liftability for NotLifted {}
 pub trait ValueFormatter<V: ?Sized, L: Liftability = Lifted> {
     /// The shape of values produced by this formatter.
     ///
-    /// Defaults to [`FieldShape::Opaque`]. Override when the formatter always
+    /// Defaults to [`Opaque`](crate::descriptor::FieldShape::Opaque). Override when the formatter always
     /// produces a known wire shape (e.g. formatters that call `writer.string()`
-    /// should return `Known(String)`).
+    /// should return `Known(String)`, formatters that call `writer.metric()`
+    /// should return `Known(F64)` or the appropriate numeric shape).
     #[cfg(not(metrique_require_explicit_impls))]
     const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Opaque;
     /// The shape of values produced by this formatter.

@@ -178,9 +178,12 @@ Since `StringValue` closes to `String`, the descriptor reports `Known(String)` f
 
 ## Recipe: a custom value formatter
 
-When the value is fine but you want to control _how it is rendered_ (without a new type),
-implement [`ValueFormatter`] and point a field at it with `#[metrics(format = ...)]`. Here a
-[`SystemTime`] is emitted as an RFC 3339 UTC string:
+A [`ValueFormatter`] controls how a value is written without introducing a new type.
+Despite the name, a formatter is not limited to string output: `format_value` receives a
+[`ValueWriter`] and may call `writer.string()` for properties, `writer.metric()` for numeric
+observations, or even `writer.error()`. Use `#[metrics(format = ...)]` to attach one to a field.
+
+Here a [`SystemTime`] is emitted as an RFC 3339 UTC string:
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -205,17 +208,18 @@ struct MyMetric {
 }
 ```
 
-Formatters that always produce a known wire type should override `ValueFormatter::SHAPE` so descriptor-aware sinks can pre-register the field correctly. `AsUtcDate` always writes a string, so:
+Formatters that always produce a known wire type should override `ValueFormatter::SHAPE` so descriptor-aware sinks can pre-register the field correctly. `AsUtcDate` always calls `writer.string()`, so its shape is `Known(String)`:
 
 ```rust,ignore
+use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+
 impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
-    const SHAPE: metrique_writer_core::descriptor::FieldShape<'static> =
-        metrique_writer_core::descriptor::FieldShape::Known(
-            metrique_writer_core::descriptor::KnownShape::String,
-        );
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
     fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) { /* ... */ }
 }
 ```
+
+A formatter that always calls `writer.metric()` should return `Known(F64)` (or the appropriate numeric shape). Formatters whose output varies at runtime should specify `FieldShape::Opaque` explicitly.
 
 The built-in `ToString` formatter already provides `Known(String)`.
 

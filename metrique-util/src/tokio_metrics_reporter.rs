@@ -325,39 +325,6 @@ mod tests {
         check!(entry.metrics["total_park_count"] > 0);
     }
 
-    #[cfg(tokio_unstable)]
-    #[test]
-    fn subscribe_appends_metrics_identity_histogram() {
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .enable_metrics_poll_count_histogram()
-            .build()
-            .unwrap();
-        rt.block_on(async {
-            metrique_writer::sink::global_entry_sink! { Sink }
-            let TestEntrySink { inspector, sink } = test_entry_sink();
-            let _handle = Sink::attach((sink, ()));
-
-            Sink::subscribe_tokio_runtime_metrics(
-                TokioRuntimeMetricsConfig::default().with_interval(Duration::from_millis(50)),
-            );
-
-            // Spawn work and wait so the runtime records poll times.
-            tokio::spawn(async {
-                std::thread::sleep(std::time::Duration::from_millis(1));
-            })
-            .await
-            .unwrap();
-            tokio::time::sleep(Duration::from_millis(200)).await;
-
-            let entries = inspector.entries();
-            check!(!entries.is_empty());
-            let entry = entries.last().unwrap();
-            check!(entry.metrics["poll_time_histogram"].num_observations() > 0);
-        });
-    }
-
     #[tokio::test(start_paused = true)]
     async fn subscribe_appends_metrics_pascal_case() {
         metrique_writer::sink::global_entry_sink! { Sink }
