@@ -1,8 +1,8 @@
 [package]
 name = "metrique-util"
-version = "0.1.4"
+version = "0.1.6"
 edition = "2024"
-rust-version = "1.89" # See build.yml for why this MSRV
+rust-version = "1.91" # See .github/workflows/ci.yml
 license = "Apache-2.0"
 description = "Additional utilities for metrique"
 repository = "https://github.com/awslabs/metrique"
@@ -15,11 +15,13 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
 default = []
 state = ["dep:arc-swap"]
 tokio-metrics-bridge = [
+    "state",
     "dep:metrique",
     "dep:tokio",
     "dep:tokio-metrics",
     "dep:tracing",
 ]
+sysinfo-bridge = ["state", "dep:metrique", "dep:tokio", "dep:sysinfo", "dep:tracing"]
 # Enables BoxEntrySink::pending() for deferred sink attachment with bounded buffering
 pending-sink = ["dep:metrique-writer-core", "dep:crossbeam-queue"]
 
@@ -29,21 +31,57 @@ metrique = { workspace = true, optional = true }
 arc-swap = { version = "1", optional = true }
 tokio = { workspace = true, optional = true, features = ["time", "rt"] }
 tokio-metrics = { version = "0.5.0", optional = true, features = ["rt", "metrique-integration"] }
+sysinfo = { version = "0.38.4", optional = true, default-features = false, features = [
+    "component",
+    "disk",
+    "network",
+    "system",
+] }
 tracing = { workspace = true, optional = true }
 metrique-writer-core = { workspace = true, optional = true }
 crossbeam-queue = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
-metrique = { workspace = true, features = ["emf", "test-util"] }
+metrique = { workspace = true, features = ["emf", "test-util", "service-metrics"] }
 metrique-writer = { workspace = true, features = ["test-util"] }
 metrique-writer-core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 rstest = { workspace = true }
-metrique-util = { path = ".", features = ["state", "pending-sink"] }
+metrique-util = { path = ".", features = ["state", "pending-sink", "sysinfo-bridge", "tokio-metrics-bridge"] }
+tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "global-state"
+required-features = ["state", "sysinfo-bridge", "tokio-metrics-bridge"]
+
+[[example]]
+name = "extras"
+required-features = ["sysinfo-bridge", "tokio-metrics-bridge"]
+
+[[example]]
+name = "tokio-metrics-folded"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "tokio-metrics-folded-static"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "sysinfo-folded"
+required-features = ["sysinfo-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "sysinfo-folded-static"
+required-features = ["sysinfo-bridge"]
+doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true
 targets = ["x86_64-unknown-linux-gnu"]
 rustdoc-args = ["--cfg", "docsrs"]
+rustc-args = ["--cfg", "tokio_unstable"]
 cargo-args = ["-Zunstable-options", "-Zrustdoc-scrape-examples"]

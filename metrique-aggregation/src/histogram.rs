@@ -308,6 +308,10 @@ impl<T> Value for HistogramClosed<T>
 where
     T: MetricValue,
 {
+    const SHAPE: metrique_writer_core::FieldShape<'static> =
+        metrique_writer_core::FieldShape::Known(metrique_writer_core::KnownShape::F64);
+    const UNIT: metrique_writer_core::Unit = <T::Unit as metrique_writer::unit::UnitTag>::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         use metrique_writer::unit::UnitTag;
         writer.metric(

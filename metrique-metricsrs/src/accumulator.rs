@@ -249,6 +249,7 @@ impl<V: MetricsRsVersion + ?Sized> MetricAccumulatorEntry<V> {
     }
 }
 
+// Descriptors intentionally Unavailable: fields are accumulated dynamically at runtime.
 impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         struct MultiObservation<'a, T> {
@@ -261,6 +262,10 @@ impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
         where
             T: IntoIterator<Item = Observation> + Clone,
         {
+            const SHAPE: metrique_writer_core::FieldShape<'static> =
+                metrique_writer_core::FieldShape::Known(metrique_writer_core::KnownShape::F64);
+            const UNIT: metrique_writer_core::Unit = metrique_writer_core::Unit::None;
+
             fn write(&self, writer: impl metrique_writer_core::ValueWriter) {
                 writer.metric(
                     self.value.clone(),
@@ -329,6 +334,10 @@ impl<V: MetricsRsVersion + ?Sized> Entry for MetricAccumulatorEntry<V> {
                 },
             );
         }
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::Unavailable
     }
 }
 

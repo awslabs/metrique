@@ -1,7 +1,7 @@
 # Metrique [![Build Status]][actions] [![Latest Version]][crates.io] [![Released API docs]][docs.rs] [![Apache-2.0 licensed]][license]
 
-[Build Status]: https://github.com/awslabs/metrique/actions/workflows/build.yml/badge.svg
-[actions]: https://github.com/awslabs/metrique/actions?query=workflow%3Abuild
+[Build Status]: https://github.com/awslabs/metrique/actions/workflows/ci.yml/badge.svg
+[actions]: https://github.com/awslabs/metrique/actions?query=workflow%3ACI
 [Latest Version]: https://img.shields.io/crates/v/metrique.svg
 [crates.io]: https://crates.io/crates/metrique
 [Released API docs]: https://docs.rs/metrique/badge.svg

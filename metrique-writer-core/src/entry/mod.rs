@@ -14,7 +14,7 @@ mod map;
 mod merged;
 pub use merged::{Merged, MergedRef};
 
-use crate::Value;
+use crate::{Descriptors, Value};
 
 /// The core trait to be implemented by application data structures holding metric values.
 ///
@@ -185,6 +185,19 @@ pub trait Entry {
         MergedRef(self, other)
     }
 
+    /// Returns descriptors for this entry in write order.
+    ///
+    /// Each descriptor covers a contiguous segment of the `Entry::write` output.
+    /// Simple entries yield one descriptor. Composed entries (like aggregation results)
+    /// yield multiple. Hand-written entries return an empty iterator by default.
+    #[cfg(not(metrique_require_explicit_impls))]
+    fn descriptors(&self) -> Descriptors<'_> {
+        Descriptors::Unavailable
+    }
+    /// Returns descriptors for this entry in write order.
+    #[cfg(metrique_require_explicit_impls)]
+    fn descriptors(&self) -> Descriptors<'_>;
+
     /// Move the entry to the heap and rely on dynamic dispatch.
     ///
     /// Useful for creating heterogeneous collections of entries.
@@ -207,6 +220,10 @@ pub struct EmptyEntry;
 
 impl Entry for EmptyEntry {
     fn write<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        Descriptors::available(std::iter::empty())
+    }
 }
 
 /// Trait for format-specific Entry configuration, formats will downcast this to the specific config
@@ -258,6 +275,10 @@ impl<T: Entry + ?Sized> Entry for &T {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<T: Entry> Entry for Option<T> {
@@ -268,10 +289,13 @@ impl<T: Entry> Entry for Option<T> {
     }
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
-        if let Some(entry) = self.as_ref() {
-            itertools::Either::Left(entry.sample_group())
-        } else {
-            itertools::Either::Right([].into_iter())
+        self.as_ref().into_iter().flat_map(|e| e.sample_group())
+    }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        match self.as_ref() {
+            Some(entry) => entry.descriptors(),
+            None => Descriptors::available(std::iter::empty()),
         }
     }
 }
@@ -284,6 +308,10 @@ impl<T: Entry + ?Sized> Entry for Box<T> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<T: Entry + ?Sized> Entry for Arc<T> {
@@ -294,6 +322,10 @@ impl<T: Entry + ?Sized> Entry for Arc<T> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
     }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
+    }
 }
 
 impl<T: Entry + ToOwned + ?Sized> Entry for Cow<'_, T> {
@@ -303,5 +335,9 @@ impl<T: Entry + ToOwned + ?Sized> Entry for Cow<'_, T> {
 
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         (**self).sample_group()
+    }
+
+    fn descriptors(&self) -> Descriptors<'_> {
+        (**self).descriptors()
     }
 }

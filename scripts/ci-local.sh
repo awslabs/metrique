@@ -16,7 +16,7 @@ echo "→ Running security audit..."
 cargo audit || { echo "FAILED: cargo audit"; exit 1; }
 
 # Build and test matrix
-for toolchain in 1.89.0 stable nightly; do
+for toolchain in 1.91.0 stable nightly; do
     for flags in "--all-features" "--no-default-features"; do
         echo "→ Building with $toolchain $flags..."
 

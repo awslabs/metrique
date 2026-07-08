@@ -50,6 +50,10 @@ where
             writer.value(key.into(), value);
         }
     }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
+    }
 }
 
 impl<E> EnumMapEntry<E> {

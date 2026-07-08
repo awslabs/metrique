@@ -1,0 +1,359 @@
+# Extending metrique
+
+Most of the time you'll be using the built-in metric types ([`Timer`] and [`Counter`] from
+`metrique`, [`Histogram`] from `metrique-aggregation`, timestamps, plain numbers and
+strings) wrapped in a `#[metrics]` struct. But you can extend `metrique` by defining your
+own metric types, customizing how a value is formatted, or hand-building an entry.
+
+## The closing model
+
+`metrique` separates a metric's life into two phases:
+
+- **Accumulation** (mutable): while a request is in flight you mutate a struct. Fields like
+  [`Timer`], [`Counter`], and [`Histogram`] hold live, changing state.
+- **Emission** (immutable): when the work finishes, the struct is _closed_ into a plain,
+  inert entry that is handed to a sink.
+
+The one-way transition between them is the [`CloseValue::close`] method. Closing a `Timer`
+turns it into the [`Duration`] it measured; closing a `Counter` turns it into the `u64` it
+counted; closing a `#[metrics]` struct closes every field and produces an entry.
+
+```rust
+use metrique::unit_of_work::metrics;
+use metrique::timers::Timer;
+
+#[metrics]
+struct RequestMetrics {
+    // a live, mutable accumulator during the request...
+    operation_time: Timer,
+    items: usize,
+}
+// ...that closes into an inert entry: `operation_time` becomes a `Duration`,
+// `items` stays a `usize`. The closed entry is what gets written to the sink.
+```
+
+You rarely call `close()` by hand. The guard returned by `append_on_drop(sink)` closes the
+struct and appends the entry when it is dropped. The point of the model is _what_ you are
+extending: a custom metric type is just a type that knows how to close itself.
+
+## How the traits relate
+
+Four traits, in [`metrique_core`], make up the system. In practice you only ever implement
+the first one.
+
+| Trait                | What it does                                                             | You implement it when...                   |
+| -------------------- | ------------------------------------------------------------------------ | ------------------------------------------ |
+| [`CloseValue`]       | Turns a value into its `Closed` form (the accumulation -> emission step) | Defining a custom leaf or accumulator type |
+| [`CloseValueRef`]    | The by-ref version of closing; blanket-implemented from `&T: CloseValue` | Never directly (it is automatic)           |
+| [`CloseEntry`]       | Trait alias for `CloseValue<Closed: InflectableEntry>`                   | Never directly (it is an alias)            |
+| [`InflectableEntry`] | A renamable, writable metric entry: the closed form of a whole struct    | Only for fully manual entries (rare)       |
+
+The key trait is [`CloseValue`]:
+
+```rust
+pub trait CloseValue {
+    type Closed;
+    fn close(self) -> Self::Closed;
+}
+```
+
+Two conventions are worth internalizing:
+
+- **Implement it for both `&T` and `T`.** The by-reference impl holds the real logic; the
+  by-value impl either proxies to it (via the blanket `.close_ref()` helper) or reads the
+  owned value directly when that is cheaper, such as moving a value out instead of cloning it
+  or skipping an atomic load. Implementing it for `&T` is what lets the type close without
+  giving up ownership, and it is what gives you smart-pointer support (closing an
+  `Arc<YourType>`) for free, via the blanket [`CloseValueRef`] impl. You never implement
+  [`CloseValueRef`] yourself.
+- **`Closed` must be writable.** When your type is used as a metric field, its `Closed` type
+  has to implement [`metrique_writer::Value`] so it can actually be written out. The built-in
+  scalar types already do.
+
+Closing a whole `#[metrics]` struct produces an [`InflectableEntry`]: an entry whose field
+names can still be "inflected" (PascalCase, snake_case, etc.) without any runtime string work.
+You almost never touch [`CloseEntry`] or [`InflectableEntry`] directly; the `#[metrics]` macro
+generates both for you.
+
+## Recipe: a custom accumulator type
+
+The canonical extension: implement [`CloseValue`] for `&T` and `T`. An accumulator holds
+live state that is mutated through `&self` during the request (so it can be shared across
+tasks, e.g. behind an `Arc`) and read out on close. That mutation-through-`&self` is exactly
+why the by-ref impl carries the logic. Here is a counter backed by an atomic, the same shape
+the built-in [`Counter`] uses:
+
+```rust
+use metrique::CloseValue;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+#[derive(Default)]
+struct ConcurrentCounter(AtomicU64);
+
+impl ConcurrentCounter {
+    fn incr(&self) {
+        self.0.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+// The by-ref impl reads the shared, mutated state. Because it closes through `&self`, the
+// counter can be incremented from many tasks (e.g. behind an `Arc`) and still be closed
+// without giving up ownership.
+impl CloseValue for &'_ ConcurrentCounter {
+    type Closed = u64;
+    fn close(self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+}
+
+// The by-value impl can read the owned value directly, avoiding the atomic load.
+impl CloseValue for ConcurrentCounter {
+    type Closed = u64;
+    fn close(self) -> u64 {
+        self.0.into_inner()
+    }
+}
+```
+
+`Closed` is `u64`, which already implements [`metrique_writer::Value`], so `ConcurrentCounter`
+drops straight into a `#[metrics]` struct as a field. The descriptor shape comes from the closed type: `u64` has `Value::SHAPE = Known(U64)`, so the field's descriptor reports that shape. Similarly, `Value::UNIT` provides the inherent unit (e.g. `Duration` reports `Millisecond`); types without a natural unit default to unitless. Just like the built-in scalars, a custom
+leaf type takes a unit through `#[metrics(unit = ...)]`:
+
+```rust
+# use metrique::CloseValue;
+# use std::sync::atomic::{AtomicU64, Ordering};
+# #[derive(Default)]
+# struct ConcurrentCounter(AtomicU64);
+# impl CloseValue for &'_ ConcurrentCounter {
+#     type Closed = u64;
+#     fn close(self) -> u64 { self.0.load(Ordering::Relaxed) }
+# }
+# impl CloseValue for ConcurrentCounter {
+#     type Closed = u64;
+#     fn close(self) -> u64 { self.0.into_inner() }
+# }
+use metrique::unit_of_work::metrics;
+use metrique::unit::Count;
+
+#[metrics]
+struct MyMetric {
+    #[metrics(unit = Count)]
+    requests: ConcurrentCounter,
+}
+```
+
+## Recipe: a custom value wrapper
+
+The accumulator above mutates live state. The other common case is the opposite: a field that
+just holds owned data and is closed by moving or cloning it, with no interior mutability. Wrap
+the data and implement [`CloseValue`] so its `Closed` type is something writable. Here a
+`String` is cloned on the by-ref close and moved out on the by-value one:
+
+```rust
+use metrique::unit_of_work::metrics;
+
+struct StringValue(String);
+
+impl metrique::CloseValue for &StringValue {
+    type Closed = String;
+    fn close(self) -> String {
+        self.0.clone()
+    }
+}
+
+impl metrique::CloseValue for StringValue {
+    type Closed = String;
+    fn close(self) -> String {
+        self.0
+    }
+}
+
+#[metrics]
+struct MyMetric {
+    field: StringValue,
+}
+```
+
+Since `StringValue` closes to `String`, the descriptor reports `Known(String)` for this field.
+
+## Recipe: a custom value formatter
+
+A [`ValueFormatter`] controls how a value is written without introducing a new type.
+Despite the name, a formatter is not limited to string output: `format_value` receives a
+[`ValueWriter`] and may call `writer.string()` for properties, `writer.metric()` for numeric
+observations, or even `writer.error()`. Use `#[metrics(format = ...)]` to attach one to a field.
+
+Here a [`SystemTime`] is emitted as an RFC 3339 UTC string:
+
+```rust
+use metrique::unit_of_work::metrics;
+use std::time::SystemTime;
+use chrono::{DateTime, Utc};
+
+/// Format a `SystemTime` as a UTC timestamp.
+struct AsUtcDate;
+
+// `format_value` is a static method, so `AsUtcDate` is never instantiated.
+impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
+    fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) {
+        let datetime: DateTime<Utc> = (*value).into();
+        writer.string(&datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
+    }
+}
+
+#[metrics]
+struct MyMetric {
+    #[metrics(format = AsUtcDate)]
+    my_field: SystemTime,
+}
+```
+
+Formatters that always produce a known wire type should override `ValueFormatter::SHAPE` so descriptor-aware sinks can pre-register the field correctly. `AsUtcDate` always calls `writer.string()`, so its shape is `Known(String)`:
+
+```rust,ignore
+use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+
+impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
+    const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::String);
+    fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) { /* ... */ }
+}
+```
+
+A formatter that always calls `writer.metric()` should return `Known(F64)` (or the appropriate numeric shape). Formatters whose output varies at runtime should specify `FieldShape::Opaque` explicitly.
+
+The built-in `ToString` formatter already provides `Known(String)`.
+
+## Recipe (advanced): a manual entry
+
+There is currently no stable, non-macro way to produce an [`InflectableEntry`] that inflects
+names. If you need a hand-built entry, implement the [`Entry`] trait directly and pull it in
+with `#[metrics(flatten_entry, no_close)]`. Note that this path ignores name inflection.
+
+```rust
+use metrique::unit_of_work::metrics;
+use metrique::writer::{Entry, EntryWriter};
+
+struct MyCustomEntry;
+
+impl Entry for MyCustomEntry {
+    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+        writer.value("custom", "custom");
+    }
+}
+
+#[metrics]
+struct MyMetric {
+    #[metrics(flatten_entry, no_close)]
+    field: MyCustomEntry,
+}
+```
+
+
+## Recipe (advanced): a descriptor-aware sink
+
+Entry descriptors let a sink inspect an entry's structure before (or without) writing it. This enables schema pre-registration, per-field flag-based filtering, and format decisions based on field metadata.
+
+### Reading descriptors
+
+Call `entry.descriptors()` on any `Entry`. The result is a `Descriptors` enum:
+
+```rust,ignore
+use metrique_writer_core::{Entry, Descriptors};
+
+fn handle_entry(entry: &impl Entry) {
+    match entry.descriptors() {
+        Descriptors::Available(descs) => {
+            // Full structural metadata is available.
+            // Cache by DescriptorId for repeated entries of the same type.
+            for segment in descs.iter() {
+                for field in segment.fields() {
+                    // The fully resolved name (with prefixes, inflected to the entry's style):
+                    let name: String = field.name_parts().collect();
+                    // Or just the base (un-prefixed) name:
+                    let base = field.base_name();
+                    let unit = field.unit();
+                    // Field shape tells the sink what wire type to expect:
+                    let shape = field.shape();
+                    // Check flags for format-specific behavior:
+                    // field.flags().any(|f| f.is::<MyFlag>())
+                }
+            }
+        }
+        Descriptors::Unavailable => {
+            // This entry cannot describe its structure statically (e.g. dynamic maps,
+            // hand-written entries). The write path still works normally; the sink
+            // just cannot pre-register fields or make structural decisions ahead of time.
+        }
+    }
+}
+```
+
+### Positional correspondence
+
+Descriptor fields are ordered to match `Entry::write` callback order. When walking the write path, you can correlate the Nth value callback with the Nth field in the descriptor. Multi-segment descriptors (from flattened children) concatenate in write order.
+
+### Using field shapes
+
+`field.shape()` returns the statically-known wire shape of the field's closed value. Use it to select encoding strategies, register schema types, or skip unsupported shapes:
+
+```rust,ignore
+use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+
+for field in segment.fields() {
+    match field.shape() {
+        FieldShape::Known(KnownShape::U64) => { /* register as integer gauge */ }
+        FieldShape::Known(KnownShape::F64) => { /* register as float gauge */ }
+        FieldShape::Known(KnownShape::String) => { /* register as attribute */ }
+        FieldShape::Optional(inner) => { /* nullable variant of inner.get() */ }
+        FieldShape::List(inner) => { /* repeated field of inner.get() */ }
+        FieldShape::Opaque => { /* fall back to write-path observation */ }
+        _ => { /* forward compat */ }
+    }
+}
+```
+
+### Reading flag data from descriptors
+
+Flags carry both identity and data. Use `.is::<T>()` for identity checks and `.construct()` to access the full flag value:
+
+```rust,ignore
+for field in segment.fields() {
+    if let Some(flag) = field.flags().find(|f| f.is::<MyFormatFlag>()) {
+        let metric_flags = flag.construct();
+        if let Some(opts) = metric_flags.downcast::<MyFormatOptions>() {
+            // Use opts for format-specific decisions
+        }
+    }
+}
+```
+
+### Caching
+
+`DescriptorId` is stable for the lifetime of the process. Sinks should cache per-entry-type work (schema registration, field mappings) keyed on `DescriptorId` to avoid re-processing on every write.
+
+## When to reach for the macro instead
+
+Reach for these recipes for **leaf types** (a new accumulator, a wrapper around an external
+type) and for **custom rendering**. For anything that is a _group of fields_, use `#[metrics]`:
+it generates the [`CloseValue`] and [`InflectableEntry`] impls, handles name inflection, and
+closes each field for you. Hand-implementing the entry traits is the exception, not the rule.
+
+To verify a custom type once you have written it, drop it into a `#[metrics]` struct and use
+the helpers in the [testing guide][`testing`] (`test_metric`) to assert on the closed entry.
+
+[`CloseValue`]: https://docs.rs/metrique/latest/metrique/trait.CloseValue.html
+[`CloseValue::close`]: https://docs.rs/metrique/latest/metrique/trait.CloseValue.html#tymethod.close
+[`CloseValueRef`]: https://docs.rs/metrique/latest/metrique/trait.CloseValueRef.html
+[`CloseEntry`]: https://docs.rs/metrique/latest/metrique/trait.CloseEntry.html
+[`InflectableEntry`]: https://docs.rs/metrique-core/latest/metrique_core/trait.InflectableEntry.html
+[`metrique_core`]: https://docs.rs/metrique-core
+[`testing`]: https://docs.rs/metrique/latest/metrique/_guide/testing/
+[`Entry`]: https://docs.rs/metrique/latest/metrique/writer/trait.Entry.html
+[`ValueFormatter`]: https://docs.rs/metrique/latest/metrique/writer/value/trait.ValueFormatter.html
+[`metrique_writer::Value`]: https://docs.rs/metrique/latest/metrique/writer/trait.Value.html
+[`Timer`]: https://docs.rs/metrique/latest/metrique/timers/struct.Timer.html
+[`Counter`]: https://docs.rs/metrique/latest/metrique/struct.Counter.html
+[`Histogram`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/struct.Histogram.html
+[`Duration`]: https://doc.rust-lang.org/std/time/struct.Duration.html
+[`SystemTime`]: https://doc.rust-lang.org/std/time/struct.SystemTime.html
+[`ValueWriter`]: https://docs.rs/metrique/latest/metrique/writer/trait.ValueWriter.html

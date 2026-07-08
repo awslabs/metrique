@@ -15,12 +15,14 @@ The log entries being structured means that you can easily use problem-specific 
 - [`_guide::sinks`] - destinations, sink types, and alternatives to `ServiceMetrics`
 - [`_guide::sampling`] - congressional sampling and the tee pattern for high-volume services
 - [`_guide::testing`] - test utilities and debugging common issues
+- [`_guide::extending`] - defining your own metric types and how the core traits relate
 
 [`_guide::cookbook`]: https://docs.rs/metrique/latest/metrique/_guide/cookbook/
 [`_guide::concurrency`]: https://docs.rs/metrique/latest/metrique/_guide/concurrency/
 [`_guide::sinks`]: https://docs.rs/metrique/latest/metrique/_guide/sinks/
 [`_guide::sampling`]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
 [`_guide::testing`]: https://docs.rs/metrique/latest/metrique/_guide/testing/
+[`_guide::extending`]: https://docs.rs/metrique/latest/metrique/_guide/extending/
 ## Getting Started (Applications)
 
 Most metrics your application records will be wide events tied to a unit of work. In a classic HTTP server, these are typically scoped to a single request/response cycle.
@@ -599,87 +601,17 @@ Nested fields (`#[metrics(flatten)]`) need to implement [`CloseEntry`].
 ## Customization
 
 If the standard primitives in `metrique` don't serve your needs, there's a good
-chance you might be able to implement them yourself.
-
-### Custom [`CloseValue`] and [`CloseValueRef`]
-
-If you want to change the behavior when metrics are closed, you can
-implement [`CloseValue`] or [`CloseValueRef`] yourself ([`CloseValueRef`]
-does not take ownership and will also also work behind smart pointers,
-for example for `Arc<YourValue>`).
-
-For instance, here is an example for adding a custom timer type that calculates the time from when it was created, to when it finished, on close (it doesn't do anything that `timers::Timer` doesn't do, but is useful as an example).
-
-```rust
-use metrique::{CloseValue, CloseValueRef};
-use std::time::{Duration, Instant};
-
-struct MyTimer(Instant);
-impl Default for MyTimer {
-    fn default() -> Self {
-        Self(Instant::now())
-    }
-}
-
-// this does not take ownership, and therefore should implement `CloseValue` for both &T and T
-impl CloseValue for &'_ MyTimer {
-    type Closed = Duration;
-
-    fn close(self) -> Self::Closed {
-        self.0.elapsed()
-    }
-}
-
-impl CloseValue for MyTimer {
-    type Closed = Duration;
-
-    fn close(self) -> Self::Closed {
-        self.close_ref() /* this proxies to the by-ref implementation */
-    }
-}
-```
+chance you can implement your own. You can define a custom metric type by
+implementing [`CloseValue`], control how a value is rendered with a custom
+[`ValueFormatter`], or hand-build an entry. See [`_guide::extending`] for the
+trait relationships and copy-paste recipes.
 
 [`CloseValue`]: https://docs.rs/metrique/latest/metrique/trait.CloseValue.html
-[`CloseValueRef`]: https://docs.rs/metrique/latest/metrique/trait.CloseValueRef.html
 [`CloseEntry`]: https://docs.rs/metrique/latest/metrique/trait.CloseEntry.html
 [`metrique_writer::Value`]: https://docs.rs/metrique/latest/metrique/writer/trait.Value.html
 [`ServiceMetrics`]: https://docs.rs/metrique/latest/metrique/struct.ServiceMetrics.html
 [`Slot`]: https://docs.rs/metrique/latest/metrique/struct.Slot.html
-
-### Custom [`ValueFormatter`]s
-
-You can implement custom formatters by creating a custom value formatter using the [`ValueFormatter`] trait that formats the value into a [`ValueWriter`], then referring to it using `#[metrics(format)]`.
-
-An example use would look like the following:
-
-```rust
-use metrique::unit_of_work::metrics;
-
-use std::time::SystemTime;
-use chrono::{DateTime, Utc};
-
-/// Format a SystemTime as UTC time
-struct AsUtcDate;
-
-// observe that `format_value` is a static method, so `AsUtcDate`
-// is never initialized.
-
-impl metrique::writer::value::ValueFormatter<SystemTime> for AsUtcDate {
-    fn format_value(writer: impl metrique::writer::ValueWriter, value: &SystemTime) {
-        let datetime: DateTime<Utc> = (*value).into();
-        writer.string(&datetime.to_rfc3339_opts(chrono::SecondsFormat::Secs, true));
-    }
-}
-
-#[metrics]
-struct MyMetric {
-    #[metrics(format = AsUtcDate)]
-    my_field: SystemTime,
-}
-```
-
 [`ValueFormatter`]: https://docs.rs/metrique/latest/metrique/writer/value/trait.ValueFormatter.html
-[`ValueWriter`]: https://docs.rs/metrique/latest/metrique/writer/trait.ValueWriter.html
 
 ## Destinations
 

@@ -12,6 +12,7 @@ changelog_include = [
     "metrique-timesource",
     "metrique-util",
     "metrique-writer",
+    "metrique-writer-cloudwatch",
     "metrique-writer-core",
     "metrique-writer-format-emf",
     "metrique-writer-format-json",

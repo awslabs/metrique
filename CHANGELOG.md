@@ -7,6 +7,115 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.27](https://github.com/awslabs/metrique/compare/metrique-v0.1.26...metrique-v0.1.27) - 2026-07-08
+
+### Added
+
+- Add convenience API for FlushImmediately setup ([#333](https://github.com/awslabs/metrique/pull/333))
+- Entry descriptors ([#289](https://github.com/awslabs/metrique/pull/289))
+- *(value)* support `Arc<str>` in metric structs ([#318](https://github.com/awslabs/metrique/pull/318))
+- Support folding sysinfo metrics into other structs ([#301](https://github.com/awslabs/metrique/pull/301))
+- allow non-default MergeConfig in KeyedAggregator ([#310](https://github.com/awslabs/metrique/pull/310))
+
+### Changed
+
+- MSRV raised from 1.89 to 1.91 (required for `const TypeId::of`).
+
+### Fixed
+
+- *(cloudwatch)* use proper SdkError pattern matching for ResourceAlreadyExistsException ([#315](https://github.com/awslabs/metrique/pull/315))
+- *(metrique-aggregation)* `#[aggregate]` now propagates the parent's `rename_all` to the generated key struct. Previously key fields (dimensions) kept their Rust field names even when `rename_all` was set on the parent.
+
+### Other
+
+- [metrique-writer-core + metrique-macro] Resolve FieldShape and Unit from Value trait ([#331](https://github.com/awslabs/metrique/pull/331))
+- adopt ci-pass aggregator pattern for GitHub Actions ([#330](https://github.com/awslabs/metrique/pull/330))
+- Add SCREAMING_SNAKE_CASE support to metrique-macro NameStyle ([#329](https://github.com/awslabs/metrique/pull/329))
+- Support folding RuntimeMetrics (tokio-metrics) into other structs  ([#293](https://github.com/awslabs/metrique/pull/293))
+
+## [0.1.26](https://github.com/awslabs/metrique/compare/metrique-v0.1.25...metrique-v0.1.26) - 2026-06-09
+
+### Added
+
+- **`metrique-otel`**: New crate for OpenTelemetry integration. Records metrique entries directly onto an OTel `SdkMeterProvider` with OTLP/gRPC export. Use `flags(...)` to select OTel instrument kinds; non-OTel sinks ignore the flags, so the same struct works in mixed topologies. ([#291](https://github.com/awslabs/metrique/pull/291))
+
+  ```rust
+  use metrique_otel::OtelSink;
+  use metrique_otel::flags::Counter;
+
+  #[aggregate]
+  #[metrics(rename_all = "PascalCase")]
+  struct RequestMetrics {
+      #[aggregate(key)]
+      operation: String,
+      #[aggregate(strategy = Sum)]
+      #[metrics(flags(Counter))]
+      request_count: u64,
+      #[aggregate(strategy = Histogram<Duration>)]
+      #[metrics(unit = Millisecond)]
+      latency: Duration,
+  }
+  ```
+
+- *(metrique-util)* System metrics bridge via `sysinfo` (feature: `sysinfo-bridge`). Periodically samples CPU, memory, swap, load average, uptime, and current-process metrics. Opt-in disk, network, and thermal metrics via builder methods. ([#283](https://github.com/awslabs/metrique/pull/283))
+
+  ```rust
+  use metrique_util::{AttachGlobalEntrySinkSysinfoExt, SysinfoMetricsConfig};
+
+  ServiceMetrics::subscribe_sysinfo_metrics(
+      SysinfoMetricsConfig::default()
+          .with_interval(Duration::from_secs(30))
+          .with_name_style(MetricNameStyle::KebabCase)
+          .with_disks()
+          .with_networks(),
+  );
+  ```
+
+- *(macro)* `#[metrics(flags(...))]` field attribute for per-field `ForceFlag` without wrapping the type. Multiple flags can be combined on a single field. ([#290](https://github.com/awslabs/metrique/pull/290))
+
+  ```rust
+  use metrique::emf::flags::{HighStorageResolution, NoMetric};
+
+  #[metrics(rename_all = "PascalCase")]
+  struct Metrics {
+      #[metrics(flags(HighStorageResolution))]
+      latency: u64,
+      #[metrics(flags(NoMetric))]
+      debug_count: u64,
+  }
+  ```
+
+- Observer hooks for `BackgroundQueue` and `FlushImmediately` sinks. Backend-agnostic trait replaces the deprecated internal `MetricRecorder` approach—any closure of the right shape is an observer. ([#296](https://github.com/awslabs/metrique/pull/296))
+
+  ```rust
+  use metrique_writer::sink::{BackgroundQueueBuilder, BackgroundQueueEvent};
+
+  let queue = BackgroundQueueBuilder::new().observer(move |_queue: &str, event| {
+      if let BackgroundQueueEvent::QueueOverflow { .. } = event {
+          overflow_counter.fetch_add(1, Ordering::Relaxed);
+      }
+  });
+  ```
+
+- **`metrique-writer-cloudwatch`**: New crate providing a CloudWatch Logs `PutLogEvents` (EMF) `EntryIoStream` backend. Channel-based async architecture with bounded backpressure, respects CW Logs limits (1MB payload, 10k events), graceful shutdown, and auto-creates log group/stream on startup. ([#302](https://github.com/awslabs/metrique/pull/302))
+
+### Changed
+
+- *(metrique-writer-cloudwatch)* **Breaking:** Gate default Tokio runtime behind `tokio_runtime` feature. `TaskSpawner::tokio()` now requires the feature; the spawner no longer returns a `JoinHandle` but spawns-and-detaches instead. ([#305](https://github.com/awslabs/metrique/pull/305))
+
+### Fixed
+
+- *(metrique-writer-cloudwatch)* Avoid legacy AWS client stack that was pulling in old rustls/hyper dependencies causing critical vulnerability findings ([#306](https://github.com/awslabs/metrique/pull/306))
+- Deterministically sort keys in snapshot test ([#303](https://github.com/awslabs/metrique/pull/303))
+
+### Other
+
+- Add [`_guide::extending`](https://docs.rs/metrique/latest/metrique/_guide/extending/) documentation covering the closing model, core traits, and copy-paste recipes for custom accumulators, value wrappers, and manual `Entry` impls ([#297](https://github.com/awslabs/metrique/pull/297))
+- Clean up `GlobalEntrySink` description ([#292](https://github.com/awslabs/metrique/pull/292))
+- Fix race condition in worker tests ([#285](https://github.com/awslabs/metrique/pull/285))
+- Make worker sink exit cleanly ([#284](https://github.com/awslabs/metrique/pull/284))
+- *(metrique-util)* Mention pending-sink in README ([#279](https://github.com/awslabs/metrique/pull/279))
+
 ## [0.1.25](https://github.com/awslabs/metrique/compare/metrique-v0.1.24...metrique-v0.1.25) - 2026-04-20
 
 ### Added

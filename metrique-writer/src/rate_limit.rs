@@ -1,14 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+//! Cross-thread rate limiting for noisy log call sites. See [`rate_limited!`].
+
 use std::{
     sync::OnceLock,
     time::{Duration, Instant},
 };
 
-// only pub(crate) so that the macro calls can all use the same epoch static
+// Public so the macro body can resolve it when used from other crates.
 #[doc(hidden)]
-pub(crate) fn time_since_arbitrary_epoch() -> Duration {
+pub fn time_since_arbitrary_epoch() -> Duration {
     static EPOCH: OnceLock<Instant> = OnceLock::new();
     Instant::now().duration_since(*EPOCH.get_or_init(Instant::now))
 }
@@ -21,6 +23,7 @@ pub(crate) fn time_since_arbitrary_epoch() -> Duration {
 /// at regular intervals to indicate the problem persists.
 ///
 /// Note that the rate limiting applies to each unique code location of the macro call, not to all code sites using it.
+#[macro_export]
 macro_rules! rate_limited {
     ($interval:expr, $call:expr) => {{
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -47,7 +50,7 @@ macro_rules! rate_limited {
         }
     }};
 }
-pub(crate) use rate_limited;
+pub use crate::rate_limited;
 
 #[cfg(test)]
 mod test {

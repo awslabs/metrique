@@ -1,12 +1,15 @@
 [package]
 name = "metrique"
-version = "0.1.25"
+version = "0.1.27"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating wide event metrics"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
-rust-version = "1.89" # See build.yml for why this MSRV
+rust-version = "1.91" # See .github/workflows/ci.yml
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)'] }
 
 [features]
 default = ["service-metrics"]
@@ -67,7 +70,6 @@ tokio-util = { workspace = true, features = ["rt"] }
 trybuild = { workspace = true }
 rustversion = { workspace = true }
 metrique = { path = ".", features = ["emf", "test-util", "local-format"] }
-metrique-util = { workspace = true, features = ["state", "tokio-metrics-bridge"] }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
@@ -76,19 +78,8 @@ regex-lite = { workspace = true }
 rstest = { workspace = true }
 
 [[example]]
-name = "global-state"
-required-features = ["emf", "service-metrics"]
-# Uses metrique-util (dev-dep only), which is unavailable during doc scraping on docs.rs
-doc-scrape-examples = false
-
-[[example]]
 name = "json"
 required-features = ["json"]
-
-[[example]]
-name = "tokio-metrics"
-required-features = ["emf", "service-metrics"]
-doc-scrape-examples = false
 
 [package.metadata.docs.rs]
 all-features = true

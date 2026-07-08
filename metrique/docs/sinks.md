@@ -58,8 +58,7 @@ and requires a custom graceful shutdown to drain. For these cases, consider usin
 ```rust
 use metrique::emf::Emf;
 use metrique::ServiceMetrics;
-use metrique::writer::{AttachGlobalEntrySink, FormatExt, GlobalEntrySink};
-use metrique::writer::sink::FlushImmediately;
+use metrique::writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink};
 use metrique::unit_of_work::metrics;
 
 #[metrics]
@@ -68,14 +67,11 @@ struct MyMetrics {
 }
 
 fn main() {
-    let sink = FlushImmediately::new_boxed(
-        Emf::no_validations(
-            "MyNS".to_string(),
-            vec![vec![/*your dimensions here */]],
-        )
-        .output_to(std::io::stdout()),
+    let _handle = ServiceMetrics::write_directly_to(
+        Emf::builder("MyNS".to_string(), vec![vec![/*your dimensions here*/]])
+            .build()
+            .output_to(std::io::stdout()),
     );
-    let _handle = ServiceMetrics::attach((sink, ()));
     handle_request();
 }
 
@@ -209,6 +205,30 @@ if you use metric entries to track user log-in operations, and your application 
 
 In that case, you should not be using [`BackgroundQueue`] or sampling. It is probably fine to use the [`Format`] implementations in that case, but it is recommended to test and audit your use-case to make sure nothing is being missed.
 
+## Observing sink health
+
+Both [`BackgroundQueue`] and [`FlushImmediately`] can report their own lifecycle events (queue overflows, per-flush emitted/error counts, idle/length samples, and flush timing) so you can monitor the sink itself.
+
+If you use `metrics.rs`, call `metrics_recorder_global` / `metrics_recorder_local` on the builder to emit the [`BACKGROUND_QUEUE_METRICS`] directly. If you use a different observability backend, pass an `observer` to the builder instead. Any closure of the right shape works, so capturing an event takes no boilerplate:
+
+```rust
+use std::sync::{Arc, atomic::{AtomicU64, Ordering}};
+use metrique::writer::sink::{BackgroundQueueBuilder, BackgroundQueueEvent};
+
+let overflows = Arc::new(AtomicU64::new(0));
+let counter = Arc::clone(&overflows);
+let _builder = BackgroundQueueBuilder::new().observer(move |_queue: &str, event| {
+    if let BackgroundQueueEvent::QueueOverflow { .. } = event {
+        counter.fetch_add(1, Ordering::Relaxed);
+    }
+});
+```
+
+See [`BackgroundQueueObserver`] and [`FlushImmediatelyObserver`] for the full set of events.
+
+[`BackgroundQueueObserver`]: https://docs.rs/metrique/latest/metrique/writer/sink/trait.BackgroundQueueObserver.html
+[`FlushImmediatelyObserver`]: https://docs.rs/metrique/latest/metrique/writer/sink/trait.FlushImmediatelyObserver.html
+
 ## Metric source integrations
 
 Global entry sinks support subscribing background metric sources that
@@ -223,10 +243,36 @@ Available integrations (via [`metrique-util`]):
   start appending [`RuntimeMetrics`] snapshots (worker
   utilization, queue depths, poll durations, and more).
 
+  If you'd rather fold the latest runtime sample into each of your own
+  entries (so every emitted record carries runtime context without an
+  extra join at query time), use
+  [`embed_tokio_runtime_metrics`] instead. It returns a
+  [`State<TokioRuntimeSnapshot>`] that you embed in your metric struct
+  with `#[metrics(flatten)]`; the sampler shares the same
+  [`AttachHandle`]-tied lifecycle as `subscribe_tokio_runtime_metrics`.
+- **System metrics** — enable the `sysinfo-bridge` feature on
+  `metrique-util` and call [`subscribe_sysinfo_metrics`] to start
+  appending [`SysinfoMetrics`] snapshots (CPU usage, memory, and
+  per-process counters, and more), sampled via [`sysinfo`].
+
+  If you'd rather fold the latest system sample into each of your own
+  entries (so every emitted record carries system context without an
+  extra join at query time), use [`embed_sysinfo_metrics`] instead. It
+  returns a [`State<SysinfoSnapshot>`] that you embed in your metric
+  struct with `#[metrics(flatten)]`; the sampler shares the same
+  [`AttachHandle`]-tied lifecycle as `subscribe_sysinfo_metrics`.
+
 [`AttachHandle`]: https://docs.rs/metrique-writer/latest/metrique_writer/sink/struct.AttachHandle.html
 [`metrique-util`]: https://docs.rs/metrique-util/latest/metrique_util/
 [`subscribe_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.subscribe_tokio_runtime_metrics
+[`embed_tokio_runtime_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkTokioMetricsExt.html#method.embed_tokio_runtime_metrics
+[`State<TokioRuntimeSnapshot>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.TokioRuntimeSnapshot.html
 [`RuntimeMetrics`]: https://docs.rs/tokio-metrics/latest/tokio_metrics/struct.RuntimeMetrics.html
+[`subscribe_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.subscribe_sysinfo_metrics
+[`embed_sysinfo_metrics`]: https://docs.rs/metrique-util/latest/metrique_util/trait.AttachGlobalEntrySinkSysinfoExt.html#method.embed_sysinfo_metrics
+[`State<SysinfoSnapshot>`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoSnapshot.html
+[`SysinfoMetrics`]: https://docs.rs/metrique-util/latest/metrique_util/struct.SysinfoMetrics.html
+[`sysinfo`]: https://docs.rs/sysinfo
 
 ## Use of exporters
 
