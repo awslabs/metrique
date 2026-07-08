@@ -1,6 +1,6 @@
 ---
 source: metrique-macro/src/aggregate.rs
-assertion_line: 998
+assertion_line: 1116
 expression: parsed_file
 ---
 #[metrics(rename_all = "PascalCase")]
@@ -115,6 +115,16 @@ impl ::metrique_aggregation::__macro_plumbing::Key<MyMetrics> for MyMetricsKeyEx
 impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for MyMetrics {
     type Source = MyMetrics;
     type Key = MyMetricsKeyExtractor;
+}
+impl ::metrique_aggregation::__macro_plumbing::CollectDimensions for MyMetrics {
+    #[allow(deprecated)]
+    fn collect_dimensions(
+        &self,
+        out: &mut ::metrique_aggregation::__macro_plumbing::DimensionSet,
+    ) {
+        use ::metrique_aggregation::__macro_plumbing::CollectDimensions as _;
+        self.count.collect_dimensions(out);
+    }
 }
 #[metrics(rename_all = "PascalCase")]
 struct MyMetrics {

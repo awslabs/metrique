@@ -615,28 +615,41 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
 
     let mut output = Ts2::new();
 
-    // Try to generate struct, impl, MergeRef, and merge methods
+    // Try to generate struct, impl, MergeRef, merge methods, and dimension collection
     let struct_result = aggregate::generate_aggregated_struct(&input, entry_mode);
     let impl_result = aggregate::generate_aggregate_strategy_impl(&input, entry_mode);
     let merge_ref_result = aggregate::generate_merge_ref_impl(&input, entry_mode, enable_merge_ref);
     let merge_methods_result = aggregate::generate_merge_on_drop_methods(&input, entry_mode);
+    let collect_dimensions_result = aggregate::generate_collect_dimensions_impl(&input, entry_mode);
 
     match (
         struct_result,
         impl_result,
         merge_ref_result,
         merge_methods_result,
+        collect_dimensions_result,
     ) {
-        (Ok(aggregated_struct), Ok(aggregate_impl), Ok(merge_ref_impl), Ok(merge_methods)) => {
+        (
+            Ok(aggregated_struct),
+            Ok(aggregate_impl),
+            Ok(merge_ref_impl),
+            Ok(merge_methods),
+            Ok(collect_dimensions),
+        ) => {
             aggregated_struct.to_tokens(&mut output);
             aggregate_impl.to_tokens(&mut output);
             if let Some(merge_ref) = merge_ref_impl {
                 merge_ref.to_tokens(&mut output);
             }
             merge_methods.to_tokens(&mut output);
+            collect_dimensions.to_tokens(&mut output);
             aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
         }
-        (Err(e), _, _, _) | (_, Err(e), _, _) | (_, _, Err(e), _) | (_, _, _, Err(e)) => {
+        (Err(e), ..)
+        | (_, Err(e), ..)
+        | (_, _, Err(e), ..)
+        | (_, _, _, Err(e), _)
+        | (.., Err(e)) => {
             // On error, generate the base struct without aggregate attributes and include the error
             aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
             e.to_compile_error().to_tokens(&mut output);

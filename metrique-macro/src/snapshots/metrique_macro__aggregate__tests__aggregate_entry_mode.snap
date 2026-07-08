@@ -1,5 +1,6 @@
 ---
 source: metrique-macro/src/aggregate.rs
+assertion_line: 959
 expression: parsed_file
 ---
 #[metrics]
@@ -34,6 +35,14 @@ for <ApiCall as metrique::CloseValue>::Closed {
 impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
     type Source = <ApiCall as metrique::CloseValue>::Closed;
     type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
+}
+impl ::metrique_aggregation::__macro_plumbing::CollectDimensions
+for <ApiCall as metrique::CloseValue>::Closed {
+    #[allow(deprecated)]
+    fn collect_dimensions(
+        &self,
+        _out: &mut ::metrique_aggregation::__macro_plumbing::DimensionSet,
+    ) {}
 }
 #[metrics]
 struct ApiCall {

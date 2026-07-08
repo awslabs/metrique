@@ -1,5 +1,6 @@
 use assert2::check;
 use metrique::CloseValue;
+use metrique::unit::Byte;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
 use metrique_aggregation::aggregator::KeyedAggregator;
@@ -353,4 +354,53 @@ async fn test_flatten_with_nested_dimensions() {
     let entries = test_sink.inspector.entries();
     // (us-east-1, Read) and (us-east-1, Write) → 2 buckets
     check!(entries.len() == 2);
+}
+
+// Test: WithDimension field with an explicit `unit` attribute. In entry mode the
+// closed field type is `WithUnit<WithDimensions<..>>`, so dimension collection
+// must reach through the `WithUnit` wrapper.
+#[aggregate]
+#[metrics(rename_all = "PascalCase")]
+pub struct UnitDimMetrics {
+    #[aggregate(strategy = Sum)]
+    #[metrics(unit = Byte)]
+    bytes: WithDimension<u64>,
+}
+
+#[tokio::test]
+async fn test_dimension_with_unit_attribute() {
+    let test_sink = test_entry_sink();
+    let keyed_aggregator: KeyedAggregator<UnitDimMetrics> = KeyedAggregator::new(test_sink.sink);
+    let keyed_sink = WorkerSink::new(keyed_aggregator, Duration::from_millis(100));
+
+    keyed_sink.send(
+        UnitDimMetrics {
+            bytes: 100u64.with_dimension("Event", "GET"),
+        }
+        .close(),
+    );
+    keyed_sink.send(
+        UnitDimMetrics {
+            bytes: 200u64.with_dimension("Event", "GET"),
+        }
+        .close(),
+    );
+    keyed_sink.send(
+        UnitDimMetrics {
+            bytes: 50u64.with_dimension("Event", "POST"),
+        }
+        .close(),
+    );
+
+    keyed_sink.flush().await;
+
+    let entries = test_sink.inspector.entries();
+    // GET and POST → 2 buckets, dimensions collected through the WithUnit wrapper
+    check!(entries.len() == 2);
+
+    let get_entry = entries
+        .iter()
+        .find(|e| e.values.get("Event").map(|v| v.as_str()) == Some("GET"))
+        .expect("should have GET entry");
+    check!(get_entry.metrics["Bytes"] == 300);
 }

@@ -33,6 +33,22 @@ fn is_dimensional_type(ty: &Type) -> bool {
     false
 }
 
+/// Check if a strategy type's trailing path segment is `Flatten`.
+///
+/// A `Flatten`-strategy field nests another aggregate struct, so it can carry
+/// dimensions transitively even if the field itself is not a `WithDimensions`.
+/// The generated [`CollectDimensions`] impl recurses into such fields.
+///
+/// [`CollectDimensions`]: metrique_aggregation::dimensions::CollectDimensions
+fn is_flatten_strategy(strategy: &Type) -> bool {
+    if let Type::Path(type_path) = strategy
+        && let Some(last_seg) = type_path.path.segments.last()
+    {
+        return last_seg.ident == "Flatten";
+    }
+    false
+}
+
 fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
     let data_struct = match &input.data {
         Data::Struct(s) => s,
@@ -595,6 +611,95 @@ pub(crate) fn generate_aggregate_strategy_impl(
     })
 }
 
+/// Generate the `CollectDimensions` impl for an aggregate struct.
+///
+/// This is the structural, compile-time-directed replacement for the old
+/// runtime write-probe. Rather than traversing the whole entry through a no-op
+/// writer, the macro emits an impl that visits only the fields that can carry
+/// dimensions:
+///
+/// - a `WithDimensions` field contributes its own `(class, instance)` pairs
+///   (delegated to the blanket `WithDimensions: CollectDimensions` impl);
+/// - a `Flatten`-strategy field recurses into the nested aggregate struct's own
+///   generated impl, so dimensions on flattened children are picked up;
+/// - a field that is both dimensional and flattened contributes its wrapper
+///   dimensions and then recurses into the inner value.
+///
+/// The impl is generated for every aggregate struct (not only those with
+/// dimensional fields) so that `Flatten` fields can always recurse into their
+/// inner type. Structs with no contributing fields get an empty (no-op) body.
+pub(crate) fn generate_collect_dimensions_impl(
+    input: &DeriveInput,
+    entry_mode: bool,
+) -> Result<Ts2> {
+    let parsed = parse_aggregate_fields(input)?;
+    let original_name = &input.ident;
+
+    let source_ty = if entry_mode {
+        quote! { <#original_name as metrique::CloseValue>::Closed }
+    } else {
+        quote! { #original_name }
+    };
+
+    let collect_calls = parsed
+        .fields
+        .iter()
+        .filter(|f| !f.is_ignored)
+        .filter_map(|f| {
+            let name = &f.name;
+            let is_flatten = f.strategy.as_ref().is_some_and(is_flatten_strategy);
+            // Method-call syntax (not UFCS) so receiver auto-deref reaches through
+            // any `WithUnit` wrapper on the closed field to the `WithDimensions`
+            // (or nested aggregate) that implements `CollectDimensions`.
+            match (f.is_dimensional, is_flatten) {
+                // Dimensional wrapper around a flattened aggregate struct: take the
+                // wrapper's own dimensions, then recurse into the inner value.
+                (true, true) => Some(quote! {
+                    self.#name.collect_dimensions(out);
+                    self.#name.inner().collect_dimensions(out);
+                }),
+                // Plain dimensional field, or a flattened nested aggregate struct:
+                // dispatch to the field's own `CollectDimensions` impl.
+                (true, false) | (false, true) => Some(quote! {
+                    self.#name.collect_dimensions(out);
+                }),
+                // Neither dimensional nor flattened: cannot contribute dimensions.
+                (false, false) => None,
+            }
+        })
+        .collect::<Vec<_>>();
+
+    // Only bring the trait method into scope when there is something to collect;
+    // otherwise the import would be unused. The parameter is named `_out` in the
+    // empty case for the same reason.
+    let (import, out_ident) = if collect_calls.is_empty() {
+        (quote! {}, quote! { _out })
+    } else {
+        (
+            quote! { use ::metrique_aggregation::__macro_plumbing::CollectDimensions as _; },
+            quote! { out },
+        )
+    };
+
+    Ok(quote! {
+        impl ::metrique_aggregation::__macro_plumbing::CollectDimensions for #source_ty {
+            // Closed-entry fields are deprecated for direct access (see the metrics
+            // macro); reading them here is internal plumbing, not public use.
+            #[allow(deprecated)]
+            fn collect_dimensions(
+                &self,
+                #out_ident: &mut ::metrique_aggregation::__macro_plumbing::DimensionSet,
+            ) {
+                // Bring the trait method into scope (anonymously, so it can't clash)
+                // so the calls below can use method syntax and auto-deref through
+                // any `WithUnit` wrapper.
+                #import
+                #(#collect_calls)*
+            }
+        }
+    })
+}
+
 pub(crate) fn generate_merge_ref_impl(
     input: &DeriveInput,
     entry_mode: bool,
@@ -762,6 +867,10 @@ mod tests {
 
         if let Ok(aggregate_impl) = generate_aggregate_strategy_impl(&input, entry_mode) {
             output.extend(aggregate_impl);
+        }
+
+        if let Ok(collect_dimensions) = generate_collect_dimensions_impl(&input, entry_mode) {
+            output.extend(collect_dimensions);
         }
 
         output.extend(clean_aggregate_adt(&input));
