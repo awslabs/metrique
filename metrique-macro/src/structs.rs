@@ -18,7 +18,9 @@ pub(crate) fn generate_metrics_for_struct(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
 ) -> Result<Ts2> {
     let struct_name = &input.ident;
-    let entry_name = if root_attributes.mode == MetricMode::Value {
+    let entry_name = if let Some(custom_name) = &root_attributes.entry_name {
+        custom_name.clone()
+    } else if root_attributes.mode == MetricMode::Value {
         format_ident!("{}Value", struct_name)
     } else {
         format_ident!("{}Entry", struct_name)

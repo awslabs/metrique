@@ -51,6 +51,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
 /// | `default_flags` | Path | Applies a flag to all direct fields in this struct for format and sink usage. Does not propagate to flattened children (use field-level `default_flags` on the flatten site for that). Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::flags::MyFlag))]` |
+/// | `entry_name` | Ident | Overrides the generated entry struct name. Default is `{Name}Entry` (or `{Name}Value` for value mode). Useful when `#[aggregate]` needs to refer to the concrete entry type. | `#[metrics(entry_name = MyCustomEntry)]` |
 ///
 /// # Field Attributes
 ///
@@ -634,11 +635,11 @@ pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
                 merge_ref.to_tokens(&mut output);
             }
             merge_methods.to_tokens(&mut output);
-            aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
+            aggregate::clean_aggregate_adt(&input, entry_mode).to_tokens(&mut output);
         }
         (Err(e), _, _, _) | (_, Err(e), _, _) | (_, _, Err(e), _) | (_, _, _, Err(e)) => {
             // On error, generate the base struct without aggregate attributes and include the error
-            aggregate::clean_aggregate_adt(&input).to_tokens(&mut output);
+            aggregate::clean_aggregate_adt(&input, entry_mode).to_tokens(&mut output);
             e.to_compile_error().to_tokens(&mut output);
         }
     }
@@ -853,6 +854,8 @@ struct RawRootAttributes {
 
     #[darling(default)]
     default_flags: FlagsList,
+
+    entry_name: Option<Ident>,
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
@@ -880,6 +883,8 @@ struct RootAttributes {
     mode: MetricMode,
 
     default_flags: Vec<FieldTagAttr>,
+
+    entry_name: Option<Ident>,
 }
 
 impl RawRootAttributes {
@@ -962,6 +967,7 @@ impl RawRootAttributes {
             sample_group,
             mode,
             default_flags: self.default_flags.0,
+            entry_name: self.entry_name,
         })
     }
 }

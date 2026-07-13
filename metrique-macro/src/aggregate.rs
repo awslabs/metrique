@@ -4,6 +4,31 @@ use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Error, Fields, Result, Type};
 
+/// Resolve the concrete entry struct ident for an aggregate in entry mode.
+/// If the user provided `#[metrics(entry_name = X)]`, use `X`.
+/// Otherwise, default to `{Name}Entry`.
+fn resolve_entry_ident(input: &DeriveInput) -> Ident {
+    // Check if the user already specified entry_name in #[metrics(...)]
+    for attr in &input.attrs {
+        if attr.path().is_ident("metrics")
+            && let Ok(nested) = attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+            )
+        {
+            for meta in &nested {
+                if let syn::Meta::NameValue(nv) = meta
+                    && nv.path.is_ident("entry_name")
+                    && let syn::Expr::Path(p) = &nv.value
+                    && let Some(ident) = p.path.get_ident()
+                {
+                    return ident.clone();
+                }
+            }
+        }
+    }
+    format_ident!("{}Entry", input.ident)
+}
+
 #[derive(Debug)]
 struct AggregateField {
     name: Ident,
@@ -168,11 +193,14 @@ pub(crate) fn generate_aggregated_struct(input: &DeriveInput, entry_mode: bool) 
 
     let derive_default = quote! { #[derive(Default)] };
 
-    // In direct mode, always add #[metrics] if not present
+    // In direct mode, always add #[metrics] if not present.
+    // For the aggregated struct, strip `entry_name` (if present) because that
+    // controls the *original* struct's entry name, not the aggregated one.
     let metrics_attr = if !entry_mode && metrics_attr.is_none() {
         quote! { #[metrics] }
     } else {
-        quote! { #metrics_attr }
+        let attr = metrics_attr.map(strip_entry_name_from_metrics_attr);
+        quote! { #attr }
     };
 
     Ok(quote! {
@@ -203,9 +231,24 @@ pub(crate) fn generate_aggregate_strategy_impl(
         .attrs
         .iter()
         .find(|attr| attr.path().is_ident("metrics"));
+    // Strip entry_name from the metrics attr for derived structs (key struct).
+    // entry_name only applies to the original struct's entry generation.
     let metrics_attr = match metrics_attr {
-        Some(attr) => quote! { #attr },
+        Some(attr) => {
+            let stripped = strip_entry_name_from_metrics_attr(attr);
+            quote! { #stripped }
+        }
         None => quote! { #[metrics] },
+    };
+
+    // Determine the concrete entry ident for the Merge impl self-type.
+    // In entry mode, we use the concrete struct name (e.g. `ApiCallEntry`)
+    // instead of the projection `<ApiCall as CloseValue>::Closed` to avoid
+    // cross-crate coherence errors (E0119).
+    let entry_ident = if entry_mode {
+        Some(resolve_entry_ident(input))
+    } else {
+        None
     };
 
     // Determine the source type for AggregateStrategy
@@ -213,6 +256,13 @@ pub(crate) fn generate_aggregate_strategy_impl(
         quote! { <#original_name as metrique::CloseValue>::Closed }
     } else {
         quote! { #original_name }
+    };
+
+    // The type used as Self in the Merge impl
+    let merge_self_ty = if let Some(ref ident) = entry_ident {
+        quote! { #ident }
+    } else {
+        source_ty.clone()
     };
 
     // Generate Merge impl
@@ -264,7 +314,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     // Generate Merge impl
     let merge_impl = quote! {
-        impl ::metrique_aggregation::__macro_plumbing::Merge for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::Merge for #merge_self_ty {
             type Merged = #aggregated_name;
             type MergeConfig = ();
 
@@ -377,9 +427,11 @@ pub(crate) fn generate_merge_ref_impl(
 
     let original_name = &input.ident;
 
-    // Determine the source type
-    let source_ty = if entry_mode {
-        quote! { <#original_name as metrique::CloseValue>::Closed }
+    // Determine the self-type for MergeRef: use concrete entry ident in entry mode
+    // to avoid cross-crate coherence errors (E0119).
+    let merge_self_ty = if entry_mode {
+        let entry_ident = resolve_entry_ident(input);
+        quote! { #entry_ident }
     } else {
         quote! { #original_name }
     };
@@ -420,7 +472,7 @@ pub(crate) fn generate_merge_ref_impl(
     }).collect::<Vec<_>>();
 
     let merge_ref_impl = quote! {
-        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #merge_self_ty {
             fn merge_ref(accum: &mut Self::Merged, input: &Self) {
                 #(#merge_ref_calls)*
             }
@@ -463,12 +515,20 @@ pub(crate) fn generate_merge_on_drop_methods(input: &DeriveInput, entry_mode: bo
     }
 }
 
-pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
+pub(crate) fn clean_aggregate_adt(input: &DeriveInput, entry_mode: bool) -> Ts2 {
     let adt_name = &input.ident;
     let vis = &input.vis;
     let generics = &input.generics;
 
     let filtered_attrs = clean_aggregate_attrs(&input.attrs);
+    // In entry mode, inject `entry_name` into the #[metrics(...)] attribute so that
+    // the generated entry struct name matches the concrete type used in Merge/MergeRef impls.
+    let filtered_attrs = if entry_mode {
+        inject_entry_name_into_metrics_attrs(filtered_attrs, input)
+    } else {
+        filtered_attrs
+    };
+
     match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => {
@@ -492,6 +552,102 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
             _ => input.to_token_stream(),
         },
         _ => input.to_token_stream(),
+    }
+}
+
+/// Strip `entry_name = ...` from a `#[metrics(...)]` attribute.
+/// Used when forwarding the metrics attribute to derived structs (AggregatedXxx, Key)
+/// that should not inherit the original struct's entry name setting.
+fn strip_entry_name_from_metrics_attr(attr: &Attribute) -> Attribute {
+    if let syn::Meta::List(_) = attr.meta
+        && let Ok(nested) = attr.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+        )
+    {
+        let filtered: Vec<_> = nested
+            .into_iter()
+            .filter(|meta| {
+                if let syn::Meta::NameValue(nv) = meta {
+                    !nv.path.is_ident("entry_name")
+                } else {
+                    true
+                }
+            })
+            .collect();
+        if filtered.is_empty() {
+            return syn::parse_quote! { #[metrics] };
+        }
+        let tokens = quote! { #(#filtered),* };
+        return syn::parse_quote! { #[metrics(#tokens)] };
+    }
+    attr.clone()
+}
+
+/// In entry mode, inject `entry_name = {Name}Entry` into the `#[metrics(...)]` attribute
+/// so that `#[metrics]` generates the entry struct with the concrete name that the
+/// `Merge`/`MergeRef` impls expect. If the user already wrote `entry_name = X`, keep it.
+fn inject_entry_name_into_metrics_attrs(
+    attrs: Vec<Attribute>,
+    input: &DeriveInput,
+) -> Vec<Attribute> {
+    let entry_ident = resolve_entry_ident(input);
+
+    // Check if entry_name is already present in a #[metrics(...)] attribute
+    let already_has_entry_name = attrs.iter().any(|attr| {
+        if !attr.path().is_ident("metrics") {
+            return false;
+        }
+        if let Ok(nested) = attr.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+        ) {
+            nested.iter().any(|meta| {
+                if let syn::Meta::NameValue(nv) = meta {
+                    nv.path.is_ident("entry_name")
+                } else {
+                    false
+                }
+            })
+        } else {
+            false
+        }
+    });
+
+    if already_has_entry_name {
+        return attrs;
+    }
+
+    // Find the #[metrics(...)] attribute and inject entry_name into it
+    let mut found_metrics = false;
+    let result: Vec<Attribute> = attrs
+        .into_iter()
+        .map(|attr| {
+            if !attr.path().is_ident("metrics") || found_metrics {
+                return attr;
+            }
+            found_metrics = true;
+            // Parse existing tokens inside #[metrics(...)]
+            let existing_tokens = if let syn::Meta::List(ref list) = attr.meta {
+                let tokens = &list.tokens;
+                if tokens.is_empty() {
+                    quote! { entry_name = #entry_ident }
+                } else {
+                    quote! { #tokens, entry_name = #entry_ident }
+                }
+            } else {
+                // #[metrics] with no parens — turn into #[metrics(entry_name = X)]
+                quote! { entry_name = #entry_ident }
+            };
+            syn::parse_quote! { #[metrics(#existing_tokens)] }
+        })
+        .collect();
+
+    // If no #[metrics] attr was found, add one with entry_name
+    if !found_metrics {
+        let mut result = result;
+        result.push(syn::parse_quote! { #[metrics(entry_name = #entry_ident)] });
+        result
+    } else {
+        result
     }
 }
 
@@ -520,7 +676,7 @@ mod tests {
             output.extend(aggregate_impl);
         }
 
-        output.extend(clean_aggregate_adt(&input));
+        output.extend(clean_aggregate_adt(&input, entry_mode));
         output
     }
 
