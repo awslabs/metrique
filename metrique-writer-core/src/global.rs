@@ -19,8 +19,10 @@ use std::any::Any;
 use std::collections::HashMap;
 #[cfg(feature = "test-util")]
 use std::marker::PhantomData;
+use std::sync::Arc;
+#[cfg(feature = "test-util")]
+use std::sync::Mutex;
 use std::sync::Weak;
-use std::sync::{Arc, Mutex};
 
 use crate::{
     EntrySink,
@@ -266,15 +268,36 @@ impl ShutdownFn {
     }
 }
 
+// `ShutdownRegistry`'s internal lock, swapped for a shuttle-native `Mutex`
+// under `--cfg shuttle` so Shuttle's scheduler has visibility into it. This is
+// the only lock in this module that shuttle tests exercise (see
+// `shuttle_tests` below) -- `RuntimeSinkMap` below stays on `std::sync::Mutex`
+// regardless, since it's test-only plumbing (a `Mutex<HashMap>` behind the
+// `test-util` feature) with no interleaving-sensitive invariant worth
+// Shuttle's cost: a single insert/remove under a lock has nothing for a
+// scheduler to explore that std's own `Mutex` doesn't already guarantee.
+//
+// Gated on `feature = "_shuttle"` as well as `cfg(shuttle)`, not `cfg(shuttle)`
+// alone: `--cfg shuttle` is set process-wide via RUSTFLAGS, so it reaches
+// *every* crate `cargo test` compiles, including feature-resolution units of
+// this very crate that don't have `_shuttle` enabled (e.g. reached only as a
+// dev-dependency edge with different requested features) and therefore don't
+// have the optional `shuttle` dependency linked at all. Without the feature
+// check, those units would try to name a crate that isn't there.
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+type ShutdownRegistryMutex<T> = std::sync::Mutex<T>;
+#[cfg(all(shuttle, feature = "_shuttle"))]
+type ShutdownRegistryMutex<T> = shuttle::sync::Mutex<T>;
+
 /// Storage for [`ShutdownFn`]s registered on an [`AttachHandle`], to be run when the [`AttachHandle`] is dropped.
 ///
 /// This type is public for macro-generated code. You should not need to use it directly,
 /// use [`AttachGlobalEntrySink::register_shutdown_fn`] instead.
-pub struct ShutdownRegistry(Mutex<Vec<ShutdownFn>>);
+pub struct ShutdownRegistry(ShutdownRegistryMutex<Vec<ShutdownFn>>);
 
 impl ShutdownRegistry {
     fn new(initial: ShutdownFn) -> Self {
-        Self(Mutex::new(vec![initial]))
+        Self(ShutdownRegistryMutex::new(vec![initial]))
     }
 
     /// Add a shutdown function. Functions run in LIFO order when the
@@ -1378,6 +1401,83 @@ mod shutdown_registry_tests {
         assert_eq!(*order.lock().unwrap(), vec![3, 2, 1]);
     }
 }
+
+// Shuttle-driven test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
+// handshake. This constructs `AttachHandle`/`ShutdownRegistry` directly
+// instead of going through `global_entry_sink!` like the tests above: that
+// macro's `SINK`/
+// `SHUTDOWN_REGISTRY` slots are real `static`s, and Shuttle re-runs the same
+// test body many times within one process, so a real `static`'s state would
+// leak across iterations and invalidate the exploration. `AttachHandle` and
+// `ShutdownRegistry` are already plain, non-static structs, so this tests the
+// same handshake without touching the macro at all.
+//
+// The test below is `#[ignore]`d: it reproducibly finds a real bug in
+// `AttachHandle::drop` (a concurrent `register_shutdown_fn` can make
+// `Arc::try_unwrap` return `Err`, hitting an `unreachable!()`).
+// It's left in place, ignored, so re-running it after a real fix is a single
+// command rather than reconstructing the test from scratch.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{AttachHandle, ShutdownFn};
+
+    /// `AttachHandle::drop` calls `Arc::try_unwrap` on its `ShutdownRegistry`
+    /// and treats the "someone else still holds a strong ref" case as
+    /// `unreachable!()`, reasoning that everyone else only ever holds a
+    /// `Weak`. `register_shutdown_fn` (modeled here without the macro by
+    /// upgrading a `Weak` directly, then pushing) briefly holds a *strong*
+    /// ref while it does so. This drives that upgrade concurrently with the
+    /// drop it's racing against, for every interleaving shuttle explores.
+    fn concurrent_register_and_drop() {
+        let ran = Arc::new(AtomicUsize::new(0));
+        let handle = AttachHandle::new(|| {});
+        let weak = handle.shutdown_registry_weak();
+
+        let ran2 = ran.clone();
+        let registrar = shuttle::thread::spawn(move || {
+            if let Some(registry) = weak.upgrade() {
+                registry.push(ShutdownFn::new(move || {
+                    ran2.fetch_add(1, Ordering::SeqCst);
+                }));
+            }
+        });
+
+        // `thread::spawn` doesn't hand control to the new thread -- this
+        // thread keeps running uninterrupted until its own next yield point.
+        // `drop(handle)` below has no yield point of its own (`try_unwrap`
+        // and `drain_and_run` touch no shuttle-instrumented primitive), so
+        // without an explicit yield here, shuttle can only ever schedule
+        // `registrar` entirely before or entirely after `drop` -- never
+        // *during* it, and the race this test exists to probe (a live
+        // temporary strong ref from `weak.upgrade()` still on `registrar`'s
+        // stack while `drop` calls `try_unwrap`) would never be reachable.
+        shuttle::thread::yield_now();
+
+        drop(handle);
+        registrar.join().unwrap();
+
+        // Whichever way the race went, the registered fn must run at most
+        // once -- never twice, and getting here at all means `drop` didn't
+        // panic on the `unreachable!()`.
+        assert!(ran.load(Ordering::SeqCst) <= 1);
+    }
+
+    #[test]
+    #[ignore = "reproduces a real race in AttachHandle::drop"]
+    fn concurrent_register_and_drop_pct() {
+        shuttle::check_pct(concurrent_register_and_drop, 5_000, 2);
+    }
+
+    #[test]
+    #[ignore = "reproduces a real race in AttachHandle::drop"]
+    fn concurrent_register_and_drop_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(concurrent_register_and_drop, 5_000);
+    }
+}
+
 // Helper macro that conditionally expands based on the test-util feature
 // This is checked at macro expansion time in the metrique-writer-core crate
 
