@@ -78,6 +78,10 @@ impl crate::Entry for MetriqueValidationError<'_> {
         writer.config(&const { AllowUnroutableEntries::new() });
         writer.value("MetriqueValidationError", self.message);
     }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
+    }
 }
 
 /// This struct is mostly useful for the EMF internal implementation

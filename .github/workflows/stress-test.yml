@@ -27,4 +27,4 @@ jobs:
       - name: Install nextest
         uses: taiki-e/install-action@nextest
       - name: Run stress test
-        run: cargo nextest run --all-features --stress-duration '${{ inputs.duration_minutes || '60' }}m'
+        run: RUSTFLAGS="--cfg tokio_unstable" cargo nextest run --all-features --stress-duration '${{ inputs.duration_minutes || '60' }}m'

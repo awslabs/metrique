@@ -321,6 +321,20 @@ impl<Ns: NameStyle, A: InflectableEntry<Ns>, B: InflectableEntry<Ns>> Inflectabl
         self.key.write(w);
         self.aggregated.write(w);
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        // Both halves must have descriptors for the composed result to be meaningful.
+        // If either is Unavailable (e.g. a hand-written Entry without descriptor support),
+        // the positional correspondence between descriptors and write output is broken,
+        // so we report the whole thing as Unavailable.
+        match (self.key.descriptors(), self.aggregated.descriptors()) {
+            (
+                metrique_writer_core::Descriptors::Available(a),
+                metrique_writer_core::Descriptors::Available(b),
+            ) => metrique_writer_core::Descriptors::available(a.into_iter().chain(b)),
+            _ => metrique_writer_core::Descriptors::Unavailable,
+        }
+    }
 }
 
 impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for AggregationResult<A, B> {
@@ -335,6 +349,10 @@ impl<A: InflectableEntry, B: InflectableEntry> metrique_writer::Entry for Aggreg
         self.key
             .sample_group()
             .chain(self.aggregated.sample_group())
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        self.key.descriptors().chain(self.aggregated.descriptors())
     }
 }
 

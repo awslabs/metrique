@@ -1,8 +1,8 @@
 [package]
 name = "metrique-macro"
-version = "0.1.17"
+version = "0.1.18"
 edition = "2024"
-rust-version = "1.89" # See build.yml for why this MSRV
+rust-version = "1.91" # See .github/workflows/ci.yml
 license = "Apache-2.0"
 description = "Library for wide event metrics - #[metrics] macro"
 repository = "https://github.com/awslabs/metrique"
@@ -12,11 +12,12 @@ readme = "README.md"
 proc-macro = true
 
 [dependencies]
-syn = { workspace = true, features = ["full", "extra-traits"] }
+syn = { workspace = true, features = ["full", "extra-traits", "visit-mut"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 Inflector = { workspace = true }
 darling = { workspace = true }
+metrique-core = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }

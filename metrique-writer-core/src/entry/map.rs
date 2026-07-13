@@ -5,11 +5,19 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::{Entry, EntryWriter, Value};
 
+// Map Entry impls intentionally do not provide descriptors (Unavailable).
+// They emit a dynamic number of fields with runtime-determined keys,
+// which cannot be described statically.
+
 impl<K: AsRef<str>, V: Value, S> Entry for HashMap<K, V, S> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         for (k, v) in self {
             writer.value(k.as_ref(), v);
         }
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
     }
 }
 
@@ -18,6 +26,10 @@ impl<K: AsRef<str>, V: Value> Entry for BTreeMap<K, V> {
         for (k, v) in self {
             writer.value(k.as_ref(), v);
         }
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
     }
 }
 
@@ -28,5 +40,9 @@ impl<K: AsRef<str>, V: Value> Entry for [(K, V)] {
         for (k, v) in self {
             writer.value(k.as_ref(), v);
         }
+    }
+
+    fn descriptors(&self) -> crate::Descriptors<'_> {
+        crate::Descriptors::Unavailable
     }
 }

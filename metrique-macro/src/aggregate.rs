@@ -199,6 +199,15 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
+    let metrics_attr = input
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("metrics"));
+    let metrics_attr = match metrics_attr {
+        Some(attr) => quote! { #attr },
+        None => quote! { #[metrics] },
+    };
+
     // Determine the source type for AggregateStrategy
     let source_ty = if entry_mode {
         quote! { <#original_name as metrique::CloseValue>::Closed }
@@ -303,7 +312,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
         let key_struct = quote! {
             #[derive(Clone, Hash, PartialEq, Eq)]
-            #[metrics]
+            #metrics_attr
             // key struct needs to be pub because it is used in a trait
             pub struct #key_name<'a> {
                 #(#key_field_defs),*

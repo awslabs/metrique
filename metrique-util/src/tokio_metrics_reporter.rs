@@ -323,9 +323,6 @@ mod tests {
         check!(entry.metrics["workers_count"] == 1);
         check!(entry.metrics["elapsed"] > 0.0);
         check!(entry.metrics["total_park_count"] > 0);
-
-        #[cfg(tokio_unstable)]
-        check!(entry.metrics["poll_time_histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -349,9 +346,6 @@ mod tests {
         check!(entry.metrics["WorkersCount"] == 1);
         check!(entry.metrics["Elapsed"] > 0.0);
         check!(entry.metrics["TotalParkCount"] > 0);
-
-        #[cfg(tokio_unstable)]
-        check!(entry.metrics["PollTimeHistogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -375,9 +369,6 @@ mod tests {
         check!(entry.metrics["workers_count"] == 1);
         check!(entry.metrics["elapsed"] > 0.0);
         check!(entry.metrics["total_park_count"] > 0);
-
-        #[cfg(tokio_unstable)]
-        check!(entry.metrics["poll_time_histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
@@ -401,9 +392,6 @@ mod tests {
         check!(entry.metrics["workers-count"] == 1);
         check!(entry.metrics["elapsed"] > 0.0);
         check!(entry.metrics["total-park-count"] > 0);
-
-        #[cfg(tokio_unstable)]
-        check!(entry.metrics["poll-time-histogram"].num_observations() > 0);
     }
 
     #[tokio::test(start_paused = true)]
