@@ -146,9 +146,9 @@ impl Json {
     /// Clear buffers and shrink overly large retained capacity.
     #[inline(always)]
     fn clear_buffers(&mut self) {
-        self.metrics_buf.truncate(0);
+        self.metrics_buf.clear();
         self.metrics_buf.shrink_to(MAX_BUF_RETAIN);
-        self.properties_buf.truncate(0);
+        self.properties_buf.clear();
         self.properties_buf.shrink_to(MAX_BUF_RETAIN);
     }
 }
