@@ -387,7 +387,17 @@ impl Drop for TokioRuntimeTestSinkGuard {
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(arc) = self.shutdown_registry.take() {
-            // The macro holds only a Weak reference, so this is the sole strong ref.
+            // KNOWN BUG (found via the `concurrent_register_and_drop` shuttle test
+            // below): this assumes nothing else ever holds a *strong* ref, only the
+            // `Weak` the macro keeps.
+            //
+            // `register_shutdown_fn` upgrades its `Weak` to a strong
+            // `Arc` to call `.push(f)`. If that upgrade is still alive when this runs
+            // (a real, reachable race, not just a theoretical one), `try_unwrap`
+            // legitimately returns `Err` and the line below panics.
+            //
+            // TBD: What's the right behavior for a `ShutdownFn` registered concurrently with
+            // shutdown (wait for it? run it immediately? drop it?)
             match Arc::try_unwrap(arc) {
                 Ok(registry) => registry.drain_and_run(),
                 Err(_) => unreachable!("ShutdownRegistry should have no other strong references"),
