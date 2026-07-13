@@ -6,12 +6,9 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    thread,
     time::{Duration, Instant},
 };
 
-use crossbeam_queue::ArrayQueue;
-use crossbeam_utils::sync::{Parker, Unparker};
 use metrique_writer_core::{
     BoxEntrySink, EntryIoStream, IoStreamError, ValidationError, sink::FlushWait,
 };
@@ -23,6 +20,7 @@ use super::metrics::{
     MetricsRsType, MetricsRsUnit,
 };
 use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
+use super::shuttle_primitives::{ArrayQueue, Parker, Unparker, mpsc, thread};
 
 /// Builder for [`BackgroundQueue`]
 pub struct BackgroundQueueBuilder {
@@ -420,7 +418,7 @@ impl BackgroundQueueBuilder {
     ) -> (Arc<Inner<E>>, BackgroundQueueJoinHandle) {
         let parker = Parker::default();
         let unparker = parker.unparker().clone();
-        let (flush_queue_sender, flush_queue_receiver) = std::sync::mpsc::channel();
+        let (flush_queue_sender, flush_queue_receiver) = mpsc::channel();
         let inner = Arc::new(Inner {
             name: self.metric_name.unwrap_or_else(|| self.thread_name.clone()),
             queue: ArrayQueue::new(self.capacity),
@@ -484,7 +482,7 @@ struct Inner<E> {
     // oldest entries should be dropped when the queue is full.
     queue: ArrayQueue<E>,
     // queue for flush wakers. This is not the fast-path so it does not use a ring buffer
-    flush_queue_sender: std::sync::mpsc::Sender<FlushSignal>,
+    flush_queue_sender: mpsc::Sender<FlushSignal>,
     // The unparker allows appending threads to cheaply wake up the background writing thread
     unparker: Unparker,
     // lifecycle observer
@@ -613,11 +611,11 @@ struct Receiver<S, E> {
 struct WakerTracker {
     waiting_wakers: Vec<FlushSignal>,
     entries_before_wake: usize,
-    flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>,
+    flush_queue_receiver: mpsc::Receiver<FlushSignal>,
 }
 
 impl WakerTracker {
-    fn new(flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>) -> Self {
+    fn new(flush_queue_receiver: mpsc::Receiver<FlushSignal>) -> Self {
         WakerTracker {
             waiting_wakers: vec![],
             entries_before_wake: 0,
@@ -675,7 +673,7 @@ impl WakerTracker {
 }
 
 impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
-    fn run(mut self, flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>) {
+    fn run(mut self, flush_queue_receiver: mpsc::Receiver<FlushSignal>) {
         let span = tracing::span!(tracing::Level::TRACE, "metrics background queue", sink=?self.inner.name);
         let _enter = span.enter();
         let mut waker_tracker = WakerTracker::new(flush_queue_receiver);
@@ -1463,5 +1461,237 @@ mod tests {
         handle.shut_down();
 
         assert!(events.0.lock().unwrap().overflows > 0);
+    }
+}
+
+// Shuttle-driven interleaving tests for the background queue. `mod tests`
+// above already covers the push/pop/flush/overflow paths with real threads,
+// but real-thread tests only sample a handful of the possible interleavings
+// between the producer(s) and the background receiver thread -- they can't
+// prove the `WakerTracker` liveness/safety invariants documented on it hold
+// under *every* schedule. Shuttle explores many schedules deterministically
+// instead, and replays a failing one exactly on demand.
+//
+// This is a separate module from `mod tests`, not an extension of it,
+// because Shuttle can't usefully explore the real-time behavior those tests
+// exercise -- periodic flush, `forget()` without a sync point -- since
+// Shuttle doesn't model wall-clock time at all (see the `flush_interval`
+// helper below).
+//
+// Known gap: because these tests use a long `flush_interval` to keep
+// `Instant::now()` (real wall-clock, unaffected by shuttle) from ever
+// tripping the periodic-flush deadline, `drain_until_deadline` always runs
+// to completion (`DrainResult::Drained`) rather than returning `HitDeadline`
+// partway through a batch. That means `WakerTracker::entries_before_wake`'s
+// countdown -- which only matters when a waker registers mid-drain, i.e.
+// only reachable via `HitDeadline` -- is never actually exercised here.
+// Reaching it would require a real, non-mocked flush deadline, which is
+// exactly the source of cross-iteration nondeterminism this module
+// otherwise avoids. Confirmed these tests do catch real interleaving bugs
+// regardless: an earlier, incorrect version of the `Parker`/`Unparker`
+// shuttle shim (bound to the wrong thread's identity) made
+// `round_trip_no_loss_*` and `flush_waits_for_prior_pushes_*` deadlock
+// deterministically until fixed.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use std::future::Future;
+    use std::sync::{Arc, Mutex};
+    use std::task::{Context, Poll, Wake, Waker};
+
+    use metrique_writer_core::test_stream::{TestEntry, TestStream};
+
+    use crate::EntrySink;
+
+    use super::{BackgroundQueueBuilder, BackgroundQueueEvent, BackgroundQueueObserver, Duration};
+
+    /// The longest interval the builder allows (see `flush_interval`'s
+    /// `assert!`), and far longer than any of these tests can possibly run.
+    /// The real periodic-flush deadline (`Instant`-based, see
+    /// `Receiver::run`) should therefore never fire during a single, fast,
+    /// in-process shuttle iteration. `Parker::park_deadline` in
+    /// `shuttle_primitives` degrades to an unbounded park under shuttle
+    /// (shuttle doesn't model time), so this keeps these tests focused on
+    /// push/pop/wake correctness, not real-time flush cadence -- that's
+    /// already covered by `mod tests` above.
+    fn flush_interval() -> Duration {
+        Duration::from_secs(59)
+    }
+
+    struct NoopWaker;
+    impl Wake for NoopWaker {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    /// Drives `fut` to completion by spinning and yielding to shuttle's
+    /// scheduler between polls. Under shuttle, *scheduling*, not a real
+    /// waker callback, is what lets the background thread make progress,
+    /// so a spin+yield loop is the natural way to drive a future here --
+    /// unlike `futures::executor::block_on`, it never performs a real
+    /// (uninstrumented) thread park/unpark that shuttle can't see, which
+    /// could otherwise deadlock the whole exploration.
+    fn block_on<F: Future>(fut: F) -> F::Output {
+        futures::pin_mut!(fut);
+        let waker: Waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        loop {
+            match fut.as_mut().poll(&mut cx) {
+                Poll::Ready(v) => return v,
+                Poll::Pending => shuttle::thread::yield_now(),
+            }
+        }
+    }
+
+    /// Round-trip / no-loss: entries pushed concurrently from several threads
+    /// are all eventually observed by the stream, for every interleaving
+    /// shuttle explores (capacity is far above what's pushed, so eviction
+    /// never enters into it -- that's covered separately below).
+    fn round_trip_no_loss() {
+        const THREADS: u64 = 3;
+        const PER_THREAD: u64 = 3;
+
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(1_000)
+            .flush_interval(flush_interval())
+            .build(Arc::clone(&output));
+
+        let threads: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let queue = queue.clone();
+                shuttle::thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        queue.append(TestEntry(t * PER_THREAD + i));
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+
+        // Shuts down and blocks until the background thread has fully
+        // drained the queue and joined -- so reading `output` afterwards
+        // races with nothing.
+        handle.shut_down();
+
+        let mut values = output.lock().unwrap().values.clone();
+        values.sort();
+        assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn round_trip_no_loss_pct() {
+        shuttle::check_pct(round_trip_no_loss, 2_000, 3);
+    }
+
+    #[test]
+    fn round_trip_no_loss_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(round_trip_no_loss, 2_000);
+    }
+
+    /// `WakerTracker` liveness (L1) + safety (S1): a `flush_async()` call
+    /// always eventually resolves (L1), and by the time it does, every entry
+    /// pushed on this thread *before* the call must already be visible in
+    /// the stream (S1) -- the tracker must never wake a waiter before
+    /// draining the pushes that preceded it. An unrelated second thread
+    /// pushes concurrently and unjoined, to give the scheduler more
+    /// interleavings between the two producers and the flush waker.
+    fn flush_waits_for_prior_pushes() {
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(1_000)
+            .flush_interval(flush_interval())
+            .build(Arc::clone(&output));
+
+        let other = {
+            let queue = queue.clone();
+            shuttle::thread::spawn(move || {
+                for i in 100..103 {
+                    queue.append(TestEntry(i));
+                }
+            })
+        };
+
+        for i in 0..3 {
+            queue.append(TestEntry(i));
+        }
+        block_on(EntrySink::<TestEntry>::flush_async(&queue));
+
+        let values = output.lock().unwrap().values.clone();
+        for i in 0..3 {
+            assert!(
+                values.contains(&i),
+                "flush_async() resolved without observing entry {i} pushed before it"
+            );
+        }
+
+        other.join().unwrap();
+        handle.shut_down();
+    }
+
+    #[test]
+    fn flush_waits_for_prior_pushes_pct() {
+        shuttle::check_pct(flush_waits_for_prior_pushes, 2_000, 3);
+    }
+
+    #[test]
+    fn flush_waits_for_prior_pushes_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(flush_waits_for_prior_pushes, 2_000);
+    }
+
+    /// Overflow accounting: every pushed entry has exactly one fate --
+    /// either it's evicted by a later `force_push` before the receiver
+    /// pops it (counted as a `QueueOverflow` event), or it's popped and
+    /// observed by the stream. That conservation law
+    /// (`overflows + observed == pushed`) holds no matter how the
+    /// receiver's drains happen to interleave with the pushes below, so
+    /// unlike an exact overflow count, it doesn't need to force a specific
+    /// schedule to assert on.
+    ///
+    /// (Deliberately not using `drops_older_entries_when_full`'s trick of
+    /// holding the stream's lock across the pushes to force a blocked
+    /// receiver: that lock is a real, non-shuttle `Mutex`, and holding it
+    /// across `queue.append()` -- which itself touches shuttle-instrumented
+    /// primitives -- risks shuttle suspending this thread mid-critical-section,
+    /// which could deadlock the whole exploration if the receiver thread then
+    /// tries to lock the same real `Mutex`.)
+    fn overflow_accounting() {
+        #[derive(Default, Clone)]
+        struct CountingObserver(Arc<Mutex<u64>>);
+        impl BackgroundQueueObserver for CountingObserver {
+            fn on_event(&self, _queue: &str, event: BackgroundQueueEvent) {
+                if let BackgroundQueueEvent::QueueOverflow = event {
+                    *self.0.lock().unwrap() += 1;
+                }
+            }
+        }
+
+        const CAPACITY: usize = 2;
+        const PUSHED: u64 = 8;
+
+        let overflows = CountingObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(CAPACITY)
+            .flush_interval(flush_interval())
+            .observer(overflows.clone())
+            .build::<TestEntry>(Arc::clone(&output));
+
+        for i in 0..PUSHED {
+            queue.append(TestEntry(i));
+        }
+        handle.shut_down();
+
+        let observed = output.lock().unwrap().values.len() as u64;
+        assert_eq!(
+            *overflows.0.lock().unwrap() + observed,
+            PUSHED,
+            "every pushed entry must be either evicted-and-counted or observed, never both/neither"
+        );
+    }
+
+    #[test]
+    fn overflow_accounting_pct() {
+        shuttle::check_pct(overflow_accounting, 2_000, 1);
     }
 }
