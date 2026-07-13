@@ -306,3 +306,19 @@ New `#[cfg(all(test, shuttle))] mod shuttle_tests` in `global.rs`:
    `docs/shuttle-findings.md`, which documents the bug, the repro, and the
    open design question (what *should* happen when registration races
    shutdown?) that a real fix needs to answer.
+
+### Unplanned finding: "atomic-looking" code needs an explicit yield to be explorable
+
+The first version of the Target 2 test (no explicit yield between spawning
+the racing thread and calling `drop`) passed 50,000 iterations without ever
+exercising the actual race — not because the race doesn't exist, but because
+`AttachHandle::drop`'s body touches no shuttle-instrumented primitive, so it
+looks atomic to the scheduler: there's no yield point inside it for the
+scheduler to use to interleave another thread *during* it. Without an
+explicit `shuttle::thread::yield_now()` on the racing side, shuttle could only
+ever schedule the two threads fully-before-or-fully-after each other. This is
+a general lesson for any future shuttle test in this codebase: a scenario
+built entirely from operations that don't individually yield (spawn, an
+uninstrumented function body, join) may need an explicit yield point inserted
+to actually be explorable — passing tests silently under-covering the thing
+they're meant to test is a worse failure mode than a slow test.
