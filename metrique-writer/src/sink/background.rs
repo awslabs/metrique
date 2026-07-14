@@ -1464,34 +1464,21 @@ mod tests {
     }
 }
 
-// Shuttle-driven interleaving tests for the background queue. `mod tests`
-// above already covers the push/pop/flush/overflow paths with real threads,
-// but real-thread tests only sample a handful of the possible interleavings
-// between the producer(s) and the background receiver thread -- they can't
-// prove the `WakerTracker` liveness/safety invariants documented on it hold
-// under *every* schedule. Shuttle explores many schedules deterministically
-// instead, and replays a failing one exactly on demand.
+// Shuttle interleaving tests for the background queue. `mod tests` above
+// covers push/pop/flush/overflow with real threads, but only samples a
+// handful of interleavings -- it can't prove the `WakerTracker`
+// liveness/safety invariants hold under *every* schedule the way Shuttle can.
 //
-// This is a separate module from `mod tests`, not an extension of it,
-// because Shuttle can't usefully explore the real-time behavior those tests
-// exercise -- periodic flush, `forget()` without a sync point -- since
-// Shuttle doesn't model wall-clock time at all (see the `flush_interval`
-// helper below).
+// Separate module, not an extension of `mod tests`, because Shuttle doesn't
+// model wall-clock time and can't usefully explore the real-time behavior
+// those tests exercise (periodic flush, `forget()` without a sync point).
 //
-// Known gap: because these tests use a long `flush_interval` to keep
-// `Instant::now()` (real wall-clock, unaffected by shuttle) from ever
-// tripping the periodic-flush deadline, `drain_until_deadline` always runs
-// to completion (`DrainResult::Drained`) rather than returning `HitDeadline`
-// partway through a batch. That means `WakerTracker::entries_before_wake`'s
-// countdown -- which only matters when a waker registers mid-drain, i.e.
-// only reachable via `HitDeadline` -- is never actually exercised here.
-// Reaching it would require a real, non-mocked flush deadline, which is
-// exactly the source of cross-iteration nondeterminism this module
-// otherwise avoids. Confirmed these tests do catch real interleaving bugs
-// regardless: an earlier, incorrect version of the `Parker`/`Unparker`
-// shuttle shim (bound to the wrong thread's identity) made
-// `round_trip_no_loss_*` and `flush_waits_for_prior_pushes_*` deadlock
-// deterministically until fixed.
+// Known gap: the long `flush_interval` used below keeps the periodic-flush
+// deadline from ever tripping, so `WakerTracker::entries_before_wake`'s
+// countdown (only reachable via a mid-drain `HitDeadline`) is never
+// exercised here. These tests do catch real bugs regardless: an earlier,
+// incorrect `Parker`/`Unparker` shim (bound to the wrong thread's identity)
+// made two of them deadlock deterministically until fixed.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
     use std::future::Future;

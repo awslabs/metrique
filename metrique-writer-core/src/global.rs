@@ -269,21 +269,15 @@ impl ShutdownFn {
 }
 
 // `ShutdownRegistry`'s internal lock, swapped for a shuttle-native `Mutex`
-// under `--cfg shuttle` so Shuttle's scheduler has visibility into it. This is
-// the only lock in this module that shuttle tests exercise (see
-// `shuttle_tests` below) -- `RuntimeSinkMap` below stays on `std::sync::Mutex`
-// regardless, since it's test-only plumbing (a `Mutex<HashMap>` behind the
-// `test-util` feature) with no interleaving-sensitive invariant worth
-// Shuttle's cost: a single insert/remove under a lock has nothing for a
-// scheduler to explore that std's own `Mutex` doesn't already guarantee.
+// under `--cfg shuttle` (see `shuttle_tests` below). `RuntimeSinkMap` below
+// stays on `std::sync::Mutex` regardless -- it's test-only plumbing with no
+// interleaving-sensitive invariant worth Shuttle's cost.
 //
-// Gated on `feature = "_shuttle"` as well as `cfg(shuttle)`, not `cfg(shuttle)`
-// alone: `--cfg shuttle` is set process-wide via RUSTFLAGS, so it reaches
-// *every* crate `cargo test` compiles, including feature-resolution units of
-// this very crate that don't have `_shuttle` enabled (e.g. reached only as a
-// dev-dependency edge with different requested features) and therefore don't
-// have the optional `shuttle` dependency linked at all. Without the feature
-// check, those units would try to name a crate that isn't there.
+// Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg
+// shuttle` is set process-wide via RUSTFLAGS, so it also reaches builds of
+// this crate (e.g. as a dev-dependency with different requested features)
+// that don't have `_shuttle` enabled and therefore don't have the optional
+// `shuttle` crate linked at all.
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 type ShutdownRegistryMutex<T> = std::sync::Mutex<T>;
 #[cfg(all(shuttle, feature = "_shuttle"))]
@@ -388,15 +382,13 @@ impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(arc) = self.shutdown_registry.take() {
             // KNOWN BUG (found via the `concurrent_register_and_drop` shuttle test
-            // below): this assumes nothing else ever holds a *strong* ref, only the
-            // `Weak` the macro keeps.
-            //
-            // `register_shutdown_fn` upgrades its `Weak` to a strong
-            // `Arc` to call `.push(f)`. If that upgrade is still alive when this runs
-            // (a real, reachable race, not just a theoretical one), `try_unwrap`
+            // below): assumes nothing else ever holds a *strong* ref, only the
+            // `Weak` the macro keeps. `register_shutdown_fn` upgrades its `Weak`
+            // to a strong `Arc` to call `.push(f)` -- if that upgrade is still
+            // alive when this runs (a real, reachable race), `try_unwrap`
             // legitimately returns `Err` and the line below panics.
             //
-            // TBD: What's the right behavior for a `ShutdownFn` registered concurrently with
+            // TBD: right behavior for a `ShutdownFn` registered concurrently with
             // shutdown (wait for it? run it immediately? drop it?)
             match Arc::try_unwrap(arc) {
                 Ok(registry) => registry.drain_and_run(),
@@ -1412,21 +1404,17 @@ mod shutdown_registry_tests {
     }
 }
 
-// Shuttle-driven test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
-// handshake. This constructs `AttachHandle`/`ShutdownRegistry` directly
-// instead of going through `global_entry_sink!` like the tests above: that
-// macro's `SINK`/
+// Shuttle test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
+// handshake. Constructs both directly instead of going through
+// `global_entry_sink!` like the tests above: that macro's `SINK`/
 // `SHUTDOWN_REGISTRY` slots are real `static`s, and Shuttle re-runs the same
-// test body many times within one process, so a real `static`'s state would
-// leak across iterations and invalidate the exploration. `AttachHandle` and
-// `ShutdownRegistry` are already plain, non-static structs, so this tests the
-// same handshake without touching the macro at all.
+// test body many times in one process, so a `static`'s state would leak
+// across iterations and invalidate the exploration.
 //
-// The test below is `#[ignore]`d: it reproducibly finds a real bug in
-// `AttachHandle::drop` (a concurrent `register_shutdown_fn` can make
-// `Arc::try_unwrap` return `Err`, hitting an `unreachable!()`).
-// It's left in place, ignored, so re-running it after a real fix is a single
-// command rather than reconstructing the test from scratch.
+// `#[ignore]`d: it reproducibly finds a real bug in `AttachHandle::drop` (a
+// concurrent `register_shutdown_fn` can make `Arc::try_unwrap` return `Err`,
+// hitting an `unreachable!()`). Left in place so re-running it after a real
+// fix is a single command.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
     use std::sync::Arc;

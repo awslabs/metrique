@@ -1,25 +1,20 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Cfg-gated concurrency primitives used by [`super::background`] (crossbeam/std vs.
-//! shuttle).
+//! Cfg-gated concurrency primitives used by [`super::background`] (crossbeam/std
+//! vs. shuttle).
 //!
-//! Under normal compilation this re-exports the production, crossbeam-backed types.
-//! With `--cfg shuttle` (and the `_shuttle` feature) it substitutes shuttle-native
-//! equivalents instead, so Shuttle's scheduler has visibility into every point where
-//! the background queue's threads can interleave. Shuttle only instruments the sync
-//! primitives it re-implements itself; it has no visibility into crossbeam's internal
-//! atomics, so testing `background.rs` under `--cfg shuttle` without this swap would
-//! not actually explore any interleavings inside the queue or the parker.
+//! Normally this re-exports the production crossbeam types. With `--cfg shuttle`
+//! it substitutes shuttle-native equivalents: shuttle only instruments the sync
+//! primitives it re-implements itself, so it has no visibility into crossbeam's
+//! internal atomics, and without this swap `background.rs` wouldn't actually be
+//! exploring any interleavings.
 //!
-//! Gated on `feature = "_shuttle"` as well as `cfg(shuttle)`, not `cfg(shuttle)`
-//! alone: `--cfg shuttle` is set process-wide via RUSTFLAGS, so it reaches
-//! *every* crate `cargo test` compiles, including feature-resolution units of
-//! this very crate that don't have `_shuttle` enabled (e.g. reached only as a
-//! dev-dependency edge with different requested features, such as
-//! `metrique-writer-core`'s own dev-dependency on this crate) and therefore
-//! don't have the optional `shuttle` dependency linked at all. Without the
-//! feature check, those units would try to name a crate that isn't there.
+//! Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg shuttle`
+//! is set process-wide via RUSTFLAGS, so it also reaches builds of this crate
+//! (e.g. as a dev-dependency with different requested features) that don't have
+//! `_shuttle` enabled and therefore don't have the optional `shuttle` crate
+//! linked at all.
 
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 pub(crate) use std::{sync::mpsc, thread};
@@ -84,18 +79,12 @@ mod shuttle_impl {
     }
 
     /// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
-    ///
-    /// This is *not* built on `shuttle::thread::park`/`Thread::unpark`: those are
-    /// bound to a specific OS thread's identity, but crossbeam's `Parker` isn't --
-    /// it's shared token/condvar state that works correctly regardless of which
-    /// thread later calls `park()`, which matters here because `background.rs`
-    /// constructs the `Parker` on the *calling* thread inside `do_build` and only
-    /// moves it into the `Receiver` to be parked on by the spawned background
-    /// thread. Binding to `shuttle::thread::current()` at construction time (an
-    /// earlier version of this shim did) captures the wrong thread's identity and
-    /// deadlocks: `unpark()` would wake a park token nobody was ever waiting on.
-    /// A `Mutex<bool>` + `Condvar` token, shared via `Arc` between `Parker` and
-    /// every `Unparker` cloned from it, has no such thread-identity dependency.
+    /// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to
+    /// a specific OS thread, but `background.rs` constructs the `Parker` on one
+    /// thread and parks on another. A `Mutex<bool>` + `Condvar` token shared via
+    /// `Arc` matches crossbeam's actual (thread-identity-agnostic) semantics
+    /// instead -- an earlier version bound to `shuttle::thread::current()` and
+    /// deadlocked for exactly this reason.
     pub(crate) struct Parker {
         inner: std::sync::Arc<TokenState>,
     }
@@ -123,14 +112,11 @@ mod shuttle_impl {
             }
         }
 
-        /// Shuttle does not model time (see `shuttle::thread::park_timeout`, which
-        /// shuttle itself implements as a plain `park()` for the same reason), so a
-        /// deadline-based park behaves like an unbounded park here. This is fine for
-        /// what the shuttle tests check: they exercise push/pop/wake correctness
-        /// with a `flush_interval` long enough that the real periodic-flush
-        /// deadline never fires during a single (fast, in-memory) test run. The
-        /// production crossbeam path — and its real-time behavior — stays covered
-        /// by the existing non-shuttle tests.
+        /// Shuttle doesn't model time, so a deadline-based park just parks
+        /// unboundedly here (matching shuttle's own `thread::park_timeout`).
+        /// Fine for what these tests check: push/pop/wake correctness with a
+        /// `flush_interval` long enough that the real deadline never fires.
+        /// Real-time behavior stays covered by the non-shuttle tests.
         pub(crate) fn park_deadline(&self, _deadline: Instant) {
             let mut available = self.inner.available.lock().unwrap();
             while !*available {
