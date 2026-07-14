@@ -18,3 +18,18 @@ pub struct DepMetrics {
     #[metrics(unit = Millisecond)]
     pub latency: Timer,
 }
+
+/// An `#[aggregate(ref)]` aggregate defined in a *dependency* crate.
+///
+/// `#[aggregate(ref)]` additionally generates a `MergeRef` impl, which — like `Merge` —
+/// was emitted against the projection `<T as CloseValue>::Closed` before the fix. A second
+/// `#[aggregate(ref)]` aggregate in a downstream crate must not cause E0119.
+#[aggregate(ref)]
+#[metrics]
+pub struct DepRefMetrics {
+    #[aggregate(key)]
+    pub endpoint: String,
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    pub latency: Duration,
+}

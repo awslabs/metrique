@@ -10,14 +10,15 @@
 //! This test defines its own entry-mode aggregate AND uses one from `aggregate_dep`,
 //! proving both can coexist without coherence errors.
 
-use aggregate_dep::DepMetrics;
+use aggregate_dep::{DepMetrics, DepRefMetrics};
 use metrique::timers::Timer;
 use metrique::unit::Millisecond;
 use metrique::unit_of_work::metrics;
 use metrique_aggregation::aggregate;
-use metrique_aggregation::aggregator::Aggregate;
+use metrique_aggregation::aggregator::{Aggregate, KeyedAggregator};
 use metrique_aggregation::histogram::{Histogram, SortAndMerge};
-use metrique_writer::test_util::test_metric;
+use metrique_aggregation::traits::{AggregateSinkRef, FlushableSink};
+use metrique_writer::test_util::{test_entry_sink, test_metric};
 use std::time::Duration;
 
 /// A local entry-mode aggregate. Having this alongside `DepMetrics` (from a
@@ -116,4 +117,64 @@ struct LocalParent {
 struct DepParent {
     #[metrics(flatten)]
     agg: Aggregate<DepMetrics>,
+}
+
+// --- `#[aggregate(ref)]` / `MergeRef` cross-crate coherence -----------------------------
+
+/// A local `#[aggregate(ref)]` aggregate. Its generated `MergeRef` impl, alongside
+/// `DepRefMetrics`'s `MergeRef` impl (from another crate), must NOT trigger E0119.
+///
+/// Before the fix `MergeRef` (like `Merge`) was emitted against the projection
+/// `<T as CloseValue>::Closed`, so two `#[aggregate(ref)]` structs in different crates
+/// failed to compile. This guards the `ref` half of the fix.
+#[aggregate(ref)]
+#[metrics]
+struct LocalRefMetrics {
+    #[aggregate(key)]
+    endpoint: String,
+    #[aggregate(strategy = Histogram<Duration>)]
+    #[metrics(unit = Millisecond)]
+    latency: Duration,
+}
+
+#[test]
+fn cross_crate_aggregate_ref_merge_ref_coexists() {
+    use metrique::CloseValue;
+
+    // Exercise the local ref aggregate via the `merge_ref` path (AggregateSinkRef).
+    // In entry mode, aggregation happens over the *closed* entry, so we close first.
+    let local_sink = test_entry_sink();
+    let mut local_agg: KeyedAggregator<LocalRefMetrics, _> = KeyedAggregator::new(local_sink.sink);
+    let e1 = LocalRefMetrics {
+        endpoint: "api".to_string(),
+        latency: Duration::from_millis(10),
+    }
+    .close();
+    let e2 = LocalRefMetrics {
+        endpoint: "api".to_string(),
+        latency: Duration::from_millis(20),
+    }
+    .close();
+    local_agg.merge_ref(&e1);
+    local_agg.merge_ref(&e2);
+    local_agg.flush();
+    let entries = local_sink.inspector.entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].metrics["latency"].num_observations(), 2);
+
+    // Exercise the dependency-crate ref aggregate the same way. The fact that both
+    // `#[aggregate(ref)]` types compile and merge_ref together proves the cross-crate
+    // MergeRef coherence fix.
+    let dep_sink = test_entry_sink();
+    let mut dep_agg: KeyedAggregator<DepRefMetrics, _> = KeyedAggregator::new(dep_sink.sink);
+    let d1 = DepRefMetrics {
+        endpoint: "svc".to_string(),
+        latency: Duration::from_millis(30),
+    }
+    .close();
+    dep_agg.merge_ref(&d1);
+    dep_agg.flush();
+    let entries = dep_sink.inspector.entries();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].metrics["latency"].num_observations(), 1);
 }
