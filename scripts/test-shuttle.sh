@@ -6,3 +6,6 @@ RUSTFLAGS="--cfg shuttle" \
 
 RUSTFLAGS="--cfg shuttle" \
   cargo test -p metrique-writer --lib --features _shuttle -- shuttle "$@"
+
+RUSTFLAGS="--cfg shuttle" \
+  cargo test -p metrique-aggregation --lib --features _shuttle -- shuttle "$@"
