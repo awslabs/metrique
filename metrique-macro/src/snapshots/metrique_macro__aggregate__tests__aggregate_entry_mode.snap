@@ -14,8 +14,7 @@ pub struct AggregatedApiCall {
         <Timer as metrique::CloseValue>::Closed,
     >>::Aggregated,
 }
-impl ::metrique_aggregation::__macro_plumbing::Merge
-for <ApiCall as metrique::CloseValue>::Closed {
+impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCallEntry {
     type Merged = AggregatedApiCall;
     type MergeConfig = ();
     fn new_merged(_conf: &Self::MergeConfig) -> Self::Merged {

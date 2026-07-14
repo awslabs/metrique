@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "metrique",
     "metrique-aggregation",
+    "metrique-aggregation/test-crates/aggregate-dep",
     "metrique-core",
     "metrique-macro",
     "metrique-metricsrs",

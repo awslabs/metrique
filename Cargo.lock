@@ -13,6 +13,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "aggregate-dep"
+version = "0.0.0"
+dependencies = [
+ "metrique",
+ "metrique-aggregation",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1719,6 +1727,7 @@ dependencies = [
 name = "metrique-aggregation"
 version = "0.1.14"
 dependencies = [
+ "aggregate-dep",
  "assert2",
  "divan",
  "hashbrown 0.16.1",

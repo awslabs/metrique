@@ -1678,7 +1678,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     };
 
     if std::env::var("MACRO_DEBUG").is_ok() {
-        eprintln!("{}", &output);
+        eprintln!("{}", output);
     }
 
     Ok(output)
