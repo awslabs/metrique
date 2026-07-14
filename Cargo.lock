@@ -1788,6 +1788,7 @@ dependencies = [
  "rstest",
  "rustversion",
  "serde_json",
+ "shuttle",
  "smallvec",
  "tokio",
  "tracing",
