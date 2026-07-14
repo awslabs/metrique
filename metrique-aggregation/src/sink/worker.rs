@@ -3,13 +3,34 @@
 use std::{
     marker::PhantomData,
     sync::Arc,
-    sync::mpsc::{RecvTimeoutError, Sender, channel},
-    thread,
+    sync::mpsc::RecvTimeoutError,
     time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
 
 use crate::traits::{AggregateSink, FlushableSink, RootSink};
+
+// Cfg-gated concurrency primitives (std vs. shuttle). Gated on both
+// `cfg(shuttle)` and `feature = "_shuttle"`, not `cfg(shuttle)` alone:
+// `--cfg shuttle` is set process-wide via RUSTFLAGS, so it also reaches
+// builds of this crate that don't have `_shuttle` enabled (e.g. as a
+// dev-dependency with different requested features) and therefore don't
+// have the optional `shuttle` crate linked at all.
+//
+// `RecvTimeoutError` needs no swap -- shuttle re-exports std's type
+// unchanged. Its `recv_timeout` never actually times out though (always
+// blocks until data or disconnect), so the `Timeout` branch below is
+// unreachable under shuttle exploration.
+#[cfg(all(shuttle, feature = "_shuttle"))]
+use shuttle::{
+    sync::mpsc::{Sender, channel},
+    thread,
+};
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+use std::{
+    sync::mpsc::{Sender, channel},
+    thread,
+};
 
 enum QueueMessage<T> {
     Entry(T),
@@ -145,6 +166,185 @@ mod tests {
             flushes.load(Ordering::SeqCst),
             1,
             "worker should flush exactly once before exiting on disconnect",
+        );
+    }
+}
+
+// Shuttle interleaving tests for `WorkerSink`. The background thread used to
+// treat `RecvTimeoutError::Timeout` and `::Disconnected` identically and
+// never exit on disconnect (see `mod tests` above for the original,
+// real-thread regression test).
+//
+// Since `recv_timeout` never actually times out under shuttle (see the
+// primitives import comment above), these tests cover merge correctness and
+// clean exit on disconnect only, not the periodic-flush path.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use std::future::Future;
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::task::{Context, Poll, Wake, Waker};
+
+    use super::*;
+
+    struct CollectingSink {
+        merged: Arc<Mutex<Vec<u64>>>,
+        flushes: Arc<AtomicUsize>,
+    }
+
+    impl AggregateSink<u64> for CollectingSink {
+        fn merge(&mut self, entry: u64) {
+            self.merged.lock().unwrap().push(entry);
+        }
+    }
+
+    impl FlushableSink for CollectingSink {
+        fn flush(&mut self) {
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    struct NoopWaker;
+    impl Wake for NoopWaker {
+        fn wake(self: Arc<Self>) {}
+    }
+
+    /// Drives `fut` to completion by spinning and yielding to shuttle's
+    /// scheduler between polls. Not `futures::executor::block_on`: its real
+    /// thread park/unpark on wake is invisible to shuttle and can deadlock
+    /// the exploration.
+    fn block_on<F: Future>(fut: F) -> F::Output {
+        let mut fut = Box::pin(fut);
+        let waker: Waker = Arc::new(NoopWaker).into();
+        let mut cx = Context::from_waker(&waker);
+        loop {
+            match fut.as_mut().poll(&mut cx) {
+                Poll::Ready(v) => return v,
+                Poll::Pending => shuttle::thread::yield_now(),
+            }
+        }
+    }
+
+    /// `flush_interval` is irrelevant under shuttle (see the module-level
+    /// comment: `recv_timeout` never actually times out), so any value
+    /// works; 60s just documents "this is not what's under test."
+    fn flush_interval() -> Duration {
+        Duration::from_secs(60)
+    }
+
+    /// Entries sent concurrently from several cloned handles are all merged
+    /// by the time `flush()`'s returned future resolves, for every
+    /// interleaving shuttle explores.
+    fn concurrent_sends_all_merged_before_flush_returns() {
+        const THREADS: u64 = 3;
+        const PER_THREAD: u64 = 3;
+
+        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<u64, _>::new(
+            CollectingSink {
+                merged: merged.clone(),
+                flushes: flushes.clone(),
+            },
+            flush_interval(),
+        );
+
+        let senders: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let sink = sink.clone();
+                thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        sink.send(t * PER_THREAD + i);
+                    }
+                })
+            })
+            .collect();
+        for t in senders {
+            t.join().unwrap();
+        }
+
+        block_on(sink.flush());
+
+        let mut values = merged.lock().unwrap().clone();
+        values.sort();
+        assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
+
+        let handle = Arc::clone(&sink._handle);
+        drop(sink);
+        Arc::into_inner(handle)
+            .expect("sole handle ref after dropping the only WorkerSink")
+            .join()
+            .expect("worker thread panicked");
+    }
+
+    #[test]
+    fn concurrent_sends_all_merged_before_flush_returns_pct() {
+        shuttle::check_pct(concurrent_sends_all_merged_before_flush_returns, 2_000, 3);
+    }
+
+    #[test]
+    fn concurrent_sends_all_merged_before_flush_returns_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(
+            concurrent_sends_all_merged_before_flush_returns,
+            2_000,
+        );
+    }
+
+    /// The historical bug, reproduced directly: several cloned handles send
+    /// an entry and drop concurrently. The background thread must still
+    /// exit (this used to hang forever -- see the module doc comment),
+    /// flush exactly once at shutdown, and lose no entries, no matter how
+    /// the drops and the final disconnect interleave.
+    fn concurrent_drops_exit_cleanly_and_flush_once() {
+        const CLONES: u64 = 2;
+
+        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<u64, _>::new(
+            CollectingSink {
+                merged: merged.clone(),
+                flushes: flushes.clone(),
+            },
+            flush_interval(),
+        );
+        let handle = Arc::clone(&sink._handle);
+
+        let droppers: Vec<_> = (0..CLONES)
+            .map(|i| {
+                let sink = sink.clone();
+                thread::spawn(move || {
+                    sink.send(i);
+                    drop(sink);
+                })
+            })
+            .collect();
+
+        drop(sink);
+        for d in droppers {
+            d.join().unwrap();
+        }
+
+        Arc::into_inner(handle)
+            .expect("all WorkerSink clones dropped, sole handle ref remains")
+            .join()
+            .expect("worker thread panicked");
+
+        let mut values = merged.lock().unwrap().clone();
+        values.sort();
+        assert_eq!(values, (0..CLONES).collect::<Vec<_>>());
+        assert_eq!(flushes.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn concurrent_drops_exit_cleanly_and_flush_once_pct() {
+        shuttle::check_pct(concurrent_drops_exit_cleanly_and_flush_once, 2_000, 3);
+    }
+
+    #[test]
+    fn concurrent_drops_exit_cleanly_and_flush_once_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(
+            concurrent_drops_exit_cleanly_and_flush_once,
+            2_000,
         );
     }
 }
