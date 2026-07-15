@@ -39,7 +39,7 @@ use tokio_metrics::{FutureMonitor, FutureMetrics};
 ///
 /// ```rust
 /// use metrique::unit_of_work::metrics;
-/// use metrique_util::TaskTiming;
+/// use metrique_util::future_metrics::TaskTiming;
 /// use tokio_metrics::TaskMonitor;
 ///
 /// #[metrics(rename_all = "PascalCase")]

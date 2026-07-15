@@ -28,9 +28,8 @@ pub use tokio_metrics_reporter::{
 };
 
 #[cfg(feature = "tokio-metrics-bridge")]
-mod future_metrics;
-#[cfg(feature = "tokio-metrics-bridge")]
-pub use future_metrics::TaskTiming;
+#[cfg_attr(docsrs, doc(cfg(feature = "tokio-metrics-bridge")))]
+pub mod future_metrics;
 
 #[cfg(feature = "sysinfo-bridge")]
 mod sysinfo_reporter;

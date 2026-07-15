@@ -17,7 +17,7 @@ use metrique::{
     unit_of_work::metrics,
     writer::{AttachGlobalEntrySinkExt, FormatExt, GlobalEntrySink},
 };
-use metrique_util::TaskTiming;
+use metrique_util::future_metrics::TaskTiming;
 use tokio_metrics::TaskMonitor;
 
 #[metrics(rename_all = "PascalCase")]
