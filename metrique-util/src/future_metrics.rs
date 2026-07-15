@@ -15,7 +15,7 @@ use std::future::Future;
 use metrique::CloseValue;
 use tokio_metrics::{FutureMonitor, FutureMetrics};
 
-/// A metrique field holding the captured Tokio task metrics of a single request.
+/// A metrique field holding the captured Tokio task metrics of a single future.
 ///
 /// Wrap the request's future with [`TaskTiming::instrument`]; awaiting the
 /// returned future yields the future's output together with a `TaskTiming`. Fold
