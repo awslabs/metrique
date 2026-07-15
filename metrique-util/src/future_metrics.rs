@@ -26,22 +26,14 @@ use tokio_metrics::{FutureMonitor, FutureMetrics};
 ///
 /// # Accuracy
 ///
-/// **The poll, idle, and first-poll metrics are always accurate.** They are
-/// measured locally from the request's own future — its poll count, how long
-/// each poll ran, and the gaps between its polls — so they hold regardless of
-/// where or how the future is run, even when the surrounding task interleaves
-/// other work.
+/// Poll, idle, and first-poll metrics are measured locally from the future and
+/// are always accurate.
 ///
-/// **Scheduling delay is the one exception.** The time a task spends queued
-/// between being woken and being polled can only be observed by the *root*
-/// future the runtime actually schedules — a nested future can't see it. So
-/// `scheduled_count` / `total_scheduled_duration` / `long_delay_count` are only
-/// populated when the surrounding (root) task is instrumented with a monitor
-/// built via
-/// [`TaskMonitorBuilder::publish_scheduling_delay`](tokio_metrics::TaskMonitorBuilder::publish_scheduling_delay),
-/// **and** that instrumented future is the root of a spawned task (see the
-/// example). Without that, those three fields read zero while everything else
-/// stays accurate.
+/// Scheduling delay can only be observed by the root task, so it requires that
+/// task to be instrumented with a `TaskMonitor` built with
+/// `publish_scheduling_delay` enabled (see the example). Without that,
+/// `scheduled_count`, `total_scheduled_duration`, and `long_delay_count` are
+/// zero.
 ///
 /// # Example
 ///
