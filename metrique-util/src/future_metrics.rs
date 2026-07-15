@@ -17,7 +17,7 @@ use tokio_metrics::{FutureMonitor, FutureMetrics};
 
 /// A metrique field holding the captured Tokio task metrics of a single future.
 ///
-/// Wrap the request's future with [`TaskTiming::instrument`]; awaiting the
+/// Wrap the future with [`TaskTiming::instrument`]; awaiting the
 /// returned future yields the future's output together with a `TaskTiming`. Fold
 /// that into your metric struct with `#[metrics(flatten)]` and, on close, it
 /// emits the request's poll, idle, first-poll, and scheduling metrics (see
