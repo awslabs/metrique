@@ -23,9 +23,6 @@ use tokio_metrics::{FutureMonitor, FutureMetrics};
 /// emits the request's poll, idle, first-poll, and scheduling metrics (see
 /// [`FutureMetrics`](tokio_metrics::FutureMetrics) for the full list).
 ///
-/// `instrument` is a one-shot associated function that takes ownership of the
-/// future, so a `TaskTiming` always describes exactly one request — there is no
-/// way to accidentally reuse it across futures.
 ///
 /// # Accuracy
 ///
