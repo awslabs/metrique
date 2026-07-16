@@ -13,7 +13,7 @@
 use std::future::Future;
 
 use metrique::CloseValue;
-use tokio_metrics::{FutureMonitor, FutureMetrics};
+use tokio_metrics::{FutureMetrics, FutureMonitor};
 
 /// A metrique field holding the captured Tokio task metrics of a single future.
 ///
