@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.28](https://github.com/awslabs/metrique/compare/metrique-v0.1.27...metrique-v0.1.28) - 2026-07-20
+
+### Other
+
+- Fix cross-crate E0119 for entry-mode #[aggregate] ([#339](https://github.com/awslabs/metrique/pull/339))
+
 ## [0.1.27](https://github.com/awslabs/metrique/compare/metrique-v0.1.26...metrique-v0.1.27) - 2026-07-08
 
 ### Added
