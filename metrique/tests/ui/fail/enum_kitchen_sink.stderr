@@ -76,6 +76,24 @@ error: Cannot combine `flatten` with `unit`
 81 |     Variant(#[metrics(flatten, unit = metrique::writer::unit::Millisecond)] u32),
    |                                ^^^^
 
+error[E0412]: cannot find type `Timestamp` in crate `metrique`
+  --> tests/ui/fail/enum_kitchen_sink.rs:75:45
+   |
+75 |     Variant(#[metrics(timestamp)] metrique::Timestamp),
+   |                                             ^^^^^^^^^ not found in `metrique`
+   |
+help: consider importing one of these structs
+   |
+ 4 + use jiff::Timestamp;
+   |
+ 4 + use metrique::timers::Timestamp;
+   |
+help: if you import `Timestamp`, refer to it directly
+   |
+75 -     Variant(#[metrics(timestamp)] metrique::Timestamp),
+75 +     Variant(#[metrics(timestamp)] Timestamp),
+   |
+
 error[E0277]: CloseValue is not implemented for &TimestampOnClose
   --> tests/ui/fail/enum_kitchen_sink.rs:91:5
    |
