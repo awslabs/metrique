@@ -121,8 +121,10 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
                 .unnamed
                 .iter()
                 .map(|field| {
-                    let raw_attrs = RawMetricsFieldAttrs::from_field(field)?;
-                    let attrs = raw_attrs.validate()?;
+                    let field2 = crate::field_to_syn2(field)?;
+                    let raw_attrs = RawMetricsFieldAttrs::from_field(&field2)
+                        .map_err(crate::darling_to_syn)?;
+                    let attrs = raw_attrs.validate().map_err(crate::darling_to_syn)?;
 
                     match &attrs.kind {
                         MetricsFieldKind::Flatten { .. }
@@ -207,15 +209,16 @@ pub(crate) fn parse_enum_variants(
             match parse_variant_data(&variant.fields) {
                 Ok(d) => d,
                 Err(e) => {
-                    errors.push(darling::Error::from(e));
+                    errors.push(darling::Error::custom(e.to_string()).with_span(&e.span()));
                     None
                 }
             }
         };
 
         let attrs = if mode != VariantMode::SkipAttributeParsing {
-            match errors.handle(RawMetricsVariantAttrs::from_variant(variant)) {
-                Some(attrs) => attrs.validate(mode)?,
+            let variant2 = crate::to_syn2(variant)?;
+            match errors.handle(RawMetricsVariantAttrs::from_variant(&variant2)) {
+                Some(attrs) => attrs.validate(mode).map_err(crate::darling_to_syn)?,
                 None => {
                     continue;
                 }
@@ -232,7 +235,7 @@ pub(crate) fn parse_enum_variants(
         });
     }
 
-    errors.finish()?;
+    errors.finish().map_err(crate::darling_to_syn)?;
 
     // Empty enums are not allowed
     if parsed_variants.is_empty() {

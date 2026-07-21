@@ -31,6 +31,34 @@ use syn::{
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
 
+// Darling still exposes syn 2 nodes, so convert only at calls into or out of darling.
+fn darling_to_syn(error: darling::Error) -> syn::Error {
+    syn::Error::new(error.span(), error.to_string())
+}
+
+fn to_syn2<T: ToTokens + ?Sized, U: syn2::parse::Parse>(value: &T) -> syn::Result<U> {
+    syn2::parse2(value.to_token_stream())
+        .map_err(|error| syn::Error::new(error.span(), error.to_string()))
+}
+
+fn field_to_syn2(field: &syn::Field) -> syn::Result<syn2::Field> {
+    use syn2::parse::Parser as _;
+
+    let parser = if field.ident.is_some() {
+        syn2::Field::parse_named
+    } else {
+        syn2::Field::parse_unnamed
+    };
+    parser
+        .parse2(field.to_token_stream())
+        .map_err(|error| syn::Error::new(error.span(), error.to_string()))
+}
+
+fn path_to_syn3(path: &syn2::Path) -> darling::Result<syn::Path> {
+    syn::parse2(path.to_token_stream())
+        .map_err(|error| darling::Error::custom(error.to_string()).with_span(path))
+}
+
 /// Transforms a struct or enum into a wide event (metric record).
 ///
 /// # Container Attributes
@@ -754,7 +782,7 @@ impl From<RawTag> for Tag {
 /// A parsed `flags(Path)` or `flags(skip(Path))` attribute.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldTagAttr {
-    pub(crate) path: syn::Path,
+    pub(crate) path: syn2::Path,
     pub(crate) skip: bool,
     pub(crate) span: Span,
 }
@@ -787,13 +815,13 @@ impl FromMeta for FlagsList {
         Ok(FlagsList(flags))
     }
 
-    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+    fn from_meta(item: &syn2::Meta) -> darling::Result<Self> {
         // Handle Meta::List by parsing tokens directly as comma-separated items.
         // This bypasses darling's NestedMeta parsing which fails alongside Flag fields.
         match item {
-            syn::Meta::List(list) => {
-                let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
-                    .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+            syn2::Meta::List(list) => {
+                let parsed: syn2::punctuated::Punctuated<syn2::Meta, syn2::Token![,]> = list
+                    .parse_args_with(syn2::punctuated::Punctuated::parse_terminated)
                     .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
                 let mut flags = Vec::new();
                 for meta in &parsed {
@@ -809,15 +837,15 @@ impl FromMeta for FlagsList {
     }
 }
 
-fn parse_single_flag(meta: &syn::Meta) -> darling::Result<FieldTagAttr> {
+fn parse_single_flag(meta: &syn2::Meta) -> darling::Result<FieldTagAttr> {
     match meta {
-        syn::Meta::Path(path) => Ok(FieldTagAttr {
+        syn2::Meta::Path(path) => Ok(FieldTagAttr {
             path: path.clone(),
             skip: false,
             span: path.span(),
         }),
-        syn::Meta::List(list) if list.path.is_ident("skip") => {
-            let inner: syn::Path = syn::parse2(list.tokens.clone())
+        syn2::Meta::List(list) if list.path.is_ident("skip") => {
+            let inner: syn2::Path = syn2::parse2(list.tokens.clone())
                 .map_err(|_| darling::Error::custom("expected skip(Path)").with_span(list))?;
             Ok(FieldTagAttr {
                 path: inner,
@@ -1024,10 +1052,10 @@ struct RawMetricsFieldAttrs {
     ignore: Flag,
 
     #[darling(default)]
-    unit: Option<SpannedKv<syn::Path>>,
+    unit: Option<SpannedKv<syn2::Path>>,
 
     #[darling(default)]
-    format: Option<SpannedKv<syn::Path>>,
+    format: Option<SpannedKv<syn2::Path>>,
 
     #[darling(default)]
     name: Option<SpannedKv<String>>,
@@ -1055,10 +1083,10 @@ pub(crate) struct SpannedKv<T> {
 }
 
 impl<T: FromMeta> FromMeta for SpannedKv<T> {
-    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+    fn from_meta(item: &syn2::Meta) -> darling::Result<Self> {
         let value = T::from_meta(item).map_err(|e| e.with_span(item))?;
         let (key_span, value_span) = match item {
-            syn::Meta::NameValue(nv) => (nv.path.span(), nv.value.span()),
+            syn2::Meta::NameValue(nv) => (nv.path.span(), nv.value.span()),
             _ => return Err(darling::Error::custom("expected a key value pair").with_span(item)),
         };
 
@@ -1083,8 +1111,9 @@ pub(crate) fn parse_metric_fields(
             None => (quote! { #i }, None, field.ty.span()),
         };
 
+        let field2 = field_to_syn2(field)?;
         let attrs = match errors
-            .handle(RawMetricsFieldAttrs::from_field(field).and_then(|attr| attr.validate()))
+            .handle(RawMetricsFieldAttrs::from_field(&field2).and_then(|attr| attr.validate()))
         {
             Some(attrs) => attrs,
             None => {
@@ -1103,7 +1132,7 @@ pub(crate) fn parse_metric_fields(
         });
     }
 
-    errors.finish()?;
+    errors.finish().map_err(darling_to_syn)?;
 
     Ok(parsed_fields)
 }
@@ -1272,8 +1301,8 @@ impl RawMetricsFieldAttrs {
                 None => MetricsFieldKind::Field {
                     sample_group,
                     name: name.cloned(),
-                    unit: unit.cloned(),
-                    format: format.cloned(),
+                    unit: unit.map(path_to_syn3).transpose()?,
+                    format: format.map(path_to_syn3).transpose()?,
                 },
             },
             flags: {
@@ -1590,8 +1619,11 @@ fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
 }
 
 fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
-    let nested_meta = NestedMeta::parse_meta_list(attr.into())?;
-    Ok(RawRootAttributes::from_list(&nested_meta)?.validate()?)
+    let nested_meta = NestedMeta::parse_meta_list(attr.into())
+        .map_err(|error| syn::Error::new(error.span(), error.to_string()))?;
+    RawRootAttributes::from_list(&nested_meta)
+        .and_then(RawRootAttributes::validate)
+        .map_err(darling_to_syn)
 }
 
 fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
@@ -1843,7 +1875,6 @@ mod tests {
     use insta::assert_snapshot;
     use proc_macro2::TokenStream as Ts2;
     use quote::quote;
-    use syn::{parse_quote, parse2};
 
     use crate::RawRootAttributes;
 
@@ -1851,7 +1882,7 @@ mod tests {
     // This allows us to test the macro without needing to use the proc_macro API directly
     fn metrics_impl(input: Ts2, attrs: Ts2) -> Ts2 {
         let input = syn::parse2(input).unwrap();
-        let meta: syn::Meta = syn::parse2(attrs).unwrap();
+        let meta: syn2::Meta = syn2::parse2(attrs).unwrap();
         let root_attrs = RawRootAttributes::from_meta(&meta)
             .unwrap()
             .validate()
@@ -1863,7 +1894,7 @@ mod tests {
         let output = metrics_impl(input, attrs);
 
         // Parse the output back into a syn::File for pretty printing
-        match parse2::<syn::File>(output.clone()) {
+        match syn2::parse2::<syn2::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => {
                 // If parsing fails, print the error and use the raw string output
@@ -1875,7 +1906,7 @@ mod tests {
     #[test]
     fn test_darling_root_attrs() {
         use darling::FromMeta;
-        RawRootAttributes::from_meta(&parse_quote! {
+        RawRootAttributes::from_meta(&syn2::parse_quote! {
             metrics(
                 rename_all = "PascalCase",
                 emf::dimension_sets = [["bar"]]
@@ -2006,7 +2037,7 @@ mod tests {
         };
 
         let input = syn::parse2(input).unwrap();
-        let root_attrs = RawRootAttributes::from_meta(&parse_quote!(metrics()))
+        let root_attrs = RawRootAttributes::from_meta(&syn2::parse_quote!(metrics()))
             .unwrap()
             .validate()
             .unwrap();

@@ -3,6 +3,7 @@ use proc_macro2::{Ident, TokenStream as Ts2};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Error, Fields, Result, Type};
+use syn2::parse::Parser as _;
 
 use crate::MetricMode;
 use crate::structs::entry_struct_ident;
@@ -244,14 +245,11 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
         // Check if field has a unit attribute by parsing metrics attributes
         // Only dereference in entry mode, where the field is wrapped in WithUnit
-        let has_unit = entry_mode && crate::RawMetricsFieldAttrs::from_field(&syn::Field {
-            attrs: f.metrics_attrs.clone(),
-            vis: syn::Visibility::Inherited,
-            mutability: syn::FieldMutability::None,
-            ident: Some(f.name.clone()),
-            colon_token: None,
-            ty: f.ty.clone(),
-        })
+        let metrics_attrs = &f.metrics_attrs;
+        let field2 = syn2::Field::parse_named
+            .parse2(quote! { #(#metrics_attrs)* #name: #source_ty })
+            .expect("field was built from a valid parsed field");
+        let has_unit = entry_mode && crate::RawMetricsFieldAttrs::from_field(&field2)
         .ok()
         .and_then(|attrs| attrs.unit)
         .is_some();
@@ -525,7 +523,6 @@ fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
 mod tests {
     use super::*;
     use quote::quote;
-    use syn::parse2;
 
     fn aggregate_impl(input: Ts2, entry_mode: bool) -> Ts2 {
         let input = syn::parse2(input).unwrap();
@@ -545,7 +542,7 @@ mod tests {
 
     fn aggregate_impl_string(input: Ts2) -> String {
         let output = aggregate_impl(input, false);
-        match parse2::<syn::File>(output.clone()) {
+        match syn2::parse2::<syn2::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         }
@@ -618,7 +615,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, true);
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
+        let parsed_file = match syn2::parse2::<syn2::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };
@@ -637,7 +634,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, false);
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
+        let parsed_file = match syn2::parse2::<syn2::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };

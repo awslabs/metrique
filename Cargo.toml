@@ -77,6 +77,8 @@ smallvec = "1.13.1"
 str_inflector = "0.12"
 strum_macros = "0.27"
 syn = "3.0"
+# Compatibility boundary for darling and synstructure, which still expose syn 2 AST types.
+syn2 = { package = "syn", version = "2.0" }
 synstructure = "0.13"
 tempfile = "3"
 tokio = { version = "1.38", default-features = false }
