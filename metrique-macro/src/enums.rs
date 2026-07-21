@@ -4,9 +4,9 @@
 use darling::{FromField, FromVariant};
 use proc_macro2::TokenStream as Ts2;
 use quote::quote;
-use syn::{Attribute, Generics, Ident, Result, Visibility, spanned::Spanned};
+use syn::{Attribute, Generics, Ident, Visibility, spanned::Spanned};
 
-use crate::{MetricMode, TupleData, generate_on_drop_wrapper};
+use crate::{MacroResult, MetricMode, TupleData, generate_on_drop_wrapper};
 use crate::{
     MetricsField, MetricsFieldKind, RawMetricsFieldAttrs, RootAttributes, SpannedKv, clean_attrs,
     parse_metric_fields, value_impl,
@@ -113,18 +113,17 @@ impl MetricsVariant {
     }
 }
 
-fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
+fn parse_variant_data(fields: &syn::Fields) -> MacroResult<Option<VariantData>> {
     match fields {
         syn::Fields::Unit => Ok(None),
         syn::Fields::Unnamed(fields) => {
-            let tuple_data: Result<Vec<_>> = fields
+            let tuple_data: MacroResult<Vec<_>> = fields
                 .unnamed
                 .iter()
-                .map(|field| {
+                .map(|field| -> MacroResult<TupleData> {
                     let field2 = crate::field_to_syn2(field)?;
-                    let raw_attrs = RawMetricsFieldAttrs::from_field(&field2)
-                        .map_err(crate::darling_to_syn)?;
-                    let attrs = raw_attrs.validate().map_err(crate::darling_to_syn)?;
+                    let raw_attrs = RawMetricsFieldAttrs::from_field(&field2)?;
+                    let attrs = raw_attrs.validate()?;
 
                     match &attrs.kind {
                         MetricsFieldKind::Flatten { .. }
@@ -134,7 +133,8 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
                             return Err(syn::Error::new_spanned(
                                 field,
                                 "tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]",
-                            ));
+                            )
+                            .into());
                         }
                     };
 
@@ -145,7 +145,8 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
                             field,
                             "cfg attributes on fields inside enum variants are not supported. \
                              Use a cfg-gated variant or an Option field instead.",
-                        ));
+                        )
+                        .into());
                     }
 
                     Ok(TupleData {
@@ -169,7 +170,8 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
                         field.span,
                         "cfg attributes on fields inside enum variants are not supported. \
                          Use a cfg-gated variant or an Option field instead.",
-                    ));
+                    )
+                    .into());
                 }
             }
             Ok(Some(VariantData::Struct(parsed_fields)))
@@ -180,14 +182,15 @@ fn parse_variant_data(fields: &syn::Fields) -> Result<Option<VariantData>> {
 pub(crate) fn parse_enum_variants(
     variants: &syn::punctuated::Punctuated<syn::Variant, syn::token::Comma>,
     mode: VariantMode,
-) -> Result<Vec<MetricsVariant>> {
+) -> MacroResult<Vec<MetricsVariant>> {
     // Value enums must have at least one variant, since otherwise what would its value type
     // return
     if mode == VariantMode::ValueString && variants.is_empty() {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             "value enums must have at least one variant",
-        ));
+        )
+        .into());
     }
 
     let mut parsed_variants = vec![];
@@ -209,7 +212,7 @@ pub(crate) fn parse_enum_variants(
             match parse_variant_data(&variant.fields) {
                 Ok(d) => d,
                 Err(e) => {
-                    errors.push(darling::Error::custom(e.to_string()).with_span(&e.span()));
+                    errors.push(e.into_darling());
                     None
                 }
             }
@@ -218,7 +221,7 @@ pub(crate) fn parse_enum_variants(
         let attrs = if mode != VariantMode::SkipAttributeParsing {
             let variant2 = crate::to_syn2(variant)?;
             match errors.handle(RawMetricsVariantAttrs::from_variant(&variant2)) {
-                Some(attrs) => attrs.validate(mode).map_err(crate::darling_to_syn)?,
+                Some(attrs) => attrs.validate(mode)?,
                 None => {
                     continue;
                 }
@@ -235,14 +238,15 @@ pub(crate) fn parse_enum_variants(
         });
     }
 
-    errors.finish().map_err(crate::darling_to_syn)?;
+    errors.finish()?;
 
     // Empty enums are not allowed
     if parsed_variants.is_empty() {
         return Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             "enums must have at least one variant",
-        ));
+        )
+        .into());
     }
 
     Ok(parsed_variants)
@@ -252,7 +256,7 @@ pub(crate) fn generate_metrics_for_enum(
     root_attrs: RootAttributes,
     input: &syn::DeriveInput,
     variants: &[MetricsVariant],
-) -> Result<Ts2> {
+) -> MacroResult<Ts2> {
     let enum_name = &input.ident;
     let is_value_string = root_attrs.mode == MetricMode::ValueString;
     let entry_name = if is_value_string {
@@ -384,7 +388,7 @@ fn generate_entry_enum(
     generics: &Generics,
     variants: &[MetricsVariant],
     attrs: &[Attribute],
-) -> Result<Ts2> {
+) -> MacroResult<Ts2> {
     let variants = variants.iter().map(|variant| variant.entry_variant());
     let data = quote! {
         #(#variants,)*

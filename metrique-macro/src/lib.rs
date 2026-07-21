@@ -25,15 +25,65 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{ToTokens, quote, quote_spanned};
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Result, Type,
-    Visibility, parse_macro_input, spanned::Spanned,
+    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Type, Visibility,
+    parse_macro_input, spanned::Spanned,
 };
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
 
-// Darling still exposes syn 2 nodes, so convert only at calls into or out of darling.
-fn darling_to_syn(error: darling::Error) -> syn::Error {
-    syn::Error::new(error.span(), error.to_string())
+#[derive(Debug)]
+enum MacroError {
+    Syn(syn::Error),
+    Syn2(syn2::Error),
+    Darling(darling::Error),
+}
+
+type MacroResult<T> = std::result::Result<T, MacroError>;
+
+impl From<syn::Error> for MacroError {
+    fn from(error: syn::Error) -> Self {
+        Self::Syn(error)
+    }
+}
+
+impl From<syn2::Error> for MacroError {
+    fn from(error: syn2::Error) -> Self {
+        Self::Syn2(error)
+    }
+}
+
+impl From<darling::Error> for MacroError {
+    fn from(error: darling::Error) -> Self {
+        Self::Darling(error)
+    }
+}
+
+impl std::fmt::Display for MacroError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Syn(error) => error.fmt(formatter),
+            Self::Syn2(error) => error.fmt(formatter),
+            Self::Darling(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl MacroError {
+    fn into_compile_errors(self) -> Ts2 {
+        match self {
+            Self::Syn(error) => error.into_compile_error(),
+            Self::Syn2(error) => error.into_compile_error(),
+            Self::Darling(error) => error.write_errors(),
+        }
+    }
+
+    fn into_darling(self) -> darling::Error {
+        match self {
+            Self::Syn(error) => darling::Error::custom(error.to_string()).with_span(&error.span()),
+            Self::Syn2(error) => darling::Error::from(error),
+            Self::Darling(error) => error,
+        }
+    }
 }
 
 fn to_syn2<T: ToTokens + ?Sized, U: syn2::parse::Parse>(value: &T) -> syn::Result<U> {
@@ -478,7 +528,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
         Ok(root_attrs) => root_attrs,
         Err(e) => {
             // recover and use an empty root attributes
-            e.to_compile_error().to_tokens(&mut base_token_stream);
+            e.into_compile_errors().to_tokens(&mut base_token_stream);
             RootAttributes::default()
         }
     };
@@ -490,7 +540,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
             // Always generate the base struct without metrics attributes to avoid cascading errors
             clean_base_adt(&input).to_tokens(&mut base_token_stream);
             // Include the error and the base struct without metrics attributes
-            err.to_compile_error().to_tokens(&mut base_token_stream);
+            err.into_compile_errors().to_tokens(&mut base_token_stream);
         }
     };
     base_token_stream.into()
@@ -1100,7 +1150,7 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
 
 pub(crate) fn parse_metric_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Vec<MetricsField>> {
+) -> MacroResult<Vec<MetricsField>> {
     let mut parsed_fields = vec![];
     let mut errors = darling::Error::accumulator();
 
@@ -1132,7 +1182,7 @@ pub(crate) fn parse_metric_fields(
         });
     }
 
-    errors.finish().map_err(darling_to_syn)?;
+    errors.finish()?;
 
     Ok(parsed_fields)
 }
@@ -1618,15 +1668,12 @@ fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
     }
 }
 
-fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
-    let nested_meta = NestedMeta::parse_meta_list(attr.into())
-        .map_err(|error| syn::Error::new(error.span(), error.to_string()))?;
-    RawRootAttributes::from_list(&nested_meta)
-        .and_then(RawRootAttributes::validate)
-        .map_err(darling_to_syn)
+fn parse_root_attrs(attr: TokenStream) -> MacroResult<RootAttributes> {
+    let nested_meta = NestedMeta::parse_meta_list(attr.into())?;
+    Ok(RawRootAttributes::from_list(&nested_meta)?.validate()?)
 }
 
-fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
+fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> MacroResult<Ts2> {
     // Check if #[aggregate] attribute is present
     if input
         .attrs
@@ -1636,7 +1683,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
         return Err(Error::new_spanned(
             &input,
             "#[aggregate] must be placed before #[metrics], not after",
-        ));
+        )
+        .into());
     }
 
     let output = match root_attributes.mode {
@@ -1647,7 +1695,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                         return Err(Error::new_spanned(
                             &input,
                             "`tag` attribute is only supported on entry enums",
-                        ));
+                        )
+                        .into());
                     }
                     let fields = match &data_struct.fields {
                         Fields::Named(fields_named) => &fields_named.named,
@@ -1655,7 +1704,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                             return Err(Error::new_spanned(
                                 &input,
                                 "Only named fields are supported",
-                            ));
+                            )
+                            .into());
                         }
                     };
                     structs::generate_metrics_for_struct(root_attributes, &input, fields)?
@@ -1669,7 +1719,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     return Err(Error::new_spanned(
                         &input,
                         "Only structs and enums are supported for entries",
-                    ));
+                    )
+                    .into());
                 }
             }
         }
@@ -1679,10 +1730,9 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     Fields::Named(fields_named) => &fields_named.named,
                     Fields::Unnamed(fields_unnamed) => &fields_unnamed.unnamed,
                     _ => {
-                        return Err(Error::new_spanned(
-                            &input,
-                            "Only named fields are supported",
-                        ));
+                        return Err(
+                            Error::new_spanned(&input, "Only named fields are supported").into(),
+                        );
                     }
                 };
                 structs::generate_metrics_for_struct(root_attributes, &input, fields)?
@@ -1691,7 +1741,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                 return Err(Error::new_spanned(
                     &input,
                     "Only structs are supported with value, use value(string) with enums",
-                ));
+                )
+                .into());
             }
         },
         MetricMode::ValueString => {
@@ -1701,7 +1752,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     return Err(Error::new_spanned(
                         &input,
                         "Only enums are supported with value(string)",
-                    ));
+                    )
+                    .into());
                 }
             };
             let variants = enums::parse_enum_variants(variants, enums::VariantMode::ValueString)?;
