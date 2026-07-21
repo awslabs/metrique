@@ -489,14 +489,9 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => {
                 let fields = fields_named.named.iter().map(|f| {
-                    let name = &f.ident;
-                    let ty = &f.ty;
-                    let vis = &f.vis;
-                    let attrs = clean_aggregate_attrs(&f.attrs);
-                    quote! {
-                        #(#attrs)*
-                        #vis #name: #ty
-                    }
+                    let mut field = f.clone();
+                    field.attrs = clean_aggregate_attrs(&field.attrs);
+                    field
                 });
                 quote! {
                     #(#filtered_attrs)*
@@ -656,6 +651,29 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         insta::assert_snapshot!("aggregate_with_ignore", parsed_file);
+    }
+
+    #[test]
+    fn test_clean_aggregate_preserves_field_defaults() {
+        let input = syn::parse2(quote! {
+            struct Defaults {
+                #[aggregate(strategy = Sum)]
+                value: usize = DOES_NOT_EXIST,
+            }
+        })
+        .unwrap();
+
+        let cleaned = clean_aggregate_adt(&input);
+
+        assert_eq!(
+            cleaned.to_string(),
+            quote! {
+                struct Defaults {
+                    value: usize = DOES_NOT_EXIST
+                }
+            }
+            .to_string()
+        );
     }
 
     #[test]
