@@ -86,22 +86,35 @@ impl MacroError {
     }
 }
 
-fn to_syn2<T: ToTokens + ?Sized, U: syn2::parse::Parse>(value: &T) -> syn::Result<U> {
-    syn2::parse2(value.to_token_stream())
+fn metrics_attrs_to_syn2(attrs: &[syn::Attribute]) -> syn::Result<Vec<syn2::Attribute>> {
+    use syn2::parse::Parser as _;
+
+    let attrs = attrs
+        .iter()
+        .filter(|attribute| attribute.path().is_ident("metrics"));
+    syn2::Attribute::parse_outer
+        .parse2(quote! { #(#attrs)* })
         .map_err(|error| syn::Error::new(error.span(), error.to_string()))
 }
 
 fn field_to_syn2(field: &syn::Field) -> syn::Result<syn2::Field> {
-    use syn2::parse::Parser as _;
+    Ok(syn2::Field {
+        attrs: metrics_attrs_to_syn2(&field.attrs)?,
+        vis: syn2::Visibility::Inherited,
+        mutability: syn2::FieldMutability::None,
+        ident: field.ident.clone(),
+        colon_token: field.ident.as_ref().map(|_| Default::default()),
+        ty: syn2::parse_quote!(()),
+    })
+}
 
-    let parser = if field.ident.is_some() {
-        syn2::Field::parse_named
-    } else {
-        syn2::Field::parse_unnamed
-    };
-    parser
-        .parse2(field.to_token_stream())
-        .map_err(|error| syn::Error::new(error.span(), error.to_string()))
+fn variant_to_syn2(variant: &syn::Variant) -> syn::Result<syn2::Variant> {
+    Ok(syn2::Variant {
+        attrs: metrics_attrs_to_syn2(&variant.attrs)?,
+        ident: variant.ident.clone(),
+        fields: syn2::Fields::Unit,
+        discriminant: None,
+    })
 }
 
 fn path_to_syn3(path: &syn2::Path) -> darling::Result<syn::Path> {
@@ -1176,7 +1189,11 @@ pub(crate) fn parse_metric_fields(
             name,
             span,
             ty: field.ty.clone(),
-            vis: field.vis.clone(),
+            base_field: {
+                let mut field = field.clone();
+                field.attrs = clean_attrs(&field.attrs);
+                field
+            },
             external_attrs: clean_attrs(&field.attrs),
             attrs,
         });
@@ -1389,11 +1406,11 @@ struct MetricsFieldAttrs {
 }
 
 pub(crate) struct MetricsField {
-    pub(crate) vis: Visibility,
     pub(crate) ident: Ts2,
     pub(crate) name: Option<String>,
     pub(crate) span: Span,
     pub(crate) ty: Type,
+    pub(crate) base_field: syn::Field,
     pub(crate) external_attrs: Vec<Attribute>,
     pub(crate) attrs: MetricsFieldAttrs,
 }
@@ -1410,20 +1427,8 @@ impl MetricsField {
 }
 
 impl MetricsField {
-    fn core_field(&self, is_named: bool) -> Ts2 {
-        let MetricsField {
-            ref external_attrs,
-            ref ident,
-            ref ty,
-            ref vis,
-            ..
-        } = *self;
-        let field = if is_named {
-            quote! { #ident: #ty }
-        } else {
-            quote! { #ty }
-        };
-        quote! { #(#external_attrs)* #vis #field }
+    fn core_field(&self, _is_named: bool) -> Ts2 {
+        self.base_field.to_token_stream()
     }
 
     fn entry_field(&self, named: bool) -> Option<Ts2> {
@@ -1967,6 +1972,118 @@ mod tests {
         .unwrap()
         .validate()
         .unwrap();
+    }
+
+    #[test]
+    fn test_metrics_preserves_field_defaults_across_syn2_boundary() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            struct Defaults {
+                #[metrics(name = "renamed")]
+                value: usize = DOES_NOT_EXIST,
+            }
+        })
+        .unwrap();
+        let syn::Data::Struct(data) = input.data else {
+            unreachable!()
+        };
+        let syn::Fields::Named(fields) = data.fields else {
+            unreachable!()
+        };
+
+        let parsed = super::parse_metric_fields(&fields.named).unwrap();
+
+        assert_eq!(
+            parsed[0].core_field(true).to_string(),
+            quote! { value: usize = DOES_NOT_EXIST }.to_string()
+        );
+        assert!(matches!(
+            &parsed[0].attrs.kind,
+            super::MetricsFieldKind::Field {
+                name: Some(name),
+                ..
+            } if name == "renamed"
+        ));
+    }
+
+    #[test]
+    fn test_metrics_parses_variant_with_defaulted_field() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            enum Defaults {
+                #[metrics(name = "renamed")]
+                Variant {
+                    value: usize = DOES_NOT_EXIST,
+                },
+                Tuple(
+                    #[allow(dead_code)]
+                    #[metrics(ignore)]
+                    usize,
+                ),
+            }
+        })
+        .unwrap();
+        let syn::Data::Enum(data) = input.data else {
+            unreachable!()
+        };
+
+        let variants =
+            super::enums::parse_enum_variants(&data.variants, super::enums::VariantMode::Entry)
+                .unwrap();
+
+        assert_eq!(variants[0].attrs.name.as_deref(), Some("renamed"));
+        assert_eq!(
+            variants[0].core_variant().to_string(),
+            quote! {
+                Variant {
+                    value: usize = DOES_NOT_EXIST,
+                }
+            }
+            .to_string()
+        );
+        assert_eq!(
+            variants[1].core_variant().to_string(),
+            quote! {
+                Tuple(
+                    #[allow(dead_code)]
+                    usize,
+                )
+            }
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn test_enum_error_recovery_preserves_syn3_fields() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            enum Defaults {
+                #[metrics(name = "renamed")]
+                Variant {
+                    #[metrics(name = "value")]
+                    value: usize = DOES_NOT_EXIST,
+                },
+                Tuple(
+                    #[allow(dead_code)]
+                    #[metrics(ignore)]
+                    usize,
+                ),
+            }
+        })
+        .unwrap();
+
+        assert_eq!(
+            super::clean_base_adt(&input).to_string(),
+            quote! {
+                enum Defaults {
+                    Variant {
+                        value: usize = DOES_NOT_EXIST,
+                    },
+                    Tuple(
+                        #[allow(dead_code)]
+                        usize,
+                    )
+                }
+            }
+            .to_string()
+        );
     }
 
     #[test]

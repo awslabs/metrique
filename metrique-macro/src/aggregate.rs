@@ -1,12 +1,10 @@
+use crate::MetricMode;
+use crate::structs::entry_struct_ident;
 use darling::FromField;
 use proc_macro2::{Ident, TokenStream as Ts2};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Error, Fields, Result, Type};
-use syn2::parse::Parser as _;
-
-use crate::MetricMode;
-use crate::structs::entry_struct_ident;
 
 #[derive(Debug)]
 struct AggregateField {
@@ -17,6 +15,7 @@ struct AggregateField {
     is_ignored: bool,
     use_clone: bool,
     metrics_attrs: Vec<Attribute>,
+    has_unit: bool,
 }
 
 #[derive(Debug)]
@@ -127,6 +126,10 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             .filter(|attr| attr.path().is_ident("metrics"))
             .cloned()
             .collect();
+        let has_unit = crate::RawMetricsFieldAttrs::from_field(&crate::field_to_syn2(field)?)
+            .ok()
+            .and_then(|attrs| attrs.unit)
+            .is_some();
 
         parsed_fields.push(AggregateField {
             name,
@@ -136,6 +139,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             is_ignored,
             use_clone,
             metrics_attrs,
+            has_unit,
         });
     }
 
@@ -243,19 +247,8 @@ pub(crate) fn generate_aggregate_strategy_impl(
             quote! { #field_ty }
         };
 
-        // Check if field has a unit attribute by parsing metrics attributes
-        // Only dereference in entry mode, where the field is wrapped in WithUnit
-        let metrics_attrs = &f.metrics_attrs;
-        let field2 = syn2::Field::parse_named
-            .parse2(quote! { #(#metrics_attrs)* #name: #source_ty })
-            .expect("field was built from a valid parsed field");
-        let has_unit = entry_mode && crate::RawMetricsFieldAttrs::from_field(&field2)
-        .ok()
-        .and_then(|attrs| attrs.unit)
-        .is_some();
-
         // In entry mode with unit, need to unwrap WithUnit wrapper
-        let entry_value = if has_unit {
+        let entry_value = if entry_mode && f.has_unit {
             quote! { input.#name.into_inner() }
         } else {
             quote! { input.#name }

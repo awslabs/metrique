@@ -197,17 +197,9 @@ pub(crate) fn clean_base_struct(
 ) -> Ts2 {
     // Strip out `metrics` attribute
     let clean_fields = fields.named.iter().map(|field| {
-        let field_name = field.ident.as_ref().unwrap();
-        let field_type = &field.ty;
-        let field_vis = &field.vis;
-
-        // Filter out metrics attributes
-        let field_attrs = clean_attrs(&field.attrs);
-
-        quote! {
-            #(#field_attrs)*
-            #field_vis #field_name: #field_type
-        }
+        let mut field = field.clone();
+        field.attrs = clean_attrs(&field.attrs);
+        field
     });
 
     let expanded = quote! {
@@ -229,16 +221,9 @@ pub(crate) fn clean_base_unnamed_struct(
 ) -> Ts2 {
     // Strip out `metrics` attribute
     let clean_fields = fields.unnamed.iter().map(|field| {
-        let field_type = &field.ty;
-        let field_vis = &field.vis;
-
-        // Filter out metrics attributes
-        let field_attrs = clean_attrs(&field.attrs);
-
-        quote! {
-            #(#field_attrs)*
-            #field_vis #field_type
-        }
+        let mut field = field.clone();
+        field.attrs = clean_attrs(&field.attrs);
+        field
     });
 
     let expanded = quote! {

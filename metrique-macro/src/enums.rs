@@ -46,9 +46,9 @@ pub(crate) struct MetricsVariantAttrs {
 
 pub(crate) struct MetricsVariant {
     pub(crate) ident: Ident,
-    pub(crate) external_attrs: Vec<Attribute>,
     pub(crate) attrs: MetricsVariantAttrs,
     pub(crate) data: Option<VariantData>,
+    pub(crate) base_variant: syn::Variant,
 }
 pub(crate) enum VariantData {
     Tuple(Vec<TupleData>),
@@ -57,24 +57,8 @@ pub(crate) enum VariantData {
 
 impl MetricsVariant {
     pub(crate) fn core_variant(&self) -> Ts2 {
-        let MetricsVariant {
-            ref external_attrs,
-            ref ident,
-            ref data,
-            ..
-        } = *self;
-
-        match data {
-            None => quote! { #(#external_attrs)* #ident },
-            Some(VariantData::Tuple(tuple_data)) => {
-                let types = tuple_data.iter().map(|td| &td.ty);
-                quote! { #(#external_attrs)* #ident(#(#types),*) }
-            }
-            Some(VariantData::Struct(fields)) => {
-                let field_defs = fields.iter().map(|f| f.core_field(true));
-                quote! { #(#external_attrs)* #ident { #(#field_defs),* } }
-            }
-        }
+        let variant = &self.base_variant;
+        quote! { #variant }
     }
 
     pub(crate) fn entry_variant(&self) -> Ts2 {
@@ -219,7 +203,7 @@ pub(crate) fn parse_enum_variants(
         };
 
         let attrs = if mode != VariantMode::SkipAttributeParsing {
-            let variant2 = crate::to_syn2(variant)?;
+            let variant2 = crate::variant_to_syn2(variant)?;
             match errors.handle(RawMetricsVariantAttrs::from_variant(&variant2)) {
                 Some(attrs) => attrs.validate(mode)?,
                 None => {
@@ -232,9 +216,16 @@ pub(crate) fn parse_enum_variants(
 
         parsed_variants.push(MetricsVariant {
             ident: variant.ident.clone(),
-            external_attrs: clean_attrs(&variant.attrs),
             attrs,
             data,
+            base_variant: {
+                let mut variant = variant.clone();
+                variant.attrs = clean_attrs(&variant.attrs);
+                for field in variant.fields.iter_mut() {
+                    field.attrs = clean_attrs(&field.attrs);
+                }
+                variant
+            },
         });
     }
 
