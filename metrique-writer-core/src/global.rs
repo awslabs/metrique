@@ -381,15 +381,7 @@ impl Drop for TokioRuntimeTestSinkGuard {
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(arc) = self.shutdown_registry.take() {
-            // KNOWN BUG (found via the `concurrent_register_and_drop` shuttle test
-            // below): assumes nothing else ever holds a *strong* ref, only the
-            // `Weak` the macro keeps. `register_shutdown_fn` upgrades its `Weak`
-            // to a strong `Arc` to call `.push(f)` -- if that upgrade is still
-            // alive when this runs (a real, reachable race), `try_unwrap`
-            // legitimately returns `Err` and the line below panics.
-            //
-            // TBD: right behavior for a `ShutdownFn` registered concurrently with
-            // shutdown (wait for it? run it immediately? drop it?)
+            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/340)
             match Arc::try_unwrap(arc) {
                 Ok(registry) => registry.drain_and_run(),
                 Err(_) => unreachable!("ShutdownRegistry should have no other strong references"),
@@ -1422,13 +1414,6 @@ mod shuttle_tests {
 
     use super::{AttachHandle, ShutdownFn};
 
-    /// `AttachHandle::drop` calls `Arc::try_unwrap` on its `ShutdownRegistry`
-    /// and treats the "someone else still holds a strong ref" case as
-    /// `unreachable!()`, reasoning that everyone else only ever holds a
-    /// `Weak`. `register_shutdown_fn` (modeled here without the macro by
-    /// upgrading a `Weak` directly, then pushing) briefly holds a *strong*
-    /// ref while it does so. This drives that upgrade concurrently with the
-    /// drop it's racing against, for every interleaving shuttle explores.
     fn concurrent_register_and_drop() {
         let ran = Arc::new(AtomicUsize::new(0));
         let handle = AttachHandle::new(|| {});
@@ -1443,22 +1428,15 @@ mod shuttle_tests {
             }
         });
 
-        // `thread::spawn` doesn't hand control to the new thread -- this
-        // thread keeps running uninterrupted until its own next yield point.
-        // `drop(handle)` below has no yield point of its own (`try_unwrap`
-        // and `drain_and_run` touch no shuttle-instrumented primitive), so
-        // without an explicit yield here, shuttle can only ever schedule
-        // `registrar` entirely before or entirely after `drop` -- never
-        // *during* it, and the race this test exists to probe (a live
-        // temporary strong ref from `weak.upgrade()` still on `registrar`'s
-        // stack while `drop` calls `try_unwrap`) would never be reachable.
+        // required for shuttle to schedule `registrar` *during* `drop()` to test the case
+        // when there's a temporary strong ref from `weak.upgrade()` still on `registrar`'s
+        // stack while `drop` calls `try_unwrap`
         shuttle::thread::yield_now();
 
         drop(handle);
         registrar.join().unwrap();
 
-        // Whichever way the race went, the registered fn must run at most
-        // once -- never twice, and getting here at all means `drop` didn't
+        // If it runs more than once it means that `drop` didn't
         // panic on the `unreachable!()`.
         assert!(ran.load(Ordering::SeqCst) <= 1);
     }
@@ -1473,6 +1451,43 @@ mod shuttle_tests {
     #[ignore = "reproduces a real race in AttachHandle::drop"]
     fn concurrent_register_and_drop_determinism() {
         shuttle::check_uncontrolled_nondeterminism(concurrent_register_and_drop, 5_000);
+    }
+
+    fn concurrent_register_and_forget() {
+        let ran = Arc::new(AtomicUsize::new(0));
+        let handle = AttachHandle::new(|| {});
+        let weak = handle.shutdown_registry_weak();
+
+        let ran2 = ran.clone();
+        let registrar = shuttle::thread::spawn(move || {
+            if let Some(registry) = weak.upgrade() {
+                registry.push(ShutdownFn::new(move || {
+                    ran2.fetch_add(1, Ordering::SeqCst);
+                }));
+            }
+        });
+
+        // required for shuttle to schedule `registrar` *during* `forget()`
+        shuttle::thread::yield_now();
+
+        handle.forget();
+        registrar.join().unwrap();
+
+        assert_eq!(
+            ran.load(Ordering::SeqCst),
+            0,
+            "a fn registered around forget() must never run"
+        );
+    }
+
+    #[test]
+    fn concurrent_register_and_forget_pct() {
+        shuttle::check_pct(concurrent_register_and_forget, 5_000, 2);
+    }
+
+    #[test]
+    fn concurrent_register_and_forget_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(concurrent_register_and_forget, 5_000);
     }
 }
 
