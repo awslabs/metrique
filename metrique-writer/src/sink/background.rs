@@ -693,20 +693,19 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                     entry_count,
                 );
 
-                if status == DrainResult::HitDeadline {
-                    break; // Hit deadline, flush stream
-                }
-
-                if self.shutdown_signal.load(Ordering::Relaxed) {
-                    break; // shut down, break out of loop to have a chance to flush stream
-                }
-
-                // if the waker tracker can make progress observing an empty queue, let it
-                if !waker_tracker.will_progress_on_drained_queue() {
+                match next_loop_action(
+                    status,
+                    self.shutdown_signal.load(Ordering::Relaxed),
+                    waker_tracker.will_progress_on_drained_queue(),
+                ) {
+                    LoopAction::Flush => break, // hit deadline or shut down; flush stream
+                    LoopAction::Continue => {} // waker tracker can still make progress; re-check now
+                    LoopAction::Park => {
                         let park_start = Instant::now();
                         self.parker.park_deadline(next_flush);
                         if self.inner.observer.is_some() {
                             idle_duration += park_start.elapsed();
+                        }
                     }
                 }
 
@@ -879,6 +878,32 @@ enum DrainResult {
     HitDeadline, // some entries left, but we're now past the deadline
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopAction {
+    /// Break out of the inner loop to flush the stream.
+    Flush,
+    /// Park until the next flush deadline (or an unpark), then re-check.
+    Park,
+    /// Skip parking -- the waker tracker can still make progress -- and re-check immediately.
+    Continue,
+}
+
+/// Pure decision logic for `Receiver::run`'s inner loop,
+/// kept separate from the loop itself for testing purposes.
+fn next_loop_action(
+    status: DrainResult,
+    shutdown_requested: bool,
+    can_progress_on_drained_queue: bool,
+) -> LoopAction {
+    if status == DrainResult::HitDeadline || shutdown_requested {
+        LoopAction::Flush
+    } else if can_progress_on_drained_queue {
+        LoopAction::Continue
+    } else {
+        LoopAction::Park
+    }
+}
+
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
@@ -934,6 +959,43 @@ mod tests {
             "the waker's oneshot sender must have been dropped (woken)"
         );
     }
+
+    /// Exhaustive table over every combination of `next_loop_action`'s three inputs.
+    #[test]
+    fn next_loop_action_table() {
+        for shutdown_requested in [false, true] {
+            for can_progress in [false, true] {
+                assert_eq!(
+                    next_loop_action(DrainResult::HitDeadline, shutdown_requested, can_progress),
+                    LoopAction::Flush,
+                    "HitDeadline must always flush, regardless of shutdown_requested={shutdown_requested} \
+                     or can_progress_on_drained_queue={can_progress}"
+                );
+            }
+        }
+
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, true, false),
+            LoopAction::Flush,
+            "shutdown requested must flush even with nothing left to drain"
+        );
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, true, true),
+            LoopAction::Flush,
+            "shutdown requested must flush even if the waker tracker could still progress"
+        );
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, false, true),
+            LoopAction::Continue,
+            "no deadline, no shutdown, waker tracker can progress -- re-check immediately"
+        );
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, false, false),
+            LoopAction::Park,
+            "no deadline, no shutdown, nothing to make progress on -- park"
+        );
+    }
+
     // unfortunately, this needs to be a macro because we can't write a fn
     // generic over both BackgroundQueue and the boxed BackgroundQueue
     macro_rules! test_all_queues {
