@@ -740,6 +740,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
                 return self.shut_down();
             }
+            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/340)
             if Arc::get_mut(&mut self.inner).is_some() {
                 tracing::info!("no appenders left, shutting down background metrics queue");
                 return self.shut_down();
@@ -1032,6 +1033,42 @@ mod tests {
                         panic!("didn't finish writing");
                     }
                 }
+            }
+        }
+    }
+
+    /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/341
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    #[ignore = "reproduces a real bug: the background thread never auto-shuts-down \
+                when all BackgroundQueue clones are dropped, see the KNOWN BUG comment \
+                on Receiver::run's Arc::get_mut check"]
+    fn auto_shutdown_when_no_appenders_left() {
+        test_all_queues! {
+            |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),
+            |_output, queue, handle| {
+                queue.append(TestEntry(0));
+                drop(queue);
+
+                let start = Instant::now();
+                let auto_shut_down = loop {
+                    if handle.handle.as_ref().unwrap().is_finished() {
+                        break true;
+                    }
+                    if start.elapsed() > Duration::from_secs(3) {
+                        break false;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                };
+
+                // Clean up regardless of the outcome above, so this test never
+                // leaks the background thread past its own lifetime.
+                handle.shut_down();
+
+                assert!(
+                    auto_shut_down,
+                    "background thread never auto-shut-down after all queues were dropped"
+                );
             }
         }
     }
