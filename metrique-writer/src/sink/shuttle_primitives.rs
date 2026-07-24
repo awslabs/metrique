@@ -37,7 +37,7 @@ mod shuttle_impl {
     /// Shuttle-visible substitute for `crossbeam_queue::ArrayQueue`, backed by a
     /// `shuttle::sync::Mutex` so the scheduler can explore interleavings of
     /// concurrent `force_push`/`pop`. Implements only the surface `background.rs`
-    /// actually calls; mirrors `dial9-core`'s `BoundedQueue` shuttle shim.
+    /// actually calls.
     pub(crate) struct ArrayQueue<T> {
         capacity: usize,
         inner: shuttle::sync::Mutex<VecDeque<T>>,

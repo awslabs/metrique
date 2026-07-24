@@ -10,6 +10,9 @@ RUSTFLAGS="--cfg shuttle" \
 RUSTFLAGS="--cfg shuttle" \
   cargo llvm-cov --lib --features _shuttle --html -p metrique-aggregation -- shuttle "$@"
 
+RUSTFLAGS="--cfg shuttle --cfg tokio_unstable" \
+  cargo llvm-cov --lib --features _shuttle --html -p metrique-util -- shuttle "$@"
+
 RUSTFLAGS="--cfg shuttle" \
   cargo llvm-cov --lib --features _shuttle --html -p metrique -- shuttle "$@"
 

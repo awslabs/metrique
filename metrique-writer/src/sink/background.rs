@@ -739,7 +739,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
                 return self.shut_down();
             }
-            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/340)
+            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/341)
             if Arc::get_mut(&mut self.inner).is_some() {
                 tracing::info!("no appenders left, shutting down background metrics queue");
                 return self.shut_down();
