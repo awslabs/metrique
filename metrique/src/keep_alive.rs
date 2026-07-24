@@ -17,8 +17,22 @@ use core::{
 };
 use std::{
     fmt::Debug,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Weak},
 };
+
+// `Mutex` is the only piece of this module's synchronization shuttle
+// provides its own instrumented type for. `Arc`/`Weak`'s own atomics
+// aren't shuttle-instrumented, so a `DropAll` racing ordinary `Guard`s
+// (which only involves `Arc`/`Weak`) isn't Shuttle-testable here.
+//
+// Gated on both `cfg(shuttle)` and
+// `feature = "_shuttle"`, not `cfg(shuttle)` alone, for the same reason as
+// elsewhere in this workspace: `--cfg shuttle` is set process-wide via
+// RUSTFLAGS.
+#[cfg(all(shuttle, feature = "_shuttle"))]
+use shuttle::sync::Mutex;
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+use std::sync::Mutex;
 /// [`Parent`] owner
 ///
 /// The [`Parent`] provides exclusive mutable access to its inner value.
@@ -139,7 +153,7 @@ mod test {
     use core::{
         assert_eq,
         ops::Drop,
-        sync::atomic::{AtomicBool, Ordering},
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     use std::sync::Arc;
 
@@ -265,5 +279,151 @@ mod test {
         assert_eq!(is_dropped.load(Ordering::Relaxed), true);
 
         drop(_guard_2);
+    }
+
+    struct DropCounter {
+        count: Arc<AtomicUsize>,
+    }
+
+    impl DropCounter {
+        fn new() -> (Self, Arc<AtomicUsize>) {
+            let count = Arc::new(AtomicUsize::new(0));
+            (
+                DropCounter {
+                    count: count.clone(),
+                },
+                count,
+            )
+        }
+    }
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// The value must be released exactly once: not zero (a leak)
+    /// and not more than once (a double drop, which given `Parent`'s
+    /// `unsafe impl Send`/`Sync` and `UnsafeCell` would risk real
+    /// undefined behavior, not just a logic bug).
+    #[test]
+    fn stress_concurrent_guard_and_drop_all_race_releases_value_exactly_once() {
+        use std::sync::Barrier;
+
+        const GUARDS: usize = 4;
+
+        for _ in 0..1000 {
+            let (tester, drop_count) = DropCounter::new();
+            let primary = Parent::new(tester);
+
+            let guards: Vec<_> = (0..GUARDS).map(|_| primary.new_guard()).collect();
+            let drop_all = primary.force_drop_guard();
+
+            // GUARDS threads dropping their guard + 1 thread dropping
+            // `drop_all` + this thread dropping `primary` -- all racing
+            // through the same barrier.
+            let barrier = Arc::new(Barrier::new(GUARDS + 1 + 1));
+
+            let mut handles: Vec<_> = guards
+                .into_iter()
+                .map(|guard| {
+                    let barrier = barrier.clone();
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        drop(guard);
+                    })
+                })
+                .collect();
+
+            handles.push({
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    drop(drop_all);
+                })
+            });
+
+            barrier.wait();
+            drop(primary);
+
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            assert_eq!(
+                drop_count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how the guard/drop_all/primary drops interleaved"
+            );
+        }
+    }
+}
+
+// Shuttle interleaving test for a `Guard`/`DropAll` race the real-thread
+// stress test above doesn't cover: two `DropAll`s racing each other, not
+// just a `DropAll` racing `Guard`s.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::Parent;
+
+    struct DropCounter {
+        count: Arc<AtomicUsize>,
+    }
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// Two `DropAll`s dropped concurrently, racing each other (and
+    /// `Parent`'s own drop) on the same slot. Unlike a `DropAll` racing
+    /// ordinary `Guard`s (which races inside `Arc`'s own atomics, outside
+    /// what Shuttle instruments), this race sits entirely between two
+    /// `Mutex` operations Shuttle does control.
+    fn concurrent_drop_alls_race_releases_value_exactly_once() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let tester = DropCounter {
+            count: count.clone(),
+        };
+        let primary = Parent::new(tester);
+
+        let drop_all_1 = primary.force_drop_guard();
+        let drop_all_2 = primary.force_drop_guard();
+
+        let h1 = shuttle::thread::spawn(move || drop(drop_all_1));
+        let h2 = shuttle::thread::spawn(move || drop(drop_all_2));
+
+        drop(primary);
+
+        h1.join().unwrap();
+        h2.join().unwrap();
+
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "value must be dropped exactly once, regardless of how the two DropAlls and primary interleave"
+        );
+    }
+
+    #[test]
+    fn concurrent_drop_alls_race_releases_value_exactly_once_pct() {
+        shuttle::check_pct(
+            concurrent_drop_alls_race_releases_value_exactly_once,
+            2_000,
+            3,
+        );
+    }
+
+    #[test]
+    fn concurrent_drop_alls_race_releases_value_exactly_once_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(
+            concurrent_drop_alls_race_releases_value_exactly_once,
+            2_000,
+        );
     }
 }
