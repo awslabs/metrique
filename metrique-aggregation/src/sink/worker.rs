@@ -167,6 +167,35 @@ mod tests {
             "worker should flush exactly once before exiting on disconnect",
         );
     }
+
+    /// Not Shuttle-testable (Shuttle doesn't model time), so this asserts real
+    /// elapsed-time behavior directly.
+    #[test]
+    fn flushes_periodically_under_continuous_load() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            Duration::from_millis(1),
+        );
+
+        let start = Instant::now();
+        loop {
+            sink.send(());
+            if flushes.load(Ordering::SeqCst) > 10 {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(60) {
+                panic!(
+                    "only flushed {} times in 60s of continuous sending -- periodic flush \
+                     must fire even while entries keep arriving",
+                    flushes.load(Ordering::SeqCst)
+                );
+            }
+            std::thread::sleep(Duration::from_micros(1));
+        }
+    }
 }
 
 // Shuttle interleaving tests for `WorkerSink`, covering merge correctness
