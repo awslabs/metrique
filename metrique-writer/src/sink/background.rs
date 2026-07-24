@@ -703,10 +703,10 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
 
                 // if the waker tracker can make progress observing an empty queue, let it
                 if !waker_tracker.will_progress_on_drained_queue() {
-                    let park_start = Instant::now();
-                    self.parker.park_deadline(next_flush);
-                    if self.inner.observer.is_some() {
-                        idle_duration += park_start.elapsed();
+                        let park_start = Instant::now();
+                        self.parker.park_deadline(next_flush);
+                        if self.inner.observer.is_some() {
+                            idle_duration += park_start.elapsed();
                     }
                 }
 
@@ -1481,9 +1481,7 @@ mod tests {
 // made two of them deadlock deterministically until fixed.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
-    use std::future::Future;
     use std::sync::{Arc, Mutex};
-    use std::task::{Context, Poll, Wake, Waker};
 
     use metrique_writer_core::test_stream::{TestEntry, TestStream};
 
@@ -1504,29 +1502,11 @@ mod shuttle_tests {
         Duration::from_secs(59)
     }
 
-    struct NoopWaker;
-    impl Wake for NoopWaker {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    /// Drives `fut` to completion by spinning and yielding to shuttle's
-    /// scheduler between polls. Under shuttle, *scheduling*, not a real
-    /// waker callback, is what lets the background thread make progress,
-    /// so a spin+yield loop is the natural way to drive a future here --
-    /// unlike `futures::executor::block_on`, it never performs a real
-    /// (uninstrumented) thread park/unpark that shuttle can't see, which
-    /// could otherwise deadlock the whole exploration.
-    fn block_on<F: Future>(fut: F) -> F::Output {
-        futures::pin_mut!(fut);
-        let waker: Waker = Arc::new(NoopWaker).into();
-        let mut cx = Context::from_waker(&waker);
-        loop {
-            match fut.as_mut().poll(&mut cx) {
-                Poll::Ready(v) => return v,
-                Poll::Pending => shuttle::thread::yield_now(),
-            }
-        }
-    }
+    // `futures::executor::block_on`'s real thread park/unpark on wake
+    // is invisible to shuttle and can deadlock the exploration. Shuttle's own
+    // `block_on` polls and yields to its scheduler on `Pending` instead of
+    // really blocking, using shuttle's own waker under the hood.
+    use shuttle::future::block_on;
 
     /// Round-trip / no-loss: entries pushed concurrently from several threads
     /// are all eventually observed by the stream, for every interleaving
@@ -1679,6 +1659,75 @@ mod shuttle_tests {
 
     #[test]
     fn overflow_accounting_pct() {
-        shuttle::check_pct(overflow_accounting, 2_000, 1);
+        shuttle::check_pct(overflow_accounting, 2_000, 3);
+    }
+
+    #[test]
+    fn overflow_accounting_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(overflow_accounting, 2_000);
+    }
+
+    /// Same conservation invariant as `overflow_accounting`, but pushed from
+    /// several concurrent threads instead of a single-threaded loop, so the
+    /// eviction race in `force_push` (checking `len() >= capacity` then
+    /// evicting then pushing) is actually contended by multiple producers,
+    /// not just raced against the receiver's pops.
+    fn overflow_accounting_concurrent_producers() {
+        #[derive(Default, Clone)]
+        struct CountingObserver(Arc<Mutex<u64>>);
+        impl BackgroundQueueObserver for CountingObserver {
+            fn on_event(&self, _queue: &str, event: BackgroundQueueEvent) {
+                if let BackgroundQueueEvent::QueueOverflow = event {
+                    *self.0.lock().unwrap() += 1;
+                }
+            }
+        }
+
+        const CAPACITY: usize = 2;
+        const THREADS: u64 = 2;
+        const PER_THREAD: u64 = 3;
+        const PUSHED: u64 = THREADS * PER_THREAD;
+
+        let overflows = CountingObserver::default();
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(CAPACITY)
+            .flush_interval(flush_interval())
+            .observer(overflows.clone())
+            .build::<TestEntry>(Arc::clone(&output));
+
+        let threads: Vec<_> = (0..THREADS)
+            .map(|t| {
+                let queue = queue.clone();
+                shuttle::thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        queue.append(TestEntry(t * PER_THREAD + i));
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+
+        handle.shut_down();
+
+        let observed = output.lock().unwrap().values.len() as u64;
+        assert_eq!(
+            *overflows.0.lock().unwrap() + observed,
+            PUSHED,
+            "every pushed entry must be either evicted-and-counted or observed, never both/neither, \
+             even when pushes race each other across producer threads"
+        );
+    }
+
+    #[test]
+    fn overflow_accounting_concurrent_producers_pct() {
+        shuttle::check_pct(overflow_accounting_concurrent_producers, 2_000, 3);
+    }
+
+    #[test]
+    fn overflow_accounting_concurrent_producers_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(overflow_accounting_concurrent_producers, 2_000);
     }
 }
