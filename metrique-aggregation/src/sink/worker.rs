@@ -11,16 +11,15 @@ use tokio::sync::oneshot;
 use crate::traits::{AggregateSink, FlushableSink, RootSink};
 
 // Cfg-gated concurrency primitives (std vs. shuttle). Gated on both
-// `cfg(shuttle)` and `feature = "_shuttle"`, not `cfg(shuttle)` alone:
-// `--cfg shuttle` is set process-wide via RUSTFLAGS, so it also reaches
+// `cfg(shuttle)` and `feature = "_shuttle"` so it also reaches
 // builds of this crate that don't have `_shuttle` enabled (e.g. as a
 // dev-dependency with different requested features) and therefore don't
 // have the optional `shuttle` crate linked at all.
 //
 // `RecvTimeoutError` needs no swap -- shuttle re-exports std's type
-// unchanged. Its `recv_timeout` never actually times out though (always
-// blocks until data or disconnect), so the `Timeout` branch below is
-// unreachable under shuttle exploration.
+// unchanged. Its `recv_timeout` never actually times out though,
+// that's a known gap documented in Shuttle itself:
+// https://github.com/awslabs/shuttle/blob/c8a46d3965048df3207ec920dae066bc9c4d9d89/shuttle-std/src/sync/mpsc.rs#L433
 #[cfg(all(shuttle, feature = "_shuttle"))]
 use shuttle::{
     sync::mpsc::{Sender, channel},
@@ -170,20 +169,22 @@ mod tests {
     }
 }
 
-// Shuttle interleaving tests for `WorkerSink`. The background thread used to
-// treat `RecvTimeoutError::Timeout` and `::Disconnected` identically and
-// never exit on disconnect (see `mod tests` above for the original,
-// real-thread regression test).
+// Shuttle interleaving tests for `WorkerSink`, covering merge correctness
+// and clean exit on channel disconnect.
 //
 // Since `recv_timeout` never actually times out under shuttle (see the
-// primitives import comment above), these tests cover merge correctness and
-// clean exit on disconnect only, not the periodic-flush path.
+// primitives import comment above), these tests don't exercise the
+// periodic-flush path.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
-    use std::future::Future;
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::task::{Context, Poll, Wake, Waker};
+
+    // `futures::executor::block_on`'s real thread park/unpark on wake
+    // is invisible to shuttle and can deadlock the exploration. Shuttle's own
+    // `block_on` polls and yields to its scheduler on `Pending` instead of
+    // really blocking, using shuttle's own waker under the hood.
+    use shuttle::future::block_on;
 
     use super::*;
 
@@ -201,27 +202,6 @@ mod shuttle_tests {
     impl FlushableSink for CollectingSink {
         fn flush(&mut self) {
             self.flushes.fetch_add(1, Ordering::SeqCst);
-        }
-    }
-
-    struct NoopWaker;
-    impl Wake for NoopWaker {
-        fn wake(self: Arc<Self>) {}
-    }
-
-    /// Drives `fut` to completion by spinning and yielding to shuttle's
-    /// scheduler between polls. Not `futures::executor::block_on`: its real
-    /// thread park/unpark on wake is invisible to shuttle and can deadlock
-    /// the exploration.
-    fn block_on<F: Future>(fut: F) -> F::Output {
-        let mut fut = Box::pin(fut);
-        let waker: Waker = Arc::new(NoopWaker).into();
-        let mut cx = Context::from_waker(&waker);
-        loop {
-            match fut.as_mut().poll(&mut cx) {
-                Poll::Ready(v) => return v,
-                Poll::Pending => shuttle::thread::yield_now(),
-            }
         }
     }
 
