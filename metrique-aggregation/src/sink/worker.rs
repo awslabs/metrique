@@ -327,4 +327,58 @@ mod shuttle_tests {
             2_000,
         );
     }
+
+    /// The shared mpsc channel preserves each sender's own order, so this thread's
+    /// entries must be merged by the time its own `flush()` resolves.
+    fn flush_resolves_after_own_prior_sends() {
+        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<u64, _>::new(
+            CollectingSink {
+                merged: merged.clone(),
+                flushes: flushes.clone(),
+            },
+            flush_interval(),
+        );
+
+        let other = {
+            let sink = sink.clone();
+            shuttle::thread::spawn(move || {
+                for i in 100..102 {
+                    sink.send(i);
+                }
+            })
+        };
+
+        for i in 0..2 {
+            sink.send(i);
+        }
+        block_on(sink.flush());
+
+        let values = merged.lock().unwrap().clone();
+        for i in 0..2 {
+            assert!(
+                values.contains(&i),
+                "flush() resolved without observing entry {i} sent before it on the same thread"
+            );
+        }
+
+        other.join().unwrap();
+        let handle = Arc::clone(&sink._handle);
+        drop(sink);
+        Arc::into_inner(handle)
+            .expect("sole handle ref after dropping the only WorkerSink")
+            .join()
+            .expect("worker thread panicked");
+    }
+
+    #[test]
+    fn flush_resolves_after_own_prior_sends_pct() {
+        shuttle::check_pct(flush_resolves_after_own_prior_sends, 2_000, 3);
+    }
+
+    #[test]
+    fn flush_resolves_after_own_prior_sends_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(flush_resolves_after_own_prior_sends, 2_000);
+    }
 }
