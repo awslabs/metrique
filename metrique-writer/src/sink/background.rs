@@ -894,6 +894,46 @@ mod tests {
 
     use super::*;
 
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    fn waker_tracker_wakes_within_capacity_on_mid_drain_hit_deadline() {
+        let (tx, rx) = std::sync::mpsc::channel::<FlushSignal>();
+        let (flush_tx, mut flush_rx) = tokio::sync::oneshot::channel::<()>();
+        tx.send(FlushSignal { channel: flush_tx }).unwrap();
+
+        let mut tracker = WakerTracker::new(rx);
+        let flushed = std::cell::Cell::new(0u32);
+        let capacity = 10usize;
+        let mark_flushed = || flushed.set(flushed.get() + 1);
+
+        // First call: `waiting_wakers` starts empty, so this call only
+        // *discovers* the waker (via the second `if` block) and sets
+        // entries_before_wake = capacity; this call's own entry_count isn't
+        // subtracted against it (that only starts from the next call).
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(flushed.get(), 0, "not enough entries processed yet to wake");
+
+        // Second call: entries_before_wake = 10 - 4 = 6.
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(flushed.get(), 0, "still under capacity");
+
+        // Third call: entries_before_wake = 6 - 4 = 2, still not 0.
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(flushed.get(), 0, "still under capacity");
+
+        // Fourth call: 2.saturating_sub(4) = 0 -- must wake now, even though
+        // status is HitDeadline (not Drained) on every single call here.
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(
+            flushed.get(),
+            1,
+            "must wake within `capacity` entries processed, even under continuous HitDeadline"
+        );
+        assert!(
+            flush_rx.try_recv().is_err(),
+            "the waker's oneshot sender must have been dropped (woken)"
+        );
+    }
     // unfortunately, this needs to be a macro because we can't write a fn
     // generic over both BackgroundQueue and the boxed BackgroundQueue
     macro_rules! test_all_queues {
@@ -1513,9 +1553,8 @@ mod tests {
 // Known gap: the long `flush_interval` used below keeps the periodic-flush
 // deadline from ever tripping, so `WakerTracker::entries_before_wake`'s
 // countdown (only reachable via a mid-drain `HitDeadline`) is never
-// exercised here. These tests do catch real bugs regardless: an earlier,
-// incorrect `Parker`/`Unparker` shim (bound to the wrong thread's identity)
-// made two of them deadlock deterministically until fixed.
+// exercised here. Covered instead by a real-thread test in `mod tests`
+// above (`waker_tracker_wakes_within_capacity_on_mid_drain_hit_deadline`)
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
     use std::sync::{Arc, Mutex};
