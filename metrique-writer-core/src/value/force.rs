@@ -240,7 +240,11 @@ mod tests {
     enum Event {
         String(String),
         ValuesStart,
-        Metric { total: u64, flagged: bool },
+        Metric {
+            total: u64,
+            flagged: bool,
+            dimensions: Vec<(String, String)>,
+        },
     }
 
     struct Recorder<'a>(&'a mut Vec<Event>);
@@ -254,7 +258,7 @@ mod tests {
             self,
             distribution: impl IntoIterator<Item = Observation>,
             _unit: Unit,
-            _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+            dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
             flags: MetricFlags<'_>,
         ) {
             let total = distribution
@@ -267,6 +271,10 @@ mod tests {
             self.0.push(Event::Metric {
                 total,
                 flagged: flags.downcast::<TestFlagOpt>().is_some(),
+                dimensions: dimensions
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
             });
         }
 
@@ -311,11 +319,51 @@ mod tests {
                 Event::ValuesStart,
                 Event::Metric {
                     total: 1,
-                    flagged: true
+                    flagged: true,
+                    dimensions: vec![]
                 },
                 Event::Metric {
                     total: 2,
-                    flagged: true
+                    flagged: true,
+                    dimensions: vec![]
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn forwards_empty_values() {
+        let value: ForceFlag<Vec<u64>, TestFlagCtor> = vec![].into();
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        assert_eq!(events, [Event::ValuesStart]);
+    }
+
+    #[test]
+    fn stacked_wrappers_apply_flag_and_dimensions_to_elements() {
+        use crate::value::WithDimension;
+
+        let value = WithDimension::new(
+            ForceFlag::<_, TestFlagCtor>::from(vec![1u64, 2u64]),
+            "foo",
+            "bar",
+        );
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        let dimensions = vec![("foo".to_string(), "bar".to_string())];
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    total: 1,
+                    flagged: true,
+                    dimensions: dimensions.clone()
+                },
+                Event::Metric {
+                    total: 2,
+                    flagged: true,
+                    dimensions
                 },
             ],
         );
