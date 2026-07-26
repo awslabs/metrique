@@ -1726,3 +1726,153 @@ mod shape_tests {
         assert_field_shape(&entry, 0, FieldShape::Opaque);
     }
 }
+
+// ─── Write order vs descriptor segment order ────────────────────────────────
+//
+// The `Entry::write` order contract (docs/entry-descriptors.md) requires that
+// walking `descriptors()` segments in sequence yields fields in exactly the
+// order `Entry::write` emits `EntryWriter::value` callbacks.
+
+/// Captures the order of `EntryWriter::value` callbacks.
+#[derive(Default)]
+struct ValueOrderWriter {
+    names: Vec<String>,
+}
+
+impl<'a> metrique::writer::EntryWriter<'a> for ValueOrderWriter {
+    fn timestamp(&mut self, _timestamp: SystemTime) {}
+
+    fn value(
+        &mut self,
+        name: impl Into<std::borrow::Cow<'a, str>>,
+        _value: &(impl metrique_writer_core::Value + ?Sized),
+    ) {
+        self.names.push(name.into().into_owned());
+    }
+
+    fn config(&mut self, _config: &'a dyn metrique_writer_core::EntryConfig) {}
+}
+
+/// Field names in the order `Entry::write` emits them.
+fn write_order(entry: &impl Entry) -> Vec<String> {
+    let mut writer = ValueOrderWriter::default();
+    entry.write(&mut writer);
+    writer.names
+}
+
+/// Field names in the order the descriptor segments list them.
+fn descriptor_order(entry: &impl Entry) -> Vec<String> {
+    entry
+        .descriptors()
+        .unwrap()
+        .iter()
+        .flat_map(|seg| {
+            seg.fields()
+                .map(|f| f.name_parts().collect::<String>())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[metrics(subfield, rename_all = "PascalCase")]
+pub struct OrderChild {
+    child_value: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct FlattenFirstParent {
+    #[metrics(flatten)]
+    child: OrderChild,
+    own_field: u64,
+}
+
+#[test]
+fn flatten_first_descriptor_order_matches_write_order() {
+    let m = FlattenFirstParent {
+        child: OrderChild { child_value: 1 },
+        own_field: 2,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    // Write order: ChildValue, OwnField.
+    assert_eq!(write_order(&entry), vec!["ChildValue", "OwnField"]);
+
+    // FIXME: inverted assertion documenting the current bug. descriptors()
+    // puts the parent segment ahead of the flattened child even though the
+    // child's fields are written first. Flip to assert_eq! with the fix.
+    assert_ne!(descriptor_order(&entry), write_order(&entry));
+}
+
+#[metrics(subfield, rename_all = "PascalCase")]
+struct SecondOrderChild {
+    other_value: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct InterleavedParent {
+    alpha: u64,
+    #[metrics(flatten, prefix = "first_")]
+    first: OrderChild,
+    beta: u64,
+    #[metrics(flatten, prefix = "second_")]
+    second: SecondOrderChild,
+    gamma: u64,
+}
+
+#[test]
+fn interleaved_flatten_descriptor_order_matches_write_order() {
+    let m = InterleavedParent {
+        alpha: 1,
+        first: OrderChild { child_value: 2 },
+        beta: 3,
+        second: SecondOrderChild { other_value: 4 },
+        gamma: 5,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    assert_eq!(
+        write_order(&entry),
+        vec![
+            "Alpha",
+            "FirstChildValue",
+            "Beta",
+            "SecondOtherValue",
+            "Gamma"
+        ]
+    );
+
+    // FIXME: inverted assertion documenting the current bug. Flip to
+    // assert_eq! with the fix.
+    assert_ne!(descriptor_order(&entry), write_order(&entry));
+}
+
+#[metrics(rename_all = "PascalCase", tag(name = "operation"))]
+enum OrderEnum {
+    FlattenFirst {
+        #[metrics(flatten)]
+        child: OrderChild,
+        own_field: u64,
+    },
+}
+
+#[test]
+fn enum_flatten_first_descriptor_order_matches_write_order() {
+    let m = OrderEnum::FlattenFirst {
+        child: OrderChild { child_value: 1 },
+        own_field: 2,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    // Tag writes first, then fields in declaration order.
+    assert_eq!(
+        write_order(&entry),
+        vec!["Operation", "ChildValue", "OwnField"]
+    );
+
+    // FIXME: inverted assertion documenting the current bug. Flip to
+    // assert_eq! with the fix.
+    assert_ne!(descriptor_order(&entry), write_order(&entry));
+}
