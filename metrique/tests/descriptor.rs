@@ -658,17 +658,23 @@ fn enum_variant_field_order_matches_declaration() {
     let entry = metrique::RootEntry::new(closed);
     let descriptors = entry.descriptors().unwrap();
 
-    // Base descriptor has non-flatten fields in declaration order
+    // Own fields split into contiguous runs at the flatten boundary,
+    // in write order: [alpha, beta, gamma], [child], [delta]
+    assert_eq!(descriptors.len(), 3);
     let base_fields: Vec<_> = descriptors[0].fields().collect();
+    assert_eq!(base_fields.len(), 3);
     assert_eq!(base_fields[0].base_name(), "Alpha");
     assert_eq!(base_fields[1].base_name(), "Beta");
     assert_eq!(base_fields[2].base_name(), "Gamma");
-    assert_eq!(base_fields[3].base_name(), "Delta");
 
-    // Flatten child comes after base
-    assert_eq!(descriptors.len(), 2);
+    // Flatten child at its declaration position
     let child_fields: Vec<_> = descriptors[1].fields().collect();
     assert_eq!(child_fields[0].base_name(), "AVal");
+
+    // Trailing own-field run after the flatten
+    let trailing_fields: Vec<_> = descriptors[2].fields().collect();
+    assert_eq!(trailing_fields.len(), 1);
+    assert_eq!(trailing_fields[0].base_name(), "Delta");
 }
 
 #[metrics(subfield)]
@@ -1795,13 +1801,8 @@ fn flatten_first_descriptor_order_matches_write_order() {
     let closed = metrique::CloseValue::close(m);
     let entry = metrique::RootEntry::new(closed);
 
-    // Write order: ChildValue, OwnField.
     assert_eq!(write_order(&entry), vec!["ChildValue", "OwnField"]);
-
-    // FIXME: inverted assertion documenting the current bug. descriptors()
-    // puts the parent segment ahead of the flattened child even though the
-    // child's fields are written first. Flip to assert_eq! with the fix.
-    assert_ne!(descriptor_order(&entry), write_order(&entry));
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
 }
 
 #[metrics(subfield, rename_all = "PascalCase")]
@@ -1843,9 +1844,7 @@ fn interleaved_flatten_descriptor_order_matches_write_order() {
         ]
     );
 
-    // FIXME: inverted assertion documenting the current bug. Flip to
-    // assert_eq! with the fix.
-    assert_ne!(descriptor_order(&entry), write_order(&entry));
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
 }
 
 #[metrics(rename_all = "PascalCase", tag(name = "operation"))]
@@ -1872,7 +1871,113 @@ fn enum_flatten_first_descriptor_order_matches_write_order() {
         vec!["Operation", "ChildValue", "OwnField"]
     );
 
-    // FIXME: inverted assertion documenting the current bug. Flip to
-    // assert_eq! with the fix.
-    assert_ne!(descriptor_order(&entry), write_order(&entry));
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
+}
+
+#[test]
+fn flatten_first_leading_parent_segment_is_empty() {
+    let m = FlattenFirstParent {
+        child: OrderChild { child_value: 1 },
+        own_field: 2,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors = entry.descriptors().unwrap();
+
+    // The first segment always belongs to the parent so its canonical name
+    // stays discoverable; it consumes zero values.
+    assert_eq!(descriptors.len(), 3);
+    assert_eq!(descriptors[0].name(), "FlattenFirstParent");
+    assert_eq!(descriptors[0].fields_len(), 0);
+    assert_eq!(descriptors[1].name(), "OrderChild");
+    assert_eq!(descriptors[2].name(), "FlattenFirstParent");
+    assert_eq!(descriptors[2].fields_len(), 1);
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct TimestampAfterFlatten {
+    #[metrics(flatten)]
+    child: OrderChild,
+    #[metrics(timestamp)]
+    start: SystemTime,
+    own_field: u64,
+}
+
+#[test]
+fn timestamp_after_flatten_lives_on_first_segment() {
+    let m = TimestampAfterFlatten {
+        child: OrderChild { child_value: 1 },
+        start: SystemTime::UNIX_EPOCH,
+        own_field: 2,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors = entry.descriptors().unwrap();
+
+    // The timestamp has no position in the value stream, so it lives on the
+    // first segment regardless of where the field is declared.
+    assert_eq!(descriptors[0].name(), "TimestampAfterFlatten");
+    assert_eq!(descriptors[0].timestamp().unwrap().name(), "start");
+    assert!(descriptors[2].timestamp().is_none());
+
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct CfgSplitParent {
+    before: u64,
+    #[cfg(feature = "__metrique_nonexistent_feature")]
+    #[metrics(flatten)]
+    never: OrderChild,
+    after: u64,
+}
+
+#[test]
+fn cfg_disabled_flatten_still_splits_own_field_runs() {
+    let m = CfgSplitParent {
+        before: 1,
+        after: 2,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors = entry.descriptors().unwrap();
+
+    // Runs split at the flatten site even though it is compiled out; two
+    // adjacent parent segments still satisfy the order contract.
+    assert_eq!(descriptors.len(), 2);
+    assert_eq!(
+        descriptors[0].fields().next().unwrap().base_name(),
+        "Before"
+    );
+    assert_eq!(descriptors[1].fields().next().unwrap().base_name(), "After");
+
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
+}
+
+#[metrics(subfield, rename_all = "PascalCase")]
+pub struct FlaggedOrderChild {
+    flagged_value: u64,
+}
+
+#[metrics(rename_all = "PascalCase")]
+enum EnumFlattenFlags {
+    Variant {
+        #[metrics(flatten, default_flags(AuditExport))]
+        child: FlaggedOrderChild,
+    },
+}
+
+#[test]
+fn enum_flatten_default_flags_applied_to_child_descriptor() {
+    let m = EnumFlattenFlags::Variant {
+        child: FlaggedOrderChild { flagged_value: 1 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors = entry.descriptors().unwrap();
+
+    let child_fields: Vec<_> = descriptors[1].fields().collect();
+    let flags: Vec<_> = child_fields[0].flags().collect();
+    assert_eq!(flags.len(), 1);
+    assert_eq!(flags[0].type_id(), TypeId::of::<AuditExport>());
 }

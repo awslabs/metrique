@@ -26,6 +26,20 @@ const _: () = {
         #[inline(always)]
         fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "RequestMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor_run_1() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 1usize] = [
@@ -153,6 +167,16 @@ const _: () = {
                                         as usize],
                                 )
                         }),
+                )
+                .chain(
+                    ::metrique::writer::core::Descriptors::available(
+                        ::std::iter::once(
+                            ::metrique::writer::core::DescriptorRef::from_static(
+                                RequestMetricsEntry::__metrique_descriptor_run_1(),
+                                <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                            ),
+                        ),
+                    ),
                 )
         }
     }

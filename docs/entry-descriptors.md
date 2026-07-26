@@ -184,7 +184,7 @@ Extending `Entry` rather than introducing a separate trait keeps descriptor look
 
 Each enum variant gets its own static descriptor containing only that variant's fields (plus the tag field if present). The `descriptors()` method matches on self and yields the active variant's descriptor. Different variants produce different `DescriptorId`s. The descriptor name includes the variant (e.g., `"MyEnum::Read"`).
 
-For variants with flatten fields, the variant's base descriptor is followed by the flatten children's descriptors (same chaining pattern as structs). A generated enum iterator type (same pattern as sample_group) unifies the different return types across match arms.
+For variants with flatten fields, the children's descriptors are interleaved at their declaration position, with the variant's own fields split into runs at flatten boundaries (same segmentation as structs). The variant's first segment carries the tag field (written before any variant fields) and the variant's canonical name.
 
 Sinks see different descriptor sequences depending on which variant is active. Each segment has its own `DescriptorId`, so per-segment caching works naturally. Sinks that want a single cache key for the whole entry can hash the sequence of ids.
 
@@ -252,9 +252,9 @@ Flattened children manage their own flags independently. This matches the scopin
 │    yields one or more DescriptorRef segments in write order  │
 │                                                             │
 │  Simple struct:    [own fields]                             │
-│  With flatten:     [own fields] [child1] [child2] ...       │
+│  With flatten:     [own run] [child1] [own run] [child2] ..  │
 │  AggregationResult: [key fields] [aggregated fields]        │
-│  Enum variant:     [variant's fields] [variant's children]  │
+│  Enum variant:     [tag + own run] [child] [own run] ...    │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
@@ -288,12 +288,30 @@ One descriptor entry regardless of runtime cardinality. Sinks that understand `L
 - **`#[metrics(timestamp)]`**: timestamp fields are excluded from the field list and exposed separately.
 - **`#[metrics(ignore)]`**: excluded from the descriptor entirely.
 - **`#[metrics(subfield)]`**: subfield structs get their own descriptor, chained by the parent.
-- **`flatten` / `flatten_entry`**: both chain the child's descriptor segments after the parent's own.
+- **`flatten` / `flatten_entry`**: both interleave the child's descriptor segments at the flatten site's declaration position, splitting the parent's own fields into contiguous runs (see "Flatten descriptor mechanics").
 - **`#[metrics(value)]` newtypes**: lower to their wrapped type's shape when macro-known.
 
 ## Flatten descriptor mechanics
 
-When a parent flattens a child, the parent's `descriptors()` chains the child's descriptor segments after its own. Prefixes and default flags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
+When a parent flattens a child, the child's descriptor segments appear at the flatten site's declaration position, so segments come out in the same order `Entry::write` emits values. The parent's own (non-flatten) fields are split into contiguous runs at flatten boundaries, and each run becomes its own segment. For example:
+
+```rust
+#[metrics]
+struct Parent {
+    a: u64,
+    #[metrics(flatten)]
+    child: Child,   // Child { x: u64 }
+    b: u64,
+}
+```
+
+yields three segments in write order: `[Parent: a]`, `[Child: x]`, `[Parent: b]`. All of the parent's segments report the parent's canonical name.
+
+The first segment always belongs to the parent and is emitted even when no own fields precede the first flatten site (it then lists zero fields and consumes zero values). This keeps the parent's canonical name first and gives the timestamp a stable home: the timestamp is emitted through `EntryWriter::timestamp` rather than `value()`, so it has no position in the field stream and always lives on the first segment. Later runs are emitted only when non-empty.
+
+A cfg-disabled flatten site still splits the surrounding own fields into separate runs; two adjacent parent segments still satisfy the order contract.
+
+Prefixes and default flags from the flatten site are applied as modifiers on the child's `DescriptorRef`.
 
 ### How flatten propagates naming
 
