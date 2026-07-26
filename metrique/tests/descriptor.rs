@@ -2051,9 +2051,6 @@ fn nested_flatten_default_flags_accumulate() {
 
     // The write path applies both flatten-site default_flags to the deep
     // field (nested ForceFlagEntryWriters). The descriptor must agree.
-    // FIXME: inverted assertions documenting the current bug: the outer
-    // flatten's with_extra_flags replaces the inner's instead of merging.
-    // Flip with the fix.
     assert!(deep_flags.iter().any(|f| f.is::<AuditExport>()));
-    assert!(!deep_flags.iter().any(|f| f.is::<Dial9Emit>()));
+    assert!(deep_flags.iter().any(|f| f.is::<Dial9Emit>()));
 }

@@ -176,7 +176,7 @@ for desc in entry.descriptors() {
 }
 ```
 
-Sinks key their per-segment caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. `DescriptorId` incorporates the base descriptor pointer plus prefixes, so the same child struct with different flatten-site prefixes produces different ids.
+Sinks key their per-segment caches on `DescriptorId`. For simple entries (one descriptor), a single id suffices. For composed entries (multiple descriptors), sinks cache per-segment or use the sequence of ids as a composite key. `DescriptorId` incorporates the base descriptor pointer plus flatten-site modifiers (prefixes and extra flags), so the same child struct flattened with different prefixes or `default_flags` produces different ids.
 
 Extending `Entry` rather than introducing a separate trait keeps descriptor lookup on the path users already know, keeps `BoxEntry` forwarding natural, and avoids growing the object-safety surface.
 
