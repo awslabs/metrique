@@ -23,11 +23,11 @@ runs:
           if [ "${{ inputs.toolchain }}" != stable ]; then
               rm -fv Cargo.lock
           fi
-          cargo build --verbose ${{ inputs.flags }}
+          RUSTFLAGS="--cfg tokio_unstable" cargo build --verbose ${{ inputs.flags }}
     - name: Run tests
       shell: bash
       run: |
-          cargo test --verbose ${{ inputs.flags }}
+          RUSTFLAGS="--cfg tokio_unstable" cargo test --verbose ${{ inputs.flags }}
           if [ "${{ inputs.toolchain }}" == nightly -a "${{ inputs.flags }}" == "--all-features" ]; then
               # docs use unstable features, run them on nightly
               # pass --no-deps. When *rendering* docs, is better to not use `--no-deps`,
@@ -37,5 +37,5 @@ runs:
               #
               # It's better to keep `--no-deps` in CI, since it matches what rustdoc runs, and is
               # faster.
-              RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --verbose --no-deps ${{ inputs.flags }}
+              RUSTFLAGS="--cfg tokio_unstable" RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --verbose --no-deps ${{ inputs.flags }}
           fi

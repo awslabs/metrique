@@ -4,6 +4,9 @@ use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Error, Fields, Result, Type};
 
+use crate::MetricMode;
+use crate::structs::entry_struct_ident;
+
 #[derive(Debug)]
 struct AggregateField {
     name: Ident,
@@ -199,9 +202,30 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     let key_fields: Vec<_> = parsed.fields.iter().filter(|f| f.is_key).collect();
 
+    let metrics_attr = input
+        .attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("metrics"));
+    let metrics_attr = match metrics_attr {
+        Some(attr) => quote! { #attr },
+        None => quote! { #[metrics] },
+    };
+
     // Determine the source type for AggregateStrategy
     let source_ty = if entry_mode {
         quote! { <#original_name as metrique::CloseValue>::Closed }
+    } else {
+        quote! { #original_name }
+    };
+
+    // The type used as `Self` in the `Merge` impl. In entry mode we use the *concrete*
+    // entry struct name (e.g. `ApiCallEntry`) rather than the projection
+    // `<ApiCall as CloseValue>::Closed`, because coherence does not normalize projections
+    // and would reject two such impls across crates as potentially overlapping (E0119).
+    // The name is derived from the same shared helper `#[metrics]` uses, so they always agree.
+    let merge_self_ty = if entry_mode {
+        let entry_ident = entry_struct_ident(original_name, MetricMode::RootEntry);
+        quote! { #entry_ident }
     } else {
         quote! { #original_name }
     };
@@ -255,7 +279,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     // Generate Merge impl
     let merge_impl = quote! {
-        impl ::metrique_aggregation::__macro_plumbing::Merge for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::Merge for #merge_self_ty {
             type Merged = #aggregated_name;
             type MergeConfig = ();
 
@@ -303,7 +327,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
         let key_struct = quote! {
             #[derive(Clone, Hash, PartialEq, Eq)]
-            #[metrics]
+            #metrics_attr
             // key struct needs to be pub because it is used in a trait
             pub struct #key_name<'a> {
                 #(#key_field_defs),*
@@ -368,9 +392,11 @@ pub(crate) fn generate_merge_ref_impl(
 
     let original_name = &input.ident;
 
-    // Determine the source type
-    let source_ty = if entry_mode {
-        quote! { <#original_name as metrique::CloseValue>::Closed }
+    // Determine the self-type for MergeRef: use concrete entry ident in entry mode
+    // to avoid cross-crate coherence errors (E0119).
+    let merge_self_ty = if entry_mode {
+        let entry_ident = entry_struct_ident(original_name, MetricMode::RootEntry);
+        quote! { #entry_ident }
     } else {
         quote! { #original_name }
     };
@@ -411,7 +437,7 @@ pub(crate) fn generate_merge_ref_impl(
     }).collect::<Vec<_>>();
 
     let merge_ref_impl = quote! {
-        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #merge_self_ty {
             fn merge_ref(accum: &mut Self::Merged, input: &Self) {
                 #(#merge_ref_calls)*
             }
@@ -460,6 +486,7 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
     let generics = &input.generics;
 
     let filtered_attrs = clean_aggregate_attrs(&input.attrs);
+
     match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => {
@@ -486,6 +513,7 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
     }
 }
 
+/// Remove `#[aggregate(...)]` attributes, leaving the rest (e.g. `#[metrics]`) intact.
 fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
     attr.iter()
         .filter(|attr| !attr.path().is_ident("aggregate"))

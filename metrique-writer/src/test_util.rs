@@ -371,6 +371,10 @@ impl<M: InflectableEntry> Entry for RootEntry<M> {
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         self.metric.sample_group()
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        self.metric.descriptors()
+    }
 }
 
 /// A test sink for capturing and inspecting metric entries.

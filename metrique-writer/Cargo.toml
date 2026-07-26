@@ -1,12 +1,15 @@
 [package]
 name = "metrique-writer"
-version = "0.1.23"
+version = "0.1.24"
 edition = "2024"
-rust-version = "1.89" # See build.yml for why this MSRV
+rust-version = "1.91" # See .github/workflows/ci.yml
 license = "Apache-2.0"
 description = "Library for wide event metrics - writer-side interface"
 repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)'] }
 
 [dependencies]
 ahash = { workspace = true }

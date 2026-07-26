@@ -63,6 +63,9 @@ pub type VecDistribution<V> = Distribution<V, 0>;
 
 #[diagnostic::do_not_recommend]
 impl<V: MetricValue, const N: usize> Value for Distribution<V, N> {
+    const SHAPE: crate::FieldShape<'static> = crate::FieldShape::Known(crate::KnownShape::F64);
+    const UNIT: crate::Unit = <V::Unit as UnitTag>::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         if self.values.is_empty() {
             return;
@@ -88,6 +91,10 @@ impl<V: MetricValue, const N: usize> Value for Distribution<V, N> {
         }
 
         impl Value for Collected<'_> {
+            const SHAPE: crate::FieldShape<'static> =
+                crate::FieldShape::Known(crate::KnownShape::F64);
+            const UNIT: crate::Unit = crate::Unit::None;
+
             fn write(&self, writer: impl ValueWriter) {
                 match &self.result {
                     Ok(obs) => {
@@ -364,6 +371,9 @@ impl<U: UnitTag, V: Into<f64>> Extend<V> for Mean<U> {
 }
 
 impl<U: UnitTag> Value for Mean<U> {
+    const SHAPE: crate::FieldShape<'static> = crate::FieldShape::Known(crate::KnownShape::F64);
+    const UNIT: crate::Unit = U::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         if self.occurrences > 0 {
             writer.metric(

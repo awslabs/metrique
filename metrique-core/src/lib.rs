@@ -14,7 +14,9 @@ mod inflectable_entry_impls;
 mod namestyle;
 
 pub use atomics::{Counter, CounterGuard, OwnedCounterGuard};
-pub use namestyle::{DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, SnakeCase};
+pub use namestyle::{
+    DynamicNameStyle, Identity, KebabCase, NameStyle, PascalCase, SnakeCase, Style, Styles,
+};
 
 /// Close a given value
 ///
@@ -274,5 +276,9 @@ pub trait InflectableEntry<NS: namestyle::NameStyle = namestyle::Identity> {
     /// Sample group
     fn sample_group(&self) -> impl Iterator<Item = SampleGroupElement> {
         vec![].into_iter()
+    }
+    /// Returns descriptors for this entry in write order.
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::Unavailable
     }
 }

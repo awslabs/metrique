@@ -35,3 +35,27 @@ fn renames_applied_transitively() {
     keys.sort();
     assert_eq!(keys, vec!["PrefixThisIsBField", "ThisIsAField"]);
 }
+
+#[metrics(subfield, rename_all = "snake_case")]
+#[derive(Default)]
+struct NestedSnake {
+    my_field_name: usize,
+}
+
+#[metrics(rename_all = "PascalCase")]
+#[derive(Default)]
+struct PascalWithSnakeChild {
+    #[metrics(flatten)]
+    child: NestedSnake,
+}
+
+#[test]
+fn child_rename_all_takes_precedence() {
+    let metric = PascalWithSnakeChild::default();
+    let entry = metric.close();
+    let entry = to_test_entry(metrique::RootEntry::new(entry));
+    let keys = entry.metrics.keys().collect::<Vec<_>>();
+    // Child has rename_all = "snake_case", so its field stays snake_case
+    // even though parent is PascalCase
+    assert_eq!(keys, vec!["my_field_name"]);
+}

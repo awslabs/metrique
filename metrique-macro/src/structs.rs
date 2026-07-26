@@ -12,17 +12,27 @@ use crate::{
     generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
 
+/// The canonical name of the generated entry struct for a `#[metrics]` type.
+///
+/// This is the single source of truth for the entry struct naming convention. It is shared
+/// with the `#[aggregate]` macro so that both macros always agree on the name: `#[aggregate]`
+/// writes its `Merge`/`MergeRef` impls against this concrete type (rather than the projection
+/// `<T as CloseValue>::Closed`) to avoid cross-crate coherence errors (E0119).
+pub(crate) fn entry_struct_ident(struct_name: &Ident, mode: MetricMode) -> Ident {
+    if mode == MetricMode::Value {
+        format_ident!("{}Value", struct_name)
+    } else {
+        format_ident!("{}Entry", struct_name)
+    }
+}
+
 pub(crate) fn generate_metrics_for_struct(
     root_attributes: RootAttributes,
     input: &DeriveInput,
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
 ) -> Result<Ts2> {
     let struct_name = &input.ident;
-    let entry_name = if root_attributes.mode == MetricMode::Value {
-        format_ident!("{}Value", struct_name)
-    } else {
-        format_ident!("{}Entry", struct_name)
-    };
+    let entry_name = entry_struct_ident(struct_name, root_attributes.mode);
     let guard_name = format_ident!("{}Guard", struct_name);
     let handle_name = format_ident!("{}Handle", struct_name);
 

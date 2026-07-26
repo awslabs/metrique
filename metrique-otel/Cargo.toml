@@ -1,8 +1,8 @@
 [package]
 name = "metrique-otel"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
-rust-version = "1.89"
+rust-version = "1.91"
 license = "Apache-2.0"
 description = "Library for wide event metrics - OpenTelemetry (OTLP) backend for metrique"
 repository = "https://github.com/awslabs/metrique"

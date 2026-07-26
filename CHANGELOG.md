@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.28](https://github.com/awslabs/metrique/compare/metrique-v0.1.27...metrique-v0.1.28) - 2026-07-20
+
+### Other
+
+- Fix cross-crate E0119 for entry-mode #[aggregate] ([#339](https://github.com/awslabs/metrique/pull/339))
+
+## [0.1.27](https://github.com/awslabs/metrique/compare/metrique-v0.1.26...metrique-v0.1.27) - 2026-07-08
+
+### Added
+
+- Add convenience API for FlushImmediately setup ([#333](https://github.com/awslabs/metrique/pull/333))
+- Entry descriptors ([#289](https://github.com/awslabs/metrique/pull/289))
+- *(value)* support `Arc<str>` in metric structs ([#318](https://github.com/awslabs/metrique/pull/318))
+- Support folding sysinfo metrics into other structs ([#301](https://github.com/awslabs/metrique/pull/301))
+- allow non-default MergeConfig in KeyedAggregator ([#310](https://github.com/awslabs/metrique/pull/310))
+
+### Changed
+
+- MSRV raised from 1.89 to 1.91 (required for `const TypeId::of`).
+
+### Fixed
+
+- *(cloudwatch)* use proper SdkError pattern matching for ResourceAlreadyExistsException ([#315](https://github.com/awslabs/metrique/pull/315))
+- *(metrique-aggregation)* `#[aggregate]` now propagates the parent's `rename_all` to the generated key struct. Previously key fields (dimensions) kept their Rust field names even when `rename_all` was set on the parent.
+
+### Other
+
+- [metrique-writer-core + metrique-macro] Resolve FieldShape and Unit from Value trait ([#331](https://github.com/awslabs/metrique/pull/331))
+- adopt ci-pass aggregator pattern for GitHub Actions ([#330](https://github.com/awslabs/metrique/pull/330))
+- Add SCREAMING_SNAKE_CASE support to metrique-macro NameStyle ([#329](https://github.com/awslabs/metrique/pull/329))
+- Support folding RuntimeMetrics (tokio-metrics) into other structs  ([#293](https://github.com/awslabs/metrique/pull/293))
+
 ## [0.1.26](https://github.com/awslabs/metrique/compare/metrique-v0.1.25...metrique-v0.1.26) - 2026-06-09
 
 ### Added

@@ -162,6 +162,10 @@ impl<E: Entry, const N: usize> Entry for WithGlobalDimensions<E, N> {
             global_dimensions_denylist: self.global_dimensions_denylist(),
         })
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        self.entry.descriptors()
+    }
 }
 
 struct ValueWrapper<'a, V> {
@@ -170,6 +174,9 @@ struct ValueWrapper<'a, V> {
 }
 
 impl<V: Value> Value for ValueWrapper<'_, V> {
+    const SHAPE: crate::FieldShape<'static> = V::SHAPE;
+    const UNIT: crate::Unit = V::UNIT;
+
     fn write(&self, writer: impl ValueWriter) {
         struct ValueWriterWrapper<'a, W> {
             writer: W,

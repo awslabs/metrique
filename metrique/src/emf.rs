@@ -31,6 +31,10 @@ impl Entry for SetEntryDimensions {
     fn write<'a>(&'a self, writer: &mut impl metrique_writer_core::EntryWriter<'a>) {
         writer.config(&self.dimensions);
     }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        metrique_writer_core::Descriptors::Unavailable
+    }
 }
 
 pub use metrique_writer_core::config::EntryDimensions as __EntryDimensions;
