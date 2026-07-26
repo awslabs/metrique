@@ -140,11 +140,6 @@ impl TimestampDescriptor {
 }
 
 /// Result of calling `Entry::descriptors()`.
-// Inline capacity for 4 segments makes the Available variant large, but values
-// are short-lived (built and consumed within a sink's descriptors() walk) and
-// staying inline avoids a per-entry heap allocation: run-splitting at flatten
-// boundaries makes 3-4 segments common.
-#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum Descriptors<'a> {
@@ -156,7 +151,7 @@ pub enum Descriptors<'a> {
 
 /// Opaque container of available descriptor segments.
 #[derive(Debug, Clone)]
-pub struct AvailableDescriptors<'a>(SmallVec<[DescriptorRef<'a>; 4]>);
+pub struct AvailableDescriptors<'a>(SmallVec<[DescriptorRef<'a>; 2]>);
 
 impl<'a> AvailableDescriptors<'a> {
     /// Iterate over the descriptor segments in write order.
@@ -192,7 +187,7 @@ impl<'a> IntoIterator for AvailableDescriptors<'a> {
 
 /// Owned iterator over descriptor segments. Returned by `AvailableDescriptors::into_iter()`.
 #[derive(Debug)]
-pub struct DescriptorIter<'a>(smallvec::IntoIter<[DescriptorRef<'a>; 4]>);
+pub struct DescriptorIter<'a>(smallvec::IntoIter<[DescriptorRef<'a>; 2]>);
 
 impl<'a> Iterator for DescriptorIter<'a> {
     type Item = DescriptorRef<'a>;
@@ -241,7 +236,7 @@ impl<'a> Descriptors<'a> {
     pub fn map_available(self, f: impl FnMut(DescriptorRef<'a>) -> DescriptorRef<'a>) -> Self {
         match self {
             Descriptors::Available(a) => {
-                let mapped: SmallVec<[DescriptorRef<'a>; 4]> = a.0.into_iter().map(f).collect();
+                let mapped: SmallVec<[DescriptorRef<'a>; 2]> = a.0.into_iter().map(f).collect();
                 Descriptors::Available(AvailableDescriptors(mapped))
             }
             Descriptors::Unavailable => Descriptors::Unavailable,
