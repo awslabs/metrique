@@ -2003,9 +2003,11 @@ fn cfg_disabled_plain_field_excluded_from_descriptor() {
     let entry = metrique::RootEntry::new(closed);
 
     assert_eq!(write_order(&entry), vec!["Before", "TestOnly", "After"]);
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
 
-    // FIXME: inverted assertion documenting the current bug. The descriptor
-    // lists cfg-disabled plain fields even though write() never emits them.
-    // Flip to assert_eq! with the fix.
-    assert_ne!(descriptor_order(&entry), write_order(&entry));
+    // The active cfg field gets its own gated segment; the disabled one
+    // leaves two adjacent parent runs behind.
+    let descriptors = entry.descriptors().unwrap();
+    let lens: Vec<_> = descriptors.iter().map(|d| d.fields_len()).collect();
+    assert_eq!(lens, vec![1, 1, 1]);
 }

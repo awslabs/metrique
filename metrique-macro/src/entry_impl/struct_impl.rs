@@ -118,9 +118,28 @@ fn generate_descriptor(
 
     // Own-field runs split at flatten boundaries, and the chain items
     // (own-run segments and flatten children) following the base segment,
-    // in declaration order.
-    let mut runs: Vec<Vec<DescriptorFieldMeta>> = vec![Vec::new()];
+    // in declaration order. Cfg-gated plain fields get a single-field run of
+    // their own, gated the same way, so the descriptor only lists them when
+    // the write path emits them.
+    let mut runs: Vec<super::DescriptorRun> = vec![super::DescriptorRun {
+        cfg: vec![],
+        fields: vec![],
+    }];
     let mut chain_items: Vec<(Vec<Ts2>, Ts2)> = Vec::new();
+    let close_run = |runs: &mut Vec<super::DescriptorRun>,
+                     chain_items: &mut Vec<(Vec<Ts2>, Ts2)>| {
+        let run_index = runs.len() - 1;
+        if run_index > 0 && !runs[run_index].fields.is_empty() {
+            chain_items.push((
+                runs[run_index].cfg.clone(),
+                own_run_segment_expr(entry_name, &own_style_ns, run_index),
+            ));
+        }
+        runs.push(super::DescriptorRun {
+            cfg: vec![],
+            fields: vec![],
+        });
+    };
 
     for field in fields {
         match &field.attrs.kind {
@@ -135,38 +154,42 @@ fn generate_descriptor(
                 let names: [String; metrique_core::Styles::COUNT] =
                     std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                 let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
-                runs.last_mut()
-                    .expect("runs is never empty")
-                    .push(DescriptorFieldMeta {
-                        names,
-                        flags: resolved.flags,
-                        skipped_flags: resolved.skipped_flags,
-                        explicit_unit: unit.clone(),
-                        field_type: field.ty.clone(),
-                        close: field.attrs.close,
-                        format: format.clone(),
-                    });
+                let meta = DescriptorFieldMeta {
+                    names,
+                    flags: resolved.flags,
+                    skipped_flags: resolved.skipped_flags,
+                    explicit_unit: unit.clone(),
+                    field_type: field.ty.clone(),
+                    close: field.attrs.close,
+                    format: format.clone(),
+                };
+                let cfg_attrs: Vec<Ts2> = field.cfg_attrs().map(|a| quote! { #a }).collect();
+                if cfg_attrs.is_empty() {
+                    runs.last_mut()
+                        .expect("runs is never empty")
+                        .fields
+                        .push(meta);
+                } else {
+                    close_run(&mut runs, &mut chain_items);
+                    let run = runs.last_mut().expect("runs is never empty");
+                    run.cfg = cfg_attrs;
+                    run.fields.push(meta);
+                    close_run(&mut runs, &mut chain_items);
+                }
             }
             MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_) => {
                 // Close the current run; non-base runs chain in just before
                 // this flatten's child segments.
-                let run_index = runs.len() - 1;
-                if run_index > 0 && !runs[run_index].is_empty() {
-                    chain_items.push((
-                        vec![],
-                        own_run_segment_expr(entry_name, &own_style_ns, run_index),
-                    ));
-                }
-                runs.push(Vec::new());
+                close_run(&mut runs, &mut chain_items);
                 chain_items.push(flatten_chain_item(field, root_attrs));
             }
         }
     }
     // Close the trailing run.
     let last_run = runs.len() - 1;
-    if last_run > 0 && !runs[last_run].is_empty() {
+    if last_run > 0 && !runs[last_run].fields.is_empty() {
         chain_items.push((
-            vec![],
+            runs[last_run].cfg.clone(),
             own_run_segment_expr(entry_name, &own_style_ns, last_run),
         ));
     }

@@ -694,11 +694,21 @@ pub(crate) fn descriptor_method_ident(run: usize) -> Ident {
     }
 }
 
+/// One contiguous run of own fields, becoming one descriptor segment.
+///
+/// `cfg` carries the field's `#[cfg(...)]`/`#[cfg_attr(...)]` attributes for
+/// runs holding a single cfg-gated field; the generated method and chain call
+/// are gated the same way so the segment disappears along with the field.
+pub(crate) struct DescriptorRun {
+    pub(crate) cfg: Vec<Ts2>,
+    pub(crate) fields: Vec<DescriptorFieldMeta>,
+}
+
 pub(crate) fn generate_descriptor_impl(
     entry_name: &Ident,
     generics: &syn::Generics,
     struct_name: &str,
-    runs: &[Vec<DescriptorFieldMeta>],
+    runs: &[DescriptorRun],
     timestamp_descriptor: &Ts2,
 ) -> Ts2 {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
@@ -709,7 +719,7 @@ pub(crate) fn generate_descriptor_impl(
         .enumerate()
         // Run 0 is always emitted (it carries the canonical entry name and
         // timestamp); later runs are skipped when empty.
-        .filter(|(i, run)| *i == 0 || !run.is_empty())
+        .filter(|(i, run)| *i == 0 || !run.fields.is_empty())
         .map(|(i, run)| {
             // The timestamp is emitted via `EntryWriter::timestamp`, not
             // `value()`, so it has no position in the field stream; it always
@@ -719,9 +729,11 @@ pub(crate) fn generate_descriptor_impl(
             } else {
                 &none_timestamp
             };
-            let body = generate_style_matched_descriptor(run, struct_name, ts, "");
+            let body = generate_style_matched_descriptor(&run.fields, struct_name, ts, "");
             let method_ident = descriptor_method_ident(i);
+            let cfg = &run.cfg;
             quote! {
+                #(#cfg)*
                 #[doc(hidden)]
                 #[inline(always)]
                 fn #method_ident() -> &'static ::metrique::writer::core::EntryDescriptor {
