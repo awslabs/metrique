@@ -1981,3 +1981,31 @@ fn enum_flatten_default_flags_applied_to_child_descriptor() {
     assert_eq!(flags.len(), 1);
     assert_eq!(flags[0].type_id(), TypeId::of::<AuditExport>());
 }
+
+#[metrics(rename_all = "PascalCase")]
+struct CfgPlainFieldParent {
+    before: u64,
+    #[cfg(feature = "__metrique_nonexistent_feature")]
+    never_written: u64,
+    #[cfg(test)]
+    test_only: u64,
+    after: u64,
+}
+
+#[test]
+fn cfg_disabled_plain_field_excluded_from_descriptor() {
+    let m = CfgPlainFieldParent {
+        before: 1,
+        test_only: 2,
+        after: 3,
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    assert_eq!(write_order(&entry), vec!["Before", "TestOnly", "After"]);
+
+    // FIXME: inverted assertion documenting the current bug. The descriptor
+    // lists cfg-disabled plain fields even though write() never emits them.
+    // Flip to assert_eq! with the fix.
+    assert_ne!(descriptor_order(&entry), write_order(&entry));
+}
