@@ -2054,3 +2054,32 @@ fn nested_flatten_default_flags_accumulate() {
     assert!(deep_flags.iter().any(|f| f.is::<AuditExport>()));
     assert!(deep_flags.iter().any(|f| f.is::<Dial9Emit>()));
 }
+
+#[metrics(subfield, tag(name = "operation_type"))]
+pub enum TagStyleEnum {
+    DoThing { some_field: u64 },
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct TagStyleParent {
+    #[metrics(flatten)]
+    op: TagStyleEnum,
+}
+
+#[test]
+fn enum_tag_name_inflects_with_propagated_style() {
+    let m = TagStyleParent {
+        op: TagStyleEnum::DoThing { some_field: 1 },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    // The enum has no rename_all, so the parent's PascalCase propagates to
+    // the tag on the write path.
+    assert_eq!(write_order(&entry), vec!["OperationType", "SomeField"]);
+
+    // FIXME: inverted assertion documenting the current bug: the descriptor
+    // reports the tag name uninflected ("operation_type") while write()
+    // emits "OperationType". Flip to assert_eq! with the fix.
+    assert_ne!(descriptor_order(&entry), write_order(&entry));
+}
