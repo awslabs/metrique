@@ -419,7 +419,7 @@ fn collect_field_sample_group<'a>(
 
 /// Output of descriptor generation for a struct or enum entry.
 pub(crate) struct DescriptorOutput {
-    /// The `__metrique_descriptor(style)` inherent impl with 4 statics.
+    /// The inherent impl with the per-run `__metrique_descriptor_run_N()` methods.
     /// Goes outside the `InflectableEntry` impl block but inside `const _: ()`.
     pub(crate) trait_impls: Ts2,
     /// The `fn descriptors()` method body.
@@ -683,15 +683,8 @@ fn anonymize_lifetimes(ty: &syn::Type) -> syn::Type {
 }
 
 /// Name of the inherent descriptor method for a given own-field run.
-///
-/// Run 0 keeps the historical `__metrique_descriptor` name; later runs
-/// (own fields declared after a flatten site) get numbered methods.
 pub(crate) fn descriptor_method_ident(run: usize) -> Ident {
-    if run == 0 {
-        format_ident!("__metrique_descriptor")
-    } else {
-        format_ident!("__metrique_descriptor_run_{}", run)
-    }
+    format_ident!("__metrique_descriptor_run_{}", run)
 }
 
 /// One contiguous run of own fields, becoming one descriptor segment.

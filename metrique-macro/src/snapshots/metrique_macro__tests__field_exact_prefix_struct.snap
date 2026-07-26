@@ -24,7 +24,7 @@ const _: () = {
     impl RequestMetricsEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+        fn __metrique_descriptor_run_0() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 0usize] = [];
                 static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
@@ -128,7 +128,7 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                     ::std::iter::once(
                         ::metrique::writer::core::DescriptorRef::from_static(
-                            RequestMetricsEntry::__metrique_descriptor(),
+                            RequestMetricsEntry::__metrique_descriptor_run_0(),
                             <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                         ),
                     ),

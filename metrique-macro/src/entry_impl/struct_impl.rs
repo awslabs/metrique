@@ -13,8 +13,8 @@ pub(crate) fn generate_struct_entry_impl(
     let writes = generate_write_statements(fields, root_attrs);
     let sample_groups = generate_sample_group_statements(fields, root_attrs);
 
-    // Generate descriptor infrastructure: a __metrique_descriptor(style) method with 4 statics
-    // (one per name style), and a descriptors() method that selects the right one.
+    // Generate descriptor infrastructure: one __metrique_descriptor_run_N()
+    // method per own-field run, and the descriptors() method body.
     let descriptor = generate_descriptor(entry_name, generics, fields, root_attrs);
 
     // Add NS as an additional generic parameter
@@ -48,7 +48,7 @@ pub(crate) fn generate_struct_entry_impl(
 
     quote! {
         const _: () = {
-            // Descriptor: __metrique_descriptor(style) method with 4 statics.
+            // Descriptor: per-run __metrique_descriptor_run_N() methods.
             #descriptor_trait_impls
 
             #[expect(deprecated)]
