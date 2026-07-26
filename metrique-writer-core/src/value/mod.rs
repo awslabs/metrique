@@ -45,6 +45,14 @@ pub trait Value {
 }
 
 /// Provided by a format for each call to [`crate::EntryWriter::value()`].
+///
+/// # Note for wrapper implementations
+///
+/// Implementations that wrap another `ValueWriter` (forwarding calls to it, possibly
+/// modifying them) must also forward [`values()`](ValueWriter::values). Relying on the
+/// default implementation silently downgrades lists to a comma-joined string, bypassing
+/// the inner writer's native array support and dropping any per-element adjustments the
+/// wrapper makes in `metric()`.
 pub trait ValueWriter: Sized {
     /// Write an arbitrary string property to the entry. This may populate entry-wide dimensions in EMF.
     ///
