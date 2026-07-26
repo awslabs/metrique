@@ -2011,3 +2011,49 @@ fn cfg_disabled_plain_field_excluded_from_descriptor() {
     let lens: Vec<_> = descriptors.iter().map(|d| d.fields_len()).collect();
     assert_eq!(lens, vec![1, 1, 1]);
 }
+
+#[metrics(subfield)]
+pub struct DeepFlagChild {
+    deep_value: u64,
+}
+
+#[metrics(subfield)]
+pub struct MidFlagChild {
+    mid_value: u64,
+    #[metrics(flatten, default_flags(Dial9Emit))]
+    deep: DeepFlagChild,
+}
+
+#[metrics(rename_all = "PascalCase")]
+struct NestedFlagParent {
+    #[metrics(flatten, default_flags(AuditExport))]
+    mid: MidFlagChild,
+}
+
+#[test]
+fn nested_flatten_default_flags_accumulate() {
+    let m = NestedFlagParent {
+        mid: MidFlagChild {
+            mid_value: 1,
+            deep: DeepFlagChild { deep_value: 2 },
+        },
+    };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+    let descriptors = entry.descriptors().unwrap();
+
+    // Segments: [parent (empty)], [mid], [deep]
+    let deep_seg = descriptors
+        .iter()
+        .find(|d| d.name() == "DeepFlagChild")
+        .unwrap();
+    let deep_flags: Vec<_> = deep_seg.fields().next().unwrap().flags().collect();
+
+    // The write path applies both flatten-site default_flags to the deep
+    // field (nested ForceFlagEntryWriters). The descriptor must agree.
+    // FIXME: inverted assertions documenting the current bug: the outer
+    // flatten's with_extra_flags replaces the inner's instead of merging.
+    // Flip with the fix.
+    assert!(deep_flags.iter().any(|f| f.is::<AuditExport>()));
+    assert!(!deep_flags.iter().any(|f| f.is::<Dial9Emit>()));
+}
