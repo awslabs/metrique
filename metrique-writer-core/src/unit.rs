@@ -567,6 +567,9 @@ where
                 struct Element<'a, V, From, To>(&'a V, PhantomData<(From, To)>);
 
                 impl<V: Value, From: Convert<To>, To: UnitTag> Value for Element<'_, V, From, To> {
+                    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+                    const UNIT: crate::Unit = To::UNIT;
+
                     fn write(&self, writer: impl ValueWriter) {
                         self.0.write(Wrapper {
                             writer,
