@@ -211,3 +211,85 @@ impl<S: EntryIoStream, FLAGS: FlagConstructor> EntryIoStream for ForceFlag<S, FL
         self.0.flush()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::MetricOptions;
+
+    #[derive(Debug)]
+    struct TestFlagOpt;
+    impl MetricOptions for TestFlagOpt {}
+
+    struct TestFlagCtor;
+    impl FlagConstructor for TestFlagCtor {
+        fn construct() -> MetricFlags<'static> {
+            MetricFlags::upcast(&TestFlagOpt)
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        String(String),
+        ValuesStart,
+        Metric { total: u64, flagged: bool },
+    }
+
+    struct Recorder<'a>(&'a mut Vec<Event>);
+
+    impl ValueWriter for Recorder<'_> {
+        fn string(self, value: &str) {
+            self.0.push(Event::String(value.to_string()));
+        }
+
+        fn metric<'a>(
+            self,
+            distribution: impl IntoIterator<Item = Observation>,
+            _unit: Unit,
+            _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+            flags: MetricFlags<'_>,
+        ) {
+            let total = distribution
+                .into_iter()
+                .map(|obs| match obs {
+                    Observation::Unsigned(v) => v,
+                    other => panic!("unexpected observation {other:?}"),
+                })
+                .sum();
+            self.0.push(Event::Metric {
+                total,
+                flagged: flags.downcast::<TestFlagOpt>().is_some(),
+            });
+        }
+
+        fn error(self, error: ValidationError) {
+            panic!("unexpected error: {error:?}");
+        }
+
+        // Distinguishes a forwarded `values()` call from the default
+        // comma-joined `string()` fallback.
+        fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+            self.0.push(Event::ValuesStart);
+            for value in values {
+                value.write(Recorder(self.0));
+            }
+        }
+    }
+
+    #[test]
+    fn forwards_values_to_wrapped_writer() {
+        let value: ForceFlag<Vec<String>, TestFlagCtor> =
+            vec!["a".to_string(), "b".to_string()].into();
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        assert_eq!(events, [Event::String("a,b".into())]);
+    }
+
+    #[test]
+    fn values_elements_carry_flag() {
+        let value: ForceFlag<Vec<u64>, TestFlagCtor> = vec![1, 2].into();
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        assert_eq!(events, [Event::String("1,2".into())]);
+    }
+}
