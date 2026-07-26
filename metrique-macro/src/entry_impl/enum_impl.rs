@@ -393,8 +393,10 @@ fn generate_enum_descriptor(
             // written before any variant fields.
             let mut runs: Vec<Vec<DescriptorFieldMeta>> = vec![Vec::new()];
             if let Some(tag) = &root_attrs.tag {
+                // The write path inflects the tag through the propagated style.
+                let tag_name = tag.field_name(root_attrs);
                 let names: [String; metrique_core::Styles::COUNT] =
-                    std::array::from_fn(|_| tag.field_name(root_attrs));
+                    std::array::from_fn(|i| styles[i].apply(&tag_name));
                 runs[0].push(DescriptorFieldMeta {
                     names,
                     flags: vec![],

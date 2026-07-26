@@ -2077,9 +2077,5 @@ fn enum_tag_name_inflects_with_propagated_style() {
     // The enum has no rename_all, so the parent's PascalCase propagates to
     // the tag on the write path.
     assert_eq!(write_order(&entry), vec!["OperationType", "SomeField"]);
-
-    // FIXME: inverted assertion documenting the current bug: the descriptor
-    // reports the tag name uninflected ("operation_type") while write()
-    // emits "OperationType". Flip to assert_eq! with the fix.
-    assert_ne!(descriptor_order(&entry), write_order(&entry));
+    assert_eq!(descriptor_order(&entry), write_order(&entry));
 }
