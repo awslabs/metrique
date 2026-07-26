@@ -204,6 +204,19 @@ impl<V: Value> Value for ValueWrapper<'_, V> {
             fn error(self, error: ValidationError) {
                 self.writer.error(error)
             }
+
+            fn values<'a, V2: Value + 'a>(self, values: impl IntoIterator<Item = &'a V2>) {
+                // Wrap each element so `metric()` calls still get the global dimensions.
+                let global_dimensions = self.global_dimensions;
+                let wrapped: SmallVec<[ValueWrapper<'_, &'a V2>; 8]> = values
+                    .into_iter()
+                    .map(|value| ValueWrapper {
+                        value,
+                        global_dimensions,
+                    })
+                    .collect();
+                self.writer.values(wrapped.iter())
+            }
         }
 
         self.value.write(ValueWriterWrapper {
@@ -360,6 +373,20 @@ mod test {
         let mut writer = RecordingEntryWriter(Vec::new());
         entry.write(&mut writer);
 
-        assert_eq!(writer.0, [Event::String("1,2".into())]);
+        let dimensions = vec![("az".to_string(), "us-east-1a".to_string())];
+        assert_eq!(
+            writer.0,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    value: 1,
+                    dimensions: dimensions.clone()
+                },
+                Event::Metric {
+                    value: 2,
+                    dimensions
+                },
+            ],
+        );
     }
 }

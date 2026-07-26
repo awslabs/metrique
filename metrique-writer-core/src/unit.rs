@@ -42,6 +42,7 @@ use std::{
 };
 
 use crate::{MetricValue, Observation, ValidationError, Value, ValueWriter, value::MetricFlags};
+use smallvec::SmallVec;
 
 /// Represent all metric value units allowed by
 /// [CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_MetricDatum.html).
@@ -549,6 +550,26 @@ where
             fn error(self, error: ValidationError) {
                 self.writer.error(error)
             }
+
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                // Wrap each element so `metric()` calls still get unit conversion.
+                struct Element<'a, V, From, To>(&'a V, PhantomData<(From, To)>);
+
+                impl<V: Value, From: Convert<To>, To: UnitTag> Value for Element<'_, V, From, To> {
+                    fn write(&self, writer: impl ValueWriter) {
+                        self.0.write(Wrapper {
+                            writer,
+                            _convert: PhantomData::<(From, To)>,
+                        })
+                    }
+                }
+
+                let wrapped: SmallVec<[Element<'a, V, From, To>; 8]> = values
+                    .into_iter()
+                    .map(|value| Element(value, PhantomData))
+                    .collect();
+                self.writer.values(wrapped.iter())
+            }
         }
 
         self.value.write(Wrapper {
@@ -747,9 +768,17 @@ mod tests {
         .write(Recorder(&mut events));
         assert_eq!(
             events,
-            [Event::Error(
-                "can't apply a unit to a string value".to_string()
-            )],
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    observations: vec![Observation::Floating(0.5)],
+                    unit: Second::UNIT,
+                },
+                Event::Metric {
+                    observations: vec![Observation::Floating(0.25)],
+                    unit: Second::UNIT,
+                },
+            ],
         );
     }
 }

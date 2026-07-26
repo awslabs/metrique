@@ -8,6 +8,7 @@ use std::{
 };
 
 use derive_where::derive_where;
+use smallvec::SmallVec;
 
 use crate::{
     Entry, EntryIoStream, EntryWriter, IoStreamError, Observation, Unit, ValidationError,
@@ -128,6 +129,13 @@ impl<T: Value, FLAGS: FlagConstructor> Value for ForceFlag<T, FLAGS> {
 
             fn error(self, error: ValidationError) {
                 self.0.error(error)
+            }
+
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                // Wrap each element so `metric()` calls still merge the flag.
+                let wrapped: SmallVec<[ForceFlag<&'a V, FLAGS>; 8]> =
+                    values.into_iter().map(ForceFlag::from).collect();
+                self.0.values(wrapped.iter())
             }
         }
 
@@ -282,7 +290,14 @@ mod tests {
             vec!["a".to_string(), "b".to_string()].into();
         let mut events = Vec::new();
         value.write(Recorder(&mut events));
-        assert_eq!(events, [Event::String("a,b".into())]);
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::String("a".into()),
+                Event::String("b".into()),
+            ],
+        );
     }
 
     #[test]
@@ -290,6 +305,19 @@ mod tests {
         let value: ForceFlag<Vec<u64>, TestFlagCtor> = vec![1, 2].into();
         let mut events = Vec::new();
         value.write(Recorder(&mut events));
-        assert_eq!(events, [Event::String("1,2".into())]);
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    total: 1,
+                    flagged: true
+                },
+                Event::Metric {
+                    total: 2,
+                    flagged: true
+                },
+            ],
+        );
     }
 }

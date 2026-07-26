@@ -337,6 +337,16 @@ impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
     fn error(self, error: ValidationError) {
         self.value.error(error)
     }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // Wrap each element so `metric()` calls still get the dimensions.
+        let dimensions = self.dimensions;
+        let wrapped: SmallVec<[Wrapper<'_, &'a V>; 8]> = values
+            .into_iter()
+            .map(|value| Wrapper { value, dimensions })
+            .collect();
+        self.value.values(wrapped.iter())
+    }
 }
 
 impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
@@ -545,6 +555,20 @@ mod tests {
 
         let mut events = Vec::new();
         WithDimension::new(vec![1u64, 2u64], "foo", "bar").write(Recorder(&mut events));
-        assert_eq!(events, [Event::String("1,2".into())]);
+        let dimensions = vec![("foo".to_string(), "bar".to_string())];
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    value: 1,
+                    dimensions: dimensions.clone()
+                },
+                Event::Metric {
+                    value: 2,
+                    dimensions
+                },
+            ],
+        );
     }
 }

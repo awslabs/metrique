@@ -300,7 +300,7 @@ fn flags_on_vec_field_preserves_native_array() {
     emf.format(&entry, &mut output).unwrap();
     let json: Value = serde_json::from_slice(&output).unwrap();
 
-    // ForceFlag's write-path wrapper does not forward `values()`, so this
-    // comma-joins into a string instead of a native JSON array.
-    assert_eq!(json["Tags"], "a,b");
+    // Regression: ForceFlag's write-path wrapper previously did not forward
+    // `values()`, so this comma-joined into the string "a,b".
+    assert_eq!(json["Tags"], serde_json::json!(["a", "b"]));
 }
