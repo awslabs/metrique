@@ -4,7 +4,7 @@
 use crate::CowStr;
 use metrique_writer_core::{
     Entry, EntryConfig, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
-    ValueWriter,
+    ValueWriter, value::VALUES_INLINE_CAPACITY,
 };
 use smallvec::SmallVec;
 use std::{
@@ -215,7 +215,7 @@ impl<V: Value> Value for ValueWrapper<'_, V> {
             fn values<'a, V2: Value + 'a>(self, values: impl IntoIterator<Item = &'a V2>) {
                 // Wrap each element so `metric()` calls still get the global dimensions.
                 let global_dimensions = self.global_dimensions;
-                let wrapped: SmallVec<[ValueWrapper<'_, &'a V2>; 8]> = values
+                let wrapped: SmallVec<[ValueWrapper<'_, &'a V2>; VALUES_INLINE_CAPACITY]> = values
                     .into_iter()
                     .map(|value| ValueWrapper {
                         value,

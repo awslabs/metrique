@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use crate::{
     CowStr, Entry, EntryConfig, EntryWriter, MetricFlags, MetricValue, Observation, Unit,
-    ValidationError, Value, ValueWriter,
+    ValidationError, Value, ValueWriter, value::VALUES_INLINE_CAPACITY,
 };
 
 /// Adds a set of dimensions to a [Value] or [Entry] as (class, instance) pairs.
@@ -344,7 +344,7 @@ impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
         // Wrap each element so `metric()` calls still get the dimensions.
         let dimensions = self.dimensions;
-        let wrapped: SmallVec<[Wrapper<'_, &'a V>; 8]> = values
+        let wrapped: SmallVec<[Wrapper<'_, &'a V>; VALUES_INLINE_CAPACITY]> = values
             .into_iter()
             .map(|value| Wrapper { value, dimensions })
             .collect();

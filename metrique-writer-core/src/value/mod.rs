@@ -133,6 +133,14 @@ pub trait ValueWriter: Sized {
     }
 }
 
+// Inline capacity for the buffer a wrapper `ValueWriter` needs when forwarding `values`:
+// the inner writer takes an iterator of references, so re-wrapped elements have to be
+// materialized first. Elements are 8-24 bytes, so this costs at most ~200 bytes of stack and
+// spills to the heap beyond 8. 8 is what these buffers used before the const existed, not a
+// measured optimum.
+#[doc(hidden)]
+pub const VALUES_INLINE_CAPACITY: usize = 8;
+
 /// Adapter that captures a [`Value`]'s string representation into a buffer.
 /// Strings are appended directly. Metric observations are written as their
 /// numeric string representation, comma-separated within a single element.

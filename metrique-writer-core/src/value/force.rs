@@ -15,7 +15,7 @@ use crate::{
     ValueWriter,
 };
 
-use super::{MetricFlags, MetricValue, Value};
+use super::{MetricFlags, MetricValue, VALUES_INLINE_CAPACITY, Value};
 
 /// A trait for functions that return a [`MetricFlags<'static>`][MetricFlags]
 ///
@@ -152,7 +152,7 @@ impl<T: Value, FLAGS: FlagConstructor> Value for ForceFlag<T, FLAGS> {
 
             fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
                 // Wrap each element so `metric()` calls still merge the flag.
-                let wrapped: SmallVec<[ForceFlag<&'a V, FLAGS>; 8]> =
+                let wrapped: SmallVec<[ForceFlag<&'a V, FLAGS>; VALUES_INLINE_CAPACITY]> =
                     values.into_iter().map(ForceFlag::from).collect();
                 self.0.values(wrapped.iter())
             }

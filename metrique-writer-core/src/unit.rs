@@ -41,7 +41,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{MetricValue, Observation, ValidationError, Value, ValueWriter, value::MetricFlags};
+use crate::{
+    MetricValue, Observation, ValidationError, Value, ValueWriter,
+    value::{MetricFlags, VALUES_INLINE_CAPACITY},
+};
 use smallvec::SmallVec;
 
 /// Represent all metric value units allowed by
@@ -578,7 +581,7 @@ where
                     }
                 }
 
-                let wrapped: SmallVec<[Element<'a, V, From, To>; 8]> = values
+                let wrapped: SmallVec<[Element<'a, V, From, To>; VALUES_INLINE_CAPACITY]> = values
                     .into_iter()
                     .map(|value| Element(value, PhantomData))
                     .collect();
