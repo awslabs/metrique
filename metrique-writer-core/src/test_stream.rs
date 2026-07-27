@@ -112,6 +112,11 @@ impl ValueWriter for &'_ mut TestStream {
     fn error(self, _error: ValidationError) {
         unreachable!()
     }
+
+    fn values<'a, V: Value + 'a>(self, _values: impl IntoIterator<Item = &'a V>) {
+        // This test stream only accepts single unsigned observations.
+        unreachable!()
+    }
 }
 
 pub struct TestEntry(pub u64);
@@ -223,6 +228,11 @@ impl ValueWriter for DummyValueWriter<'_> {
 
     fn error(self, error: ValidationError) {
         panic!("{error}");
+    }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // Everything here is recorded as a string anyway.
+        crate::value::write_values_as_string(self, values)
     }
 }
 

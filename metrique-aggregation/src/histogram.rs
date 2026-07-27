@@ -97,6 +97,7 @@
 
 use histogram::Config;
 use metrique_core::CloseValue;
+use metrique_writer::value::write_values_as_string;
 use metrique_writer::{Distribution, MetricFlags, MetricValue, Observation, Value, ValueWriter};
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
@@ -196,6 +197,11 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
                 }
             }
             fn error(self, _error: metrique_writer::ValidationError) {}
+
+            // Only `metric()` observations feed the histogram, so lists record nothing.
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                write_values_as_string(self, values)
+            }
         }
 
         let capturer = Capturer(&mut self.strategy);
@@ -278,6 +284,11 @@ impl<T, S: SharedAggregationStrategy> SharedHistogram<T, S> {
                 }
             }
             fn error(self, _error: metrique_writer::ValidationError) {}
+
+            // Only `metric()` observations feed the histogram, so lists record nothing.
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                write_values_as_string(self, values)
+            }
         }
 
         let capturer = Capturer(&self.strategy);

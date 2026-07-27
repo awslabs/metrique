@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use crate::{
     CowStr, Entry, EntryConfig, EntryWriter, MetricFlags, MetricValue, Observation, Unit,
-    ValidationError, Value, ValueWriter,
+    ValidationError, Value, ValueWriter, value::VALUES_INLINE_CAPACITY,
 };
 
 /// Adds a set of dimensions to a [Value] or [Entry] as (class, instance) pairs.
@@ -340,6 +340,16 @@ impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
     fn error(self, error: ValidationError) {
         self.value.error(error)
     }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // Wrap each element so `metric()` calls still get the dimensions.
+        let dimensions = self.dimensions;
+        let wrapped: SmallVec<[Wrapper<'_, &'a V>; VALUES_INLINE_CAPACITY]> = values
+            .into_iter()
+            .map(|value| Wrapper { value, dimensions })
+            .collect();
+        self.value.values(wrapped.iter())
+    }
 }
 
 impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
@@ -499,5 +509,76 @@ mod tests {
         let from_with_dimensions = WithDimensions::from(Duration::from_millis(19));
 
         assert_eq!(empty_with_dimensions, from_with_dimensions);
+    }
+
+    #[test]
+    fn forwards_values_with_dimensions() {
+        #[derive(Debug, PartialEq)]
+        enum Event {
+            String(String),
+            ValuesStart,
+            Metric {
+                value: u64,
+                dimensions: Vec<(String, String)>,
+            },
+        }
+
+        struct Recorder<'a>(&'a mut Vec<Event>);
+
+        impl ValueWriter for Recorder<'_> {
+            fn string(self, value: &str) {
+                self.0.push(Event::String(value.to_string()));
+            }
+
+            fn metric<'a>(
+                self,
+                distribution: impl IntoIterator<Item = Observation>,
+                _unit: Unit,
+                dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+                _flags: MetricFlags<'_>,
+            ) {
+                let Some(Observation::Unsigned(value)) = distribution.into_iter().next() else {
+                    panic!("unexpected distribution");
+                };
+                self.0.push(Event::Metric {
+                    value,
+                    dimensions: dimensions
+                        .into_iter()
+                        .map(|(k, v)| (k.to_string(), v.to_string()))
+                        .collect(),
+                });
+            }
+
+            fn error(self, error: ValidationError) {
+                panic!("unexpected error {error}");
+            }
+
+            // Distinguishes a forwarded `values()` call from the default
+            // comma-joined `string()` fallback.
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                self.0.push(Event::ValuesStart);
+                for value in values {
+                    value.write(Recorder(self.0));
+                }
+            }
+        }
+
+        let mut events = Vec::new();
+        WithDimension::new(vec![1u64, 2u64], "foo", "bar").write(Recorder(&mut events));
+        let dimensions = vec![("foo".to_string(), "bar".to_string())];
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    value: 1,
+                    dimensions: dimensions.clone()
+                },
+                Event::Metric {
+                    value: 2,
+                    dimensions
+                },
+            ],
+        );
     }
 }

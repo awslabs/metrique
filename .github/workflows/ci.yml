@@ -104,7 +104,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Check all Value impls define SHAPE and UNIT
+      - name: Check Value impls define SHAPE/UNIT and ValueWriter impls define values
+        # This cfg strips the defaults off `Value::SHAPE`, `Value::UNIT`, and
+        # `ValueWriter::values`, so impls have to state them. It covers what `cargo check`
+        # compiles (lib/bin, not tests or examples), and only forces an explicit choice for
+        # `values`, not a correct one: per-wrapper tests verify the forwarding itself.
+        #
         # metrique-util is excluded from the full check because tokio-metrics
         # (pulled in by the tokio-metrics-bridge feature) has Value impls that
         # don't yet provide SHAPE/UNIT. RUSTFLAGS propagates to all crates
