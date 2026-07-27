@@ -283,7 +283,7 @@ pub struct DescriptorRef<'a> {
     id: DescriptorId,
     prefixes: SmallVec<[&'static str; 1]>,
     style_index: u8,
-    extra_flags: &'static [FieldFlag],
+    extra_flags: SmallVec<[&'static [FieldFlag]; 1]>,
 }
 
 impl<'a> DescriptorRef<'a> {
@@ -293,13 +293,13 @@ impl<'a> DescriptorRef<'a> {
         descriptor: &'static EntryDescriptor,
         style_index: u8,
     ) -> DescriptorRef<'static> {
-        let id = DescriptorId::compute(descriptor, &[]);
+        let id = DescriptorId::compute(descriptor, &[], &[]);
         DescriptorRef {
             descriptor,
             id,
             prefixes: SmallVec::new(),
             style_index,
-            extra_flags: &[],
+            extra_flags: SmallVec::new(),
         }
     }
 
@@ -308,16 +308,19 @@ impl<'a> DescriptorRef<'a> {
     #[doc(hidden)]
     pub fn with_prefix(mut self, prefix: &'static str) -> Self {
         self.prefixes.insert(0, prefix);
-        self.id = DescriptorId::compute(self.descriptor, &self.prefixes);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.extra_flags);
         self
     }
 
     /// Add extra flags to all fields in this segment (from flatten-site `default_flags`).
-    /// These are merged with each field's own flags at access time, respecting
-    /// field-level skips (flags in a field's `skipped_flags` are never added).
+    /// Multiple calls accumulate, matching the write path where each flatten
+    /// site's `ForceFlagEntryWriter` wraps the next. Extra flags are merged
+    /// with each field's own flags at access time, respecting field-level
+    /// skips (flags in a field's `skipped_flags` are never added).
     #[doc(hidden)]
     pub fn with_extra_flags(mut self, flags: &'static [FieldFlag]) -> Self {
-        self.extra_flags = flags;
+        self.extra_flags.push(flags);
+        self.id = DescriptorId::compute(self.descriptor, &self.prefixes, &self.extra_flags);
         self
     }
 
@@ -379,6 +382,7 @@ impl<'a> FieldView<'a> {
             self.desc
                 .extra_flags
                 .iter()
+                .flat_map(|slice| slice.iter())
                 .filter(move |ef| !skipped.iter().any(|s| s.type_id() == ef.type_id())),
         )
     }
@@ -407,10 +411,17 @@ pub struct DescriptorId(u64);
 
 impl DescriptorId {
     // TODO: consider using fxhash instead to be a bit more collision resistant
-    fn compute(descriptor: &EntryDescriptor, prefixes: &[&'static str]) -> Self {
+    fn compute(
+        descriptor: &EntryDescriptor,
+        prefixes: &[&'static str],
+        extra_flags: &[&'static [FieldFlag]],
+    ) -> Self {
         let mut id = descriptor as *const EntryDescriptor as u64;
         for p in prefixes {
             id = id.wrapping_mul(31).wrapping_add(p.as_ptr() as u64);
+        }
+        for f in extra_flags {
+            id = id.wrapping_mul(31).wrapping_add(f.as_ptr() as u64);
         }
         DescriptorId(id)
     }
@@ -707,6 +718,52 @@ mod tests {
         let plain = DescriptorRef::from_static(&DESC, 0);
         let prefixed = DescriptorRef::from_static(&DESC, 0).with_prefix("Api");
         assert_ne!(plain.id(), prefixed.id());
+    }
+
+    #[test]
+    fn extra_flags_accumulate_and_change_id() {
+        use crate::value::{FlagConstructor, MetricFlags, MetricOptions};
+
+        #[derive(Debug)]
+        struct AOpt;
+        impl MetricOptions for AOpt {}
+        struct A;
+        impl FlagConstructor for A {
+            fn construct() -> MetricFlags<'static> {
+                MetricFlags::upcast(&AOpt)
+            }
+        }
+        #[derive(Debug)]
+        struct BOpt;
+        impl MetricOptions for BOpt {}
+        struct B;
+        impl FlagConstructor for B {
+            fn construct() -> MetricFlags<'static> {
+                MetricFlags::upcast(&BOpt)
+            }
+        }
+
+        static A_FLAGS: [FieldFlag; 1] = [FieldFlag::new::<A>()];
+        static B_FLAGS: [FieldFlag; 1] = [FieldFlag::new::<B>()];
+        static FIELDS: [FieldDescriptor; 1] = [FieldDescriptor::builder("F").build()];
+        static DESC: EntryDescriptor = EntryDescriptor::builder("T", &FIELDS).build();
+
+        // Inner flatten site applies B, outer applies A: both must survive.
+        let plain = DescriptorRef::from_static(&DESC, 0);
+        let stacked = DescriptorRef::from_static(&DESC, 0)
+            .with_extra_flags(&B_FLAGS)
+            .with_extra_flags(&A_FLAGS);
+        let flags: Vec<_> = stacked.fields().next().unwrap().flags().collect();
+        assert!(flags.iter().any(|f| f.is::<A>()));
+        assert!(flags.iter().any(|f| f.is::<B>()));
+
+        assert_ne!(plain.id(), stacked.id());
+        assert_ne!(
+            DescriptorRef::from_static(&DESC, 0)
+                .with_extra_flags(&B_FLAGS)
+                .id(),
+            stacked.id()
+        );
     }
 
     #[test]
