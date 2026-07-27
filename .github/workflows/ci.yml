@@ -63,7 +63,9 @@ jobs:
   docs-rs:
     name: Docs.rs Build Check
     runs-on: ubuntu-latest
-    if: ${{ !startsWith(github.head_ref, 'release-') }}
+    # Skipped on release branches: the packaged crate resolves siblings from
+    # crates.io, so bumped-but-unpublished versions always fail here.
+    if: ${{ !startsWith(github.head_ref, 'release-') && !startsWith(github.head_ref, 'release/') }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
