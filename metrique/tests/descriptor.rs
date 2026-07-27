@@ -2100,13 +2100,10 @@ fn enum_exact_tag_name_ignores_propagated_style() {
     let entry = metrique::RootEntry::new(closed);
 
     // `name_exact` promises the tag name is emitted verbatim, unaffected by
-    // any styling.
+    // any styling, including the parent's propagated style.
     let expected = vec!["raw_name".to_owned(), "SomeField".to_owned()];
-
-    // FIXME: inverted assertions documenting the current bug: both the write
-    // path and the descriptor inflect the exact tag name through the
-    // propagated PascalCase style, emitting "RawName". Flip to assert_eq!
-    // with the fix.
-    assert_ne!(write_order(&entry), expected);
-    assert_ne!(descriptor_order(&entry), expected);
+    assert_eq!(
+        (write_order(&entry), descriptor_order(&entry)),
+        (expected.clone(), expected)
+    );
 }

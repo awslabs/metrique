@@ -93,10 +93,7 @@ fn generate_write_arms(
     variants: &[MetricsVariant],
     root_attrs: &RootAttributes,
 ) -> Vec<Ts2> {
-    let tag_name = root_attrs
-        .tag
-        .as_ref()
-        .map(|tag| tag.field_name(root_attrs));
+    let tag = root_attrs.tag.as_ref();
     let writer_ident = mixed_site_writer();
 
     variants
@@ -104,11 +101,11 @@ fn generate_write_arms(
         .map(|variant| {
             let variant_ident = &variant.ident;
 
-            let tag_write = tag_name.as_ref().map(|tag_name| {
+            let tag_write = tag.map(|tag| {
                 let (extra, name) = make_inflect(
                     &make_ns(root_attrs.rename_all, variant.ident.span()),
                     variant.ident.span(),
-                    |style| style.apply(tag_name),
+                    |style| tag.styled_name(root_attrs, style),
                 );
                 let value = crate::inflect::inflect_no_prefix(root_attrs, variant);
                 quote! {
@@ -250,21 +247,18 @@ fn generate_sample_group_arms(
     root_attrs: &RootAttributes,
     iter_enum_name: &Ident,
 ) -> Vec<Ts2> {
-    let tag_name = root_attrs
-        .tag
-        .as_ref()
-        .map(|tag| tag.field_name(root_attrs));
+    let tag = root_attrs.tag.as_ref();
     let include_tag_in_sample_group = root_attrs.tag.as_ref().is_some_and(|t| t.sample_group());
 
     variants.iter().enumerate().map(|(idx, variant)| {
         let variant_ident = &variant.ident;
         let iter_variant_name = quote::format_ident!("V{}", idx);
 
-        let tag_sample_group = if let Some(tag_name) = tag_name.as_ref().filter(|_| include_tag_in_sample_group) {
+        let tag_sample_group = if let Some(tag) = tag.filter(|_| include_tag_in_sample_group) {
             let (extra, name) = make_inflect(
                 &make_ns(root_attrs.rename_all, variant.ident.span()),
                 variant.ident.span(),
-                |style| style.apply(tag_name),
+                |style| tag.styled_name(root_attrs, style),
             );
             let value = crate::inflect::inflect_no_prefix(root_attrs, variant);
             Some(quote! {
@@ -393,10 +387,10 @@ fn generate_enum_descriptor(
             // written before any variant fields.
             let mut runs: Vec<Vec<DescriptorFieldMeta>> = vec![Vec::new()];
             if let Some(tag) = &root_attrs.tag {
-                // The write path inflects the tag through the propagated style.
-                let tag_name = tag.field_name(root_attrs);
+                // The write path inflects the tag through the propagated
+                // style; `styled_name` keeps `name_exact` tags verbatim.
                 let names: [String; metrique_core::Styles::COUNT] =
-                    std::array::from_fn(|i| styles[i].apply(&tag_name));
+                    std::array::from_fn(|i| tag.styled_name(root_attrs, styles[i]));
                 runs[0].push(DescriptorFieldMeta {
                     names,
                     flags: vec![],
