@@ -168,6 +168,25 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn flush_does_not_resolve_before_inner_flush_runs() {
+        for _ in 0..20_000 {
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<(), _>::new(
+                CountingSink {
+                    flushes: flushes.clone(),
+                },
+                Duration::from_secs(60),
+            );
+            sink.flush().await;
+            assert_eq!(
+                flushes.load(Ordering::SeqCst),
+                1,
+                "flush() resolved before inner.flush() actually ran"
+            );
+        }
+    }
+
     /// Not Shuttle-testable (Shuttle doesn't model time), so this asserts real
     /// elapsed-time behavior directly.
     #[test]
