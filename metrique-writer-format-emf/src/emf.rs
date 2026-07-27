@@ -1716,6 +1716,11 @@ impl metrique_writer_core::ValueWriter for EmfArrayElementWriter<'_> {
     }
 
     fn error(self, _error: ValidationError) {}
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // EMF arrays don't nest: a list inside an element becomes one joined element.
+        metrique_writer_core::value::write_values_as_string(self, values)
+    }
 }
 
 /// Write a single observation value into an EMF buffer.

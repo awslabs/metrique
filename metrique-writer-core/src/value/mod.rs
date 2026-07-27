@@ -114,23 +114,19 @@ pub trait ValueWriter: Sized {
     }
 
     /// Write a list of values. Formats that support native arrays (e.g. EMF) can override this
-    /// to emit a structured representation. The default comma-joins each element's string
-    /// representation, skipping elements that write nothing (e.g. `None`).
+    /// to emit a structured representation. The default is [`write_values_as_string`], which
+    /// comma-joins each element's string representation.
+    ///
+    /// Wrapper writers must forward this to the writer they wrap (see the trait-level note).
+    #[cfg(not(metrique_require_explicit_impls))]
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        let mut buf = String::new();
-        for value in values {
-            let before = buf.len();
-            if !buf.is_empty() {
-                buf.push(',');
-            }
-            let after_sep = buf.len();
-            value.write(StringCapture(&mut buf));
-            if buf.len() <= after_sep {
-                buf.truncate(before);
-            }
-        }
-        self.string(&buf);
+        write_values_as_string(self, values)
     }
+
+    /// Write a list of values. See the non-`metrique_require_explicit_impls` version, which
+    /// documents this method and defaults it to [`write_values_as_string`].
+    #[cfg(metrique_require_explicit_impls)]
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>);
 }
 
 // Inline capacity for the buffer a wrapper `ValueWriter` needs when forwarding `values`:
@@ -140,6 +136,32 @@ pub trait ValueWriter: Sized {
 // measured optimum.
 #[doc(hidden)]
 pub const VALUES_INLINE_CAPACITY: usize = 8;
+
+/// The fallback [`ValueWriter::values`] behaviour: comma-join each element's string representation
+/// into a single [`ValueWriter::string`] call, skipping elements that write nothing (e.g. `None`).
+/// An empty list still calls `string("")`.
+///
+/// This is lossy: per-element metric attributes (units, dimensions, flags) are dropped, and formats
+/// with native array support never see the individual elements. Writers that wrap another
+/// `ValueWriter` should forward `values` instead of calling this.
+pub fn write_values_as_string<'a, V: Value + 'a>(
+    writer: impl ValueWriter,
+    values: impl IntoIterator<Item = &'a V>,
+) {
+    let mut buf = String::new();
+    for value in values {
+        let before = buf.len();
+        if !buf.is_empty() {
+            buf.push(',');
+        }
+        let after_sep = buf.len();
+        value.write(StringCapture(&mut buf));
+        if buf.len() <= after_sep {
+            buf.truncate(before);
+        }
+    }
+    writer.string(&buf);
+}
 
 /// Adapter that captures a [`Value`]'s string representation into a buffer.
 /// Strings are appended directly. Metric observations are written as their
@@ -179,6 +201,11 @@ impl ValueWriter for StringCapture<'_> {
     }
 
     fn error(self, _error: ValidationError) {}
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // A list nested inside a list element flattens into the joined representation.
+        write_values_as_string(self, values)
+    }
 }
 
 /// The numeric value of a observation to include in a metric value.
