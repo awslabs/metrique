@@ -32,7 +32,7 @@ const _: () = {
     impl TimestampMetricsEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+        fn __metrique_descriptor_run_0() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
@@ -172,7 +172,7 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                 ::std::iter::once(
                     ::metrique::writer::core::DescriptorRef::from_static(
-                        TimestampMetricsEntry::__metrique_descriptor(),
+                        TimestampMetricsEntry::__metrique_descriptor_run_0(),
                         <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                     ),
                 ),

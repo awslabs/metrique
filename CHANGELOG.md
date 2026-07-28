@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.29](https://github.com/awslabs/metrique/compare/metrique-v0.1.28...metrique-v0.1.29) - 2026-07-27
+
+### Fixed
+
+- forward ValueWriter::values() through value wrapper writers ([#346](https://github.com/awslabs/metrique/pull/346))
+- Yield descriptor segments in Entry::write order for flattened entries ([#347](https://github.com/awslabs/metrique/pull/347))
+
 ## [0.1.28](https://github.com/awslabs/metrique/compare/metrique-v0.1.27...metrique-v0.1.28) - 2026-07-20
 
 ### Other

@@ -4,7 +4,7 @@
 use crate::CowStr;
 use metrique_writer_core::{
     Entry, EntryConfig, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
-    ValueWriter,
+    ValueWriter, value::VALUES_INLINE_CAPACITY,
 };
 use smallvec::SmallVec;
 use std::{
@@ -211,6 +211,19 @@ impl<V: Value> Value for ValueWrapper<'_, V> {
             fn error(self, error: ValidationError) {
                 self.writer.error(error)
             }
+
+            fn values<'a, V2: Value + 'a>(self, values: impl IntoIterator<Item = &'a V2>) {
+                // Wrap each element so `metric()` calls still get the global dimensions.
+                let global_dimensions = self.global_dimensions;
+                let wrapped: SmallVec<[ValueWrapper<'_, &'a V2>; VALUES_INLINE_CAPACITY]> = values
+                    .into_iter()
+                    .map(|value| ValueWrapper {
+                        value,
+                        global_dimensions,
+                    })
+                    .collect();
+                self.writer.values(wrapped.iter())
+            }
         }
 
         self.value.write(ValueWriterWrapper {
@@ -227,8 +240,12 @@ mod test {
         ops::{Deref, DerefMut},
     };
 
-    use metrique_writer_core::{Entry, EntryWriter};
+    use metrique_writer_core::{
+        Entry, EntryConfig, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
+        ValueWriter,
+    };
     use smallvec::SmallVec;
+    use std::{borrow::Cow, time::SystemTime};
 
     use crate::{CowStr, entry::WithGlobalDimensions};
 
@@ -280,5 +297,128 @@ mod test {
 
         global_dimensions_entry.clear_global_dimensions();
         assert_eq!(global_dimensions_entry.global_dimensions(), &[]);
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        String(String),
+        ValuesStart,
+        Metric {
+            value: u64,
+            dimensions: Vec<(String, String)>,
+        },
+    }
+
+    struct ListEntry;
+    impl Entry for ListEntry {
+        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.value("list", &vec![1u64, 2u64]);
+        }
+    }
+
+    struct Recorder<'a>(&'a mut Vec<Event>);
+
+    impl ValueWriter for Recorder<'_> {
+        fn string(self, value: &str) {
+            self.0.push(Event::String(value.to_string()));
+        }
+
+        fn metric<'a>(
+            self,
+            distribution: impl IntoIterator<Item = Observation>,
+            _unit: Unit,
+            dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+            _flags: MetricFlags<'_>,
+        ) {
+            let Some(Observation::Unsigned(value)) = distribution.into_iter().next() else {
+                panic!("unexpected distribution");
+            };
+            self.0.push(Event::Metric {
+                value,
+                dimensions: dimensions
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            });
+        }
+
+        fn error(self, error: ValidationError) {
+            panic!("unexpected error {error}");
+        }
+
+        // Distinguishes a forwarded `values()` call from the default
+        // comma-joined `string()` fallback.
+        fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+            self.0.push(Event::ValuesStart);
+            for value in values {
+                value.write(Recorder(self.0));
+            }
+        }
+    }
+
+    struct RecordingEntryWriter(Vec<Event>);
+
+    impl<'a> EntryWriter<'a> for RecordingEntryWriter {
+        fn timestamp(&mut self, _timestamp: SystemTime) {
+            panic!("unexpected timestamp");
+        }
+
+        fn value(&mut self, _name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
+            value.write(Recorder(&mut self.0));
+        }
+
+        fn config(&mut self, _config: &'a dyn EntryConfig) {}
+    }
+
+    #[test]
+    fn forwards_values_with_global_dimensions() {
+        let mut global_dimensions: SmallVec<[(CowStr, CowStr); 1]> = SmallVec::new();
+        global_dimensions.push(("az".into(), "us-east-1a".into()));
+        let entry = WithGlobalDimensions::new(ListEntry, global_dimensions, HashSet::new());
+
+        let mut writer = RecordingEntryWriter(Vec::new());
+        entry.write(&mut writer);
+
+        let dimensions = vec![("az".to_string(), "us-east-1a".to_string())];
+        assert_eq!(
+            writer.0,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    value: 1,
+                    dimensions: dimensions.clone()
+                },
+                Event::Metric {
+                    value: 2,
+                    dimensions
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn denylisted_list_field_forwards_values_without_global_dimensions() {
+        let mut global_dimensions: SmallVec<[(CowStr, CowStr); 1]> = SmallVec::new();
+        global_dimensions.push(("az".into(), "us-east-1a".into()));
+        let denylist: HashSet<CowStr> = ["list".into()].into_iter().collect();
+        let entry = WithGlobalDimensions::new(ListEntry, global_dimensions, denylist);
+
+        let mut writer = RecordingEntryWriter(Vec::new());
+        entry.write(&mut writer);
+
+        assert_eq!(
+            writer.0,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    value: 1,
+                    dimensions: vec![]
+                },
+                Event::Metric {
+                    value: 2,
+                    dimensions: vec![]
+                },
+            ],
+        );
     }
 }

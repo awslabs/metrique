@@ -6,6 +6,7 @@
 mod distribution;
 
 pub use distribution::{Distribution, Mean, VecDistribution};
+pub use metrique_writer_core::value::write_values_as_string;
 pub use metrique_writer_core::value::{FlagConstructor, ForceFlag, ForceFlagEntryWriter};
 pub use metrique_writer_core::value::{
     FormattedValue, Lifted, NotLifted, ToString, ValueFormatter,
