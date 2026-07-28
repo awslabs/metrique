@@ -41,7 +41,11 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-use crate::{MetricValue, Observation, ValidationError, Value, ValueWriter, value::MetricFlags};
+use crate::{
+    MetricValue, Observation, ValidationError, Value, ValueWriter,
+    value::{MetricFlags, VALUES_INLINE_CAPACITY},
+};
+use smallvec::SmallVec;
 
 /// Represent all metric value units allowed by
 /// [CloudWatch](https://docs.aws.amazon.com/AmazonCloudWatch/latest/APIReference/API_MetricDatum.html).
@@ -560,6 +564,29 @@ where
             fn error(self, error: ValidationError) {
                 self.writer.error(error)
             }
+
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                // Wrap each element so `metric()` calls still get unit conversion.
+                struct Element<'a, V, From, To>(&'a V, PhantomData<(From, To)>);
+
+                impl<V: Value, From: Convert<To>, To: UnitTag> Value for Element<'_, V, From, To> {
+                    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+                    const UNIT: crate::Unit = To::UNIT;
+
+                    fn write(&self, writer: impl ValueWriter) {
+                        self.0.write(Wrapper {
+                            writer,
+                            _convert: PhantomData::<(From, To)>,
+                        })
+                    }
+                }
+
+                let wrapped: SmallVec<[Element<'a, V, From, To>; VALUES_INLINE_CAPACITY]> = values
+                    .into_iter()
+                    .map(|value| Element(value, PhantomData))
+                    .collect();
+                self.writer.values(wrapped.iter())
+            }
         }
 
         self.value.write(Wrapper {
@@ -689,5 +716,86 @@ mod tests {
         AsSeconds::from(Duration::from_millis(42))
             .with_dimension("foo", "bar")
             .write(Writer);
+    }
+
+    #[test]
+    fn forwards_values_and_converts_elements() {
+        #[derive(Debug, PartialEq)]
+        enum Event {
+            String(String),
+            Error(String),
+            ValuesStart,
+            Metric {
+                observations: Vec<Observation>,
+                unit: Unit,
+            },
+        }
+
+        struct Recorder<'a>(&'a mut Vec<Event>);
+
+        impl ValueWriter for Recorder<'_> {
+            fn string(self, value: &str) {
+                self.0.push(Event::String(value.to_string()));
+            }
+
+            fn metric<'a>(
+                self,
+                distribution: impl IntoIterator<Item = Observation>,
+                unit: Unit,
+                _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+                _flags: MetricFlags<'_>,
+            ) {
+                self.0.push(Event::Metric {
+                    observations: distribution.into_iter().collect(),
+                    unit,
+                });
+            }
+
+            fn error(self, error: ValidationError) {
+                self.0.push(Event::Error(error.to_string()));
+            }
+
+            // Distinguishes a forwarded `values()` call from the default
+            // comma-joined `string()` fallback.
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                self.0.push(Event::ValuesStart);
+                for value in values {
+                    value.write(Recorder(self.0));
+                }
+            }
+        }
+
+        struct DurationList(Vec<Duration>);
+
+        impl MetricValue for DurationList {
+            type Unit = <Duration as MetricValue>::Unit;
+        }
+
+        impl Value for DurationList {
+            fn write(&self, writer: impl ValueWriter) {
+                writer.values(self.0.iter())
+            }
+        }
+
+        let mut events = Vec::new();
+        AsSeconds::from(DurationList(vec![
+            Duration::from_millis(500),
+            Duration::from_millis(250),
+        ]))
+        .write(Recorder(&mut events));
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    observations: vec![Observation::Floating(0.5)],
+                    unit: Second::UNIT,
+                },
+                Event::Metric {
+                    observations: vec![Observation::Floating(0.25)],
+                    unit: Second::UNIT,
+                },
+            ],
+        );
     }
 }

@@ -13,8 +13,8 @@ pub(crate) fn generate_struct_entry_impl(
     let writes = generate_write_statements(fields, root_attrs);
     let sample_groups = generate_sample_group_statements(fields, root_attrs);
 
-    // Generate descriptor infrastructure: a __metrique_descriptor(style) method with 4 statics
-    // (one per name style), and a descriptors() method that selects the right one.
+    // Generate descriptor infrastructure: one __metrique_descriptor_run_N()
+    // method per own-field run, and the descriptors() method body.
     let descriptor = generate_descriptor(entry_name, generics, fields, root_attrs);
 
     // Add NS as an additional generic parameter
@@ -48,7 +48,7 @@ pub(crate) fn generate_struct_entry_impl(
 
     quote! {
         const _: () = {
-            // Descriptor: __metrique_descriptor(style) method with 4 statics.
+            // Descriptor: per-run __metrique_descriptor_run_N() methods.
             #descriptor_trait_impls
 
             #[expect(deprecated)]
@@ -96,9 +96,15 @@ fn generate_sample_group_statements(fields: &[MetricsField], root_attrs: &RootAt
 
 /// Generates descriptor infrastructure for a struct entry.
 ///
-/// Collects field metadata (names in 4 styles, tags, units), builds flatten chains
-/// with modifiers, and delegates to shared helpers for the `__metrique_descriptor`
-/// method and the `descriptors()` method body.
+/// Own (non-flatten) fields are split into contiguous runs at flatten
+/// boundaries so that `descriptors()` yields segments in the same order
+/// `Entry::write` emits values: each run of own fields becomes its own
+/// segment, interleaved with the flattened children's segments at their
+/// declaration position.
+///
+/// Run 0 is always emitted (even when empty) so the first segment carries the
+/// entry's canonical name and timestamp; later runs are emitted only when
+/// non-empty.
 fn generate_descriptor(
     entry_name: &Ident,
     generics: &syn::Generics,
@@ -107,15 +113,37 @@ fn generate_descriptor(
 ) -> super::DescriptorOutput {
     let struct_name = entry_name.to_string().trim_end_matches("Entry").to_string();
     let mut timestamp_descriptor = quote! { None };
-    let mut field_metas = Vec::new();
     let styles = NameStyle::ALL;
+    let own_style_ns = make_ns(root_attrs.rename_all, entry_name.span());
 
-    // Collect field metadata and timestamp
+    // Own-field runs split at flatten boundaries, and the chain items
+    // (own-run segments and flatten children) following the base segment,
+    // in declaration order. Cfg-gated plain fields get a single-field run of
+    // their own, gated the same way, so the descriptor only lists them when
+    // the write path emits them.
+    let mut runs: Vec<super::DescriptorRun> = vec![super::DescriptorRun {
+        cfg: vec![],
+        fields: vec![],
+    }];
+    let mut chain_items: Vec<(Vec<Ts2>, Ts2)> = Vec::new();
+    let close_run = |runs: &mut Vec<super::DescriptorRun>,
+                     chain_items: &mut Vec<(Vec<Ts2>, Ts2)>| {
+        let run_index = runs.len() - 1;
+        if run_index > 0 && !runs[run_index].fields.is_empty() {
+            chain_items.push((
+                runs[run_index].cfg.clone(),
+                own_run_segment_expr(entry_name, &own_style_ns, run_index),
+            ));
+        }
+        runs.push(super::DescriptorRun {
+            cfg: vec![],
+            fields: vec![],
+        });
+    };
+
     for field in fields {
         match &field.attrs.kind {
-            MetricsFieldKind::Ignore(_)
-            | MetricsFieldKind::Flatten { .. }
-            | MetricsFieldKind::FlattenEntry(_) => continue,
+            MetricsFieldKind::Ignore(_) => continue,
             MetricsFieldKind::Timestamp(_) => {
                 let name = field.name.as_deref().unwrap_or("timestamp");
                 timestamp_descriptor = quote! {
@@ -126,7 +154,7 @@ fn generate_descriptor(
                 let names: [String; metrique_core::Styles::COUNT] =
                     std::array::from_fn(|i| metric_name(root_attrs, styles[i], field));
                 let resolved = resolve_field_flags(&field.attrs.flags, &root_attrs.default_flags);
-                field_metas.push(DescriptorFieldMeta {
+                let meta = DescriptorFieldMeta {
                     names,
                     flags: resolved.flags,
                     skipped_flags: resolved.skipped_flags,
@@ -134,23 +162,47 @@ fn generate_descriptor(
                     field_type: field.ty.clone(),
                     close: field.attrs.close,
                     format: format.clone(),
-                });
+                };
+                let cfg_attrs: Vec<Ts2> = field.cfg_attrs().map(|a| quote! { #a }).collect();
+                if cfg_attrs.is_empty() {
+                    runs.last_mut()
+                        .expect("runs is never empty")
+                        .fields
+                        .push(meta);
+                } else {
+                    close_run(&mut runs, &mut chain_items);
+                    let run = runs.last_mut().expect("runs is never empty");
+                    run.cfg = cfg_attrs;
+                    run.fields.push(meta);
+                    close_run(&mut runs, &mut chain_items);
+                }
+            }
+            MetricsFieldKind::Flatten { .. } | MetricsFieldKind::FlattenEntry(_) => {
+                // Close the current run; non-base runs chain in just before
+                // this flatten's child segments.
+                close_run(&mut runs, &mut chain_items);
+                chain_items.push(flatten_chain_item(field, root_attrs));
             }
         }
+    }
+    // Close the trailing run.
+    let last_run = runs.len() - 1;
+    if last_run > 0 && !runs[last_run].fields.is_empty() {
+        chain_items.push((
+            runs[last_run].cfg.clone(),
+            own_run_segment_expr(entry_name, &own_style_ns, last_run),
+        ));
     }
 
     let descriptor_impl = generate_descriptor_impl(
         entry_name,
         generics,
         &struct_name,
-        &field_metas,
+        &runs,
         &timestamp_descriptor,
     );
 
-    let own_style_ns = make_ns(root_attrs.rename_all, entry_name.span());
-    let flatten_chains = build_flatten_chains(fields, root_attrs);
-    let descriptors_method =
-        assemble_descriptors_method(entry_name, &own_style_ns, &flatten_chains);
+    let descriptors_method = assemble_descriptors_method(entry_name, &own_style_ns, &chain_items);
 
     super::DescriptorOutput {
         trait_impls: descriptor_impl,
@@ -158,125 +210,49 @@ fn generate_descriptor(
     }
 }
 
-/// Builds the flatten chain entries for the `descriptors()` method.
-///
-/// Each flatten field produces either:
-/// - A normal chain (`.chain(child.descriptors())`) for non-cfg fields
-/// - A cfg-gated let-rebinding (`#[cfg(...)] let __desc = __desc.chain(...)`) for cfg fields
-///
-/// Builds flatten chain entries for the descriptors() method.
-///
-/// Returns flatten_chains where each non-cfg chain is a full
-/// iterator expression (used with make_binary_tree_chain for balanced type nesting).
-/// Cfg-gated chains use let-rebinding and are applied after the tree.
-fn build_flatten_chains(
-    fields: &[MetricsField],
-    root_attrs: &RootAttributes,
-) -> Vec<(Vec<Ts2>, Ts2)> {
-    let mut flatten_chains: Vec<(Vec<Ts2>, Ts2)> = Vec::new();
-
-    for field in fields {
-        match &field.attrs.kind {
-            MetricsFieldKind::Flatten {
-                prefix,
-                default_flags: flatten_default_flags,
-                ..
-            } => {
-                let field_ident = &field.ident;
-                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
-                let ns = make_ns(root_attrs.rename_all, field.span);
-
-                let prefix_expr = prefix.as_ref().map(|pfx| {
-                    // Generate a per-style prefix array so the correct inflection
-                    // is selected at runtime based on the parent's propagated style.
-                    let inflected: Vec<String> = crate::inflect::NameStyle::ALL
-                        .iter()
-                        .map(|s| pfx.apply_prefix_only(*s))
-                        .collect();
-                    quote! {
-                        .with_prefix(
-                            [#(#inflected),*][<#ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX as usize]
-                        )
-                    }
-                });
-
-                let extra_flags_expr = if flatten_default_flags.is_empty() {
-                    None
-                } else {
-                    let flag_exprs: Vec<_> = flatten_default_flags
-                        .iter()
-                        .map(|f| {
-                            let path = &f.path;
-                            quote! { ::metrique::writer::core::FieldFlag::new::<#path>() }
-                        })
-                        .collect();
-                    let num_flags = flag_exprs.len();
-                    Some(quote! {
-                        .with_extra_flags({
-                            static __FLATTEN_FLAGS: [::metrique::writer::core::FieldFlag; #num_flags] = [
-                                #(#flag_exprs),*
-                            ];
-                            &__FLATTEN_FLAGS
-                        })
-                    })
-                };
-
-                let has_transforms = prefix_expr.is_some() || extra_flags_expr.is_some();
-                let child_expr = if has_transforms {
-                    quote! {
-                        ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                            .map_available(|d| d #prefix_expr #extra_flags_expr)
-                    }
-                } else {
-                    quote! {
-                        ::metrique::InflectableEntry::<#ns>::descriptors(&self.#field_ident)
-                    }
-                };
-
-                flatten_chains.push((
-                    cfg_attrs.iter().map(|a| quote! { #a }).collect(),
-                    child_expr,
-                ));
-            }
-            MetricsFieldKind::FlattenEntry(_) => {
-                let field_ident = &field.ident;
-                let cfg_attrs: Vec<_> = field.cfg_attrs().collect();
-                let child_expr = quote! {
-                    ::metrique::writer::Entry::descriptors(&self.#field_ident)
-                };
-                flatten_chains.push((
-                    cfg_attrs.iter().map(|a| quote! { #a }).collect(),
-                    child_expr,
-                ));
-            }
-            _ => {}
-        }
+/// A `Descriptors` expression yielding the segment for one of the entry's own
+/// field runs.
+fn own_run_segment_expr(entry_name: &Ident, own_style_ns: &Ts2, run: usize) -> Ts2 {
+    let method = super::descriptor_method_ident(run);
+    quote! {
+        ::metrique::writer::core::Descriptors::available(
+            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
+                #entry_name::#method(),
+                <#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+            ))
+        )
     }
-
-    flatten_chains
 }
 
-/// Assembles the `descriptors()` method body from the entry's own descriptor
-/// and any flatten chains.
+/// Builds the chain entry for a single flatten field in the `descriptors()`
+/// method.
 ///
-/// When all chains are non-cfg, generates a simple expression chain.
-/// When cfg-gated chains exist, uses let-rebinding so cfg-disabled fields
+/// Returns `(cfg_attrs, expr)` where `expr` yields the child's descriptor
+/// segments with any flatten-site modifiers (prefix, default_flags) applied.
+/// Cfg-gated fields are chained via let-rebinding by `build_descriptors_chain`.
+fn flatten_chain_item(field: &MetricsField, root_attrs: &RootAttributes) -> (Vec<Ts2>, Ts2) {
+    let field_ident = &field.ident;
+    let ns = make_ns(root_attrs.rename_all, field.span);
+    let binding = quote! { &self.#field_ident };
+    let child_expr = super::flatten_descriptors_expr(&field.attrs.kind, &binding, &ns);
+    let cfg_attrs = field.cfg_attrs().map(|a| quote! { #a }).collect();
+    (cfg_attrs, child_expr)
+}
+
+/// Assembles the `descriptors()` method body from the entry's base segment
+/// (own-field run 0) and the interleaved chain items (later own-field runs and
+/// flatten children, in declaration order).
+///
+/// When all chain items are non-cfg, generates a simple expression chain.
+/// When cfg-gated items exist, uses let-rebinding so cfg-disabled fields
 /// are excluded without affecting the iterator type.
 fn assemble_descriptors_method(
     entry_name: &Ident,
     own_style_ns: &Ts2,
-    flatten_chains: &[(Vec<Ts2>, Ts2)],
+    chain_items: &[(Vec<Ts2>, Ts2)],
 ) -> Ts2 {
-    let base_expr = quote! {
-        ::metrique::writer::core::Descriptors::available(
-            ::std::iter::once(::metrique::writer::core::DescriptorRef::from_static(
-                #entry_name::__metrique_descriptor(),
-                <#own_style_ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
-            ))
-        )
-    };
-
-    let chain_expr = super::build_descriptors_chain(base_expr, flatten_chains);
+    let base_expr = own_run_segment_expr(entry_name, own_style_ns, 0);
+    let chain_expr = super::build_descriptors_chain(base_expr, chain_items);
 
     quote! {
         fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {

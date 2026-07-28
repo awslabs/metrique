@@ -339,6 +339,11 @@ impl ValueWriter for FieldValueWriter<'_> {
     fn error(self, error: ValidationError) {
         *self.0 = Some(FieldData::String(format!("ERROR: {error}")));
     }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // The local format renders a list as the joined string of its elements.
+        metrique_writer::value::write_values_as_string(self, values)
+    }
 }
 
 // ── Percentile computation ─────────────────────────────────────────────

@@ -419,7 +419,7 @@ fn collect_field_sample_group<'a>(
 
 /// Output of descriptor generation for a struct or enum entry.
 pub(crate) struct DescriptorOutput {
-    /// The `__metrique_descriptor(style)` inherent impl with 4 statics.
+    /// The inherent impl with the per-run `__metrique_descriptor_run_N()` methods.
     /// Goes outside the `InflectableEntry` impl block but inside `const _: ()`.
     pub(crate) trait_impls: Ts2,
     /// The `fn descriptors()` method body.
@@ -475,6 +475,71 @@ pub(crate) fn build_descriptors_chain(base: Ts2, children: &[(Vec<Ts2>, Ts2)]) -
             }
         }
         quote! { { #(#stmts)* __desc } }
+    }
+}
+
+/// Generates a `Descriptors` expression yielding a flattened child's segments,
+/// with any flatten-site modifiers (prefix, `default_flags`) applied.
+///
+/// `binding` is the expression that borrows the child entry: `&self.field` for
+/// structs, a match-arm binding for enum variants.
+pub(crate) fn flatten_descriptors_expr(kind: &MetricsFieldKind, binding: &Ts2, ns: &Ts2) -> Ts2 {
+    match kind {
+        MetricsFieldKind::Flatten {
+            prefix,
+            default_flags: flatten_default_flags,
+            ..
+        } => {
+            let prefix_expr = prefix.as_ref().map(|pfx| {
+                // Generate a per-style prefix array so the correct inflection
+                // is selected at runtime based on the parent's propagated style.
+                let inflected: Vec<String> = crate::inflect::NameStyle::ALL
+                    .iter()
+                    .map(|s| pfx.apply_prefix_only(*s))
+                    .collect();
+                quote! {
+                    .with_prefix(
+                        [#(#inflected),*][<#ns as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX as usize]
+                    )
+                }
+            });
+
+            let extra_flags_expr = if flatten_default_flags.is_empty() {
+                None
+            } else {
+                let flag_exprs: Vec<_> = flatten_default_flags
+                    .iter()
+                    .map(|f| {
+                        let path = &f.path;
+                        quote! { ::metrique::writer::core::FieldFlag::new::<#path>() }
+                    })
+                    .collect();
+                let num_flags = flag_exprs.len();
+                Some(quote! {
+                    .with_extra_flags({
+                        static __FLATTEN_FLAGS: [::metrique::writer::core::FieldFlag; #num_flags] = [
+                            #(#flag_exprs),*
+                        ];
+                        &__FLATTEN_FLAGS
+                    })
+                })
+            };
+
+            if prefix_expr.is_some() || extra_flags_expr.is_some() {
+                quote! {
+                    ::metrique::InflectableEntry::<#ns>::descriptors(#binding)
+                        .map_available(|d| d #prefix_expr #extra_flags_expr)
+                }
+            } else {
+                quote! {
+                    ::metrique::InflectableEntry::<#ns>::descriptors(#binding)
+                }
+            }
+        }
+        MetricsFieldKind::FlattenEntry(_) => {
+            quote! { ::metrique::writer::Entry::descriptors(#binding) }
+        }
+        _ => unreachable!("flatten_descriptors_expr is only called for flatten/flatten_entry"),
     }
 }
 
@@ -617,23 +682,63 @@ fn anonymize_lifetimes(ty: &syn::Type) -> syn::Type {
     ty
 }
 
+/// Name of the inherent descriptor method for a given own-field run.
+pub(crate) fn descriptor_method_ident(run: usize) -> Ident {
+    format_ident!("__metrique_descriptor_run_{}", run)
+}
+
+/// One contiguous run of own fields, becoming one descriptor segment.
+///
+/// `cfg` carries the field's `#[cfg(...)]`/`#[cfg_attr(...)]` attributes for
+/// runs holding a single cfg-gated field; the generated method and chain call
+/// are gated the same way so the segment disappears along with the field.
+pub(crate) struct DescriptorRun {
+    pub(crate) cfg: Vec<Ts2>,
+    pub(crate) fields: Vec<DescriptorFieldMeta>,
+}
+
 pub(crate) fn generate_descriptor_impl(
     entry_name: &Ident,
     generics: &syn::Generics,
     struct_name: &str,
-    fields: &[DescriptorFieldMeta],
+    runs: &[DescriptorRun],
     timestamp_descriptor: &Ts2,
 ) -> Ts2 {
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let body = generate_style_matched_descriptor(fields, struct_name, timestamp_descriptor, "");
+    let none_timestamp = quote! { None };
+
+    let methods: Vec<Ts2> = runs
+        .iter()
+        .enumerate()
+        // Run 0 is always emitted (it carries the canonical entry name and
+        // timestamp); later runs are skipped when empty.
+        .filter(|(i, run)| *i == 0 || !run.fields.is_empty())
+        .map(|(i, run)| {
+            // The timestamp is emitted via `EntryWriter::timestamp`, not
+            // `value()`, so it has no position in the field stream; it always
+            // lives on the first segment.
+            let ts = if i == 0 {
+                timestamp_descriptor
+            } else {
+                &none_timestamp
+            };
+            let body = generate_style_matched_descriptor(&run.fields, struct_name, ts, "");
+            let method_ident = descriptor_method_ident(i);
+            let cfg = &run.cfg;
+            quote! {
+                #(#cfg)*
+                #[doc(hidden)]
+                #[inline(always)]
+                fn #method_ident() -> &'static ::metrique::writer::core::EntryDescriptor {
+                    #body
+                }
+            }
+        })
+        .collect();
 
     quote! {
         impl #impl_generics #entry_name #ty_generics #where_clause {
-            #[doc(hidden)]
-            #[inline(always)]
-            fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
-                #body
-            }
+            #(#methods)*
         }
     }
 }

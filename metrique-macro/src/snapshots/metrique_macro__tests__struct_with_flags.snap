@@ -30,7 +30,7 @@ const _: () = {
     impl FlaggedMetricsEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+        fn __metrique_descriptor_run_0() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 1usize] = [
                     ::metrique::writer::core::FieldFlag::new::<MyFlag>(),
@@ -227,7 +227,7 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                 ::std::iter::once(
                     ::metrique::writer::core::DescriptorRef::from_static(
-                        FlaggedMetricsEntry::__metrique_descriptor(),
+                        FlaggedMetricsEntry::__metrique_descriptor_run_0(),
                         <NS::PascalCase as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                     ),
                 ),

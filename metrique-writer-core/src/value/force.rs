@@ -8,13 +8,14 @@ use std::{
 };
 
 use derive_where::derive_where;
+use smallvec::SmallVec;
 
 use crate::{
     Entry, EntryIoStream, EntryWriter, IoStreamError, Observation, Unit, ValidationError,
     ValueWriter,
 };
 
-use super::{MetricFlags, MetricValue, Value};
+use super::{MetricFlags, MetricValue, VALUES_INLINE_CAPACITY, Value};
 
 /// A trait for functions that return a [`MetricFlags<'static>`][MetricFlags]
 ///
@@ -148,6 +149,13 @@ impl<T: Value, FLAGS: FlagConstructor> Value for ForceFlag<T, FLAGS> {
             fn error(self, error: ValidationError) {
                 self.0.error(error)
             }
+
+            fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+                // Wrap each element so `metric()` calls still merge the flag.
+                let wrapped: SmallVec<[ForceFlag<&'a V, FLAGS>; VALUES_INLINE_CAPACITY]> =
+                    values.into_iter().map(ForceFlag::from).collect();
+                self.0.values(wrapped.iter())
+            }
         }
 
         self.0.write(Wrapper::<_, FLAGS>(writer, PhantomData))
@@ -221,5 +229,155 @@ impl<S: EntryIoStream, FLAGS: FlagConstructor> EntryIoStream for ForceFlag<S, FL
 
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::value::MetricOptions;
+
+    #[derive(Debug)]
+    struct TestFlagOpt;
+    impl MetricOptions for TestFlagOpt {}
+
+    struct TestFlagCtor;
+    impl FlagConstructor for TestFlagCtor {
+        fn construct() -> MetricFlags<'static> {
+            MetricFlags::upcast(&TestFlagOpt)
+        }
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum Event {
+        String(String),
+        ValuesStart,
+        Metric {
+            total: u64,
+            flagged: bool,
+            dimensions: Vec<(String, String)>,
+        },
+    }
+
+    struct Recorder<'a>(&'a mut Vec<Event>);
+
+    impl ValueWriter for Recorder<'_> {
+        fn string(self, value: &str) {
+            self.0.push(Event::String(value.to_string()));
+        }
+
+        fn metric<'a>(
+            self,
+            distribution: impl IntoIterator<Item = Observation>,
+            _unit: Unit,
+            dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+            flags: MetricFlags<'_>,
+        ) {
+            let total = distribution
+                .into_iter()
+                .map(|obs| match obs {
+                    Observation::Unsigned(v) => v,
+                    other => panic!("unexpected observation {other:?}"),
+                })
+                .sum();
+            self.0.push(Event::Metric {
+                total,
+                flagged: flags.downcast::<TestFlagOpt>().is_some(),
+                dimensions: dimensions
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+            });
+        }
+
+        fn error(self, error: ValidationError) {
+            panic!("unexpected error: {error:?}");
+        }
+
+        // Distinguishes a forwarded `values()` call from the default
+        // comma-joined `string()` fallback.
+        fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+            self.0.push(Event::ValuesStart);
+            for value in values {
+                value.write(Recorder(self.0));
+            }
+        }
+    }
+
+    #[test]
+    fn forwards_values_to_wrapped_writer() {
+        let value: ForceFlag<Vec<String>, TestFlagCtor> =
+            vec!["a".to_string(), "b".to_string()].into();
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::String("a".into()),
+                Event::String("b".into()),
+            ],
+        );
+    }
+
+    #[test]
+    fn values_elements_carry_flag() {
+        let value: ForceFlag<Vec<u64>, TestFlagCtor> = vec![1, 2].into();
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    total: 1,
+                    flagged: true,
+                    dimensions: vec![]
+                },
+                Event::Metric {
+                    total: 2,
+                    flagged: true,
+                    dimensions: vec![]
+                },
+            ],
+        );
+    }
+
+    #[test]
+    fn forwards_empty_values() {
+        let value: ForceFlag<Vec<u64>, TestFlagCtor> = vec![].into();
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        assert_eq!(events, [Event::ValuesStart]);
+    }
+
+    #[test]
+    fn stacked_wrappers_apply_flag_and_dimensions_to_elements() {
+        use crate::value::WithDimension;
+
+        let value = WithDimension::new(
+            ForceFlag::<_, TestFlagCtor>::from(vec![1u64, 2u64]),
+            "foo",
+            "bar",
+        );
+        let mut events = Vec::new();
+        value.write(Recorder(&mut events));
+        let dimensions = vec![("foo".to_string(), "bar".to_string())];
+        assert_eq!(
+            events,
+            [
+                Event::ValuesStart,
+                Event::Metric {
+                    total: 1,
+                    flagged: true,
+                    dimensions: dimensions.clone()
+                },
+                Event::Metric {
+                    total: 2,
+                    flagged: true,
+                    dimensions
+                },
+            ],
+        );
     }
 }

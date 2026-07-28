@@ -253,6 +253,11 @@ impl ValueWriter for JsonArrayElementWriter<'_> {
     }
 
     fn error(self, _error: ValidationError) {}
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // Arrays don't nest here: a list inside an element becomes one joined element.
+        metrique_writer_core::value::write_values_as_string(self, values)
+    }
 }
 
 impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {

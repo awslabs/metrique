@@ -777,6 +777,15 @@ impl Tag {
         }
     }
 
+    /// Get the tag field name as rendered under a propagated name style.
+    /// `name_exact` tags are style-invariant: the name is emitted verbatim.
+    pub(crate) fn styled_name(&self, root_attrs: &RootAttributes, style: NameStyle) -> String {
+        match self {
+            Tag::Inflectable { .. } => style.apply(&self.field_name(root_attrs)),
+            Tag::Exact { name, .. } => name.clone(),
+        }
+    }
+
     pub(crate) fn sample_group(&self) -> bool {
         match self {
             Tag::Inflectable { sample_group, .. } => *sample_group,
