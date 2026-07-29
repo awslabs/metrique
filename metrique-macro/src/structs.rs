@@ -159,7 +159,7 @@ fn generate_entry_struct(
     let allowed_derives = crate::derive_utils::extract_allowed_derives(base_attrs);
 
     Ok(quote!(
-        #[doc(hidden)]
+        #[cfg_attr(not(docsrs), doc(hidden))]
         #[allow(clippy::type_complexity)]
         #(#allowed_derives)*
         pub struct #name #generics #body

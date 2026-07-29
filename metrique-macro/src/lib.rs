@@ -437,6 +437,9 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 ///   A type alias to ``AppendAndCloseOnDropHandle`.
 ///
 /// Value enums do not have new types generated, only trait implementations (`From<&MyEnum> for &'static str`, `SampleGroup`, `Value`).
+///
+/// On docs.rs, `metrique::unit_of_work::generated` provides a small expanded
+/// example where these generated types can be inspected directly.
 #[proc_macro_attribute]
 pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -1382,7 +1385,10 @@ impl MetricsField {
         Some(quote_spanned! { *span=>
                 #(#cfg_attrs)*
                 #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                #[doc(hidden)]
+                #[cfg_attr(not(docsrs), doc(hidden))]
+                #[cfg(docsrs)]
+                pub #inner
+                #[cfg(not(docsrs))]
                 #inner
         })
     }
