@@ -1142,9 +1142,9 @@ mod tests {
     /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/341
     #[cfg(not(all(shuttle, feature = "_shuttle")))]
     #[test]
-    #[ignore = "reproduces a real bug: the background thread never auto-shuts-down \
-                when all BackgroundQueue clones are dropped, see the KNOWN BUG comment \
-                on Receiver::run's Arc::get_mut check"]
+    #[should_panic(
+        expected = "background thread never auto-shut-down after all queues were dropped"
+    )]
     fn auto_shutdown_when_no_appenders_left() {
         test_all_queues! {
             |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),

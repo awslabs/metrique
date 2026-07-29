@@ -1402,11 +1402,6 @@ mod shutdown_registry_tests {
 // `SHUTDOWN_REGISTRY` slots are real `static`s, and Shuttle re-runs the same
 // test body many times in one process, so a `static`'s state would leak
 // across iterations and invalidate the exploration.
-//
-// `#[ignore]`d: it reproducibly finds a real bug in `AttachHandle::drop` (a
-// concurrent `register_shutdown_fn` can make `Arc::try_unwrap` return `Err`,
-// hitting an `unreachable!()`). Left in place so re-running it after a real
-// fix is a single command.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
     use std::sync::Arc;
@@ -1414,6 +1409,7 @@ mod shuttle_tests {
 
     use super::{AttachHandle, ShutdownFn};
 
+    /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
     fn concurrent_register_and_drop() {
         let ran = Arc::new(AtomicUsize::new(0));
         let handle = AttachHandle::new(|| {});
@@ -1442,13 +1438,13 @@ mod shuttle_tests {
     }
 
     #[test]
-    #[ignore = "reproduces a real race in AttachHandle::drop"]
+    #[should_panic(expected = "ShutdownRegistry should have no other strong references")]
     fn concurrent_register_and_drop_pct() {
         shuttle::check_pct(concurrent_register_and_drop, 5_000, 2);
     }
 
     #[test]
-    #[ignore = "reproduces a real race in AttachHandle::drop"]
+    #[should_panic(expected = "ShutdownRegistry should have no other strong references")]
     fn concurrent_register_and_drop_determinism() {
         shuttle::check_uncontrolled_nondeterminism(concurrent_register_and_drop, 5_000);
     }
