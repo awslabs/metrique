@@ -7,38 +7,6 @@
 
 use std::collections::VecDeque;
 
-/// Generates the `<name>_pct` / `<name>_determinism` shuttle test pair for a
-/// shuttle-test function `$name`, calling `shuttle::check_pct` and
-/// `shuttle::check_uncontrolled_nondeterminism` with the same iteration
-/// count. Add `, should_panic = "..."` for tests expecting a panic.
-#[macro_export]
-macro_rules! shuttle_test {
-    ($name:ident, $pct:ident, $determinism:ident, $iterations:expr, $depth:expr) => {
-        #[test]
-        fn $pct() {
-            ::shuttle::check_pct($name, $iterations, $depth);
-        }
-
-        #[test]
-        fn $determinism() {
-            ::shuttle::check_uncontrolled_nondeterminism($name, $iterations);
-        }
-    };
-    ($name:ident, $pct:ident, $determinism:ident, $iterations:expr, $depth:expr, should_panic = $msg:expr) => {
-        #[test]
-        #[should_panic(expected = $msg)]
-        fn $pct() {
-            ::shuttle::check_pct($name, $iterations, $depth);
-        }
-
-        #[test]
-        #[should_panic(expected = $msg)]
-        fn $determinism() {
-            ::shuttle::check_uncontrolled_nondeterminism($name, $iterations);
-        }
-    };
-}
-
 /// Shuttle-visible substitute for `crossbeam_queue::ArrayQueue`, backed by a
 /// `shuttle::sync::Mutex` so the scheduler can explore interleavings of
 /// concurrent `force_push`/`pop`.
@@ -90,5 +58,208 @@ impl<T> ArrayQueue<T> {
     #[doc(hidden)]
     pub fn capacity(&self) -> usize {
         self.capacity
+    }
+}
+
+/// Whether `now` has reached `deadline`. Real wall-clock time barely
+/// advances during a fast shuttle iteration, so `now >= deadline` alone
+/// would (almost) never fire -- OR in a random chance, so the scheduler
+/// explores both outcomes. Same trick as `dial9-core`'s `recv_timeout`
+/// wrapper (a sibling project), adapted to wrap a comparison instead of a
+/// blocking call. The non-shuttle equivalent (a trivial `now >= deadline`)
+/// stays local to each crate, since it's real production logic, not test
+/// support.
+#[doc(hidden)]
+pub fn deadline_reached(now: std::time::Instant, deadline: std::time::Instant) -> bool {
+    use shuttle::rand::Rng;
+    now >= deadline || shuttle::rand::thread_rng().gen_bool(0.05)
+}
+
+/// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
+/// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to
+/// a specific OS thread, but callers construct the `Parker` on one thread
+/// and park on another. A `Mutex<bool>` + `Condvar` token shared via `Arc`
+/// matches crossbeam's actual (thread-identity-agnostic) semantics instead
+/// -- an earlier version bound to `shuttle::thread::current()` and
+/// deadlocked for exactly this reason.
+#[doc(hidden)]
+pub struct Parker {
+    inner: std::sync::Arc<TokenState>,
+}
+
+struct TokenState {
+    available: shuttle::sync::Mutex<bool>,
+    condvar: shuttle::sync::Condvar,
+}
+
+impl Default for Parker {
+    fn default() -> Self {
+        Self {
+            inner: std::sync::Arc::new(TokenState {
+                available: shuttle::sync::Mutex::new(false),
+                condvar: shuttle::sync::Condvar::new(),
+            }),
+        }
+    }
+}
+
+impl Parker {
+    #[doc(hidden)]
+    pub fn unparker(&self) -> Unparker {
+        Unparker {
+            inner: self.inner.clone(),
+        }
+    }
+
+    /// Shuttle doesn't model time, so a deadline-based park just parks
+    /// unboundedly here (matching shuttle's own `thread::park_timeout`).
+    #[doc(hidden)]
+    pub fn park_deadline(&self, _deadline: std::time::Instant) {
+        let mut available = self.inner.available.lock().unwrap();
+        while !*available {
+            available = self.inner.condvar.wait(available).unwrap();
+        }
+        *available = false;
+    }
+}
+
+#[derive(Clone)]
+#[doc(hidden)]
+pub struct Unparker {
+    inner: std::sync::Arc<TokenState>,
+}
+
+impl Unparker {
+    #[doc(hidden)]
+    pub fn unpark(&self) {
+        let mut available = self.inner.available.lock().unwrap();
+        *available = true;
+        self.inner.condvar.notify_one();
+    }
+}
+
+/// Shuttle-visible substitute for a slot that can be set at most once, then
+/// read back -- the shuttle side of a cfg-swap whose non-shuttle side is a
+/// zero-cost `std::sync::OnceLock` wrapper (kept local to each crate, since
+/// that side is real production logic). Backed by a `shuttle::sync::Mutex`
+/// so the scheduler sees `get`/`set` as real interleaving points. `with`
+/// clones the value out and releases the lock *before* calling `f` -- not
+/// while holding it -- so that `f` (which in practice calls arbitrary user
+/// code) never runs with this lock held; that's why `T: Clone` is required
+/// here but not on the non-shuttle side.
+#[doc(hidden)]
+pub struct OnceSlot<T>(shuttle::sync::Mutex<Option<T>>);
+
+impl<T: Clone> OnceSlot<T> {
+    #[doc(hidden)]
+    pub fn new() -> Self {
+        Self(shuttle::sync::Mutex::new(None))
+    }
+
+    #[doc(hidden)]
+    pub fn with<R>(&self, f: impl FnOnce(Option<&T>) -> R) -> R {
+        let value = self.0.lock().unwrap().clone();
+        f(value.as_ref())
+    }
+
+    #[doc(hidden)]
+    pub fn set(&self, value: T) -> Result<(), T> {
+        let mut guard = self.0.lock().unwrap();
+        if guard.is_some() {
+            Err(value)
+        } else {
+            *guard = Some(value);
+            Ok(())
+        }
+    }
+}
+
+impl<T: Clone> Default for OnceSlot<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+struct GuardState<T> {
+    strong: usize,
+    weak: usize,
+    value: Option<T>,
+}
+
+/// Shuttle-visible substitute for `Arc<Mutex<Option<T>>>` in a hand-rolled
+/// "release when the last strong ref drops" protocol -- the shuttle side of
+/// a cfg-swap whose non-shuttle side is exactly that real `Arc`/`Mutex`/
+/// `Weak` (kept local to each crate, since that side is real production
+/// logic). Plain `Arc`/`Weak`'s own atomics aren't shuttle-instrumented, so
+/// a release race that hinges on the *last* strong ref's drop wouldn't be
+/// shuttle-testable with the real types -- this tracks `strong`/`weak`
+/// counts itself under a single `shuttle::sync::Mutex` instead, so the
+/// scheduler can see and interleave every increment/decrement.
+#[doc(hidden)]
+pub struct GuardArc<T>(std::sync::Arc<shuttle::sync::Mutex<GuardState<T>>>);
+
+#[doc(hidden)]
+pub struct GuardWeak<T>(std::sync::Arc<shuttle::sync::Mutex<GuardState<T>>>);
+
+impl<T> GuardArc<T> {
+    #[doc(hidden)]
+    pub fn new(value: T) -> Self {
+        Self(std::sync::Arc::new(shuttle::sync::Mutex::new(GuardState {
+            strong: 1,
+            weak: 0,
+            value: Some(value),
+        })))
+    }
+
+    #[doc(hidden)]
+    pub fn downgrade(this: &Self) -> GuardWeak<T> {
+        this.0.lock().unwrap().weak += 1;
+        GuardWeak(this.0.clone())
+    }
+
+    #[doc(hidden)]
+    pub fn is_present(&self) -> bool {
+        self.0.lock().unwrap().value.is_some()
+    }
+
+    #[doc(hidden)]
+    pub fn take(&self) -> Option<T> {
+        self.0.lock().unwrap().value.take()
+    }
+}
+
+impl<T> Clone for GuardArc<T> {
+    fn clone(&self) -> Self {
+        self.0.lock().unwrap().strong += 1;
+        Self(self.0.clone())
+    }
+}
+
+impl<T> Drop for GuardArc<T> {
+    fn drop(&mut self) {
+        let mut state = self.0.lock().unwrap();
+        state.strong -= 1;
+        if state.strong == 0 {
+            state.value = None;
+        }
+    }
+}
+
+impl<T> GuardWeak<T> {
+    #[doc(hidden)]
+    pub fn upgrade(&self) -> Option<GuardArc<T>> {
+        let mut state = self.0.lock().unwrap();
+        if state.strong == 0 {
+            None
+        } else {
+            state.strong += 1;
+            Some(GuardArc(self.0.clone()))
+        }
+    }
+}
+
+impl<T> Drop for GuardWeak<T> {
+    fn drop(&mut self) {
+        self.0.lock().unwrap().weak -= 1;
     }
 }
