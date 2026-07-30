@@ -41,11 +41,27 @@ pub(crate) use shuttle::{
 #[cfg(all(shuttle, feature = "_shuttle"))]
 pub(crate) use metrique_writer_core::shuttle_test_support::ArrayQueue;
 #[cfg(all(shuttle, feature = "_shuttle"))]
-pub(crate) use shuttle_impl::{Parker, Unparker};
+pub(crate) use shuttle_impl::{Parker, Unparker, deadline_reached};
+
+/// Whether `now` has reached `deadline`. Trivial outside shuttle.
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+pub(crate) fn deadline_reached(now: std::time::Instant, deadline: std::time::Instant) -> bool {
+    now >= deadline
+}
 
 #[cfg(all(shuttle, feature = "_shuttle"))]
 mod shuttle_impl {
+    use shuttle::rand::Rng;
     use std::time::Instant;
+
+    /// Real wall-clock time barely advances during a fast shuttle
+    /// iteration, so `now >= deadline` alone would (almost) never fire --
+    /// OR in a random chance, so the scheduler explores both outcomes.
+    /// Same trick as `dial9-core`'s `recv_timeout` wrapper (a sibling
+    /// project), adapted to wrap a comparison instead of a blocking call.
+    pub(crate) fn deadline_reached(now: Instant, deadline: Instant) -> bool {
+        now >= deadline || shuttle::rand::thread_rng().gen_bool(0.05)
+    }
 
     /// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
     /// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to

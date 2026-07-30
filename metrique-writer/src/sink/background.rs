@@ -17,7 +17,9 @@ use super::metrics::{
     MetricsRsType, MetricsRsUnit,
 };
 use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
-use super::shuttle_primitives::{ArrayQueue, AtomicBool, Ordering, Parker, Unparker, mpsc, thread};
+use super::shuttle_primitives::{
+    ArrayQueue, AtomicBool, Ordering, Parker, Unparker, deadline_reached, mpsc, thread,
+};
 
 /// Builder for [`BackgroundQueue`]
 pub struct BackgroundQueueBuilder {
@@ -708,7 +710,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
 
                 // If we did make it to the next flush deadline, flush, else someone woke us up and we'll continue
                 // writing.
-                if Instant::now() >= next_flush {
+                if deadline_reached(Instant::now(), next_flush) {
                     break;
                 }
             }
@@ -754,7 +756,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             self.consume(entry);
 
             count += 1;
-            if count.is_multiple_of(32) && Instant::now() >= deadline {
+            if count.is_multiple_of(32) && deadline_reached(Instant::now(), deadline) {
                 return (DrainResult::HitDeadline, count);
             }
         }
@@ -1609,11 +1611,11 @@ mod tests {
 // model wall-clock time and can't usefully explore the real-time behavior
 // those tests exercise (periodic flush, `forget()` without a sync point).
 //
-// Known gap: the long `flush_interval` used below keeps the periodic-flush
-// deadline from ever tripping, so `WakerTracker::entries_before_wake`'s
-// countdown (only reachable via a mid-drain `HitDeadline`) is never
-// exercised here. Covered instead by a real-thread test in `mod tests`
-// above (`waker_tracker_wakes_within_capacity_on_mid_drain_hit_deadline`)
+// The long `flush_interval` used below keeps the *real* periodic-flush
+// deadline from tripping during a fast in-process iteration, but
+// `deadline_reached` (see `shuttle_primitives`) also ORs in a random
+// chance regardless of real elapsed time, so a mid-drain `HitDeadline` is
+// still reachable here.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
     use std::sync::{Arc, Mutex};
@@ -1739,6 +1741,62 @@ mod shuttle_tests {
     #[test]
     fn flush_waits_for_prior_pushes_determinism() {
         shuttle::check_uncontrolled_nondeterminism(flush_waits_for_prior_pushes, 2_000);
+    }
+
+    /// `flush_async()` must still observe every entry pushed
+    /// on the same thread before it, even if the receiver hits its
+    /// deadline mid-drain along the way.
+    fn flush_waits_for_prior_pushes_even_across_hit_deadline() {
+        const PER_THREAD: u64 = 20;
+
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(1_000)
+            .flush_interval(flush_interval())
+            .build(Arc::clone(&output));
+
+        let other = {
+            let queue = queue.clone();
+            shuttle::thread::spawn(move || {
+                for i in 0..PER_THREAD {
+                    queue.append(TestEntry(i));
+                }
+            })
+        };
+
+        for i in PER_THREAD..(PER_THREAD * 2) {
+            queue.append(TestEntry(i));
+        }
+        block_on(EntrySink::<TestEntry>::flush_async(&queue));
+
+        let values = output.lock().unwrap().values.clone();
+        for i in PER_THREAD..(PER_THREAD * 2) {
+            assert!(
+                values.contains(&i),
+                "flush_async() resolved without observing entry {i} pushed before it, \
+                 even though the receiver may have hit its deadline mid-drain"
+            );
+        }
+
+        other.join().unwrap();
+        handle.shut_down();
+    }
+
+    #[test]
+    fn flush_waits_for_prior_pushes_even_across_hit_deadline_pct() {
+        shuttle::check_pct(
+            flush_waits_for_prior_pushes_even_across_hit_deadline,
+            2_000,
+            3,
+        );
+    }
+
+    #[test]
+    fn flush_waits_for_prior_pushes_even_across_hit_deadline_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(
+            flush_waits_for_prior_pushes_even_across_hit_deadline,
+            2_000,
+        );
     }
 
     /// Overflow accounting: every pushed entry has exactly one fate --
