@@ -21,6 +21,7 @@ tokio = { workspace = true, optional = true, features = ["rt"] }
 shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
+metrique-shuttle-test = { workspace = true }
 assert-json-diff = { workspace = true }
 metrique = { workspace = true, features = [] }
 metrique-writer = { workspace = true, features = ["tracing-subscriber-03", "test-util"] }

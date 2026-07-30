@@ -1409,9 +1409,14 @@ mod shuttle_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{AttachHandle, ShutdownFn};
-    use crate::shuttle_test;
+    use metrique_shuttle_test::shuttle_test;
 
     /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
+    #[shuttle_test(
+        5_000,
+        2,
+        should_panic = "ShutdownRegistry should have no other strong references"
+    )]
     fn concurrent_register_and_drop() {
         const REGISTRARS: usize = 2;
 
@@ -1444,15 +1449,7 @@ mod shuttle_tests {
         assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
     }
 
-    shuttle_test!(
-        concurrent_register_and_drop,
-        concurrent_register_and_drop_pct,
-        concurrent_register_and_drop_determinism,
-        5_000,
-        2,
-        should_panic = "ShutdownRegistry should have no other strong references"
-    );
-
+    #[shuttle_test(5_000, 2)]
     fn concurrent_register_and_forget() {
         let ran = Arc::new(AtomicUsize::new(0));
         let handle = AttachHandle::new(|| {});
@@ -1480,15 +1477,8 @@ mod shuttle_tests {
         );
     }
 
-    shuttle_test!(
-        concurrent_register_and_forget,
-        concurrent_register_and_forget_pct,
-        concurrent_register_and_forget_determinism,
-        5_000,
-        2
-    );
-
     /// `ShutdownRegistry::push` racing itself
+    #[shuttle_test(5_000, 2)]
     fn concurrent_registrars_race_push() {
         const REGISTRARS: usize = 2;
 
@@ -1523,14 +1513,7 @@ mod shuttle_tests {
         );
     }
 
-    shuttle_test!(
-        concurrent_registrars_race_push,
-        concurrent_registrars_race_push_pct,
-        concurrent_registrars_race_push_determinism,
-        5_000,
-        2
-    );
-
+    #[shuttle_test(5_000, 2)]
     fn concurrent_registrars_preserve_lifo_order() {
         const REGISTRARS: u32 = 2;
 
@@ -1568,14 +1551,6 @@ mod shuttle_tests {
             "shutdown fns must run in exact reverse of push order, regardless of how concurrent registration interleaves"
         );
     }
-
-    shuttle_test!(
-        concurrent_registrars_preserve_lifo_order,
-        concurrent_registrars_preserve_lifo_order_pct,
-        concurrent_registrars_preserve_lifo_order_determinism,
-        5_000,
-        2
-    );
 }
 
 // Helper macro that conditionally expands based on the test-util feature
