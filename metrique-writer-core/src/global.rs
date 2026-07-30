@@ -1409,6 +1409,7 @@ mod shuttle_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{AttachHandle, ShutdownFn};
+    use crate::shuttle_test;
 
     /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
     fn concurrent_register_and_drop() {
@@ -1443,17 +1444,14 @@ mod shuttle_tests {
         assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
     }
 
-    #[test]
-    #[should_panic(expected = "ShutdownRegistry should have no other strong references")]
-    fn concurrent_register_and_drop_pct() {
-        shuttle::check_pct(concurrent_register_and_drop, 5_000, 2);
-    }
-
-    #[test]
-    #[should_panic(expected = "ShutdownRegistry should have no other strong references")]
-    fn concurrent_register_and_drop_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(concurrent_register_and_drop, 5_000);
-    }
+    shuttle_test!(
+        concurrent_register_and_drop,
+        concurrent_register_and_drop_pct,
+        concurrent_register_and_drop_determinism,
+        5_000,
+        2,
+        should_panic = "ShutdownRegistry should have no other strong references"
+    );
 
     fn concurrent_register_and_forget() {
         let ran = Arc::new(AtomicUsize::new(0));
@@ -1482,15 +1480,13 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_register_and_forget_pct() {
-        shuttle::check_pct(concurrent_register_and_forget, 5_000, 2);
-    }
-
-    #[test]
-    fn concurrent_register_and_forget_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(concurrent_register_and_forget, 5_000);
-    }
+    shuttle_test!(
+        concurrent_register_and_forget,
+        concurrent_register_and_forget_pct,
+        concurrent_register_and_forget_determinism,
+        5_000,
+        2
+    );
 
     /// `ShutdownRegistry::push` racing itself
     fn concurrent_registrars_race_push() {
@@ -1527,15 +1523,13 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_registrars_race_push_pct() {
-        shuttle::check_pct(concurrent_registrars_race_push, 5_000, 2);
-    }
-
-    #[test]
-    fn concurrent_registrars_race_push_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(concurrent_registrars_race_push, 5_000);
-    }
+    shuttle_test!(
+        concurrent_registrars_race_push,
+        concurrent_registrars_race_push_pct,
+        concurrent_registrars_race_push_determinism,
+        5_000,
+        2
+    );
 
     fn concurrent_registrars_preserve_lifo_order() {
         const REGISTRARS: u32 = 2;
@@ -1575,18 +1569,13 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_registrars_preserve_lifo_order_pct() {
-        shuttle::check_pct(concurrent_registrars_preserve_lifo_order, 5_000, 2);
-    }
-
-    #[test]
-    fn concurrent_registrars_preserve_lifo_order_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_registrars_preserve_lifo_order,
-            5_000,
-        );
-    }
+    shuttle_test!(
+        concurrent_registrars_preserve_lifo_order,
+        concurrent_registrars_preserve_lifo_order_pct,
+        concurrent_registrars_preserve_lifo_order_determinism,
+        5_000,
+        2
+    );
 }
 
 // Helper macro that conditionally expands based on the test-util feature
