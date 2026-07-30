@@ -53,17 +53,17 @@ struct Inner {
 /// [`std::sync::OnceLock`] -- `with` just calls `f` on `self.0.get()`
 /// directly, no lock, no clone, matching `OnceLock`'s own performance.
 ///
-/// Under `cfg(shuttle)` it's backed by a `shuttle::sync::Mutex` so the
-/// scheduler can see `get`/`set` as real interleaving points. It clones the
-/// value out and releases the lock *before* calling `f` -- not while holding
-/// it -- so that `f` (which in practice calls into the wrapped
-/// `BoxEntrySink`, arbitrary user code) is never run with this lock held.
-/// Holding it across `f` would artificially serialize concurrent
-/// post-resolution appends against each other through a lock that doesn't
-/// exist in production, which isn't part of what this module's protocol
-/// needs to guarantee (that's the real sink's own thread-safety contract).
-/// This is why the shuttle side needs `T: Clone` and the non-shuttle side
-/// doesn't.
+/// Under `cfg(shuttle)` it's `metrique_writer_core::shuttle_test_support::OnceSlot`,
+/// backed by a `shuttle::sync::Mutex` so the scheduler can see `get`/`set`
+/// as real interleaving points. It clones the value out and releases the
+/// lock *before* calling `f` -- not while holding it -- so that `f` (which
+/// in practice calls into the wrapped `BoxEntrySink`, arbitrary user code)
+/// is never run with this lock held. Holding it across `f` would
+/// artificially serialize concurrent post-resolution appends against each
+/// other through a lock that doesn't exist in production, which isn't part
+/// of what this module's protocol needs to guarantee (that's the real
+/// sink's own thread-safety contract). This is why the shuttle side needs
+/// `T: Clone` and the non-shuttle side doesn't.
 mod once_slot {
     #[cfg(not(all(shuttle, feature = "_shuttle")))]
     pub(super) struct OnceSlot<T>(std::sync::OnceLock<T>);
@@ -81,27 +81,7 @@ mod once_slot {
     }
 
     #[cfg(all(shuttle, feature = "_shuttle"))]
-    pub(super) struct OnceSlot<T>(shuttle::sync::Mutex<Option<T>>);
-    // `T: Clone` only under shuttle.
-    #[cfg(all(shuttle, feature = "_shuttle"))]
-    impl<T: Clone> OnceSlot<T> {
-        pub(super) fn new() -> Self {
-            Self(shuttle::sync::Mutex::new(None))
-        }
-        pub(super) fn with<R>(&self, f: impl FnOnce(Option<&T>) -> R) -> R {
-            let value = self.0.lock().unwrap().clone();
-            f(value.as_ref())
-        }
-        pub(super) fn set(&self, value: T) -> Result<(), T> {
-            let mut guard = self.0.lock().unwrap();
-            if guard.is_some() {
-                Err(value)
-            } else {
-                *guard = Some(value);
-                Ok(())
-            }
-        }
-    }
+    pub(super) use metrique_writer_core::shuttle_test_support::OnceSlot;
 }
 
 struct PendingSink(Arc<Inner>);
@@ -450,6 +430,7 @@ mod tests {
 mod shuttle_tests {
     use std::sync::Mutex;
 
+    use metrique_shuttle_test::shuttle_test;
     use metrique_writer_core::sink::AnyEntrySink;
 
     use super::*;
@@ -477,6 +458,7 @@ mod shuttle_tests {
     /// Entries appended concurrently with `resolve()` must never be lost, no
     /// matter which side of the race each append lands on (buffered then
     /// drained, or forwarded directly).
+    #[shuttle_test(2_000, 3)]
     fn concurrent_appends_racing_resolve_lose_nothing() {
         const THREADS: u64 = 2;
         const PER_THREAD: u64 = 2;
@@ -507,19 +489,6 @@ mod shuttle_tests {
         assert_eq!(*count.lock().unwrap(), TOTAL);
     }
 
-    #[test]
-    fn concurrent_appends_racing_resolve_lose_nothing_pct() {
-        shuttle::check_pct(concurrent_appends_racing_resolve_lose_nothing, 2_000, 3);
-    }
-
-    #[test]
-    fn concurrent_appends_racing_resolve_lose_nothing_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_appends_racing_resolve_lose_nothing,
-            2_000,
-        );
-    }
-
     /// The resolver can be dropped without ever calling `resolve()`
     /// (documented behavior: cancels the sink, discarding buffered entries)
     /// concurrently with in-flight `append()` calls. Unlike the resolve()
@@ -529,6 +498,7 @@ mod shuttle_tests {
     /// every interleaving shuttle explores, regardless of whether each
     /// append's `cancelled` check lands before or after the drop takes
     /// effect.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_append_racing_resolver_drop() {
         const THREADS: u64 = 2;
         const PER_THREAD: u64 = 2;
@@ -555,16 +525,6 @@ mod shuttle_tests {
         // Reaching here without panicking or hanging is the test.
     }
 
-    #[test]
-    fn concurrent_append_racing_resolver_drop_pct() {
-        shuttle::check_pct(concurrent_append_racing_resolver_drop, 2_000, 3);
-    }
-
-    #[test]
-    fn concurrent_append_racing_resolver_drop_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(concurrent_append_racing_resolver_drop, 2_000);
-    }
-
     /// `flush_async()` can be called concurrently with `resolve()` itself,
     /// not just after it like the test above does with `append()`. Before
     /// resolution it's documented to be a no-op (see the real-thread test
@@ -573,6 +533,7 @@ mod shuttle_tests {
     /// the race it lands on, and that doing so doesn't interfere with the
     /// core no-entry-loss guarantee entries appended concurrently still
     /// depend on.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_flush_racing_resolve_lose_nothing() {
         const THREADS: u64 = 2;
         const PER_THREAD: u64 = 2;
@@ -611,18 +572,5 @@ mod shuttle_tests {
         flusher.join().unwrap();
 
         assert_eq!(*count.lock().unwrap(), TOTAL);
-    }
-
-    #[test]
-    fn concurrent_flush_racing_resolve_lose_nothing_pct() {
-        shuttle::check_pct(concurrent_flush_racing_resolve_lose_nothing, 2_000, 3);
-    }
-
-    #[test]
-    fn concurrent_flush_racing_resolve_lose_nothing_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_flush_racing_resolve_lose_nothing,
-            2_000,
-        );
     }
 }
