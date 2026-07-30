@@ -33,7 +33,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 use crossbeam_queue::ArrayQueue;
 #[cfg(all(shuttle, feature = "_shuttle"))]
-use shuttle_impl::ArrayQueue;
+use metrique_writer_core::shuttle_test_support::ArrayQueue;
 
 use once_slot::OnceSlot;
 
@@ -99,46 +99,6 @@ mod once_slot {
                 *guard = Some(value);
                 Ok(())
             }
-        }
-    }
-}
-
-/// Shuttle-visible substitute for `crossbeam_queue::ArrayQueue`, backed by a
-/// `shuttle::sync::Mutex` so the scheduler can explore interleavings of
-/// concurrent `force_push`/`pop`. Same design as the equivalent shim in
-/// `metrique-writer/src/sink/shuttle_primitives.rs`; only `force_push`/`pop`
-/// are implemented since that's all this module calls.
-#[cfg(all(shuttle, feature = "_shuttle"))]
-mod shuttle_impl {
-    use std::collections::VecDeque;
-
-    pub(super) struct ArrayQueue<T> {
-        capacity: usize,
-        inner: shuttle::sync::Mutex<VecDeque<T>>,
-    }
-
-    impl<T> ArrayQueue<T> {
-        pub(super) fn new(capacity: usize) -> Self {
-            assert!(capacity > 0, "capacity must be non-zero");
-            Self {
-                capacity,
-                inner: shuttle::sync::Mutex::new(VecDeque::with_capacity(capacity)),
-            }
-        }
-
-        pub(super) fn force_push(&self, value: T) -> Option<T> {
-            let mut queue = self.inner.lock().unwrap();
-            let evicted = if queue.len() >= self.capacity {
-                queue.pop_front()
-            } else {
-                None
-            };
-            queue.push_back(value);
-            evicted
-        }
-
-        pub(super) fn pop(&self) -> Option<T> {
-            self.inner.lock().unwrap().pop_front()
         }
     }
 }

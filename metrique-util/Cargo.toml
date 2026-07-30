@@ -26,7 +26,7 @@ sysinfo-bridge = ["state", "dep:metrique", "dep:tokio", "dep:sysinfo", "dep:trac
 pending-sink = ["dep:metrique-writer-core", "dep:crossbeam-queue"]
 # Runs pending_sink on shuttle-native primitives instead of std/crossbeam, so
 # Shuttle's scheduler can explore its buffer/resolve interleavings. Test-only.
-_shuttle = ["dep:shuttle", "pending-sink"]
+_shuttle = ["dep:shuttle", "pending-sink", "metrique-writer-core/_shuttle"]
 
 [dependencies]
 metrique-core = { workspace = true }

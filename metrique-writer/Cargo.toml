@@ -79,7 +79,7 @@ background-queue = [
 ]
 # Runs the background-queue implementation on shuttle-native primitives instead of
 # crossbeam, so Shuttle's scheduler can explore thread interleavings. Test-only.
-_shuttle = ["dep:shuttle", "background-queue"]
+_shuttle = ["dep:shuttle", "background-queue", "metrique-writer-core/_shuttle"]
 # Deprecated name of tracing-subscriber-03 feature
 tracing_subscriber_03 = ["tracing-subscriber-03"]
 tracing-subscriber-03 = ["dep:tracing-subscriber"]

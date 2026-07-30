@@ -42,3 +42,9 @@ pub use tokio as __tokio;
 #[cfg(any(test, feature = "private-test-util"))]
 #[doc(hidden)]
 pub mod test_stream;
+
+/// Shuttle-only test support shared across this workspace. This might
+/// change or be fully removed in any version.
+#[cfg(all(shuttle, feature = "_shuttle"))]
+#[doc(hidden)]
+pub mod shuttle_test_support;

@@ -8,7 +8,10 @@
 //! it substitutes shuttle-native equivalents: shuttle has no visibility into
 //! crossbeam's (or plain `std::sync::atomic`'s) internal atomics -- also why
 //! `Arc` itself isn't swapped: nothing depends on *when* its refcount hits
-//! zero here.
+//! zero here. `ArrayQueue`'s substitute lives in
+//! `metrique_writer_core::shuttle_test_support` (shared with `metrique-util`,
+//! which needs the same shim); `Parker`/`Unparker` stay local, unique to this
+//! crate.
 //!
 //! Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg shuttle`
 //! is set process-wide via RUSTFLAGS, so it also reaches builds of this crate
@@ -36,55 +39,13 @@ pub(crate) use shuttle::{
 };
 
 #[cfg(all(shuttle, feature = "_shuttle"))]
-pub(crate) use shuttle_impl::{ArrayQueue, Parker, Unparker};
+pub(crate) use metrique_writer_core::shuttle_test_support::ArrayQueue;
+#[cfg(all(shuttle, feature = "_shuttle"))]
+pub(crate) use shuttle_impl::{Parker, Unparker};
 
 #[cfg(all(shuttle, feature = "_shuttle"))]
 mod shuttle_impl {
-    use std::{collections::VecDeque, time::Instant};
-
-    /// Shuttle-visible substitute for `crossbeam_queue::ArrayQueue`, backed by a
-    /// `shuttle::sync::Mutex` so the scheduler can explore interleavings of
-    /// concurrent `force_push`/`pop`. Implements only the surface `background.rs`
-    /// actually calls.
-    pub(crate) struct ArrayQueue<T> {
-        capacity: usize,
-        inner: shuttle::sync::Mutex<VecDeque<T>>,
-    }
-
-    impl<T> ArrayQueue<T> {
-        pub(crate) fn new(capacity: usize) -> Self {
-            assert!(capacity > 0, "capacity must be non-zero");
-            Self {
-                capacity,
-                inner: shuttle::sync::Mutex::new(VecDeque::with_capacity(capacity)),
-            }
-        }
-
-        /// Pushes `value`, evicting and returning the oldest entry if already at
-        /// capacity — matches `crossbeam_queue::ArrayQueue::force_push`.
-        pub(crate) fn force_push(&self, value: T) -> Option<T> {
-            let mut queue = self.inner.lock().unwrap();
-            let evicted = if queue.len() >= self.capacity {
-                queue.pop_front()
-            } else {
-                None
-            };
-            queue.push_back(value);
-            evicted
-        }
-
-        pub(crate) fn pop(&self) -> Option<T> {
-            self.inner.lock().unwrap().pop_front()
-        }
-
-        pub(crate) fn len(&self) -> usize {
-            self.inner.lock().unwrap().len()
-        }
-
-        pub(crate) fn capacity(&self) -> usize {
-            self.capacity
-        }
-    }
+    use std::time::Instant;
 
     /// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
     /// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to
