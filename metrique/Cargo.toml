@@ -15,7 +15,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_
 default = ["service-metrics"]
 # Runs keep_alive's Guard/DropAll race on shuttle-native primitives instead
 # of std, so Shuttle's scheduler can explore its interleavings. Test-only.
-_shuttle = ["dep:shuttle"]
+_shuttle = ["dep:shuttle", "metrique-writer-core/_shuttle"]
 # re-exports metrique-writer-format-emf as metrique::emf
 emf = ["dep:metrique-writer-format-emf"]
 # re-exports metrique-writer-format-json as metrique::json
@@ -54,6 +54,7 @@ jiff = { workspace = true, optional = true }
 shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
+metrique-shuttle-test = { workspace = true }
 assert2 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber = { workspace = true }

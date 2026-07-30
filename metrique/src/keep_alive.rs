@@ -70,75 +70,7 @@ mod guard_rc {
 
     #[cfg(all(shuttle, feature = "_shuttle"))]
     mod imp {
-        use shuttle::sync::Mutex;
-        use std::sync::Arc;
-
-        struct State<T> {
-            strong: usize,
-            weak: usize,
-            value: Option<T>,
-        }
-
-        pub(crate) struct GuardArc<T>(Arc<Mutex<State<T>>>);
-        pub(crate) struct GuardWeak<T>(Arc<Mutex<State<T>>>);
-
-        impl<T> GuardArc<T> {
-            pub(crate) fn new(value: T) -> Self {
-                Self(Arc::new(Mutex::new(State {
-                    strong: 1,
-                    weak: 0,
-                    value: Some(value),
-                })))
-            }
-
-            pub(crate) fn downgrade(this: &Self) -> GuardWeak<T> {
-                this.0.lock().unwrap().weak += 1;
-                GuardWeak(this.0.clone())
-            }
-
-            pub(crate) fn is_present(&self) -> bool {
-                self.0.lock().unwrap().value.is_some()
-            }
-
-            pub(crate) fn take(&self) -> Option<T> {
-                self.0.lock().unwrap().value.take()
-            }
-        }
-
-        impl<T> Clone for GuardArc<T> {
-            fn clone(&self) -> Self {
-                self.0.lock().unwrap().strong += 1;
-                Self(self.0.clone())
-            }
-        }
-
-        impl<T> Drop for GuardArc<T> {
-            fn drop(&mut self) {
-                let mut state = self.0.lock().unwrap();
-                state.strong -= 1;
-                if state.strong == 0 {
-                    state.value = None;
-                }
-            }
-        }
-
-        impl<T> GuardWeak<T> {
-            pub(crate) fn upgrade(&self) -> Option<GuardArc<T>> {
-                let mut state = self.0.lock().unwrap();
-                if state.strong == 0 {
-                    None
-                } else {
-                    state.strong += 1;
-                    Some(GuardArc(self.0.clone()))
-                }
-            }
-        }
-
-        impl<T> Drop for GuardWeak<T> {
-            fn drop(&mut self) {
-                self.0.lock().unwrap().weak -= 1;
-            }
-        }
+        pub(crate) use metrique_writer_core::shuttle_test_support::{GuardArc, GuardWeak};
     }
 
     pub(crate) use imp::{GuardArc, GuardWeak};
@@ -480,6 +412,7 @@ mod shuttle_tests {
     use std::sync::Arc;
 
     use super::Parent;
+    use metrique_shuttle_test::shuttle_test;
 
     struct DropCounter {
         count: Arc<AtomicUsize>,
@@ -496,6 +429,7 @@ mod shuttle_tests {
     /// ordinary `Guard`s (which races inside `Arc`'s own atomics, outside
     /// what Shuttle instruments), this race sits entirely between two
     /// `Mutex` operations Shuttle does control.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_drop_alls_race_releases_value_exactly_once() {
         let count = Arc::new(AtomicUsize::new(0));
         let tester = DropCounter {
@@ -521,25 +455,9 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_drop_alls_race_releases_value_exactly_once_pct() {
-        shuttle::check_pct(
-            concurrent_drop_alls_race_releases_value_exactly_once,
-            2_000,
-            3,
-        );
-    }
-
-    #[test]
-    fn concurrent_drop_alls_race_releases_value_exactly_once_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_drop_alls_race_releases_value_exactly_once,
-            2_000,
-        );
-    }
-
     /// Ordinary `Guard`s racing each other (and `Parent`'s drop), no
     /// `DropAll` -- the load-bearing race plain `Arc`/`Weak` couldn't expose.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_guards_race_releases_value_exactly_once() {
         const GUARDS: usize = 2;
 
@@ -568,21 +486,9 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_guards_race_releases_value_exactly_once_pct() {
-        shuttle::check_pct(concurrent_guards_race_releases_value_exactly_once, 2_000, 3);
-    }
-
-    #[test]
-    fn concurrent_guards_race_releases_value_exactly_once_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_guards_race_releases_value_exactly_once,
-            2_000,
-        );
-    }
-
     /// Ordinary `Guard`s racing a `DropAll` (and `Parent`'s drop) -- same
     /// shape as the real-thread stress test above, made exhaustive.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_guards_and_drop_all_race_releases_value_exactly_once() {
         const GUARDS: usize = 2;
 
@@ -614,23 +520,6 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_guards_and_drop_all_race_releases_value_exactly_once_pct() {
-        shuttle::check_pct(
-            concurrent_guards_and_drop_all_race_releases_value_exactly_once,
-            2_000,
-            3,
-        );
-    }
-
-    #[test]
-    fn concurrent_guards_and_drop_all_race_releases_value_exactly_once_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_guards_and_drop_all_race_releases_value_exactly_once,
-            2_000,
-        );
-    }
-
     /// Verifies release doesn't wait on a lingering `DropAll`.
     fn drop_all_lingering_does_not_delay_release() {
         let count = Arc::new(AtomicUsize::new(0));
@@ -657,6 +546,7 @@ mod shuttle_tests {
 
     /// `new_guard()` itself called concurrently from multiple threads
     /// `Parent: Sync` implies this must be safe; exercised here.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_guard_creation_and_drop_releases_value_exactly_once() {
         const GUARDS: usize = 2;
 
@@ -681,25 +571,9 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn concurrent_guard_creation_and_drop_releases_value_exactly_once_pct() {
-        shuttle::check_pct(
-            concurrent_guard_creation_and_drop_releases_value_exactly_once,
-            2_000,
-            3,
-        );
-    }
-
-    #[test]
-    fn concurrent_guard_creation_and_drop_releases_value_exactly_once_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_guard_creation_and_drop_releases_value_exactly_once,
-            2_000,
-        );
-    }
-
     /// Guard creation, guard drops, `DropAll` creation, and
     /// `DropAll` drops, all racing each other (and `Parent`'s drop) at once
+    #[shuttle_test(2_000, 3)]
     fn concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once() {
         const GUARDS: usize = 2;
         const DROP_ALLS: usize = 2;
@@ -725,23 +599,6 @@ mod shuttle_tests {
             count.load(Ordering::SeqCst),
             1,
             "value must be dropped exactly once, regardless of how concurrent guard/DropAll creation and drop interleave"
-        );
-    }
-
-    #[test]
-    fn concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once_pct() {
-        shuttle::check_pct(
-            concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once,
-            2_000,
-            3,
-        );
-    }
-
-    #[test]
-    fn concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once,
-            2_000,
         );
     }
 }
