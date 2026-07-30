@@ -82,6 +82,7 @@ mod once_slot {
 
     #[cfg(all(shuttle, feature = "_shuttle"))]
     pub(super) struct OnceSlot<T>(shuttle::sync::Mutex<Option<T>>);
+    // `T: Clone` only under shuttle.
     #[cfg(all(shuttle, feature = "_shuttle"))]
     impl<T: Clone> OnceSlot<T> {
         pub(super) fn new() -> Self {
