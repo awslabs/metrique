@@ -7,6 +7,38 @@
 
 use std::collections::VecDeque;
 
+/// Generates the `<name>_pct` / `<name>_determinism` shuttle test pair for a
+/// shuttle-test function `$name`, calling `shuttle::check_pct` and
+/// `shuttle::check_uncontrolled_nondeterminism` with the same iteration
+/// count. Add `, should_panic = "..."` for tests expecting a panic.
+#[macro_export]
+macro_rules! shuttle_test {
+    ($name:ident, $pct:ident, $determinism:ident, $iterations:expr, $depth:expr) => {
+        #[test]
+        fn $pct() {
+            ::shuttle::check_pct($name, $iterations, $depth);
+        }
+
+        #[test]
+        fn $determinism() {
+            ::shuttle::check_uncontrolled_nondeterminism($name, $iterations);
+        }
+    };
+    ($name:ident, $pct:ident, $determinism:ident, $iterations:expr, $depth:expr, should_panic = $msg:expr) => {
+        #[test]
+        #[should_panic(expected = $msg)]
+        fn $pct() {
+            ::shuttle::check_pct($name, $iterations, $depth);
+        }
+
+        #[test]
+        #[should_panic(expected = $msg)]
+        fn $determinism() {
+            ::shuttle::check_uncontrolled_nondeterminism($name, $iterations);
+        }
+    };
+}
+
 /// Shuttle-visible substitute for `crossbeam_queue::ArrayQueue`, backed by a
 /// `shuttle::sync::Mutex` so the scheduler can explore interleavings of
 /// concurrent `force_push`/`pop`.
