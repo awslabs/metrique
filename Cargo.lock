@@ -1746,6 +1746,7 @@ dependencies = [
  "metrique-macro",
  "metrique-metricsrs",
  "metrique-service-metrics",
+ "metrique-shuttle-test",
  "metrique-timesource",
  "metrique-writer",
  "metrique-writer-core",
@@ -1780,6 +1781,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-macro",
+ "metrique-shuttle-test",
  "metrique-timesource",
  "metrique-writer",
  "metrique-writer-core",
@@ -1880,6 +1882,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "metrique-shuttle-test"
+version = "0.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "metrique-timesource"
 version = "0.1.10"
 dependencies = [
@@ -1896,6 +1907,7 @@ dependencies = [
  "crossbeam-queue",
  "metrique",
  "metrique-core",
+ "metrique-shuttle-test",
  "metrique-util",
  "metrique-writer",
  "metrique-writer-core",
@@ -1924,6 +1936,7 @@ dependencies = [
  "metrique",
  "metrique-core",
  "metrique-metricsrs",
+ "metrique-shuttle-test",
  "metrique-writer",
  "metrique-writer-core",
  "metrique-writer-format-emf",
@@ -1969,6 +1982,7 @@ dependencies = [
  "derive-where",
  "itertools",
  "metrique",
+ "metrique-shuttle-test",
  "metrique-writer",
  "metrique-writer-core",
  "metrique-writer-format-emf",
