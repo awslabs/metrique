@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
     time::{Duration, Instant},
 };
 
@@ -20,7 +17,7 @@ use super::metrics::{
     MetricsRsType, MetricsRsUnit,
 };
 use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
-use super::shuttle_primitives::{ArrayQueue, Parker, Unparker, mpsc, thread};
+use super::shuttle_primitives::{ArrayQueue, AtomicBool, Ordering, Parker, Unparker, mpsc, thread};
 
 /// Builder for [`BackgroundQueue`]
 pub struct BackgroundQueueBuilder {
@@ -1867,5 +1864,44 @@ mod shuttle_tests {
     #[test]
     fn overflow_accounting_concurrent_producers_determinism() {
         shuttle::check_uncontrolled_nondeterminism(overflow_accounting_concurrent_producers, 2_000);
+    }
+
+    /// A concurrent `append()` racing `handle`'s drop (which flips
+    /// `shutdown_signal` and blocks joining the background thread). Losing
+    /// the entry is documented, acceptable behavior here (see
+    /// `BackgroundQueueJoinHandle`'s doc comment).
+    fn concurrent_append_racing_shutdown_never_panics_or_hangs() {
+        let output: Arc<Mutex<TestStream>> = Default::default();
+        let (queue, handle) = BackgroundQueueBuilder::new()
+            .capacity(1_000)
+            .flush_interval(flush_interval())
+            .build(Arc::clone(&output));
+
+        let appender = {
+            let queue = queue.clone();
+            shuttle::thread::spawn(move || {
+                queue.append(TestEntry(0));
+            })
+        };
+
+        handle.shut_down();
+        appender.join().unwrap();
+    }
+
+    #[test]
+    fn concurrent_append_racing_shutdown_never_panics_or_hangs_pct() {
+        shuttle::check_pct(
+            concurrent_append_racing_shutdown_never_panics_or_hangs,
+            2_000,
+            3,
+        );
+    }
+
+    #[test]
+    fn concurrent_append_racing_shutdown_never_panics_or_hangs_determinism() {
+        shuttle::check_uncontrolled_nondeterminism(
+            concurrent_append_racing_shutdown_never_panics_or_hangs,
+            2_000,
+        );
     }
 }

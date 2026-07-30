@@ -5,10 +5,10 @@
 //! vs. shuttle).
 //!
 //! Normally this re-exports the production crossbeam types. With `--cfg shuttle`
-//! it substitutes shuttle-native equivalents: shuttle only instruments the sync
-//! primitives it re-implements itself, so it has no visibility into crossbeam's
-//! internal atomics, and without this swap `background.rs` wouldn't actually be
-//! exploring any interleavings.
+//! it substitutes shuttle-native equivalents: shuttle has no visibility into
+//! crossbeam's (or plain `std::sync::atomic`'s) internal atomics -- also why
+//! `Arc` itself isn't swapped: nothing depends on *when* its refcount hits
+//! zero here.
 //!
 //! Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg shuttle`
 //! is set process-wide via RUSTFLAGS, so it also reaches builds of this crate
@@ -17,7 +17,11 @@
 //! linked at all.
 
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
-pub(crate) use std::{sync::mpsc, thread};
+pub(crate) use std::{
+    sync::atomic::{AtomicBool, Ordering},
+    sync::mpsc,
+    thread,
+};
 
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 pub(crate) use crossbeam_queue::ArrayQueue;
@@ -25,7 +29,11 @@ pub(crate) use crossbeam_queue::ArrayQueue;
 pub(crate) use crossbeam_utils::sync::{Parker, Unparker};
 
 #[cfg(all(shuttle, feature = "_shuttle"))]
-pub(crate) use shuttle::{sync::mpsc, thread};
+pub(crate) use shuttle::{
+    sync::atomic::{AtomicBool, Ordering},
+    sync::mpsc,
+    thread,
+};
 
 #[cfg(all(shuttle, feature = "_shuttle"))]
 pub(crate) use shuttle_impl::{ArrayQueue, Parker, Unparker};
