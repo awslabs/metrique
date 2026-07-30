@@ -235,6 +235,7 @@ mod shuttle_tests {
     use shuttle::future::block_on;
 
     use super::*;
+    use metrique_shuttle_test::shuttle_test;
 
     struct CollectingSink {
         merged: Arc<Mutex<Vec<u64>>>,
@@ -263,6 +264,7 @@ mod shuttle_tests {
     /// Entries sent concurrently from several cloned handles are all merged
     /// by the time `flush()`'s returned future resolves, for every
     /// interleaving shuttle explores.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_sends_all_merged_before_flush_returns() {
         const THREADS: u64 = 3;
         const PER_THREAD: u64 = 3;
@@ -305,24 +307,12 @@ mod shuttle_tests {
             .expect("worker thread panicked");
     }
 
-    #[test]
-    fn concurrent_sends_all_merged_before_flush_returns_pct() {
-        shuttle::check_pct(concurrent_sends_all_merged_before_flush_returns, 2_000, 3);
-    }
-
-    #[test]
-    fn concurrent_sends_all_merged_before_flush_returns_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_sends_all_merged_before_flush_returns,
-            2_000,
-        );
-    }
-
     /// The historical bug, reproduced directly: several cloned handles send
     /// an entry and drop concurrently. The background thread must still
     /// exit (this used to hang forever -- see the module doc comment),
     /// flush exactly once at shutdown, and lose no entries, no matter how
     /// the drops and the final disconnect interleave.
+    #[shuttle_test(2_000, 3)]
     fn concurrent_drops_exit_cleanly_and_flush_once() {
         const CLONES: u64 = 2;
 
@@ -363,21 +353,9 @@ mod shuttle_tests {
         assert_eq!(flushes.load(Ordering::SeqCst), 1);
     }
 
-    #[test]
-    fn concurrent_drops_exit_cleanly_and_flush_once_pct() {
-        shuttle::check_pct(concurrent_drops_exit_cleanly_and_flush_once, 2_000, 3);
-    }
-
-    #[test]
-    fn concurrent_drops_exit_cleanly_and_flush_once_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_drops_exit_cleanly_and_flush_once,
-            2_000,
-        );
-    }
-
     /// The shared mpsc channel preserves each sender's own order, so this thread's
     /// entries must be merged by the time its own `flush()` resolves.
+    #[shuttle_test(2_000, 3)]
     fn flush_resolves_after_own_prior_sends() {
         let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
         let flushes = Arc::new(AtomicUsize::new(0));
@@ -418,15 +396,5 @@ mod shuttle_tests {
             .expect("sole handle ref after dropping the only WorkerSink")
             .join()
             .expect("worker thread panicked");
-    }
-
-    #[test]
-    fn flush_resolves_after_own_prior_sends_pct() {
-        shuttle::check_pct(flush_resolves_after_own_prior_sends, 2_000, 3);
-    }
-
-    #[test]
-    fn flush_resolves_after_own_prior_sends_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(flush_resolves_after_own_prior_sends, 2_000);
     }
 }
