@@ -36,6 +36,7 @@ metrique-core = { workspace = true }
 ordered-float = { workspace = true, optional = true }
 
 [dev-dependencies]
+metrique-shuttle-test = { workspace = true }
 enum-map = { workspace = true }
 strum_macros = { workspace = true }
 metrique-writer-core = { workspace = true, features = [

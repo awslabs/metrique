@@ -8,10 +8,9 @@
 //! it substitutes shuttle-native equivalents: shuttle has no visibility into
 //! crossbeam's (or plain `std::sync::atomic`'s) internal atomics -- also why
 //! `Arc` itself isn't swapped: nothing depends on *when* its refcount hits
-//! zero here. `ArrayQueue`'s substitute lives in
-//! `metrique_writer_core::shuttle_test_support` (shared with `metrique-util`,
-//! which needs the same shim); `Parker`/`Unparker` stay local, unique to this
-//! crate.
+//! zero here. The shuttle-side substitutes (`ArrayQueue`, `Parker`/`Unparker`,
+//! `deadline_reached`) live in `metrique_writer_core::shuttle_test_support`,
+//! shared with sibling crates that need the same shims.
 //!
 //! Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg shuttle`
 //! is set process-wide via RUSTFLAGS, so it also reaches builds of this crate
@@ -39,88 +38,12 @@ pub(crate) use shuttle::{
 };
 
 #[cfg(all(shuttle, feature = "_shuttle"))]
-pub(crate) use metrique_writer_core::shuttle_test_support::ArrayQueue;
-#[cfg(all(shuttle, feature = "_shuttle"))]
-pub(crate) use shuttle_impl::{Parker, Unparker, deadline_reached};
+pub(crate) use metrique_writer_core::shuttle_test_support::{
+    ArrayQueue, Parker, Unparker, deadline_reached,
+};
 
 /// Whether `now` has reached `deadline`. Trivial outside shuttle.
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 pub(crate) fn deadline_reached(now: std::time::Instant, deadline: std::time::Instant) -> bool {
     now >= deadline
-}
-
-#[cfg(all(shuttle, feature = "_shuttle"))]
-mod shuttle_impl {
-    use shuttle::rand::Rng;
-    use std::time::Instant;
-
-    /// Real wall-clock time barely advances during a fast shuttle
-    /// iteration, so `now >= deadline` alone would (almost) never fire --
-    /// OR in a random chance, so the scheduler explores both outcomes.
-    /// Same trick as `dial9-core`'s `recv_timeout` wrapper (a sibling
-    /// project), adapted to wrap a comparison instead of a blocking call.
-    pub(crate) fn deadline_reached(now: Instant, deadline: Instant) -> bool {
-        now >= deadline || shuttle::rand::thread_rng().gen_bool(0.05)
-    }
-
-    /// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
-    /// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to
-    /// a specific OS thread, but `background.rs` constructs the `Parker` on one
-    /// thread and parks on another. A `Mutex<bool>` + `Condvar` token shared via
-    /// `Arc` matches crossbeam's actual (thread-identity-agnostic) semantics
-    /// instead -- an earlier version bound to `shuttle::thread::current()` and
-    /// deadlocked for exactly this reason.
-    pub(crate) struct Parker {
-        inner: std::sync::Arc<TokenState>,
-    }
-
-    struct TokenState {
-        available: shuttle::sync::Mutex<bool>,
-        condvar: shuttle::sync::Condvar,
-    }
-
-    impl Default for Parker {
-        fn default() -> Self {
-            Self {
-                inner: std::sync::Arc::new(TokenState {
-                    available: shuttle::sync::Mutex::new(false),
-                    condvar: shuttle::sync::Condvar::new(),
-                }),
-            }
-        }
-    }
-
-    impl Parker {
-        pub(crate) fn unparker(&self) -> Unparker {
-            Unparker {
-                inner: self.inner.clone(),
-            }
-        }
-
-        /// Shuttle doesn't model time, so a deadline-based park just parks
-        /// unboundedly here (matching shuttle's own `thread::park_timeout`).
-        /// Fine for what these tests check: push/pop/wake correctness with a
-        /// `flush_interval` long enough that the real deadline never fires.
-        /// Real-time behavior stays covered by the non-shuttle tests.
-        pub(crate) fn park_deadline(&self, _deadline: Instant) {
-            let mut available = self.inner.available.lock().unwrap();
-            while !*available {
-                available = self.inner.condvar.wait(available).unwrap();
-            }
-            *available = false;
-        }
-    }
-
-    #[derive(Clone)]
-    pub(crate) struct Unparker {
-        inner: std::sync::Arc<TokenState>,
-    }
-
-    impl Unparker {
-        pub(crate) fn unpark(&self) {
-            let mut available = self.inner.available.lock().unwrap();
-            *available = true;
-            self.inner.condvar.notify_one();
-        }
-    }
 }

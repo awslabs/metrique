@@ -1625,6 +1625,7 @@ mod shuttle_tests {
     use crate::EntrySink;
 
     use super::{BackgroundQueueBuilder, BackgroundQueueEvent, BackgroundQueueObserver, Duration};
+    use metrique_shuttle_test::shuttle_test;
 
     /// The longest interval the builder allows (see `flush_interval`'s
     /// `assert!`), and far longer than any of these tests can possibly run.
@@ -1649,6 +1650,7 @@ mod shuttle_tests {
     /// are all eventually observed by the stream, for every interleaving
     /// shuttle explores (capacity is far above what's pushed, so eviction
     /// never enters into it -- that's covered separately below).
+    #[shuttle_test(2_000, 3)]
     fn round_trip_no_loss() {
         const THREADS: u64 = 3;
         const PER_THREAD: u64 = 3;
@@ -1683,16 +1685,6 @@ mod shuttle_tests {
         assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
     }
 
-    #[test]
-    fn round_trip_no_loss_pct() {
-        shuttle::check_pct(round_trip_no_loss, 2_000, 3);
-    }
-
-    #[test]
-    fn round_trip_no_loss_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(round_trip_no_loss, 2_000);
-    }
-
     /// `WakerTracker` liveness (L1) + safety (S1): a `flush_async()` call
     /// always eventually resolves (L1), and by the time it does, every entry
     /// pushed on this thread *before* the call must already be visible in
@@ -1700,6 +1692,7 @@ mod shuttle_tests {
     /// draining the pushes that preceded it. An unrelated second thread
     /// pushes concurrently and unjoined, to give the scheduler more
     /// interleavings between the two producers and the flush waker.
+    #[shuttle_test(2_000, 3)]
     fn flush_waits_for_prior_pushes() {
         let output: Arc<Mutex<TestStream>> = Default::default();
         let (queue, handle) = BackgroundQueueBuilder::new()
@@ -1733,19 +1726,10 @@ mod shuttle_tests {
         handle.shut_down();
     }
 
-    #[test]
-    fn flush_waits_for_prior_pushes_pct() {
-        shuttle::check_pct(flush_waits_for_prior_pushes, 2_000, 3);
-    }
-
-    #[test]
-    fn flush_waits_for_prior_pushes_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(flush_waits_for_prior_pushes, 2_000);
-    }
-
     /// `flush_async()` must still observe every entry pushed
     /// on the same thread before it, even if the receiver hits its
     /// deadline mid-drain along the way.
+    #[shuttle_test(2_000, 3)]
     fn flush_waits_for_prior_pushes_even_across_hit_deadline() {
         const PER_THREAD: u64 = 20;
 
@@ -1782,23 +1766,6 @@ mod shuttle_tests {
         handle.shut_down();
     }
 
-    #[test]
-    fn flush_waits_for_prior_pushes_even_across_hit_deadline_pct() {
-        shuttle::check_pct(
-            flush_waits_for_prior_pushes_even_across_hit_deadline,
-            2_000,
-            3,
-        );
-    }
-
-    #[test]
-    fn flush_waits_for_prior_pushes_even_across_hit_deadline_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            flush_waits_for_prior_pushes_even_across_hit_deadline,
-            2_000,
-        );
-    }
-
     /// Overflow accounting: every pushed entry has exactly one fate --
     /// either it's evicted by a later `force_push` before the receiver
     /// pops it (counted as a `QueueOverflow` event), or it's popped and
@@ -1815,6 +1782,7 @@ mod shuttle_tests {
     /// primitives -- risks shuttle suspending this thread mid-critical-section,
     /// which could deadlock the whole exploration if the receiver thread then
     /// tries to lock the same real `Mutex`.)
+    #[shuttle_test(2_000, 3)]
     fn overflow_accounting() {
         #[derive(Default, Clone)]
         struct CountingObserver(Arc<Mutex<u64>>);
@@ -1850,21 +1818,12 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn overflow_accounting_pct() {
-        shuttle::check_pct(overflow_accounting, 2_000, 3);
-    }
-
-    #[test]
-    fn overflow_accounting_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(overflow_accounting, 2_000);
-    }
-
     /// Same conservation invariant as `overflow_accounting`, but pushed from
     /// several concurrent threads instead of a single-threaded loop, so the
     /// eviction race in `force_push` (checking `len() >= capacity` then
     /// evicting then pushing) is actually contended by multiple producers,
     /// not just raced against the receiver's pops.
+    #[shuttle_test(2_000, 3)]
     fn overflow_accounting_concurrent_producers() {
         #[derive(Default, Clone)]
         struct CountingObserver(Arc<Mutex<u64>>);
@@ -1914,20 +1873,11 @@ mod shuttle_tests {
         );
     }
 
-    #[test]
-    fn overflow_accounting_concurrent_producers_pct() {
-        shuttle::check_pct(overflow_accounting_concurrent_producers, 2_000, 3);
-    }
-
-    #[test]
-    fn overflow_accounting_concurrent_producers_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(overflow_accounting_concurrent_producers, 2_000);
-    }
-
     /// A concurrent `append()` racing `handle`'s drop (which flips
     /// `shutdown_signal` and blocks joining the background thread). Losing
     /// the entry is documented, acceptable behavior here (see
     /// `BackgroundQueueJoinHandle`'s doc comment).
+    #[shuttle_test(2_000, 3)]
     fn concurrent_append_racing_shutdown_never_panics_or_hangs() {
         let output: Arc<Mutex<TestStream>> = Default::default();
         let (queue, handle) = BackgroundQueueBuilder::new()
@@ -1944,22 +1894,5 @@ mod shuttle_tests {
 
         handle.shut_down();
         appender.join().unwrap();
-    }
-
-    #[test]
-    fn concurrent_append_racing_shutdown_never_panics_or_hangs_pct() {
-        shuttle::check_pct(
-            concurrent_append_racing_shutdown_never_panics_or_hangs,
-            2_000,
-            3,
-        );
-    }
-
-    #[test]
-    fn concurrent_append_racing_shutdown_never_panics_or_hangs_determinism() {
-        shuttle::check_uncontrolled_nondeterminism(
-            concurrent_append_racing_shutdown_never_panics_or_hangs,
-            2_000,
-        );
     }
 }
