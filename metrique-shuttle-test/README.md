@@ -48,10 +48,6 @@ genuinely test-only, never part of any consumer's compiled library output.
 That's what lets this crate stay `publish = false`: a *regular* dependency of
 a published crate must itself be published (resolvable from crates.io), but
 a *dev*-dependency has no such requirement, since it's never linked when the
-depending crate is built as someone else's dependency. See
-`docs/shuttle-primitives-consolidation-investigation.md` at the workspace
-root for the fuller writeup (including why the shuttle-side primitive shims
-like `ArrayQueue`/`Parker`/`OnceSlot` couldn't take the same path and live in
-`metrique-writer-core` instead).
+depending crate is built as someone else's dependency.
 
 [shuttle]: https://github.com/awslabs/shuttle

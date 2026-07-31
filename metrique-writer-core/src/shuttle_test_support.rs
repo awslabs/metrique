@@ -78,11 +78,10 @@ pub fn threshold_elapsed(since: std::time::Instant, threshold: std::time::Durati
 
 /// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
 /// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to
-/// a specific OS thread, but callers construct the `Parker` on one thread
-/// and park on another. A `Mutex<bool>` + `Condvar` token shared via `Arc`
-/// matches crossbeam's actual (thread-identity-agnostic) semantics instead
-/// -- an earlier version bound to `shuttle::thread::current()` and
-/// deadlocked for exactly this reason.
+/// a specific OS thread, but callers construct the `Parker` on one thread and
+/// park on another, so binding to `shuttle::thread::current()` here would
+/// deadlock. A `Mutex<bool>` + `Condvar` token shared via `Arc` matches
+/// crossbeam's actual (thread-identity-agnostic) semantics instead.
 #[doc(hidden)]
 pub struct Parker {
     inner: std::sync::Arc<TokenState>,
