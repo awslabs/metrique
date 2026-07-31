@@ -63,12 +63,7 @@ impl<T> ArrayQueue<T> {
 
 /// Whether `now` has reached `deadline`. Real wall-clock time barely
 /// advances during a fast shuttle iteration, so `now >= deadline` alone
-/// would (almost) never fire -- OR in a random chance, so the scheduler
-/// explores both outcomes. Same trick as `dial9-core`'s `recv_timeout`
-/// wrapper (a sibling project), adapted to wrap a comparison instead of a
-/// blocking call. The non-shuttle equivalent (a trivial `now >= deadline`)
-/// stays local to each crate, since it's real production logic, not test
-/// support.
+/// would (almost) never fire.
 #[doc(hidden)]
 pub fn deadline_reached(now: std::time::Instant, deadline: std::time::Instant) -> bool {
     use shuttle::rand::Rng;
@@ -261,5 +256,50 @@ impl<T> GuardWeak<T> {
 impl<T> Drop for GuardWeak<T> {
     fn drop(&mut self) {
         self.0.lock().unwrap().weak -= 1;
+    }
+}
+
+#[doc(hidden)]
+pub use shuttle::sync::mpsc::Sender;
+#[doc(hidden)]
+pub use shuttle::thread;
+
+/// Shuttle-visible substitute for `std::sync::mpsc::channel()`, wrapping the
+/// receiver half so `recv_timeout` can actually return `Timeout` -- shuttle's
+/// own `recv_timeout` never times out, a known gap documented in Shuttle
+/// itself:
+/// https://github.com/awslabs/shuttle/blob/c8a46d3965048df3207ec920dae066bc9c4d9d89/shuttle-std/src/sync/mpsc.rs#L433.
+/// Mostly checks non-blockingly, occasionally really blocks instead.
+#[doc(hidden)]
+pub fn channel<T>() -> (Sender<T>, RecvTimeoutReceiver<T>) {
+    let (tx, rx) = shuttle::sync::mpsc::channel();
+    (tx, RecvTimeoutReceiver { inner: rx })
+}
+
+#[doc(hidden)]
+pub struct RecvTimeoutReceiver<T> {
+    inner: shuttle::sync::mpsc::Receiver<T>,
+}
+
+impl<T> RecvTimeoutReceiver<T> {
+    #[doc(hidden)]
+    pub fn recv_timeout(
+        &self,
+        _timeout: std::time::Duration,
+    ) -> Result<T, std::sync::mpsc::RecvTimeoutError> {
+        use shuttle::rand::Rng;
+        use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
+
+        if shuttle::rand::thread_rng().gen_bool(0.8) {
+            match self.inner.try_recv() {
+                Ok(val) => Ok(val),
+                Err(TryRecvError::Empty) => Err(RecvTimeoutError::Timeout),
+                Err(TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
+            }
+        } else {
+            self.inner
+                .recv()
+                .map_err(|_| RecvTimeoutError::Disconnected)
+        }
     }
 }

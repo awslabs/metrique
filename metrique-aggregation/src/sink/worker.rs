@@ -17,14 +17,13 @@ use crate::traits::{AggregateSink, FlushableSink, RootSink};
 // have the optional `shuttle` crate linked at all.
 //
 // `RecvTimeoutError` needs no swap -- shuttle re-exports std's type
-// unchanged. Its `recv_timeout` never actually times out though,
-// that's a known gap documented in Shuttle itself:
-// https://github.com/awslabs/shuttle/blob/c8a46d3965048df3207ec920dae066bc9c4d9d89/shuttle-std/src/sync/mpsc.rs#L433
+// unchanged. Its `recv_timeout` never actually times out though, that's a
+// known gap documented in Shuttle itself; `channel()`'s shuttle-side
+// substitute (in `metrique_writer_core::shuttle_test_support`, shared with
+// sibling crates) wraps the receiver half so it randomly synthesizes a
+// `Timeout` instead.
 #[cfg(all(shuttle, feature = "_shuttle"))]
-use shuttle::{
-    sync::mpsc::{Sender, channel},
-    thread,
-};
+use metrique_writer_core::shuttle_test_support::{Sender, channel, thread};
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 use std::{
     sync::mpsc::{Sender, channel},
@@ -217,12 +216,8 @@ mod tests {
     }
 }
 
-// Shuttle interleaving tests for `WorkerSink`, covering merge correctness
-// and clean exit on channel disconnect.
-//
-// Since `recv_timeout` never actually times out under shuttle (see the
-// primitives import comment above), these tests don't exercise the
-// periodic-flush path.
+// Shuttle interleaving tests for `WorkerSink`, covering merge correctness,
+// clean exit on channel disconnect, and the periodic-flush-on-timeout path.
 #[cfg(all(test, shuttle, feature = "_shuttle"))]
 mod shuttle_tests {
     use std::sync::Mutex;
@@ -307,11 +302,10 @@ mod shuttle_tests {
             .expect("worker thread panicked");
     }
 
-    /// The historical bug, reproduced directly: several cloned handles send
-    /// an entry and drop concurrently. The background thread must still
-    /// exit (this used to hang forever -- see the module doc comment),
-    /// flush exactly once at shutdown, and lose no entries, no matter how
-    /// the drops and the final disconnect interleave.
+    /// Several cloned handles send an entry and drop concurrently.
+    /// The background thread must still exit, flush at least once,
+    /// and lose no entries, no matter how the drops, the final disconnect,
+    /// and any periodic flush interleave.
     #[shuttle_test(2_000, 3)]
     fn concurrent_drops_exit_cleanly_and_flush_once() {
         const CLONES: u64 = 2;
@@ -350,7 +344,10 @@ mod shuttle_tests {
         let mut values = merged.lock().unwrap().clone();
         values.sort();
         assert_eq!(values, (0..CLONES).collect::<Vec<_>>());
-        assert_eq!(flushes.load(Ordering::SeqCst), 1);
+        assert!(
+            flushes.load(Ordering::SeqCst) >= 1,
+            "must flush at least once (at shutdown, possibly earlier too via a periodic flush)"
+        );
     }
 
     /// The shared mpsc channel preserves each sender's own order, so this thread's
@@ -386,6 +383,57 @@ mod shuttle_tests {
             assert!(
                 values.contains(&i),
                 "flush() resolved without observing entry {i} sent before it on the same thread"
+            );
+        }
+
+        other.join().unwrap();
+        let handle = Arc::clone(&sink._handle);
+        drop(sink);
+        Arc::into_inner(handle)
+            .expect("sole handle ref after dropping the only WorkerSink")
+            .join()
+            .expect("worker thread panicked");
+    }
+
+    /// Same property as `flush_resolves_after_own_prior_sends`, but with
+    /// enough sends per thread to give the randomized `recv_timeout` wrapper
+    /// above a real chance to fire a periodic flush (a `Timeout` when the
+    /// channel is briefly empty) mid-run, not just at the final `flush()`.
+    /// `flush()`'s own-prior-sends guarantee must hold either way.
+    #[shuttle_test(2_000, 3)]
+    fn flush_resolves_after_own_prior_sends_even_with_periodic_flushes() {
+        const PER_THREAD: u64 = 20;
+
+        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<u64, _>::new(
+            CollectingSink {
+                merged: merged.clone(),
+                flushes: flushes.clone(),
+            },
+            flush_interval(),
+        );
+
+        let other = {
+            let sink = sink.clone();
+            shuttle::thread::spawn(move || {
+                for i in 0..PER_THREAD {
+                    sink.send(i);
+                }
+            })
+        };
+
+        for i in PER_THREAD..(PER_THREAD * 2) {
+            sink.send(i);
+        }
+        block_on(sink.flush());
+
+        let values = merged.lock().unwrap().clone();
+        for i in PER_THREAD..(PER_THREAD * 2) {
+            assert!(
+                values.contains(&i),
+                "flush() resolved without observing entry {i} sent before it on the same \
+                 thread, even though a periodic flush may have fired mid-run"
             );
         }
 

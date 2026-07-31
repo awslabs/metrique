@@ -49,7 +49,7 @@ __build_examples_for_rustdoc = ["metrique/emf", "metrique/test-util"]
 # Runs WorkerSink on shuttle-native primitives instead of std, so Shuttle's
 # scheduler can explore thread interleavings (e.g. concurrent sends racing the
 # last sender being dropped). Test-only.
-_shuttle = ["dep:shuttle"]
+_shuttle = ["dep:shuttle", "metrique-writer-core/_shuttle"]
 
 # We need to name one example so that our examples that use dev-dependencies get scraped
 [[example]]
