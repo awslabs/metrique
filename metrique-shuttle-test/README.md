@@ -54,13 +54,4 @@ root for the fuller writeup (including why the shuttle-side primitive shims
 like `ArrayQueue`/`Parker`/`OnceSlot` couldn't take the same path and live in
 `metrique-writer-core` instead).
 
-## Why not `paste`
-
-An earlier draft used the [`paste`] crate to derive `_pct`/`_determinism` via
-token-pasting inside a `macro_rules!`. Rejected: `paste` was archived by its
-maintainer in 2024. This attribute macro sidesteps the whole question --
-`syn`/`quote` parse the function name directly, no identifier-pasting crate
-needed.
-
 [shuttle]: https://github.com/awslabs/shuttle
-[`paste`]: https://crates.io/crates/paste
