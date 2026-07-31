@@ -21,14 +21,23 @@ use crate::traits::{AggregateSink, FlushableSink, RootSink};
 // known gap documented in Shuttle itself; `channel()`'s shuttle-side
 // substitute (in `metrique_writer_core::shuttle_test_support`, shared with
 // sibling crates) wraps the receiver half so it randomly synthesizes a
-// `Timeout` instead.
+// `Timeout` instead. `threshold_elapsed` does the same for the
+// merge-triggered flush check below: real wall-clock time barely advances
+// during a fast shuttle iteration, so `last_flush.elapsed() >= flush_interval`
+// alone would (almost) never fire under shuttle.
 #[cfg(all(shuttle, feature = "_shuttle"))]
-use metrique_writer_core::shuttle_test_support::{Sender, channel, thread};
+use metrique_writer_core::shuttle_test_support::{Sender, channel, thread, threshold_elapsed};
 #[cfg(not(all(shuttle, feature = "_shuttle")))]
 use std::{
     sync::mpsc::{Sender, channel},
     thread,
 };
+
+/// Whether `threshold` has elapsed since `since`. Trivial outside shuttle.
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+fn threshold_elapsed(since: Instant, threshold: Duration) -> bool {
+    since.elapsed() >= threshold
+}
 
 enum QueueMessage<T> {
     Entry(T),
@@ -68,7 +77,7 @@ where
                 match receiver.recv_timeout(time_until_flush) {
                     Ok(QueueMessage::Entry(entry)) => {
                         inner.merge(entry);
-                        if last_flush.elapsed() >= flush_interval {
+                        if threshold_elapsed(last_flush, flush_interval) {
                             inner.flush();
                             last_flush = Instant::now();
                         }
@@ -214,6 +223,74 @@ mod tests {
             std::thread::sleep(Duration::from_micros(1));
         }
     }
+
+    /// The merge-triggered auto-flush must reset `last_flush`, or every
+    /// later entry would also look overdue and re-trigger it.
+    #[test]
+    fn merge_triggered_flush_resets_last_flush() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            Duration::from_millis(20),
+        );
+
+        let start = Instant::now();
+        let mut sends = 0u64;
+        while start.elapsed() < Duration::from_millis(200) {
+            sink.send(());
+            sends += 1;
+        }
+        // Give the background thread a moment to drain the last few sends.
+        std::thread::sleep(Duration::from_millis(20));
+
+        // ~200ms of continuous sending with a 20ms flush_interval crosses
+        // the deadline roughly 10 times -- nowhere near one flush per send.
+        let count = flushes.load(Ordering::SeqCst);
+        assert!(
+            count <= 25,
+            "flushed {count} times for {sends} continuous sends over ~200ms with a \
+             20ms flush_interval -- merge-triggered flush must reset last_flush, not \
+             fire on every subsequent entry"
+        );
+    }
+
+    /// Nothing must have flushed yet at 0.6x (which a `flush_interval / 2` bug would already
+    /// have crossed), and something must have flushed by 1.6x (which a
+    /// `flush_interval * 2` bug would not yet have reached).
+    #[test]
+    fn merge_triggered_flush_uses_full_flush_interval() {
+        const FLUSH_INTERVAL: Duration = Duration::from_millis(300);
+
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            FLUSH_INTERVAL,
+        );
+
+        let start = Instant::now();
+        while start.elapsed() < FLUSH_INTERVAL.mul_f64(0.6) {
+            sink.send(());
+        }
+        assert_eq!(
+            flushes.load(Ordering::SeqCst),
+            0,
+            "flushed before 0.6x flush_interval of continuous sending -- merge-triggered \
+             flush must compare against the full flush_interval, not a fraction of it"
+        );
+
+        while start.elapsed() < FLUSH_INTERVAL.mul_f64(1.6) {
+            sink.send(());
+        }
+        assert!(
+            flushes.load(Ordering::SeqCst) >= 1,
+            "did not flush by 1.6x flush_interval of continuous sending -- merge-triggered \
+             flush must compare against the full flush_interval, not a multiple of it"
+        );
+    }
 }
 
 // Shuttle interleaving tests for `WorkerSink`, covering merge correctness,
@@ -249,9 +326,8 @@ mod shuttle_tests {
         }
     }
 
-    /// `flush_interval` is irrelevant under shuttle (see the module-level
-    /// comment: `recv_timeout` never actually times out), so any value
-    /// works; 60s just documents "this is not what's under test."
+    /// `flush_interval`'s actual value barely matters under shuttle: both
+    /// paths that compare against it are randomized rather than driven by real elapsed time.
     fn flush_interval() -> Duration {
         Duration::from_secs(60)
     }

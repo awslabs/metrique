@@ -70,6 +70,12 @@ pub fn deadline_reached(now: std::time::Instant, deadline: std::time::Instant) -
     now >= deadline || shuttle::rand::thread_rng().gen_bool(0.05)
 }
 
+/// Whether `threshold` has elapsed since `since`.
+#[doc(hidden)]
+pub fn threshold_elapsed(since: std::time::Instant, threshold: std::time::Duration) -> bool {
+    deadline_reached(std::time::Instant::now(), since + threshold)
+}
+
 /// Shuttle-visible substitute for `crossbeam_utils::sync::{Parker, Unparker}`.
 /// Not built on `shuttle::thread::park`/`Thread::unpark`: those are bound to
 /// a specific OS thread, but callers construct the `Parker` on one thread
