@@ -110,15 +110,22 @@ impl EntrySink<BoxEntry> for PendingSink {
         }
         self.0.buffering.fetch_add(1, Ordering::AcqRel);
         // Re-check after incrementing: if the sink was set between our
-        // first check and the increment, forward directly instead.
-        let entry = forward_or_return(&self.0.sink, entry);
-        if let Some(entry) = entry {
+        // first check and the increment, forward directly instead
+        let leftover = self.0.sink.with(|sink| match sink {
+            Some(sink) => {
+                self.0.buffering.fetch_sub(1, Ordering::AcqRel);
+                sink.append(entry);
+                None
+            }
+            None => Some(entry),
+        });
+        if let Some(entry) = leftover {
             // force_push before decrementing: resolve()'s spin-wait treats
             // buffering == 0 as a promise that nothing can still write to the
             // buffer, so the push must be visible before the count drops.
             self.0.buffer.force_push(entry);
+            self.0.buffering.fetch_sub(1, Ordering::AcqRel);
         }
-        self.0.buffering.fetch_sub(1, Ordering::AcqRel);
     }
 
     fn flush_async(&self) -> FlushWait {
