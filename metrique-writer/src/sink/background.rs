@@ -601,7 +601,7 @@ struct Receiver<S, E> {
 // instead you have these conditions:
 // P1. if status == DrainResult::Drained, then the queue has been empty at least once since the last
 // call to handle_waiting_wakers.
-// P2. `queue_capacity` is a function that returns the number of entries that once they
+// P2. `queue_capacity` is the number of entries that once they
 // are processed, it's guaranteed that all entries currently in the queue have been
 //  processed. We use the queue's capacity, since it is guaranteed that all entries
 // currently in the queue have been popped queue after capacity entries have been
@@ -632,7 +632,7 @@ impl WakerTracker {
     // number of pops.
     fn handle_waiting_wakers(
         &mut self,
-        queue_capacity: impl FnOnce() -> usize,
+        queue_capacity: usize,
         flush_stream: impl FnOnce(),
         status: DrainResult,
         entry_count: usize,
@@ -656,7 +656,7 @@ impl WakerTracker {
             }
 
             if !self.waiting_wakers.is_empty() {
-                self.entries_before_wake = queue_capacity();
+                self.entries_before_wake = queue_capacity;
             }
         }
     }
@@ -683,12 +683,9 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             let mut idle_duration = Duration::ZERO;
             loop {
                 let (status, entry_count) = self.drain_until_deadline(next_flush);
-                // Must be dropped before `Arc::get_mut(&mut self.inner)` below to auto-shut-down.
-                // This is a borrow-checker workaround since it's also being borrowed mutably when calling flush_stream().
-                let inner = self.inner.clone();
 
                 waker_tracker.handle_waiting_wakers(
-                    || inner.queue.capacity(),
+                    self.inner.queue.capacity(),
                     || self.flush_stream(),
                     status,
                     entry_count,
@@ -937,20 +934,20 @@ mod tests {
         // *discovers* the waker (via the second `if` block) and sets
         // entries_before_wake = capacity; this call's own entry_count isn't
         // subtracted against it (that only starts from the next call).
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(flushed.get(), 0, "not enough entries processed yet to wake");
 
         // Second call: entries_before_wake = 10 - 4 = 6.
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(flushed.get(), 0, "still under capacity");
 
         // Third call: entries_before_wake = 6 - 4 = 2, still not 0.
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(flushed.get(), 0, "still under capacity");
 
         // Fourth call: 2.saturating_sub(4) = 0 -- must wake now, even though
         // status is HitDeadline (not Drained) on every single call here.
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(
             flushed.get(),
             1,
