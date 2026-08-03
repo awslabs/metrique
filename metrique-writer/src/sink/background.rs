@@ -676,7 +676,6 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
         let span = tracing::span!(tracing::Level::TRACE, "metrics background queue", sink=?self.inner.name);
         let _enter = span.enter();
         let mut waker_tracker = WakerTracker::new(flush_queue_receiver);
-        let inner = self.inner.clone();
 
         loop {
             let next_flush = Instant::now() + self.flush_interval;
@@ -684,6 +683,9 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             let mut idle_duration = Duration::ZERO;
             loop {
                 let (status, entry_count) = self.drain_until_deadline(next_flush);
+                // Must be dropped before `Arc::get_mut(&mut self.inner)` below to auto-shut-down.
+                // This is a borrow-checker workaround since it's also being borrowed mutably when calling flush_stream().
+                let inner = self.inner.clone();
 
                 waker_tracker.handle_waiting_wakers(
                     || inner.queue.capacity(),
@@ -738,7 +740,6 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
                 return self.shut_down();
             }
-            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/341)
             if Arc::get_mut(&mut self.inner).is_some() {
                 tracing::info!("no appenders left, shutting down background metrics queue");
                 return self.shut_down();
@@ -906,6 +907,8 @@ fn next_loop_action(
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    use std::sync::Barrier;
     use std::{
         future::Future,
         pin::Pin,
@@ -1138,12 +1141,8 @@ mod tests {
         }
     }
 
-    /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/341
     #[cfg(not(all(shuttle, feature = "_shuttle")))]
     #[test]
-    #[should_panic(
-        expected = "background thread never auto-shut-down after all queues were dropped"
-    )]
     fn auto_shutdown_when_no_appenders_left() {
         test_all_queues! {
             |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),
@@ -1170,6 +1169,85 @@ mod tests {
                     auto_shut_down,
                     "background thread never auto-shut-down after all queues were dropped"
                 );
+            }
+        }
+    }
+
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    fn holding_a_queue_clone_blocks_auto_shutdown() {
+        test_all_queues! {
+            |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),
+            |_output, queue, handle| {
+                queue.append(TestEntry(0));
+                let kept_alive = queue.clone();
+                drop(queue);
+
+                // give the background thread several flush cycles' worth of time to (incorrectly) shut down
+                std::thread::sleep(Duration::from_millis(200));
+                assert!(
+                    !handle.handle.as_ref().unwrap().is_finished(),
+                    "background thread exited even though a BackgroundQueue clone is still held"
+                );
+
+                drop(kept_alive);
+                handle.shut_down();
+            }
+        }
+    }
+
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    fn concurrent_clone_and_drop_do_not_race_auto_shutdown() {
+        test_all_queues! {
+            |builder| builder.capacity(100).flush_interval(Duration::from_millis(2)),
+            |_output, queue, handle| {
+                const ITERATIONS: usize = 200;
+                const THREADS: usize = 8;
+
+                queue.append(TestEntry(0));
+
+                for i in 0..ITERATIONS {
+                    // held by this thread for the whole iteration: guarantees the queue
+                    // must NOT auto-shut-down at any point during the race below
+                    let keep_alive = queue.clone();
+                    let barrier = Arc::new(Barrier::new(THREADS + 1));
+
+                    std::thread::scope(|scope| {
+                        for _ in 0..THREADS {
+                            let queue = queue.clone();
+                            let barrier = Arc::clone(&barrier);
+                            scope.spawn(move || {
+                                barrier.wait();
+                                for _ in 0..50 {
+                                    drop(queue.clone());
+                                }
+                            });
+                        }
+                        barrier.wait();
+                    });
+
+                    assert!(
+                        !handle.handle.as_ref().unwrap().is_finished(),
+                        "background thread auto-shut-down while a clone was still held (iteration {i})"
+                    );
+                    drop(keep_alive);
+                }
+
+                // now really drop the last clone and confirm the thread eventually exits
+                drop(queue);
+                let start = Instant::now();
+                loop {
+                    if handle.handle.as_ref().unwrap().is_finished() {
+                        break;
+                    }
+                    assert!(
+                        start.elapsed() < Duration::from_secs(3),
+                        "background thread never auto-shut-down after all queues were dropped"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                handle.shut_down();
             }
         }
     }
