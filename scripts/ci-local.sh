@@ -15,6 +15,11 @@ cargo clippy --workspace --all-features -- -D warnings || { echo "FAILED: cargo 
 echo "→ Running security audit..."
 cargo audit || { echo "FAILED: cargo audit"; exit 1; }
 
+# Shuttle-based concurrency tests (separate invocation: needs --cfg shuttle,
+# which isn't part of the normal build/test matrix below).
+echo "→ Running shuttle tests..."
+./scripts/test-shuttle.sh || { echo "FAILED: ./scripts/test-shuttle.sh"; exit 1; }
+
 # Build and test matrix
 for toolchain in 1.91.0 stable nightly; do
     for flags in "--all-features" "--no-default-features"; do

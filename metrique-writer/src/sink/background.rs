@@ -2,16 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-    thread,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
-use crossbeam_queue::ArrayQueue;
-use crossbeam_utils::sync::{Parker, Unparker};
 use metrique_writer_core::{
     BoxEntrySink, EntryIoStream, IoStreamError, ValidationError, sink::FlushWait,
 };
@@ -23,6 +17,9 @@ use super::metrics::{
     MetricsRsType, MetricsRsUnit,
 };
 use super::observer::{BackgroundQueueEvent, BackgroundQueueObserver};
+use super::shuttle_primitives::{
+    ArrayQueue, AtomicBool, Ordering, Parker, Unparker, deadline_reached, mpsc, thread,
+};
 
 /// Builder for [`BackgroundQueue`]
 pub struct BackgroundQueueBuilder {
@@ -420,7 +417,7 @@ impl BackgroundQueueBuilder {
     ) -> (Arc<Inner<E>>, BackgroundQueueJoinHandle) {
         let parker = Parker::default();
         let unparker = parker.unparker().clone();
-        let (flush_queue_sender, flush_queue_receiver) = std::sync::mpsc::channel();
+        let (flush_queue_sender, flush_queue_receiver) = mpsc::channel();
         let inner = Arc::new(Inner {
             name: self.metric_name.unwrap_or_else(|| self.thread_name.clone()),
             queue: ArrayQueue::new(self.capacity),
@@ -484,7 +481,7 @@ struct Inner<E> {
     // oldest entries should be dropped when the queue is full.
     queue: ArrayQueue<E>,
     // queue for flush wakers. This is not the fast-path so it does not use a ring buffer
-    flush_queue_sender: std::sync::mpsc::Sender<FlushSignal>,
+    flush_queue_sender: mpsc::Sender<FlushSignal>,
     // The unparker allows appending threads to cheaply wake up the background writing thread
     unparker: Unparker,
     // lifecycle observer
@@ -613,11 +610,11 @@ struct Receiver<S, E> {
 struct WakerTracker {
     waiting_wakers: Vec<FlushSignal>,
     entries_before_wake: usize,
-    flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>,
+    flush_queue_receiver: mpsc::Receiver<FlushSignal>,
 }
 
 impl WakerTracker {
-    fn new(flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>) -> Self {
+    fn new(flush_queue_receiver: mpsc::Receiver<FlushSignal>) -> Self {
         WakerTracker {
             waiting_wakers: vec![],
             entries_before_wake: 0,
@@ -675,7 +672,7 @@ impl WakerTracker {
 }
 
 impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
-    fn run(mut self, flush_queue_receiver: std::sync::mpsc::Receiver<FlushSignal>) {
+    fn run(mut self, flush_queue_receiver: mpsc::Receiver<FlushSignal>) {
         let span = tracing::span!(tracing::Level::TRACE, "metrics background queue", sink=?self.inner.name);
         let _enter = span.enter();
         let mut waker_tracker = WakerTracker::new(flush_queue_receiver);
@@ -695,26 +692,25 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                     entry_count,
                 );
 
-                if status == DrainResult::HitDeadline {
-                    break; // Hit deadline, flush stream
-                }
-
-                if self.shutdown_signal.load(Ordering::Relaxed) {
-                    break; // shut down, break out of loop to have a chance to flush stream
-                }
-
-                // if the waker tracker can make progress observing an empty queue, let it
-                if !waker_tracker.will_progress_on_drained_queue() {
-                    let park_start = Instant::now();
-                    self.parker.park_deadline(next_flush);
-                    if self.inner.observer.is_some() {
-                        idle_duration += park_start.elapsed();
+                match next_loop_action(
+                    status,
+                    self.shutdown_signal.load(Ordering::Relaxed),
+                    waker_tracker.will_progress_on_drained_queue(),
+                ) {
+                    LoopAction::Flush => break, // hit deadline or shut down; flush stream
+                    LoopAction::Continue => {} // waker tracker can still make progress; re-check now
+                    LoopAction::Park => {
+                        let park_start = Instant::now();
+                        self.parker.park_deadline(next_flush);
+                        if self.inner.observer.is_some() {
+                            idle_duration += park_start.elapsed();
+                        }
                     }
                 }
 
                 // If we did make it to the next flush deadline, flush, else someone woke us up and we'll continue
                 // writing.
-                if Instant::now() >= next_flush {
+                if deadline_reached(Instant::now(), next_flush) {
                     break;
                 }
             }
@@ -742,6 +738,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
                 return self.shut_down();
             }
+            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/341)
             if Arc::get_mut(&mut self.inner).is_some() {
                 tracing::info!("no appenders left, shutting down background metrics queue");
                 return self.shut_down();
@@ -759,7 +756,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
             self.consume(entry);
 
             count += 1;
-            if count.is_multiple_of(32) && Instant::now() >= deadline {
+            if count.is_multiple_of(32) && deadline_reached(Instant::now(), deadline) {
                 return (DrainResult::HitDeadline, count);
             }
         }
@@ -880,6 +877,32 @@ enum DrainResult {
     HitDeadline, // some entries left, but we're now past the deadline
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopAction {
+    /// Break out of the inner loop to flush the stream.
+    Flush,
+    /// Park until the next flush deadline (or an unpark), then re-check.
+    Park,
+    /// Skip parking -- the waker tracker can still make progress -- and re-check immediately.
+    Continue,
+}
+
+/// Pure decision logic for `Receiver::run`'s inner loop,
+/// kept separate from the loop itself for testing purposes.
+fn next_loop_action(
+    status: DrainResult,
+    shutdown_requested: bool,
+    can_progress_on_drained_queue: bool,
+) -> LoopAction {
+    if status == DrainResult::HitDeadline || shutdown_requested {
+        LoopAction::Flush
+    } else if can_progress_on_drained_queue {
+        LoopAction::Continue
+    } else {
+        LoopAction::Park
+    }
+}
+
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
@@ -894,6 +917,83 @@ mod tests {
     use metrique_writer_core::test_stream::{TestEntry, TestStream};
 
     use super::*;
+
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    fn waker_tracker_wakes_within_capacity_on_mid_drain_hit_deadline() {
+        let (tx, rx) = std::sync::mpsc::channel::<FlushSignal>();
+        let (flush_tx, mut flush_rx) = tokio::sync::oneshot::channel::<()>();
+        tx.send(FlushSignal { channel: flush_tx }).unwrap();
+
+        let mut tracker = WakerTracker::new(rx);
+        let flushed = std::cell::Cell::new(0u32);
+        let capacity = 10usize;
+        let mark_flushed = || flushed.set(flushed.get() + 1);
+
+        // First call: `waiting_wakers` starts empty, so this call only
+        // *discovers* the waker (via the second `if` block) and sets
+        // entries_before_wake = capacity; this call's own entry_count isn't
+        // subtracted against it (that only starts from the next call).
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(flushed.get(), 0, "not enough entries processed yet to wake");
+
+        // Second call: entries_before_wake = 10 - 4 = 6.
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(flushed.get(), 0, "still under capacity");
+
+        // Third call: entries_before_wake = 6 - 4 = 2, still not 0.
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(flushed.get(), 0, "still under capacity");
+
+        // Fourth call: 2.saturating_sub(4) = 0 -- must wake now, even though
+        // status is HitDeadline (not Drained) on every single call here.
+        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        assert_eq!(
+            flushed.get(),
+            1,
+            "must wake within `capacity` entries processed, even under continuous HitDeadline"
+        );
+        assert!(
+            flush_rx.try_recv().is_err(),
+            "the waker's oneshot sender must have been dropped (woken)"
+        );
+    }
+
+    /// Exhaustive table over every combination of `next_loop_action`'s three inputs.
+    #[test]
+    fn next_loop_action_table() {
+        for shutdown_requested in [false, true] {
+            for can_progress in [false, true] {
+                assert_eq!(
+                    next_loop_action(DrainResult::HitDeadline, shutdown_requested, can_progress),
+                    LoopAction::Flush,
+                    "HitDeadline must always flush, regardless of shutdown_requested={shutdown_requested} \
+                     or can_progress_on_drained_queue={can_progress}"
+                );
+            }
+        }
+
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, true, false),
+            LoopAction::Flush,
+            "shutdown requested must flush even with nothing left to drain"
+        );
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, true, true),
+            LoopAction::Flush,
+            "shutdown requested must flush even if the waker tracker could still progress"
+        );
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, false, true),
+            LoopAction::Continue,
+            "no deadline, no shutdown, waker tracker can progress -- re-check immediately"
+        );
+        assert_eq!(
+            next_loop_action(DrainResult::Drained, false, false),
+            LoopAction::Park,
+            "no deadline, no shutdown, nothing to make progress on -- park"
+        );
+    }
 
     // unfortunately, this needs to be a macro because we can't write a fn
     // generic over both BackgroundQueue and the boxed BackgroundQueue
@@ -1034,6 +1134,42 @@ mod tests {
                         panic!("didn't finish writing");
                     }
                 }
+            }
+        }
+    }
+
+    /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/341
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    #[should_panic(
+        expected = "background thread never auto-shut-down after all queues were dropped"
+    )]
+    fn auto_shutdown_when_no_appenders_left() {
+        test_all_queues! {
+            |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),
+            |_output, queue, handle| {
+                queue.append(TestEntry(0));
+                drop(queue);
+
+                let start = Instant::now();
+                let auto_shut_down = loop {
+                    if handle.handle.as_ref().unwrap().is_finished() {
+                        break true;
+                    }
+                    if start.elapsed() > Duration::from_secs(3) {
+                        break false;
+                    }
+                    std::thread::sleep(Duration::from_millis(10));
+                };
+
+                // Clean up regardless of the outcome above, so this test never
+                // leaks the background thread past its own lifetime.
+                handle.shut_down();
+
+                assert!(
+                    auto_shut_down,
+                    "background thread never auto-shut-down after all queues were dropped"
+                );
             }
         }
     }
@@ -1359,8 +1495,7 @@ mod tests {
             })(builder),
             |output, queue, handle| {
                 queue.append(TestEntry(1));
-                // this sleep will make the flush normally run while the background queue is parked, which
-                // is where a bug previously existed.
+                // this sleep makes the flush run while the background queue is parked, which is the race this test targets.
                 // since the goal is to trigger a race rather than to avoid triggering it, I'm fine with a sleep.
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 let mut flush = EntrySink::<TestEntry>::flush_async(&queue);
@@ -1463,5 +1598,312 @@ mod tests {
         handle.shut_down();
 
         assert!(events.0.lock().unwrap().overflows > 0);
+    }
+}
+
+// Shuttle interleaving tests for the background queue. `mod tests` above
+// covers push/pop/flush/overflow with real threads, but only samples a
+// handful of interleavings -- it can't prove the `WakerTracker`
+// liveness/safety invariants hold under *every* schedule the way Shuttle can.
+//
+// Separate module, not an extension of `mod tests`, because Shuttle doesn't
+// model wall-clock time and can't usefully explore the real-time behavior
+// those tests exercise (periodic flush, `forget()` without a sync point).
+//
+// The long `flush_interval` used below keeps the *real* periodic-flush
+// deadline from tripping during a fast in-process iteration, but
+// `deadline_reached` (see `shuttle_primitives`) also ORs in a random
+// chance regardless of real elapsed time, so a mid-drain `HitDeadline` is
+// still reachable here.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use std::sync::{Arc, Mutex};
+
+    use metrique_writer_core::test_stream::{TestEntry, TestStream};
+
+    use crate::EntrySink;
+
+    use super::{BackgroundQueueBuilder, BackgroundQueueEvent, BackgroundQueueObserver, Duration};
+    use metrique_writer_core::shuttle_test;
+
+    /// The longest interval the builder allows (see `flush_interval`'s
+    /// `assert!`), and far longer than any of these tests can possibly run.
+    /// The real periodic-flush deadline (`Instant`-based, see
+    /// `Receiver::run`) should therefore never fire during a single, fast,
+    /// in-process shuttle iteration. `Parker::park_deadline` in
+    /// `shuttle_primitives` degrades to an unbounded park under shuttle
+    /// (shuttle doesn't model time), so this keeps these tests focused on
+    /// push/pop/wake correctness, not real-time flush cadence -- that's
+    /// already covered by `mod tests` above.
+    fn flush_interval() -> Duration {
+        Duration::from_secs(59)
+    }
+
+    // `futures::executor::block_on`'s real thread park/unpark on wake
+    // is invisible to shuttle and can deadlock the exploration. Shuttle's own
+    // `block_on` polls and yields to its scheduler on `Pending` instead of
+    // really blocking, using shuttle's own waker under the hood.
+    use shuttle::future::block_on;
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Round-trip / no-loss: entries pushed concurrently from several threads
+        /// are all eventually observed by the stream, for every interleaving
+        /// shuttle explores (capacity is far above what's pushed, so eviction
+        /// never enters into it -- that's covered separately below).
+        fn round_trip_no_loss() {
+            const THREADS: u64 = 3;
+            const PER_THREAD: u64 = 3;
+
+            let output: Arc<Mutex<TestStream>> = Default::default();
+            let (queue, handle) = BackgroundQueueBuilder::new()
+                .capacity(1_000)
+                .flush_interval(flush_interval())
+                .build(Arc::clone(&output));
+
+            let threads: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let queue = queue.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            queue.append(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
+                })
+                .collect();
+            for t in threads {
+                t.join().unwrap();
+            }
+
+            // Shuts down and blocks until the background thread has fully
+            // drained the queue and joined -- so reading `output` afterwards
+            // races with nothing.
+            handle.shut_down();
+
+            let mut values = output.lock().unwrap().values.clone();
+            values.sort();
+            assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `WakerTracker` liveness (L1) + safety (S1): a `flush_async()` call
+        /// always eventually resolves (L1), and by the time it does, every entry
+        /// pushed on this thread *before* the call must already be visible in
+        /// the stream (S1) -- the tracker must never wake a waiter before
+        /// draining the pushes that preceded it. An unrelated second thread
+        /// pushes concurrently and unjoined, to give the scheduler more
+        /// interleavings between the two producers and the flush waker.
+        fn flush_waits_for_prior_pushes() {
+            let output: Arc<Mutex<TestStream>> = Default::default();
+            let (queue, handle) = BackgroundQueueBuilder::new()
+                .capacity(1_000)
+                .flush_interval(flush_interval())
+                .build(Arc::clone(&output));
+
+            let other = {
+                let queue = queue.clone();
+                shuttle::thread::spawn(move || {
+                    for i in 100..103 {
+                        queue.append(TestEntry(i));
+                    }
+                })
+            };
+
+            for i in 0..3 {
+                queue.append(TestEntry(i));
+            }
+            block_on(EntrySink::<TestEntry>::flush_async(&queue));
+
+            let values = output.lock().unwrap().values.clone();
+            for i in 0..3 {
+                assert!(
+                    values.contains(&i),
+                    "flush_async() resolved without observing entry {i} pushed before it"
+                );
+            }
+
+            other.join().unwrap();
+            handle.shut_down();
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `flush_async()` must still observe every entry pushed
+        /// on the same thread before it, even if the receiver hits its
+        /// deadline mid-drain along the way.
+        fn flush_waits_for_prior_pushes_even_across_hit_deadline() {
+            const PER_THREAD: u64 = 20;
+
+            let output: Arc<Mutex<TestStream>> = Default::default();
+            let (queue, handle) = BackgroundQueueBuilder::new()
+                .capacity(1_000)
+                .flush_interval(flush_interval())
+                .build(Arc::clone(&output));
+
+            let other = {
+                let queue = queue.clone();
+                shuttle::thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        queue.append(TestEntry(i));
+                    }
+                })
+            };
+
+            for i in PER_THREAD..(PER_THREAD * 2) {
+                queue.append(TestEntry(i));
+            }
+            block_on(EntrySink::<TestEntry>::flush_async(&queue));
+
+            let values = output.lock().unwrap().values.clone();
+            for i in PER_THREAD..(PER_THREAD * 2) {
+                assert!(
+                    values.contains(&i),
+                    "flush_async() resolved without observing entry {i} pushed before it, \
+                     even though the receiver may have hit its deadline mid-drain"
+                );
+            }
+
+            other.join().unwrap();
+            handle.shut_down();
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Overflow accounting: every pushed entry has exactly one fate --
+        /// either it's evicted by a later `force_push` before the receiver
+        /// pops it (counted as a `QueueOverflow` event), or it's popped and
+        /// observed by the stream. That conservation law
+        /// (`overflows + observed == pushed`) holds no matter how the
+        /// receiver's drains happen to interleave with the pushes below, so
+        /// unlike an exact overflow count, it doesn't need to force a specific
+        /// schedule to assert on.
+        ///
+        /// (Deliberately not using `drops_older_entries_when_full`'s trick of
+        /// holding the stream's lock across the pushes to force a blocked
+        /// receiver: that lock is a real, non-shuttle `Mutex`, and holding it
+        /// across `queue.append()` -- which itself touches shuttle-instrumented
+        /// primitives -- risks shuttle suspending this thread mid-critical-section,
+        /// which could deadlock the whole exploration if the receiver thread then
+        /// tries to lock the same real `Mutex`.)
+        fn overflow_accounting() {
+            #[derive(Default, Clone)]
+            struct CountingObserver(Arc<Mutex<u64>>);
+            impl BackgroundQueueObserver for CountingObserver {
+                fn on_event(&self, _queue: &str, event: BackgroundQueueEvent) {
+                    if let BackgroundQueueEvent::QueueOverflow = event {
+                        *self.0.lock().unwrap() += 1;
+                    }
+                }
+            }
+
+            const CAPACITY: usize = 2;
+            const PUSHED: u64 = 8;
+
+            let overflows = CountingObserver::default();
+            let output: Arc<Mutex<TestStream>> = Default::default();
+            let (queue, handle) = BackgroundQueueBuilder::new()
+                .capacity(CAPACITY)
+                .flush_interval(flush_interval())
+                .observer(overflows.clone())
+                .build::<TestEntry>(Arc::clone(&output));
+
+            for i in 0..PUSHED {
+                queue.append(TestEntry(i));
+            }
+            handle.shut_down();
+
+            let observed = output.lock().unwrap().values.len() as u64;
+            assert_eq!(
+                *overflows.0.lock().unwrap() + observed,
+                PUSHED,
+                "every pushed entry must be either evicted-and-counted or observed, never both/neither"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Same conservation invariant as `overflow_accounting`, but pushed from
+        /// several concurrent threads instead of a single-threaded loop, so the
+        /// eviction race in `force_push` (checking `len() >= capacity` then
+        /// evicting then pushing) is actually contended by multiple producers,
+        /// not just raced against the receiver's pops.
+        fn overflow_accounting_concurrent_producers() {
+            #[derive(Default, Clone)]
+            struct CountingObserver(Arc<Mutex<u64>>);
+            impl BackgroundQueueObserver for CountingObserver {
+                fn on_event(&self, _queue: &str, event: BackgroundQueueEvent) {
+                    if let BackgroundQueueEvent::QueueOverflow = event {
+                        *self.0.lock().unwrap() += 1;
+                    }
+                }
+            }
+
+            const CAPACITY: usize = 2;
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 3;
+            const PUSHED: u64 = THREADS * PER_THREAD;
+
+            let overflows = CountingObserver::default();
+            let output: Arc<Mutex<TestStream>> = Default::default();
+            let (queue, handle) = BackgroundQueueBuilder::new()
+                .capacity(CAPACITY)
+                .flush_interval(flush_interval())
+                .observer(overflows.clone())
+                .build::<TestEntry>(Arc::clone(&output));
+
+            let threads: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let queue = queue.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            queue.append(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
+                })
+                .collect();
+            for t in threads {
+                t.join().unwrap();
+            }
+
+            handle.shut_down();
+
+            let observed = output.lock().unwrap().values.len() as u64;
+            assert_eq!(
+                *overflows.0.lock().unwrap() + observed,
+                PUSHED,
+                "every pushed entry must be either evicted-and-counted or observed, never both/neither, \
+                 even when pushes race each other across producer threads"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// A concurrent `append()` racing `handle`'s drop (which flips
+        /// `shutdown_signal` and blocks joining the background thread). Losing
+        /// the entry is documented, acceptable behavior here (see
+        /// `BackgroundQueueJoinHandle`'s doc comment).
+        fn concurrent_append_racing_shutdown_never_panics_or_hangs() {
+            let output: Arc<Mutex<TestStream>> = Default::default();
+            let (queue, handle) = BackgroundQueueBuilder::new()
+                .capacity(1_000)
+                .flush_interval(flush_interval())
+                .build(Arc::clone(&output));
+
+            let appender = {
+                let queue = queue.clone();
+                shuttle::thread::spawn(move || {
+                    queue.append(TestEntry(0));
+                })
+            };
+
+            handle.shut_down();
+            appender.join().unwrap();
+        }
     }
 }

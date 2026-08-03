@@ -19,8 +19,10 @@ use std::any::Any;
 use std::collections::HashMap;
 #[cfg(feature = "test-util")]
 use std::marker::PhantomData;
+use std::sync::Arc;
+#[cfg(feature = "test-util")]
+use std::sync::Mutex;
 use std::sync::Weak;
-use std::sync::{Arc, Mutex};
 
 use crate::{
     EntrySink,
@@ -266,15 +268,30 @@ impl ShutdownFn {
     }
 }
 
+// `ShutdownRegistry`'s internal lock, swapped for a shuttle-native `Mutex`
+// under `--cfg shuttle` (see `shuttle_tests` below). `RuntimeSinkMap` below
+// stays on `std::sync::Mutex` regardless -- it's test-only plumbing with no
+// interleaving-sensitive invariant worth Shuttle's cost.
+//
+// Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg
+// shuttle` is set process-wide via RUSTFLAGS, so it also reaches builds of
+// this crate (e.g. as a dev-dependency with different requested features)
+// that don't have `_shuttle` enabled and therefore don't have the optional
+// `shuttle` crate linked at all.
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+type ShutdownRegistryMutex<T> = std::sync::Mutex<T>;
+#[cfg(all(shuttle, feature = "_shuttle"))]
+type ShutdownRegistryMutex<T> = shuttle::sync::Mutex<T>;
+
 /// Storage for [`ShutdownFn`]s registered on an [`AttachHandle`], to be run when the [`AttachHandle`] is dropped.
 ///
 /// This type is public for macro-generated code. You should not need to use it directly,
 /// use [`AttachGlobalEntrySink::register_shutdown_fn`] instead.
-pub struct ShutdownRegistry(Mutex<Vec<ShutdownFn>>);
+pub struct ShutdownRegistry(ShutdownRegistryMutex<Vec<ShutdownFn>>);
 
 impl ShutdownRegistry {
     fn new(initial: ShutdownFn) -> Self {
-        Self(Mutex::new(vec![initial]))
+        Self(ShutdownRegistryMutex::new(vec![initial]))
     }
 
     /// Add a shutdown function. Functions run in LIFO order when the
@@ -364,7 +381,7 @@ impl Drop for TokioRuntimeTestSinkGuard {
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(arc) = self.shutdown_registry.take() {
-            // The macro holds only a Weak reference, so this is the sole strong ref.
+            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/340)
             match Arc::try_unwrap(arc) {
                 Ok(registry) => registry.drain_and_run(),
                 Err(_) => unreachable!("ShutdownRegistry should have no other strong references"),
@@ -1378,6 +1395,168 @@ mod shutdown_registry_tests {
         assert_eq!(*order.lock().unwrap(), vec![3, 2, 1]);
     }
 }
+
+// Shuttle test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
+// handshake. Constructs both directly instead of going through
+// `global_entry_sink!` like the tests above: that macro's `SINK`/
+// `SHUTDOWN_REGISTRY` slots are real `static`s, and Shuttle re-runs the same
+// test body many times in one process, so a `static`'s state would leak
+// across iterations and invalidate the exploration.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use shuttle::sync::Mutex;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::{AttachHandle, ShutdownFn};
+    use crate::shuttle_test;
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3, should_panic = "ShutdownRegistry should have no other strong references";
+        /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
+        fn concurrent_register_and_drop() {
+            const REGISTRARS: usize = 2;
+
+            let ran = Arc::new(AtomicUsize::new(0));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
+
+            let registrars: Vec<_> = (0..REGISTRARS)
+                .map(|_| {
+                    let weak = weak.clone();
+                    let ran = ran.clone();
+                    shuttle::thread::spawn(move || {
+                        if let Some(registry) = weak.upgrade() {
+                            registry.push(ShutdownFn::new(move || {
+                                ran.fetch_add(1, Ordering::SeqCst);
+                            }));
+                        }
+                    })
+                })
+                .collect();
+
+            drop(handle);
+
+            for registrar in registrars {
+                registrar.join().unwrap();
+            }
+
+            // If this runs more than REGISTRARS times it means `drop` didn't
+            // panic on the `unreachable!()`.
+            assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        fn concurrent_register_and_forget() {
+            let ran = Arc::new(AtomicUsize::new(0));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
+
+            let ran2 = ran.clone();
+            let registrar = shuttle::thread::spawn(move || {
+                if let Some(registry) = weak.upgrade() {
+                    registry.push(ShutdownFn::new(move || {
+                        ran2.fetch_add(1, Ordering::SeqCst);
+                    }));
+                }
+            });
+
+            // required for shuttle to schedule `registrar` *during* `forget()`
+            shuttle::thread::yield_now();
+
+            handle.forget();
+            registrar.join().unwrap();
+
+            assert_eq!(
+                ran.load(Ordering::SeqCst),
+                0,
+                "a fn registered around forget() must never run"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `ShutdownRegistry::push` racing itself
+        fn concurrent_registrars_race_push() {
+            const REGISTRARS: usize = 2;
+
+            let ran = Arc::new(AtomicUsize::new(0));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
+
+            let registrars: Vec<_> = (0..REGISTRARS)
+                .map(|_| {
+                    let weak = weak.clone();
+                    let ran = ran.clone();
+                    shuttle::thread::spawn(move || {
+                        weak.upgrade()
+                            .expect("handle still alive, upgrade must succeed")
+                            .push(ShutdownFn::new(move || {
+                                ran.fetch_add(1, Ordering::SeqCst);
+                            }));
+                    })
+                })
+                .collect();
+
+            for registrar in registrars {
+                registrar.join().unwrap();
+            }
+
+            drop(handle);
+
+            assert_eq!(
+                ran.load(Ordering::SeqCst),
+                REGISTRARS,
+                "every concurrently-registered fn must run exactly once"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        fn concurrent_registrars_preserve_lifo_order() {
+            const REGISTRARS: u32 = 2;
+
+            let push_order = Arc::new(Mutex::new(Vec::new()));
+            let run_order = Arc::new(Mutex::new(Vec::new()));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
+
+            let registrars: Vec<_> = (0..REGISTRARS)
+                .map(|i| {
+                    let weak = weak.clone();
+                    let push_order = push_order.clone();
+                    let run_order = run_order.clone();
+                    shuttle::thread::spawn(move || {
+                        let registry = weak.upgrade().expect("handle still alive");
+                        let mut push_order = push_order.lock().unwrap();
+                        registry.push(ShutdownFn::new(move || {
+                            run_order.lock().unwrap().push(i);
+                        }));
+                        push_order.push(i);
+                    })
+                })
+                .collect();
+
+            for registrar in registrars {
+                registrar.join().unwrap();
+            }
+
+            drop(handle);
+
+            let expected_run_order: Vec<_> = push_order.lock().unwrap().iter().rev().copied().collect();
+            assert_eq!(
+                *run_order.lock().unwrap(),
+                expected_run_order,
+                "shutdown fns must run in exact reverse of push order, regardless of how concurrent registration interleaves"
+            );
+        }
+    }
+}
+
 // Helper macro that conditionally expands based on the test-util feature
 // This is checked at macro expansion time in the metrique-writer-core crate
 

@@ -9,7 +9,7 @@ repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)', 'cfg(shuttle)'] }
 
 [features]
 default = []
@@ -24,6 +24,9 @@ tokio-metrics-bridge = [
 sysinfo-bridge = ["state", "dep:metrique", "dep:tokio", "dep:sysinfo", "dep:tracing"]
 # Enables BoxEntrySink::pending() for deferred sink attachment with bounded buffering
 pending-sink = ["dep:metrique-writer-core", "dep:crossbeam-queue"]
+# Runs pending_sink on shuttle-native primitives instead of std/crossbeam, so
+# Shuttle's scheduler can explore its buffer/resolve interleavings. Test-only.
+_shuttle = ["dep:shuttle", "pending-sink", "metrique-writer-core/_shuttle"]
 
 [dependencies]
 metrique-core = { workspace = true }
@@ -40,6 +43,7 @@ sysinfo = { version = "0.38.4", optional = true, default-features = false, featu
 tracing = { workspace = true, optional = true }
 metrique-writer-core = { workspace = true, optional = true }
 crossbeam-queue = { workspace = true, optional = true }
+shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }

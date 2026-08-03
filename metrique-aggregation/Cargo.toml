@@ -9,7 +9,7 @@ repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)', 'cfg(shuttle)'] }
 
 [dependencies]
 metrique = { workspace = true, features = ["service-metrics"] }
@@ -23,6 +23,7 @@ metrique-writer-core = { workspace = true, features = ["serde"] }
 tokio = { workspace = true, default-features = false, features = ["sync"] }
 metrique-timesource = { workspace = true, features = ["test-util"] }
 hashbrown.workspace = true
+shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
 metrique = { workspace = true, features = ["test-util", "emf", "local-format"] }
@@ -44,6 +45,10 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 [features]
 # There seems to be a rustdoc bug where when a dev dependency enables a new feature, its not picked up properly
 __build_examples_for_rustdoc = ["metrique/emf", "metrique/test-util"]
+# Runs WorkerSink on shuttle-native primitives instead of std, so Shuttle's
+# scheduler can explore thread interleavings (e.g. concurrent sends racing the
+# last sender being dropped). Test-only.
+_shuttle = ["dep:shuttle", "metrique-writer-core/_shuttle"]
 
 # We need to name one example so that our examples that use dev-dependencies get scraped
 [[example]]
