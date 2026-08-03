@@ -283,8 +283,8 @@ pub use shuttle::thread;
 /// }
 /// ```
 ///
-/// `num_iters` and `depth` are required, in that order. Add
-/// `, should_panic = "..."` after `depth = ...` for tests expecting a panic.
+/// `num_iters` and `depth` are required, in either order. Add
+/// `, should_panic = "..."` after them for tests expecting a panic.
 ///
 /// Nesting in `mod $name` (instead of generating sibling
 /// `${name}_pct`/`${name}_determinism` functions) since
@@ -317,6 +317,18 @@ macro_rules! shuttle_test {
             fn determinism() {
                 ::shuttle::check_uncontrolled_nondeterminism($name, $num_iters);
             }
+        }
+    };
+    // Same as above with the two required fields swapped, delegates to the arm above.
+    (
+        depth = $depth:expr, num_iters = $num_iters:expr $(, should_panic = $msg:literal)?;
+        $(#[$meta:meta])*
+        fn $name:ident() $body:block
+    ) => {
+        $crate::shuttle_test! {
+            num_iters = $num_iters, depth = $depth $(, should_panic = $msg)?;
+            $(#[$meta])*
+            fn $name() $body
         }
     };
 }
