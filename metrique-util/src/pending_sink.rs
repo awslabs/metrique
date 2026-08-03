@@ -465,7 +465,7 @@ mod shuttle_tests {
     /// Entries appended concurrently with `resolve()` must never be lost, no
     /// matter which side of the race each append lands on (buffered then
     /// drained, or forwarded directly).
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_appends_racing_resolve_lose_nothing() {
         const THREADS: u64 = 2;
         const PER_THREAD: u64 = 2;
@@ -505,7 +505,7 @@ mod shuttle_tests {
     /// every interleaving shuttle explores, regardless of whether each
     /// append's `cancelled` check lands before or after the drop takes
     /// effect.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_append_racing_resolver_drop() {
         const THREADS: u64 = 2;
         const PER_THREAD: u64 = 2;
@@ -540,7 +540,7 @@ mod shuttle_tests {
     /// the race it lands on, and that doing so doesn't interfere with the
     /// core no-entry-loss guarantee entries appended concurrently still
     /// depend on.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_flush_racing_resolve_lose_nothing() {
         const THREADS: u64 = 2;
         const PER_THREAD: u64 = 2;

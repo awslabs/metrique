@@ -9,35 +9,58 @@ use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
     Expr, Ident, ItemFn, LitStr, Token, parse::Parse, parse::ParseStream, parse_macro_input,
+    punctuated::Punctuated,
 };
 
 struct Args {
-    iterations: Expr,
+    num_iters: Expr,
     depth: Expr,
     should_panic: Option<LitStr>,
 }
 
+enum Field {
+    NumIters(Expr),
+    Depth(Expr),
+    ShouldPanic(LitStr),
+}
+
+impl Parse for Field {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let key: Ident = input.parse()?;
+        input.parse::<Token![=]>()?;
+        match key.to_string().as_str() {
+            "num_iters" => Ok(Field::NumIters(input.parse()?)),
+            "depth" => Ok(Field::Depth(input.parse()?)),
+            "should_panic" => Ok(Field::ShouldPanic(input.parse()?)),
+            other => Err(syn::Error::new(
+                key.span(),
+                format!(
+                    "unknown `shuttle_test` field `{other}` -- expected `num_iters`, `depth`, or `should_panic`"
+                ),
+            )),
+        }
+    }
+}
+
 impl Parse for Args {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let iterations: Expr = input.parse()?;
-        input.parse::<Token![,]>()?;
-        let depth: Expr = input.parse()?;
+        let fields = Punctuated::<Field, Token![,]>::parse_terminated(input)?;
 
-        let should_panic = if input.is_empty() {
-            None
-        } else {
-            input.parse::<Token![,]>()?;
-            let keyword: Ident = input.parse()?;
-            if keyword != "should_panic" {
-                return Err(syn::Error::new(keyword.span(), "expected `should_panic`"));
+        let mut num_iters = None;
+        let mut depth = None;
+        let mut should_panic = None;
+        for field in fields {
+            match field {
+                Field::NumIters(v) => num_iters = Some(v),
+                Field::Depth(v) => depth = Some(v),
+                Field::ShouldPanic(v) => should_panic = Some(v),
             }
-            input.parse::<Token![=]>()?;
-            Some(input.parse::<LitStr>()?)
-        };
+        }
 
         Ok(Args {
-            iterations,
-            depth,
+            num_iters: num_iters
+                .ok_or_else(|| input.error("missing required `num_iters = <expr>`"))?,
+            depth: depth.ok_or_else(|| input.error("missing required `depth = <expr>`"))?,
             should_panic,
         })
     }
@@ -49,11 +72,11 @@ impl Parse for Args {
 /// count -- the pattern every shuttle test in this workspace follows.
 ///
 /// ```ignore
-/// #[shuttle_test(2_000, 3)]
 /// fn round_trip_no_loss() { /* ... */ }
 /// ```
 ///
-/// Add `, should_panic = "..."` for tests expecting a panic.
+/// `num_iters` and `depth` are required, in either order. Add `,
+/// should_panic = "..."` for tests expecting a panic.
 #[proc_macro_attribute]
 pub fn shuttle_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as Args);
@@ -62,7 +85,7 @@ pub fn shuttle_test(attr: TokenStream, item: TokenStream) -> TokenStream {
     let name = &item_fn.sig.ident;
     let pct_name = format_ident!("{name}_pct");
     let determinism_name = format_ident!("{name}_determinism");
-    let iterations = &args.iterations;
+    let iterations = &args.num_iters;
     let depth = &args.depth;
 
     let should_panic_attr = args.should_panic.as_ref().map(|msg| {

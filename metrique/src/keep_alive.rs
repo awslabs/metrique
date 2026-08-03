@@ -429,7 +429,7 @@ mod shuttle_tests {
     /// ordinary `Guard`s (which races inside `Arc`'s own atomics, outside
     /// what Shuttle instruments), this race sits entirely between two
     /// `Mutex` operations Shuttle does control.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_drop_alls_race_releases_value_exactly_once() {
         let count = Arc::new(AtomicUsize::new(0));
         let tester = DropCounter {
@@ -457,7 +457,7 @@ mod shuttle_tests {
 
     /// Ordinary `Guard`s racing each other (and `Parent`'s drop), no
     /// `DropAll` -- the load-bearing race plain `Arc`/`Weak` couldn't expose.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_guards_race_releases_value_exactly_once() {
         const GUARDS: usize = 2;
 
@@ -488,7 +488,7 @@ mod shuttle_tests {
 
     /// Ordinary `Guard`s racing a `DropAll` (and `Parent`'s drop) -- same
     /// shape as the real-thread stress test above, made exhaustive.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_guards_and_drop_all_race_releases_value_exactly_once() {
         const GUARDS: usize = 2;
 
@@ -546,7 +546,7 @@ mod shuttle_tests {
 
     /// `new_guard()` itself called concurrently from multiple threads
     /// `Parent: Sync` implies this must be safe; exercised here.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_guard_creation_and_drop_releases_value_exactly_once() {
         const GUARDS: usize = 2;
 
@@ -573,7 +573,7 @@ mod shuttle_tests {
 
     /// Guard creation, guard drops, `DropAll` creation, and
     /// `DropAll` drops, all racing each other (and `Parent`'s drop) at once
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once() {
         const GUARDS: usize = 2;
         const DROP_ALLS: usize = 2;

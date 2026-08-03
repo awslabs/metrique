@@ -1413,8 +1413,8 @@ mod shuttle_tests {
 
     /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
     #[shuttle_test(
-        2_000,
-        3,
+        num_iters = 2_000,
+        depth = 3,
         should_panic = "ShutdownRegistry should have no other strong references"
     )]
     fn concurrent_register_and_drop() {
@@ -1449,7 +1449,7 @@ mod shuttle_tests {
         assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
     }
 
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_register_and_forget() {
         let ran = Arc::new(AtomicUsize::new(0));
         let handle = AttachHandle::new(|| {});
@@ -1478,7 +1478,7 @@ mod shuttle_tests {
     }
 
     /// `ShutdownRegistry::push` racing itself
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_registrars_race_push() {
         const REGISTRARS: usize = 2;
 
@@ -1513,7 +1513,7 @@ mod shuttle_tests {
         );
     }
 
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_registrars_preserve_lifo_order() {
         const REGISTRARS: u32 = 2;
 

@@ -1495,8 +1495,7 @@ mod tests {
             })(builder),
             |output, queue, handle| {
                 queue.append(TestEntry(1));
-                // this sleep will make the flush normally run while the background queue is parked, which
-                // is where a bug previously existed.
+                // this sleep makes the flush run while the background queue is parked, which is the race this test targets.
                 // since the goal is to trigger a race rather than to avoid triggering it, I'm fine with a sleep.
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 let mut flush = EntrySink::<TestEntry>::flush_async(&queue);
@@ -1650,7 +1649,7 @@ mod shuttle_tests {
     /// are all eventually observed by the stream, for every interleaving
     /// shuttle explores (capacity is far above what's pushed, so eviction
     /// never enters into it -- that's covered separately below).
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn round_trip_no_loss() {
         const THREADS: u64 = 3;
         const PER_THREAD: u64 = 3;
@@ -1692,7 +1691,7 @@ mod shuttle_tests {
     /// draining the pushes that preceded it. An unrelated second thread
     /// pushes concurrently and unjoined, to give the scheduler more
     /// interleavings between the two producers and the flush waker.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn flush_waits_for_prior_pushes() {
         let output: Arc<Mutex<TestStream>> = Default::default();
         let (queue, handle) = BackgroundQueueBuilder::new()
@@ -1729,7 +1728,7 @@ mod shuttle_tests {
     /// `flush_async()` must still observe every entry pushed
     /// on the same thread before it, even if the receiver hits its
     /// deadline mid-drain along the way.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn flush_waits_for_prior_pushes_even_across_hit_deadline() {
         const PER_THREAD: u64 = 20;
 
@@ -1782,7 +1781,7 @@ mod shuttle_tests {
     /// primitives -- risks shuttle suspending this thread mid-critical-section,
     /// which could deadlock the whole exploration if the receiver thread then
     /// tries to lock the same real `Mutex`.)
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn overflow_accounting() {
         #[derive(Default, Clone)]
         struct CountingObserver(Arc<Mutex<u64>>);
@@ -1823,7 +1822,7 @@ mod shuttle_tests {
     /// eviction race in `force_push` (checking `len() >= capacity` then
     /// evicting then pushing) is actually contended by multiple producers,
     /// not just raced against the receiver's pops.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn overflow_accounting_concurrent_producers() {
         #[derive(Default, Clone)]
         struct CountingObserver(Arc<Mutex<u64>>);
@@ -1877,7 +1876,7 @@ mod shuttle_tests {
     /// `shutdown_signal` and blocks joining the background thread). Losing
     /// the entry is documented, acceptable behavior here (see
     /// `BackgroundQueueJoinHandle`'s doc comment).
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_append_racing_shutdown_never_panics_or_hangs() {
         let output: Arc<Mutex<TestStream>> = Default::default();
         let (queue, handle) = BackgroundQueueBuilder::new()

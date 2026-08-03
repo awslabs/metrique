@@ -335,7 +335,7 @@ mod shuttle_tests {
     /// Entries sent concurrently from several cloned handles are all merged
     /// by the time `flush()`'s returned future resolves, for every
     /// interleaving shuttle explores.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_sends_all_merged_before_flush_returns() {
         const THREADS: u64 = 3;
         const PER_THREAD: u64 = 3;
@@ -382,7 +382,7 @@ mod shuttle_tests {
     /// The background thread must still exit, flush at least once,
     /// and lose no entries, no matter how the drops, the final disconnect,
     /// and any periodic flush interleave.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn concurrent_drops_exit_cleanly_and_flush_once() {
         const CLONES: u64 = 2;
 
@@ -428,7 +428,7 @@ mod shuttle_tests {
 
     /// The shared mpsc channel preserves each sender's own order, so this thread's
     /// entries must be merged by the time its own `flush()` resolves.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn flush_resolves_after_own_prior_sends() {
         let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
         let flushes = Arc::new(AtomicUsize::new(0));
@@ -476,7 +476,7 @@ mod shuttle_tests {
     /// above a real chance to fire a periodic flush (a `Timeout` when the
     /// channel is briefly empty) mid-run, not just at the final `flush()`.
     /// `flush()`'s own-prior-sends guarantee must hold either way.
-    #[shuttle_test(2_000, 3)]
+    #[shuttle_test(num_iters = 2_000, depth = 3)]
     fn flush_resolves_after_own_prior_sends_even_with_periodic_flushes() {
         const PER_THREAD: u64 = 20;
 
