@@ -46,7 +46,6 @@ crossbeam-queue = { workspace = true, optional = true }
 shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
-metrique-shuttle-test = { workspace = true }
 assert2 = { workspace = true }
 metrique = { workspace = true, features = ["emf", "test-util", "service-metrics"] }
 metrique-writer = { workspace = true, features = ["test-util"] }

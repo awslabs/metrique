@@ -437,7 +437,7 @@ mod tests {
 mod shuttle_tests {
     use std::sync::Mutex;
 
-    use metrique_shuttle_test::shuttle_test;
+    use metrique_writer_core::shuttle_test;
     use metrique_writer_core::sink::AnyEntrySink;
 
     use super::*;
@@ -462,122 +462,128 @@ mod shuttle_tests {
         }
     }
 
-    /// Entries appended concurrently with `resolve()` must never be lost, no
-    /// matter which side of the race each append lands on (buffered then
-    /// drained, or forwarded directly).
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_appends_racing_resolve_lose_nothing() {
-        const THREADS: u64 = 2;
-        const PER_THREAD: u64 = 2;
-        const TOTAL: u64 = THREADS * PER_THREAD;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Entries appended concurrently with `resolve()` must never be lost, no
+        /// matter which side of the race each append lands on (buffered then
+        /// drained, or forwarded directly).
+        fn concurrent_appends_racing_resolve_lose_nothing() {
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 2;
+            const TOTAL: u64 = THREADS * PER_THREAD;
 
-        let (sink, resolver) = new((TOTAL as usize) + 16);
-        let count = Arc::new(Mutex::new(0u64));
+            let (sink, resolver) = new((TOTAL as usize) + 16);
+            let count = Arc::new(Mutex::new(0u64));
 
-        let appenders: Vec<_> = (0..THREADS)
-            .map(|t| {
-                let sink = sink.clone();
-                shuttle::thread::spawn(move || {
-                    for i in 0..PER_THREAD {
-                        sink.append_any(TestEntry(t * PER_THREAD + i));
-                    }
+            let appenders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.append_any(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        resolver.resolve(BoxEntrySink::new(CountingSink {
-            count: count.clone(),
-        }));
+            resolver.resolve(BoxEntrySink::new(CountingSink {
+                count: count.clone(),
+            }));
 
-        for a in appenders {
-            a.join().unwrap();
+            for a in appenders {
+                a.join().unwrap();
+            }
+
+            assert_eq!(*count.lock().unwrap(), TOTAL);
         }
-
-        assert_eq!(*count.lock().unwrap(), TOTAL);
     }
 
-    /// The resolver can be dropped without ever calling `resolve()`
-    /// (documented behavior: cancels the sink, discarding buffered entries)
-    /// concurrently with in-flight `append()` calls. Unlike the resolve()
-    /// race above, there's no "must not lose entries" guarantee here --
-    /// discarding is the documented outcome -- so the invariant this checks
-    /// is narrower but still real: this race must never panic or hang, for
-    /// every interleaving shuttle explores, regardless of whether each
-    /// append's `cancelled` check lands before or after the drop takes
-    /// effect.
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_append_racing_resolver_drop() {
-        const THREADS: u64 = 2;
-        const PER_THREAD: u64 = 2;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// The resolver can be dropped without ever calling `resolve()`
+        /// (documented behavior: cancels the sink, discarding buffered entries)
+        /// concurrently with in-flight `append()` calls. Unlike the resolve()
+        /// race above, there's no "must not lose entries" guarantee here --
+        /// discarding is the documented outcome -- so the invariant this checks
+        /// is narrower but still real: this race must never panic or hang, for
+        /// every interleaving shuttle explores, regardless of whether each
+        /// append's `cancelled` check lands before or after the drop takes
+        /// effect.
+        fn concurrent_append_racing_resolver_drop() {
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 2;
 
-        let (sink, resolver) = new(64);
+            let (sink, resolver) = new(64);
 
-        let appenders: Vec<_> = (0..THREADS)
-            .map(|t| {
-                let sink = sink.clone();
-                shuttle::thread::spawn(move || {
-                    for i in 0..PER_THREAD {
-                        sink.append_any(TestEntry(t * PER_THREAD + i));
-                    }
+            let appenders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.append_any(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        // Cancels the sink; may race with any of the appends above.
-        drop(resolver);
+            // Cancels the sink; may race with any of the appends above.
+            drop(resolver);
 
-        for a in appenders {
-            a.join().unwrap();
+            for a in appenders {
+                a.join().unwrap();
+            }
+            // Reaching here without panicking or hanging is the test.
         }
-        // Reaching here without panicking or hanging is the test.
     }
 
-    /// `flush_async()` can be called concurrently with `resolve()` itself,
-    /// not just after it like the test above does with `append()`. Before
-    /// resolution it's documented to be a no-op (see the real-thread test
-    /// `flush_is_noop_while_pending`); this checks that calling it
-    /// concurrently with `resolve()` never panics or hangs whichever side of
-    /// the race it lands on, and that doing so doesn't interfere with the
-    /// core no-entry-loss guarantee entries appended concurrently still
-    /// depend on.
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_flush_racing_resolve_lose_nothing() {
-        const THREADS: u64 = 2;
-        const PER_THREAD: u64 = 2;
-        const TOTAL: u64 = THREADS * PER_THREAD;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `flush_async()` can be called concurrently with `resolve()` itself,
+        /// not just after it like the test above does with `append()`. Before
+        /// resolution it's documented to be a no-op (see the real-thread test
+        /// `flush_is_noop_while_pending`); this checks that calling it
+        /// concurrently with `resolve()` never panics or hangs whichever side of
+        /// the race it lands on, and that doing so doesn't interfere with the
+        /// core no-entry-loss guarantee entries appended concurrently still
+        /// depend on.
+        fn concurrent_flush_racing_resolve_lose_nothing() {
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 2;
+            const TOTAL: u64 = THREADS * PER_THREAD;
 
-        let (sink, resolver) = new((TOTAL as usize) + 16);
-        let count = Arc::new(Mutex::new(0u64));
+            let (sink, resolver) = new((TOTAL as usize) + 16);
+            let count = Arc::new(Mutex::new(0u64));
 
-        let appenders: Vec<_> = (0..THREADS)
-            .map(|t| {
+            let appenders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.append_any(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
+                })
+                .collect();
+
+            let flusher = {
                 let sink = sink.clone();
                 shuttle::thread::spawn(move || {
-                    for i in 0..PER_THREAD {
-                        sink.append_any(TestEntry(t * PER_THREAD + i));
-                    }
+                    // Not polled to completion -- constructing it without panicking
+                    // is what this test checks; see the comment above.
+                    let _flush = AnyEntrySink::flush_async(&sink);
                 })
-            })
-            .collect();
+            };
 
-        let flusher = {
-            let sink = sink.clone();
-            shuttle::thread::spawn(move || {
-                // Not polled to completion -- constructing it without panicking
-                // is what this test checks; see the comment above.
-                let _flush = AnyEntrySink::flush_async(&sink);
-            })
-        };
+            resolver.resolve(BoxEntrySink::new(CountingSink {
+                count: count.clone(),
+            }));
 
-        resolver.resolve(BoxEntrySink::new(CountingSink {
-            count: count.clone(),
-        }));
+            for a in appenders {
+                a.join().unwrap();
+            }
+            flusher.join().unwrap();
 
-        for a in appenders {
-            a.join().unwrap();
+            assert_eq!(*count.lock().unwrap(), TOTAL);
         }
-        flusher.join().unwrap();
-
-        assert_eq!(*count.lock().unwrap(), TOTAL);
     }
 }

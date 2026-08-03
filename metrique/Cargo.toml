@@ -54,7 +54,6 @@ jiff = { workspace = true, optional = true }
 shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
-metrique-shuttle-test = { workspace = true }
 assert2 = { workspace = true }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber = { workspace = true }

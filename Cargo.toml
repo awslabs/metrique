@@ -9,7 +9,6 @@ members = [
     "metrique-metricsrs",
     "metrique-otel",
     "metrique-service-metrics",
-    "metrique-shuttle-test",
     "metrique-timesource",
     "metrique-util",
     "metrique-writer",
@@ -28,8 +27,6 @@ metrique-core = { version = "0.1", path = "metrique-core" }
 metrique-macro = { version = "0.1", path = "metrique-macro" }
 metrique-metricsrs = { version = "0.1", path = "metrique-metricsrs" }
 metrique-service-metrics = { version = "0.1", path = "metrique-service-metrics" }
-# Internal, unpublished (publish = false) -- provides #[shuttle_test(..)] for dev/test use only
-metrique-shuttle-test = { path = "metrique-shuttle-test" }
 metrique-timesource = { version = "0.1", path = "metrique-timesource" }
 metrique-util = { version = "0.1", path = "metrique-util" }
 metrique-writer = { version = "0.1", path = "metrique-writer", default-features = false }

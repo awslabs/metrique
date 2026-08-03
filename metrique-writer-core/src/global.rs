@@ -1409,147 +1409,151 @@ mod shuttle_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::{AttachHandle, ShutdownFn};
-    use metrique_shuttle_test::shuttle_test;
+    use crate::shuttle_test;
 
-    /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
-    #[shuttle_test(
-        num_iters = 2_000,
-        depth = 3,
-        should_panic = "ShutdownRegistry should have no other strong references"
-    )]
-    fn concurrent_register_and_drop() {
-        const REGISTRARS: usize = 2;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3, should_panic = "ShutdownRegistry should have no other strong references";
+        /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
+        fn concurrent_register_and_drop() {
+            const REGISTRARS: usize = 2;
 
-        let ran = Arc::new(AtomicUsize::new(0));
-        let handle = AttachHandle::new(|| {});
-        let weak = handle.shutdown_registry_weak();
+            let ran = Arc::new(AtomicUsize::new(0));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
 
-        let registrars: Vec<_> = (0..REGISTRARS)
-            .map(|_| {
-                let weak = weak.clone();
-                let ran = ran.clone();
-                shuttle::thread::spawn(move || {
-                    if let Some(registry) = weak.upgrade() {
-                        registry.push(ShutdownFn::new(move || {
-                            ran.fetch_add(1, Ordering::SeqCst);
-                        }));
-                    }
+            let registrars: Vec<_> = (0..REGISTRARS)
+                .map(|_| {
+                    let weak = weak.clone();
+                    let ran = ran.clone();
+                    shuttle::thread::spawn(move || {
+                        if let Some(registry) = weak.upgrade() {
+                            registry.push(ShutdownFn::new(move || {
+                                ran.fetch_add(1, Ordering::SeqCst);
+                            }));
+                        }
+                    })
                 })
-            })
-            .collect();
+                .collect();
 
-        drop(handle);
+            drop(handle);
 
-        for registrar in registrars {
-            registrar.join().unwrap();
-        }
-
-        // If this runs more than REGISTRARS times it means `drop` didn't
-        // panic on the `unreachable!()`.
-        assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
-    }
-
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_register_and_forget() {
-        let ran = Arc::new(AtomicUsize::new(0));
-        let handle = AttachHandle::new(|| {});
-        let weak = handle.shutdown_registry_weak();
-
-        let ran2 = ran.clone();
-        let registrar = shuttle::thread::spawn(move || {
-            if let Some(registry) = weak.upgrade() {
-                registry.push(ShutdownFn::new(move || {
-                    ran2.fetch_add(1, Ordering::SeqCst);
-                }));
+            for registrar in registrars {
+                registrar.join().unwrap();
             }
-        });
 
-        // required for shuttle to schedule `registrar` *during* `forget()`
-        shuttle::thread::yield_now();
-
-        handle.forget();
-        registrar.join().unwrap();
-
-        assert_eq!(
-            ran.load(Ordering::SeqCst),
-            0,
-            "a fn registered around forget() must never run"
-        );
-    }
-
-    /// `ShutdownRegistry::push` racing itself
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_registrars_race_push() {
-        const REGISTRARS: usize = 2;
-
-        let ran = Arc::new(AtomicUsize::new(0));
-        let handle = AttachHandle::new(|| {});
-        let weak = handle.shutdown_registry_weak();
-
-        let registrars: Vec<_> = (0..REGISTRARS)
-            .map(|_| {
-                let weak = weak.clone();
-                let ran = ran.clone();
-                shuttle::thread::spawn(move || {
-                    weak.upgrade()
-                        .expect("handle still alive, upgrade must succeed")
-                        .push(ShutdownFn::new(move || {
-                            ran.fetch_add(1, Ordering::SeqCst);
-                        }));
-                })
-            })
-            .collect();
-
-        for registrar in registrars {
-            registrar.join().unwrap();
+            // If this runs more than REGISTRARS times it means `drop` didn't
+            // panic on the `unreachable!()`.
+            assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
         }
-
-        drop(handle);
-
-        assert_eq!(
-            ran.load(Ordering::SeqCst),
-            REGISTRARS,
-            "every concurrently-registered fn must run exactly once"
-        );
     }
 
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_registrars_preserve_lifo_order() {
-        const REGISTRARS: u32 = 2;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        fn concurrent_register_and_forget() {
+            let ran = Arc::new(AtomicUsize::new(0));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
 
-        let push_order = Arc::new(Mutex::new(Vec::new()));
-        let run_order = Arc::new(Mutex::new(Vec::new()));
-        let handle = AttachHandle::new(|| {});
-        let weak = handle.shutdown_registry_weak();
-
-        let registrars: Vec<_> = (0..REGISTRARS)
-            .map(|i| {
-                let weak = weak.clone();
-                let push_order = push_order.clone();
-                let run_order = run_order.clone();
-                shuttle::thread::spawn(move || {
-                    let registry = weak.upgrade().expect("handle still alive");
-                    let mut push_order = push_order.lock().unwrap();
+            let ran2 = ran.clone();
+            let registrar = shuttle::thread::spawn(move || {
+                if let Some(registry) = weak.upgrade() {
                     registry.push(ShutdownFn::new(move || {
-                        run_order.lock().unwrap().push(i);
+                        ran2.fetch_add(1, Ordering::SeqCst);
                     }));
-                    push_order.push(i);
-                })
-            })
-            .collect();
+                }
+            });
 
-        for registrar in registrars {
+            // required for shuttle to schedule `registrar` *during* `forget()`
+            shuttle::thread::yield_now();
+
+            handle.forget();
             registrar.join().unwrap();
+
+            assert_eq!(
+                ran.load(Ordering::SeqCst),
+                0,
+                "a fn registered around forget() must never run"
+            );
         }
+    }
 
-        drop(handle);
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `ShutdownRegistry::push` racing itself
+        fn concurrent_registrars_race_push() {
+            const REGISTRARS: usize = 2;
 
-        let expected_run_order: Vec<_> = push_order.lock().unwrap().iter().rev().copied().collect();
-        assert_eq!(
-            *run_order.lock().unwrap(),
-            expected_run_order,
-            "shutdown fns must run in exact reverse of push order, regardless of how concurrent registration interleaves"
-        );
+            let ran = Arc::new(AtomicUsize::new(0));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
+
+            let registrars: Vec<_> = (0..REGISTRARS)
+                .map(|_| {
+                    let weak = weak.clone();
+                    let ran = ran.clone();
+                    shuttle::thread::spawn(move || {
+                        weak.upgrade()
+                            .expect("handle still alive, upgrade must succeed")
+                            .push(ShutdownFn::new(move || {
+                                ran.fetch_add(1, Ordering::SeqCst);
+                            }));
+                    })
+                })
+                .collect();
+
+            for registrar in registrars {
+                registrar.join().unwrap();
+            }
+
+            drop(handle);
+
+            assert_eq!(
+                ran.load(Ordering::SeqCst),
+                REGISTRARS,
+                "every concurrently-registered fn must run exactly once"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        fn concurrent_registrars_preserve_lifo_order() {
+            const REGISTRARS: u32 = 2;
+
+            let push_order = Arc::new(Mutex::new(Vec::new()));
+            let run_order = Arc::new(Mutex::new(Vec::new()));
+            let handle = AttachHandle::new(|| {});
+            let weak = handle.shutdown_registry_weak();
+
+            let registrars: Vec<_> = (0..REGISTRARS)
+                .map(|i| {
+                    let weak = weak.clone();
+                    let push_order = push_order.clone();
+                    let run_order = run_order.clone();
+                    shuttle::thread::spawn(move || {
+                        let registry = weak.upgrade().expect("handle still alive");
+                        let mut push_order = push_order.lock().unwrap();
+                        registry.push(ShutdownFn::new(move || {
+                            run_order.lock().unwrap().push(i);
+                        }));
+                        push_order.push(i);
+                    })
+                })
+                .collect();
+
+            for registrar in registrars {
+                registrar.join().unwrap();
+            }
+
+            drop(handle);
+
+            let expected_run_order: Vec<_> = push_order.lock().unwrap().iter().rev().copied().collect();
+            assert_eq!(
+                *run_order.lock().unwrap(),
+                expected_run_order,
+                "shutdown fns must run in exact reverse of push order, regardless of how concurrent registration interleaves"
+            );
+        }
     }
 }
 

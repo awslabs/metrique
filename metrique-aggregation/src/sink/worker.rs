@@ -307,7 +307,7 @@ mod shuttle_tests {
     use shuttle::future::block_on;
 
     use super::*;
-    use metrique_shuttle_test::shuttle_test;
+    use metrique_writer_core::shuttle_test;
 
     struct CollectingSink {
         merged: Arc<Mutex<Vec<u64>>>,
@@ -332,193 +332,201 @@ mod shuttle_tests {
         Duration::from_secs(60)
     }
 
-    /// Entries sent concurrently from several cloned handles are all merged
-    /// by the time `flush()`'s returned future resolves, for every
-    /// interleaving shuttle explores.
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_sends_all_merged_before_flush_returns() {
-        const THREADS: u64 = 3;
-        const PER_THREAD: u64 = 3;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Entries sent concurrently from several cloned handles are all merged
+        /// by the time `flush()`'s returned future resolves, for every
+        /// interleaving shuttle explores.
+        fn concurrent_sends_all_merged_before_flush_returns() {
+            const THREADS: u64 = 3;
+            const PER_THREAD: u64 = 3;
 
-        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
-        let flushes = Arc::new(AtomicUsize::new(0));
-        let sink = WorkerSink::<u64, _>::new(
-            CollectingSink {
-                merged: merged.clone(),
-                flushes: flushes.clone(),
-            },
-            flush_interval(),
-        );
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
 
-        let senders: Vec<_> = (0..THREADS)
-            .map(|t| {
+            let senders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.send(t * PER_THREAD + i);
+                        }
+                    })
+                })
+                .collect();
+            for t in senders {
+                t.join().unwrap();
+            }
+
+            block_on(sink.flush());
+
+            let mut values = merged.lock().unwrap().clone();
+            values.sort();
+            assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
+
+            let handle = Arc::clone(&sink._handle);
+            drop(sink);
+            Arc::into_inner(handle)
+                .expect("sole handle ref after dropping the only WorkerSink")
+                .join()
+                .expect("worker thread panicked");
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Several cloned handles send an entry and drop concurrently.
+        /// The background thread must still exit, flush at least once,
+        /// and lose no entries, no matter how the drops, the final disconnect,
+        /// and any periodic flush interleave.
+        fn concurrent_drops_exit_cleanly_and_flush_once() {
+            const CLONES: u64 = 2;
+
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
+            let handle = Arc::clone(&sink._handle);
+
+            let droppers: Vec<_> = (0..CLONES)
+                .map(|i| {
+                    let sink = sink.clone();
+                    thread::spawn(move || {
+                        sink.send(i);
+                        drop(sink);
+                    })
+                })
+                .collect();
+
+            drop(sink);
+            for d in droppers {
+                d.join().unwrap();
+            }
+
+            Arc::into_inner(handle)
+                .expect("all WorkerSink clones dropped, sole handle ref remains")
+                .join()
+                .expect("worker thread panicked");
+
+            let mut values = merged.lock().unwrap().clone();
+            values.sort();
+            assert_eq!(values, (0..CLONES).collect::<Vec<_>>());
+            assert!(
+                flushes.load(Ordering::SeqCst) >= 1,
+                "must flush at least once (at shutdown, possibly earlier too via a periodic flush)"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// The shared mpsc channel preserves each sender's own order, so this thread's
+        /// entries must be merged by the time its own `flush()` resolves.
+        fn flush_resolves_after_own_prior_sends() {
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
+
+            let other = {
                 let sink = sink.clone();
-                thread::spawn(move || {
-                    for i in 0..PER_THREAD {
-                        sink.send(t * PER_THREAD + i);
+                shuttle::thread::spawn(move || {
+                    for i in 100..102 {
+                        sink.send(i);
                     }
                 })
-            })
-            .collect();
-        for t in senders {
-            t.join().unwrap();
+            };
+
+            for i in 0..2 {
+                sink.send(i);
+            }
+            block_on(sink.flush());
+
+            let values = merged.lock().unwrap().clone();
+            for i in 0..2 {
+                assert!(
+                    values.contains(&i),
+                    "flush() resolved without observing entry {i} sent before it on the same thread"
+                );
+            }
+
+            other.join().unwrap();
+            let handle = Arc::clone(&sink._handle);
+            drop(sink);
+            Arc::into_inner(handle)
+                .expect("sole handle ref after dropping the only WorkerSink")
+                .join()
+                .expect("worker thread panicked");
         }
-
-        block_on(sink.flush());
-
-        let mut values = merged.lock().unwrap().clone();
-        values.sort();
-        assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
-
-        let handle = Arc::clone(&sink._handle);
-        drop(sink);
-        Arc::into_inner(handle)
-            .expect("sole handle ref after dropping the only WorkerSink")
-            .join()
-            .expect("worker thread panicked");
     }
 
-    /// Several cloned handles send an entry and drop concurrently.
-    /// The background thread must still exit, flush at least once,
-    /// and lose no entries, no matter how the drops, the final disconnect,
-    /// and any periodic flush interleave.
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn concurrent_drops_exit_cleanly_and_flush_once() {
-        const CLONES: u64 = 2;
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Same property as `flush_resolves_after_own_prior_sends`, but with
+        /// enough sends per thread to give the randomized `recv_timeout` wrapper
+        /// above a real chance to fire a periodic flush (a `Timeout` when the
+        /// channel is briefly empty) mid-run, not just at the final `flush()`.
+        /// `flush()`'s own-prior-sends guarantee must hold either way.
+        fn flush_resolves_after_own_prior_sends_even_with_periodic_flushes() {
+            const PER_THREAD: u64 = 20;
 
-        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
-        let flushes = Arc::new(AtomicUsize::new(0));
-        let sink = WorkerSink::<u64, _>::new(
-            CollectingSink {
-                merged: merged.clone(),
-                flushes: flushes.clone(),
-            },
-            flush_interval(),
-        );
-        let handle = Arc::clone(&sink._handle);
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
 
-        let droppers: Vec<_> = (0..CLONES)
-            .map(|i| {
+            let other = {
                 let sink = sink.clone();
-                thread::spawn(move || {
-                    sink.send(i);
-                    drop(sink);
+                shuttle::thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        sink.send(i);
+                    }
                 })
-            })
-            .collect();
+            };
 
-        drop(sink);
-        for d in droppers {
-            d.join().unwrap();
+            for i in PER_THREAD..(PER_THREAD * 2) {
+                sink.send(i);
+            }
+            block_on(sink.flush());
+
+            let values = merged.lock().unwrap().clone();
+            for i in PER_THREAD..(PER_THREAD * 2) {
+                assert!(
+                    values.contains(&i),
+                    "flush() resolved without observing entry {i} sent before it on the same \
+                     thread, even though a periodic flush may have fired mid-run"
+                );
+            }
+
+            other.join().unwrap();
+            let handle = Arc::clone(&sink._handle);
+            drop(sink);
+            Arc::into_inner(handle)
+                .expect("sole handle ref after dropping the only WorkerSink")
+                .join()
+                .expect("worker thread panicked");
         }
-
-        Arc::into_inner(handle)
-            .expect("all WorkerSink clones dropped, sole handle ref remains")
-            .join()
-            .expect("worker thread panicked");
-
-        let mut values = merged.lock().unwrap().clone();
-        values.sort();
-        assert_eq!(values, (0..CLONES).collect::<Vec<_>>());
-        assert!(
-            flushes.load(Ordering::SeqCst) >= 1,
-            "must flush at least once (at shutdown, possibly earlier too via a periodic flush)"
-        );
-    }
-
-    /// The shared mpsc channel preserves each sender's own order, so this thread's
-    /// entries must be merged by the time its own `flush()` resolves.
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn flush_resolves_after_own_prior_sends() {
-        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
-        let flushes = Arc::new(AtomicUsize::new(0));
-        let sink = WorkerSink::<u64, _>::new(
-            CollectingSink {
-                merged: merged.clone(),
-                flushes: flushes.clone(),
-            },
-            flush_interval(),
-        );
-
-        let other = {
-            let sink = sink.clone();
-            shuttle::thread::spawn(move || {
-                for i in 100..102 {
-                    sink.send(i);
-                }
-            })
-        };
-
-        for i in 0..2 {
-            sink.send(i);
-        }
-        block_on(sink.flush());
-
-        let values = merged.lock().unwrap().clone();
-        for i in 0..2 {
-            assert!(
-                values.contains(&i),
-                "flush() resolved without observing entry {i} sent before it on the same thread"
-            );
-        }
-
-        other.join().unwrap();
-        let handle = Arc::clone(&sink._handle);
-        drop(sink);
-        Arc::into_inner(handle)
-            .expect("sole handle ref after dropping the only WorkerSink")
-            .join()
-            .expect("worker thread panicked");
-    }
-
-    /// Same property as `flush_resolves_after_own_prior_sends`, but with
-    /// enough sends per thread to give the randomized `recv_timeout` wrapper
-    /// above a real chance to fire a periodic flush (a `Timeout` when the
-    /// channel is briefly empty) mid-run, not just at the final `flush()`.
-    /// `flush()`'s own-prior-sends guarantee must hold either way.
-    #[shuttle_test(num_iters = 2_000, depth = 3)]
-    fn flush_resolves_after_own_prior_sends_even_with_periodic_flushes() {
-        const PER_THREAD: u64 = 20;
-
-        let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
-        let flushes = Arc::new(AtomicUsize::new(0));
-        let sink = WorkerSink::<u64, _>::new(
-            CollectingSink {
-                merged: merged.clone(),
-                flushes: flushes.clone(),
-            },
-            flush_interval(),
-        );
-
-        let other = {
-            let sink = sink.clone();
-            shuttle::thread::spawn(move || {
-                for i in 0..PER_THREAD {
-                    sink.send(i);
-                }
-            })
-        };
-
-        for i in PER_THREAD..(PER_THREAD * 2) {
-            sink.send(i);
-        }
-        block_on(sink.flush());
-
-        let values = merged.lock().unwrap().clone();
-        for i in PER_THREAD..(PER_THREAD * 2) {
-            assert!(
-                values.contains(&i),
-                "flush() resolved without observing entry {i} sent before it on the same \
-                 thread, even though a periodic flush may have fired mid-run"
-            );
-        }
-
-        other.join().unwrap();
-        let handle = Arc::clone(&sink._handle);
-        drop(sink);
-        Arc::into_inner(handle)
-            .expect("sole handle ref after dropping the only WorkerSink")
-            .join()
-            .expect("worker thread panicked");
     }
 }

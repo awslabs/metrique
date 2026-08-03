@@ -269,6 +269,58 @@ pub use shuttle::sync::mpsc::Sender;
 #[doc(hidden)]
 pub use shuttle::thread;
 
+/// Generates the `pct`/`determinism` shuttle test pair for the `fn` it
+/// wraps, nested in a module named after it: `mod $name { fn $name() {..}
+/// #[test] fn pct() {..} #[test] fn determinism() {..} }`. Calls
+/// `shuttle::check_pct`/`shuttle::check_uncontrolled_nondeterminism` with the
+/// same iteration count -- the pattern every shuttle test in this workspace
+/// follows.
+///
+/// ```ignore
+/// shuttle_test! {
+///     num_iters = 2_000, depth = 3;
+///     fn round_trip_no_loss() { /* ... */ }
+/// }
+/// ```
+///
+/// `num_iters` and `depth` are required, in that order. Add
+/// `, should_panic = "..."` after `depth = ...` for tests expecting a panic.
+///
+/// Nesting in `mod $name` (instead of generating sibling
+/// `${name}_pct`/`${name}_determinism` functions) since
+/// `macro_rules!` can't synthesize a new identifier by concatenation on
+/// stable Rust, so `pct`/`determinism` stay fixed literal names,
+/// disambiguated by the enclosing module instead.
+#[macro_export]
+macro_rules! shuttle_test {
+    (
+        num_iters = $num_iters:expr, depth = $depth:expr $(, should_panic = $msg:literal)?;
+        $(#[$meta:meta])*
+        fn $name:ident() $body:block
+    ) => {
+        mod $name {
+            // Not every test uses every name `use super::*` brings in scope.
+            #[allow(unused_imports)]
+            use super::*;
+
+            $(#[$meta])*
+            fn $name() $body
+
+            #[test]
+            $(#[should_panic(expected = $msg)])?
+            fn pct() {
+                ::shuttle::check_pct($name, $num_iters, $depth);
+            }
+
+            #[test]
+            $(#[should_panic(expected = $msg)])?
+            fn determinism() {
+                ::shuttle::check_uncontrolled_nondeterminism($name, $num_iters);
+            }
+        }
+    };
+}
+
 /// Shuttle-visible substitute for `std::sync::mpsc::channel()`, wrapping the
 /// receiver half so `recv_timeout` can actually return `Timeout` -- shuttle's
 /// own `recv_timeout` never times out, a known gap documented in Shuttle
