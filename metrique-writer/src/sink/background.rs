@@ -601,7 +601,7 @@ struct Receiver<S, E> {
 // instead you have these conditions:
 // P1. if status == DrainResult::Drained, then the queue has been empty at least once since the last
 // call to handle_waiting_wakers.
-// P2. `queue_capacity` is a function that returns the number of entries that once they
+// P2. `queue_capacity` is the number of entries that once they
 // are processed, it's guaranteed that all entries currently in the queue have been
 //  processed. We use the queue's capacity, since it is guaranteed that all entries
 // currently in the queue have been popped queue after capacity entries have been
@@ -632,7 +632,7 @@ impl WakerTracker {
     // number of pops.
     fn handle_waiting_wakers(
         &mut self,
-        queue_capacity: impl FnOnce() -> usize,
+        queue_capacity: usize,
         flush_stream: impl FnOnce(),
         status: DrainResult,
         entry_count: usize,
@@ -656,7 +656,7 @@ impl WakerTracker {
             }
 
             if !self.waiting_wakers.is_empty() {
-                self.entries_before_wake = queue_capacity();
+                self.entries_before_wake = queue_capacity;
             }
         }
     }
@@ -676,7 +676,6 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
         let span = tracing::span!(tracing::Level::TRACE, "metrics background queue", sink=?self.inner.name);
         let _enter = span.enter();
         let mut waker_tracker = WakerTracker::new(flush_queue_receiver);
-        let inner = self.inner.clone();
 
         loop {
             let next_flush = Instant::now() + self.flush_interval;
@@ -686,7 +685,7 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 let (status, entry_count) = self.drain_until_deadline(next_flush);
 
                 waker_tracker.handle_waiting_wakers(
-                    || inner.queue.capacity(),
+                    self.inner.queue.capacity(),
                     || self.flush_stream(),
                     status,
                     entry_count,
@@ -738,7 +737,6 @@ impl<S: EntryIoStream, E: Entry> Receiver<S, E> {
                 tracing::info!("caught shutdown signal, shutting down background metrics queue");
                 return self.shut_down();
             }
-            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/341)
             if Arc::get_mut(&mut self.inner).is_some() {
                 tracing::info!("no appenders left, shutting down background metrics queue");
                 return self.shut_down();
@@ -906,6 +904,8 @@ fn next_loop_action(
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    use std::sync::Barrier;
     use std::{
         future::Future,
         pin::Pin,
@@ -934,20 +934,20 @@ mod tests {
         // *discovers* the waker (via the second `if` block) and sets
         // entries_before_wake = capacity; this call's own entry_count isn't
         // subtracted against it (that only starts from the next call).
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(flushed.get(), 0, "not enough entries processed yet to wake");
 
         // Second call: entries_before_wake = 10 - 4 = 6.
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(flushed.get(), 0, "still under capacity");
 
         // Third call: entries_before_wake = 6 - 4 = 2, still not 0.
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(flushed.get(), 0, "still under capacity");
 
         // Fourth call: 2.saturating_sub(4) = 0 -- must wake now, even though
         // status is HitDeadline (not Drained) on every single call here.
-        tracker.handle_waiting_wakers(|| capacity, mark_flushed, DrainResult::HitDeadline, 4);
+        tracker.handle_waiting_wakers(capacity, mark_flushed, DrainResult::HitDeadline, 4);
         assert_eq!(
             flushed.get(),
             1,
@@ -1138,12 +1138,8 @@ mod tests {
         }
     }
 
-    /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/341
     #[cfg(not(all(shuttle, feature = "_shuttle")))]
     #[test]
-    #[should_panic(
-        expected = "background thread never auto-shut-down after all queues were dropped"
-    )]
     fn auto_shutdown_when_no_appenders_left() {
         test_all_queues! {
             |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),
@@ -1170,6 +1166,85 @@ mod tests {
                     auto_shut_down,
                     "background thread never auto-shut-down after all queues were dropped"
                 );
+            }
+        }
+    }
+
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    fn holding_a_queue_clone_blocks_auto_shutdown() {
+        test_all_queues! {
+            |builder| builder.capacity(100).flush_interval(Duration::from_millis(5)),
+            |_output, queue, handle| {
+                queue.append(TestEntry(0));
+                let kept_alive = queue.clone();
+                drop(queue);
+
+                // give the background thread several flush cycles' worth of time to (incorrectly) shut down
+                std::thread::sleep(Duration::from_millis(200));
+                assert!(
+                    !handle.handle.as_ref().unwrap().is_finished(),
+                    "background thread exited even though a BackgroundQueue clone is still held"
+                );
+
+                drop(kept_alive);
+                handle.shut_down();
+            }
+        }
+    }
+
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    #[test]
+    fn concurrent_clone_and_drop_do_not_race_auto_shutdown() {
+        test_all_queues! {
+            |builder| builder.capacity(100).flush_interval(Duration::from_millis(2)),
+            |_output, queue, handle| {
+                const ITERATIONS: usize = 200;
+                const THREADS: usize = 8;
+
+                queue.append(TestEntry(0));
+
+                for i in 0..ITERATIONS {
+                    // held by this thread for the whole iteration: guarantees the queue
+                    // must NOT auto-shut-down at any point during the race below
+                    let keep_alive = queue.clone();
+                    let barrier = Arc::new(Barrier::new(THREADS + 1));
+
+                    std::thread::scope(|scope| {
+                        for _ in 0..THREADS {
+                            let queue = queue.clone();
+                            let barrier = Arc::clone(&barrier);
+                            scope.spawn(move || {
+                                barrier.wait();
+                                for _ in 0..50 {
+                                    drop(queue.clone());
+                                }
+                            });
+                        }
+                        barrier.wait();
+                    });
+
+                    assert!(
+                        !handle.handle.as_ref().unwrap().is_finished(),
+                        "background thread auto-shut-down while a clone was still held (iteration {i})"
+                    );
+                    drop(keep_alive);
+                }
+
+                // now really drop the last clone and confirm the thread eventually exits
+                drop(queue);
+                let start = Instant::now();
+                loop {
+                    if handle.handle.as_ref().unwrap().is_finished() {
+                        break;
+                    }
+                    assert!(
+                        start.elapsed() < Duration::from_secs(3),
+                        "background thread never auto-shut-down after all queues were dropped"
+                    );
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+                handle.shut_down();
             }
         }
     }
