@@ -13,6 +13,7 @@ proc-macro = true
 
 [dependencies]
 syn = { workspace = true, features = ["full", "extra-traits", "visit-mut"] }
+syn2 = { workspace = true, features = ["full", "extra-traits"] }
 quote = { workspace = true }
 proc-macro2 = { workspace = true }
 Inflector = { workspace = true }
