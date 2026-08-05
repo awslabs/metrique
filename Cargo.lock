@@ -1891,9 +1891,13 @@ dependencies = [
 name = "metrique-util"
 version = "0.1.6"
 dependencies = [
+ "Inflector",
  "arc-swap",
  "assert2",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "crossbeam-queue",
+ "divan",
  "metrique",
  "metrique-core",
  "metrique-util",
