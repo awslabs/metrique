@@ -655,6 +655,11 @@ impl<M: InflectableEntry> RootEntry<M> {
     pub fn new(metric: M) -> Self {
         Self { metric }
     }
+
+    /// Return the unrooted metric entry.
+    pub fn into_inner(self) -> M {
+        self.metric
+    }
 }
 
 impl<M: InflectableEntry> Entry for RootEntry<M> {
@@ -694,7 +699,7 @@ pub mod writer {
 
     pub use metrique_writer::AttachGlobalEntrySinkExt;
     pub use metrique_writer::{AttachGlobalEntrySink, EntryIoStreamExt, FormatExt, ShutdownFn};
-    pub use metrique_writer::{entry, format, sample, sink, stream, value};
+    pub use metrique_writer::{entry, format, rate_limit, sample, sink, stream, value};
 
     #[cfg(feature = "test-util")]
     #[doc(hidden)] // prefer the metrique::test_util re-export

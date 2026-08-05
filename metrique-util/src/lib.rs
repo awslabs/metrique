@@ -10,6 +10,11 @@ mod state;
 #[cfg(feature = "state")]
 pub use state::{LatestRef, State};
 
+#[cfg(feature = "metrics-pool")]
+mod metrics_pool;
+#[cfg(feature = "metrics-pool")]
+pub use metrics_pool::{MetricsPool, MetricsPoolHandle, MetricsPoolScope, with_metrics_pool};
+
 #[cfg(any(feature = "tokio-metrics-bridge", feature = "sysinfo-bridge"))]
 mod dynamic_inflection;
 
