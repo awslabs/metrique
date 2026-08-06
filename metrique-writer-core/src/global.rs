@@ -1553,6 +1553,50 @@ mod shutdown_registry_tests {
         drop(handle);
         Sink::register_shutdown_fn(ShutdownFn::new(|| {}));
     }
+
+    #[test]
+    fn sink_still_detaches_after_a_shutdown_fn_panics() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+
+        let handle = Sink::attach((sink, ()));
+        Sink::register_shutdown_fn(ShutdownFn::new(|| {
+            panic!("boom");
+        }));
+
+        // drop() is expected to re-panic
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(handle)));
+
+        assert!(
+            Sink::try_sink().is_none(),
+            "sink must be detached even though a shutdown fn panicked"
+        );
+
+        // A fresh attach() must succeed
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let _handle2 = Sink::attach((sink, ()));
+    }
+
+    #[test]
+    #[should_panic(expected = "sink must be detached even though a shutdown fn panicked")]
+    fn sink_wedged_after_a_shutdown_fn_panics_without_the_fix() {
+        // A panicking shutdown fn blocks the sink-detach closure from ever running.
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+
+        let handle = Sink::attach((sink, ()));
+        Sink::register_shutdown_fn(ShutdownFn::new(|| {
+            panic!("boom");
+        }));
+
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(handle)));
+
+        assert!(
+            Sink::try_sink().is_none(),
+            "sink must be detached even though a shutdown fn panicked"
+        );
+    }
+
 }
 
 // Shuttle test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
