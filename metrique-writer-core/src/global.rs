@@ -283,6 +283,14 @@ type ShutdownRegistryMutex<T> = std::sync::Mutex<T>;
 #[cfg(all(shuttle, feature = "_shuttle"))]
 type ShutdownRegistryMutex<T> = shuttle::sync::Mutex<T>;
 
+/// Lock type for the macro-generated `ATTACHED` static
+#[doc(hidden)]
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+pub type AttachedLock<T> = std::sync::RwLock<T>;
+#[doc(hidden)]
+#[cfg(all(shuttle, feature = "_shuttle"))]
+pub type AttachedLock<T> = shuttle::sync::RwLock<T>;
+
 /// Storage for [`ShutdownFn`]s registered on an [`AttachHandle`], to be run when the [`AttachHandle`] is dropped.
 ///
 /// This type is public for macro-generated code. You should not need to use it directly,
@@ -519,12 +527,19 @@ macro_rules! global_entry_sink {
         pub struct $name;
 
         const _: () = {
-            use ::std::{sync::{RwLock, Weak}, boxed::Box, option::Option::{self, Some, None}, result::Result, any::Any, marker::{Send, Sync}};
-            use $crate::{Entry, BoxEntry, BoxEntrySink, EntrySink, global::{AttachGlobalEntrySink, AttachHandle, ShutdownFn, ShutdownRegistry}};
+            use ::std::{sync::Weak, boxed::Box, option::Option::{self, Some, None}, result::Result, any::Any, marker::{Send, Sync}};
+            use $crate::{Entry, BoxEntry, BoxEntrySink, EntrySink, global::{AttachGlobalEntrySink, AttachHandle, ShutdownFn, ShutdownRegistry, AttachedLock}};
 
             const NAME: &'static str = ::std::stringify!($name);
-            static SINK: RwLock<Option<(BoxEntrySink, Box<dyn Send + Sync + 'static>)>> = RwLock::new(None);
-            static SHUTDOWN_REGISTRY: RwLock<Option<Weak<ShutdownRegistry>>> = RwLock::new(None);
+
+            // Both fields are set together by `attach()` and cleared together by the
+            // shutdown fn it registers, under one lock. This way, a reader can never observe
+            // one half of "attached" without the other.
+            struct AttachedState {
+                sink: (BoxEntrySink, Box<dyn Send + Sync + 'static>),
+                shutdown_registry: Weak<ShutdownRegistry>,
+            }
+            static ATTACHED: AttachedLock<Option<AttachedState>> = AttachedLock::new(None);
 
             $crate::__test_util! {
                 use ::std::cell::RefCell;
@@ -575,16 +590,21 @@ macro_rules! global_entry_sink {
                 fn attach(
                     (sink, handle): (impl EntrySink<BoxEntry> + Send + Sync + 'static, impl Any + Send + Sync),
                 ) -> AttachHandle {
-                    let mut write = SINK.write().unwrap();
+                    let mut write = ATTACHED.write().unwrap();
                     if write.is_some() {
                         drop(write); // don't poison
                         panic!("Already installed a global {NAME} sink, drop the attach handle first if intentionally attaching a new sink");
                     }
                     let sink = BoxEntrySink::new(sink);
-                    *write = Some((sink, Box::new(handle)));
+                    // Constructing the handle (and reading its shutdown_registry weak ref)
+                    // happens before the single write below, so a reader can never see
+                    // `sink` set without `shutdown_registry` also being set.
+                    let attach_handle = AttachHandle::new(|| { ATTACHED.write().unwrap().take(); });
+                    *write = Some(AttachedState {
+                        sink: (sink, Box::new(handle)),
+                        shutdown_registry: attach_handle.shutdown_registry_weak(),
+                    });
                     drop(write);
-                    let attach_handle = AttachHandle::new(|| { SINK.write().unwrap().take(); });
-                    *SHUTDOWN_REGISTRY.write().unwrap() = Some(attach_handle.shutdown_registry_weak());
 
                     attach_handle
                 }
@@ -596,9 +616,9 @@ macro_rules! global_entry_sink {
                         }
                     }
 
-                    let read = SINK.read().unwrap();
-                    let (sink, _handle) = read.as_ref()?;
-                    Some(sink.clone())
+                    let read = ATTACHED.read().unwrap();
+                    let attached = read.as_ref()?;
+                    Some(attached.sink.0.clone())
                 }
 
                 fn try_append<E: Entry + Send + 'static>(entry: E) -> Result<(), E> {
@@ -609,9 +629,9 @@ macro_rules! global_entry_sink {
                         }
                     }
 
-                    let read = SINK.read().unwrap();
-                    if let Some((sink, _handle)) = read.as_ref() {
-                        sink.append(entry);
+                    let read = ATTACHED.read().unwrap();
+                    if let Some(attached) = read.as_ref() {
+                        attached.sink.0.append(entry);
                         Ok(())
                     } else {
                         Err(entry)
@@ -619,9 +639,9 @@ macro_rules! global_entry_sink {
                 }
 
                 fn register_shutdown_fn(f: ShutdownFn) {
-                    let read = SHUTDOWN_REGISTRY.read().unwrap();
-                    let weak = read.as_ref().expect("No sink attached — call attach() before subscribing");
-                    if !weak.upgrade().is_some_and(|registry| registry.push(f)) {
+                    let read = ATTACHED.read().unwrap();
+                    let attached = read.as_ref().expect("No sink attached — call attach() before subscribing");
+                    if !attached.shutdown_registry.upgrade().is_some_and(|registry| registry.push(f)) {
                         panic!("AttachHandle was dropped or forgotten — cannot register shutdown functions");
                     }
                 }
