@@ -189,6 +189,10 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// This is typically created using the `append_on_drop` method on a metrics struct
 /// or through the `append_and_close` function.
 ///
+/// If you don't need [`flush_guard`](Self::flush_guard),
+/// [`force_flush_guard`](Self::force_flush_guard), or [`handle`](Self::handle),
+/// consider [`NoAllocAppendOnDrop`] which avoids the heap allocation.
+///
 /// [`metrics`]: crate::unit_of_work::metrics
 ///
 /// # Example
@@ -507,6 +511,102 @@ pub fn append_and_close<
             entry: Some(base),
             sink,
         }),
+    }
+}
+
+/// A zero-allocation RAII guard that closes and appends a metric entry on drop.
+///
+/// This is the non-allocating equivalent of [`AppendAndCloseOnDrop`] for services that
+/// don't need [`FlushGuard`] / [`ForceFlushGuard`] / [`AppendAndCloseOnDropHandle`]
+/// semantics. The entry lives inline in the struct — drop means close and append
+/// immediately, with no heap allocation.
+///
+/// # Example
+///
+/// ```
+/// # use metrique::{NoAllocAppendOnDrop, ServiceMetrics};
+/// # use metrique::unit_of_work::metrics;
+/// # use metrique::writer::{GlobalEntrySink, FormatExt};
+/// #
+/// #[metrics]
+/// struct MyMetrics {
+///     operation: &'static str,
+/// }
+///
+/// # fn example() {
+/// let mut metrics = NoAllocAppendOnDrop::new(
+///     MyMetrics { operation: "example" },
+///     ServiceMetrics::sink(),
+/// );
+/// // mutate via DerefMut
+/// metrics.operation = "updated";
+/// // When `metrics` is dropped, it will be closed and appended to the sink
+/// # }
+/// ```
+#[must_use = "guard will emit immediately if not bound to a variable"]
+pub struct NoAllocAppendOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
+    entry: Option<E>,
+    sink: S,
+}
+
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> NoAllocAppendOnDrop<E, S> {
+    /// Create a new guard that will close and append `entry` to `sink` on drop.
+    pub fn new(entry: E, sink: S) -> Self {
+        Self {
+            entry: Some(entry),
+            sink,
+        }
+    }
+
+    /// Drop without emitting.
+    pub fn discard(mut self) {
+        self.entry = None;
+    }
+
+    /// Close and emit immediately, consuming the guard.
+    pub fn emit(mut self) {
+        let entry = self
+            .entry
+            .take()
+            .expect("entry is always Some while guard is alive");
+        self.sink.append(RootEntry::new(entry.close()));
+    }
+}
+
+impl<E: CloseEntry + Debug, S: EntrySink<RootMetric<E>> + Debug> Debug
+    for NoAllocAppendOnDrop<E, S>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NoAllocAppendOnDrop")
+            .field("value", &**self)
+            .field("sink", &self.sink)
+            .finish()
+    }
+}
+
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Deref for NoAllocAppendOnDrop<E, S> {
+    type Target = E;
+
+    fn deref(&self) -> &Self::Target {
+        self.entry
+            .as_ref()
+            .expect("entry is always Some while guard is alive")
+    }
+}
+
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> DerefMut for NoAllocAppendOnDrop<E, S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.entry
+            .as_mut()
+            .expect("entry is always Some while guard is alive")
+    }
+}
+
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Drop for NoAllocAppendOnDrop<E, S> {
+    fn drop(&mut self) {
+        if let Some(entry) = self.entry.take() {
+            self.sink.append(RootEntry::new(entry.close()));
+        }
     }
 }
 

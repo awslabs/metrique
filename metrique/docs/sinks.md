@@ -179,7 +179,10 @@ fn handle_request(queue: &BackgroundQueue<MyRootEntry>) {
     let mut metric = MyEntry::default();
     metric.value += 1;
     // or you can `metric.append_on_drop(queue.clone())`, but that clones an `Arc`
-    // which has slightly negative performance impact
+    // which has slightly negative performance impact.
+    //
+    // For zero-allocation guard semantics with a typed sink, use
+    // `NoAllocAppendOnDrop::new(metric, queue.clone())` instead.
     queue.append(MyRootEntry::new(metric.close()));
 }
 ```
