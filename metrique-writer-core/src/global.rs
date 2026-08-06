@@ -621,9 +621,12 @@ macro_rules! global_entry_sink {
                 fn register_shutdown_fn(f: ShutdownFn) {
                     let read = SHUTDOWN_REGISTRY.read().unwrap();
                     let weak = read.as_ref().expect("No sink attached — call attach() before subscribing");
-                    weak.upgrade()
-                        .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions")
-                        .push(f);
+                    let registry = weak
+                        .upgrade()
+                        .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions");
+                    if !registry.push(f) {
+                        panic!("AttachHandle was dropped or forgotten — cannot register shutdown functions");
+                    }
                 }
             }
 
