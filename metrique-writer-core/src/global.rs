@@ -1403,6 +1403,61 @@ mod shutdown_registry_tests {
 
         assert_eq!(*order.lock().unwrap(), vec![3, 2, 1]);
     }
+
+    #[test]
+    fn drop_does_not_panic_with_outstanding_strong_ref() {
+        let handle = super::AttachHandle::new(|| {});
+        let extra_strong_ref = handle.shutdown_registry_weak().upgrade().unwrap();
+        drop(handle); // must not panic even though `extra_strong_ref` is still alive
+        drop(extra_strong_ref);
+    }
+
+    #[test]
+    fn push_after_drain_starts_is_rejected_and_never_runs() {
+        // Once `drain` has run, every subsequent `push` must be rejected and
+        // its fn must never execute.
+        let ran = Arc::new(AtomicBool::new(false));
+        let registry = super::ShutdownRegistry::new(super::ShutdownFn::new(|| {}));
+
+        let drained = registry.drain();
+        assert_eq!(drained.len(), 1, "initial fn should be drained");
+
+        let ran2 = ran.clone();
+        let accepted = registry.push(super::ShutdownFn::new(move || {
+            ran2.store(true, Ordering::SeqCst);
+        }));
+
+        assert!(!accepted, "push after drain has started must be rejected");
+        assert!(
+            registry.drain().is_empty(),
+            "a rejected push must never be enqueued"
+        );
+        assert!(!ran.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "AttachHandle was dropped or forgotten — cannot register shutdown functions"
+    )]
+    fn push_during_live_drain_produces_dropped_or_forgotten_panic() {
+        // Losing a legitimate race against a concurrent, still-in-progress drain.
+        //
+        // `AttachHandle::drop` calls `drain()` first and keeps its `Arc` alive for
+        // the rest of its own scope after, so `Weak::upgrade()` below still succeeds
+        // even though shutdown has already started.
+        let handle = super::AttachHandle::new(|| {});
+        let weak = handle.shutdown_registry_weak();
+
+        weak.upgrade().unwrap().drain();
+
+        let registry = weak
+            .upgrade()
+            .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions");
+        assert!(
+            registry.push(super::ShutdownFn::new(|| {})),
+            "AttachHandle was dropped or forgotten — cannot register shutdown functions"
+        );
+    }
 }
 
 // Shuttle test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
@@ -1421,12 +1476,15 @@ mod shuttle_tests {
     use crate::shuttle_test;
 
     shuttle_test! {
-        num_iters = 2_000, depth = 3, should_panic = "ShutdownRegistry should have no other strong references";
-        /// Reproduces KNOWN BUG, see issue https://github.com/awslabs/metrique/issues/340
+        num_iters = 2_000, depth = 3;
+        /// Registering a shutdown fn concurrently with `AttachHandle::drop` must
+        /// never panic, and every racing fn must either run exactly once or be
+        /// cleanly rejected.
         fn concurrent_register_and_drop() {
             const REGISTRARS: usize = 2;
 
             let ran = Arc::new(AtomicUsize::new(0));
+            let rejected = Arc::new(AtomicUsize::new(0));
             let handle = AttachHandle::new(|| {});
             let weak = handle.shutdown_registry_weak();
 
@@ -1434,25 +1492,32 @@ mod shuttle_tests {
                 .map(|_| {
                     let weak = weak.clone();
                     let ran = ran.clone();
+                    let rejected = rejected.clone();
                     shuttle::thread::spawn(move || {
-                        if let Some(registry) = weak.upgrade() {
+                        let accepted = weak.upgrade().is_some_and(|registry| {
+                            let ran = ran.clone();
                             registry.push(ShutdownFn::new(move || {
                                 ran.fetch_add(1, Ordering::SeqCst);
-                            }));
+                            }))
+                        });
+                        if !accepted {
+                            rejected.fetch_add(1, Ordering::SeqCst);
                         }
                     })
                 })
                 .collect();
 
-            drop(handle);
+            drop(handle); // must not panic
 
             for registrar in registrars {
                 registrar.join().unwrap();
             }
 
-            // If this runs more than REGISTRARS times it means `drop` didn't
-            // panic on the `unreachable!()`.
-            assert!(ran.load(Ordering::SeqCst) <= REGISTRARS);
+            assert_eq!(
+                ran.load(Ordering::SeqCst) + rejected.load(Ordering::SeqCst),
+                REGISTRARS,
+                "every racing registration must be accounted for exactly once (ran xor rejected)"
+            );
         }
     }
 
