@@ -1434,8 +1434,7 @@ mod shutdown_registry_tests {
 
     #[test]
     fn push_after_drain_starts_is_rejected_and_never_runs() {
-        // Once `drain` has run, every subsequent `push` must be rejected and
-        // its fn must never execute.
+        // A push after drain has started must be rejected, never enqueued.
         let ran = Arc::new(AtomicBool::new(false));
         let registry = super::ShutdownRegistry::new(super::ShutdownFn::new(|| {}));
 
@@ -1460,11 +1459,7 @@ mod shutdown_registry_tests {
         expected = "AttachHandle was dropped or forgotten — cannot register shutdown functions"
     )]
     fn push_during_live_drain_produces_dropped_or_forgotten_panic() {
-        // Losing a legitimate race against a concurrent, still-in-progress drain.
-        //
-        // `AttachHandle::drop` calls `drain()` first and keeps its `Arc` alive for
-        // the rest of its own scope after, so `Weak::upgrade()` below still succeeds
-        // even though shutdown has already started.
+        // Losing a race against a concurrent, in-progress drain.
         let handle = super::AttachHandle::new(|| {});
         let weak = handle.shutdown_registry_weak();
 
@@ -1477,6 +1472,86 @@ mod shutdown_registry_tests {
             registry.push(super::ShutdownFn::new(|| {})),
             "AttachHandle was dropped or forgotten — cannot register shutdown functions"
         );
+    }
+
+    #[test]
+    fn attach_never_observed_with_sink_set_but_registry_unset() {
+        // Verifies try_sink() and register_shutdown_fn() never disagree about
+        // whether a sink is attached -- register_shutdown_fn() must not panic
+        // with "No sink attached" right after try_sink() just reported one is.
+        metrique_writer::sink::global_entry_sink! { Sink }
+        use std::sync::Barrier;
+
+        const ROUNDS: usize = 200_000;
+        const MAX_PROBES_PER_ROUND: usize = 1_000;
+
+        let bad_panic = Arc::new(AtomicBool::new(false));
+        let start_barrier = Arc::new(Barrier::new(2));
+        let done_barrier = Arc::new(Barrier::new(2));
+
+        std::thread::scope(|scope| {
+            {
+                let start_barrier = start_barrier.clone();
+                let done_barrier = done_barrier.clone();
+                scope.spawn(move || {
+                    for _ in 0..ROUNDS {
+                        start_barrier.wait();
+                        let handle = Sink::attach((metrique_writer::sink::DevNullSink::new(), ()));
+                        // Hold the sink attached until the racer has finished
+                        // probing this round -- no detach can happen mid-round.
+                        done_barrier.wait();
+                        drop(handle);
+                    }
+                });
+            }
+
+            let bad_panic = bad_panic.clone();
+            scope.spawn(move || {
+                for _ in 0..ROUNDS {
+                    start_barrier.wait();
+                    for _ in 0..MAX_PROBES_PER_ROUND {
+                        if Sink::try_sink().is_none() {
+                            continue;
+                        }
+                        // try_sink() just reported "attached" -- register_shutdown_fn()
+                        // must not disagree by claiming no sink was ever attached.
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            Sink::register_shutdown_fn(ShutdownFn::new(|| {}));
+                        }));
+                        if let Err(payload) = result {
+                            let msg = payload
+                                .downcast_ref::<&str>()
+                                .copied()
+                                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                                .unwrap_or_default();
+                            if msg.contains("No sink attached") {
+                                bad_panic.store(true, Ordering::SeqCst);
+                            }
+                        }
+                        break;
+                    }
+                    done_barrier.wait();
+                }
+            });
+        });
+
+        assert!(
+            !bad_panic.load(Ordering::SeqCst),
+            "register_shutdown_fn() panicked with \"No sink attached\" even though \
+             try_sink() just reported a sink was attached -- attach() must set the \
+             sink and the shutdown registry together, not as two separately \
+             observable writes"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "No sink attached")]
+    fn register_after_full_drop_panics() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        let TestEntrySink { sink, .. } = test_entry_sink();
+        let handle = Sink::attach((sink, ()));
+        drop(handle);
+        Sink::register_shutdown_fn(ShutdownFn::new(|| {}));
     }
 }
 
@@ -1648,6 +1723,78 @@ mod shuttle_tests {
                 "shutdown fns must run in exact reverse of push order, regardless of how concurrent registration interleaves"
             );
         }
+    }
+
+    // Unlike other shuttle tests here, this one's `static ATTACHED` is real,
+    // process-wide state, not fresh per call. Two sessions (pct/determinism)
+    // touching that same static's lock at once corrupts Shuttle's own bookkeeping.
+    // Serialize the two test fns instead.
+    static SERIALIZE_PCT_AND_DETERMINISM: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Shuttle counterpart of `attach_never_observed_with_sink_set_but_registry_unset`,
+    /// exhaustive instead of probabilistic.
+    fn attach_race_never_observes_sink_without_registry() {
+        metrique_writer::sink::global_entry_sink! { Sink }
+        use metrique_writer::{AttachGlobalEntrySink, ShutdownFn as WriterShutdownFn};
+
+        let attacher = shuttle::thread::spawn(|| {
+            Sink::attach((metrique_writer::sink::DevNullSink::new(), ()))
+        });
+
+        let racer = shuttle::thread::spawn(|| {
+            if Sink::try_sink().is_none() {
+                // Not this schedule's interleaving.
+                return None;
+            }
+            Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                || {
+                    Sink::register_shutdown_fn(WriterShutdownFn::new(|| {}));
+                },
+            )))
+        });
+
+        let handle = attacher.join().unwrap();
+        let racer_result = racer.join().unwrap();
+        // Detach first so state doesn't leak into the next call.
+        drop(handle);
+
+        if let Some(Err(payload)) = racer_result {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                .unwrap_or_default();
+            assert!(
+                !msg.contains("No sink attached"),
+                "register_shutdown_fn() panicked with \"No sink attached\" even \
+                 though try_sink() just observed a sink was attached"
+            );
+        }
+    }
+
+    // Recover from poisoning instead of propagating a confusing PoisonError.
+    fn run_serialized(f: impl FnOnce()) {
+        let _guard = SERIALIZE_PCT_AND_DETERMINISM
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        f();
+    }
+
+    #[test]
+    fn attach_race_never_observes_sink_without_registry_pct() {
+        run_serialized(|| {
+            shuttle::check_pct(attach_race_never_observes_sink_without_registry, 5_000, 3)
+        });
+    }
+
+    #[test]
+    fn attach_race_never_observes_sink_without_registry_determinism() {
+        run_serialized(|| {
+            shuttle::check_uncontrolled_nondeterminism(
+                attach_race_never_observes_sink_without_registry,
+                5_000,
+            )
+        });
     }
 }
 
