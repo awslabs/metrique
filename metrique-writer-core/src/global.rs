@@ -317,12 +317,6 @@ impl ShutdownRegistry {
     fn drain(&self) -> Vec<ShutdownFn> {
         self.0.lock().unwrap().take().unwrap_or_default()
     }
-
-    pub(crate) fn drain_and_run(self) {
-        for f in self.drain().into_iter().rev() {
-            f.call();
-        }
-    }
 }
 
 /// Guard that manages the lifecycle of a thread-local test sink override.
@@ -398,10 +392,8 @@ impl Drop for TokioRuntimeTestSinkGuard {
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(arc) = self.shutdown_registry.take() {
-            // KNOWN BUG (see issue https://github.com/awslabs/metrique/issues/340)
-            match Arc::try_unwrap(arc) {
-                Ok(registry) => registry.drain_and_run(),
-                Err(_) => unreachable!("ShutdownRegistry should have no other strong references"),
+            for f in arc.drain().into_iter().rev() {
+                f.call();
             }
         }
     }
