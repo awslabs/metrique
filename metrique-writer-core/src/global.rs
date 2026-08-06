@@ -287,22 +287,39 @@ type ShutdownRegistryMutex<T> = shuttle::sync::Mutex<T>;
 ///
 /// This type is public for macro-generated code. You should not need to use it directly,
 /// use [`AttachGlobalEntrySink::register_shutdown_fn`] instead.
-pub struct ShutdownRegistry(ShutdownRegistryMutex<Vec<ShutdownFn>>);
+///
+/// `None` means the registry has been closed (drained).
+pub struct ShutdownRegistry(ShutdownRegistryMutex<Option<Vec<ShutdownFn>>>);
 
 impl ShutdownRegistry {
     fn new(initial: ShutdownFn) -> Self {
-        Self(ShutdownRegistryMutex::new(vec![initial]))
+        Self(ShutdownRegistryMutex::new(Some(vec![initial])))
     }
 
     /// Add a shutdown function. Functions run in LIFO order when the
     /// [`AttachHandle`] is dropped.
+    ///
+    /// Returns `false` (and does not add `f`) if the registry has already been closed by a
+    /// concurrent (or prior) [`ShutdownRegistry::drain`].
     #[doc(hidden)]
-    pub fn push(&self, f: ShutdownFn) {
-        self.0.lock().unwrap().push(f);
+    pub fn push(&self, f: ShutdownFn) -> bool {
+        match self.0.lock().unwrap().as_mut() {
+            Some(fns) => {
+                fns.push(f);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Close the registry and return whatever functions were registered before closure, in
+    /// registration order. Whichever of `push` or `drain` acquires the lock first wins outright.
+    fn drain(&self) -> Vec<ShutdownFn> {
+        self.0.lock().unwrap().take().unwrap_or_default()
     }
 
     pub(crate) fn drain_and_run(self) {
-        for f in self.0.into_inner().unwrap().into_iter().rev() {
+        for f in self.drain().into_iter().rev() {
             f.call();
         }
     }
