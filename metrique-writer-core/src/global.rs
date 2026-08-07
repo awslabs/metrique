@@ -1597,7 +1597,6 @@ mod shutdown_registry_tests {
             "sink must be detached even though a shutdown fn panicked"
         );
     }
-
 }
 
 // Shuttle test for the `AttachHandle`/`ShutdownRegistry` `Arc`/`Weak`
