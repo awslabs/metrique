@@ -268,40 +268,17 @@ impl ShutdownFn {
     }
 }
 
-// `ShutdownRegistry`'s internal lock, swapped for a shuttle-native `Mutex`
-// under `--cfg shuttle` (see `shuttle_tests` below). `RuntimeSinkMap` below
-// stays on `std::sync::Mutex` regardless -- it's test-only plumbing with no
-// interleaving-sensitive invariant worth Shuttle's cost.
-//
-// Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg
-// shuttle` is set process-wide via RUSTFLAGS, so it also reaches builds of
-// this crate (e.g. as a dev-dependency with different requested features)
-// that don't have `_shuttle` enabled and therefore don't have the optional
-// `shuttle` crate linked at all.
-#[cfg(not(all(shuttle, feature = "_shuttle")))]
-type ShutdownRegistryMutex<T> = std::sync::Mutex<T>;
-#[cfg(all(shuttle, feature = "_shuttle"))]
-type ShutdownRegistryMutex<T> = shuttle::sync::Mutex<T>;
-
-/// Lock type for the macro-generated `ATTACHED` static
-#[doc(hidden)]
-#[cfg(not(all(shuttle, feature = "_shuttle")))]
-pub type AttachedLock<T> = std::sync::RwLock<T>;
-#[doc(hidden)]
-#[cfg(all(shuttle, feature = "_shuttle"))]
-pub type AttachedLock<T> = shuttle::sync::RwLock<T>;
-
 /// Storage for [`ShutdownFn`]s registered on an [`AttachHandle`], to be run when the [`AttachHandle`] is dropped.
 ///
 /// This type is public for macro-generated code. You should not need to use it directly,
 /// use [`AttachGlobalEntrySink::register_shutdown_fn`] instead.
 ///
 /// `None` means the registry has been closed (drained).
-pub struct ShutdownRegistry(ShutdownRegistryMutex<Option<Vec<ShutdownFn>>>);
+pub struct ShutdownRegistry(crate::shuttle_primitives::Mutex<Option<Vec<ShutdownFn>>>);
 
 impl ShutdownRegistry {
     fn new(initial: ShutdownFn) -> Self {
-        Self(ShutdownRegistryMutex::new(Some(vec![initial])))
+        Self(crate::shuttle_primitives::Mutex::new(Some(vec![initial])))
     }
 
     /// Add a shutdown function. Functions run in LIFO order when the
@@ -553,7 +530,7 @@ macro_rules! global_entry_sink {
 
         const _: () = {
             use ::std::{sync::Weak, boxed::Box, option::Option::{self, Some, None}, result::Result, any::Any, marker::{Send, Sync}};
-            use $crate::{Entry, BoxEntry, BoxEntrySink, EntrySink, global::{AttachGlobalEntrySink, AttachHandle, ShutdownFn, ShutdownRegistry, AttachedLock}};
+            use $crate::{Entry, BoxEntry, BoxEntrySink, EntrySink, global::{AttachGlobalEntrySink, AttachHandle, ShutdownFn, ShutdownRegistry}, shuttle_primitives::RwLock};
 
             const NAME: &'static str = ::std::stringify!($name);
 
@@ -564,7 +541,7 @@ macro_rules! global_entry_sink {
                 sink: (BoxEntrySink, Box<dyn Send + Sync + 'static>),
                 shutdown_registry: Weak<ShutdownRegistry>,
             }
-            static ATTACHED: AttachedLock<Option<AttachedState>> = AttachedLock::new(None);
+            static ATTACHED: RwLock<Option<AttachedState>> = RwLock::new(None);
 
             $crate::__test_util! {
                 use ::std::cell::RefCell;

@@ -48,3 +48,9 @@ pub mod test_stream;
 #[cfg(all(shuttle, feature = "_shuttle"))]
 #[doc(hidden)]
 pub mod shuttle_test_support;
+
+/// Cfg-gated concurrency primitives (std vs. shuttle) used by macro-generated
+/// code. Public only so that expansion works from downstream crates; not
+/// meant to be used directly.
+#[doc(hidden)]
+pub mod shuttle_primitives;
