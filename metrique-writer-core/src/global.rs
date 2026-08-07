@@ -400,8 +400,33 @@ impl Drop for TokioRuntimeTestSinkGuard {
 impl Drop for AttachHandle {
     fn drop(&mut self) {
         if let Some(arc) = self.shutdown_registry.take() {
-            for f in arc.drain().into_iter().rev() {
-                f.call();
+            let fns = arc.drain();
+            let total = fns.len();
+            let mut panics = Vec::new();
+            for f in fns.into_iter().rev() {
+                // wrap in catch_unwind so we can get to the detach fn even if a previous fn call panics
+                if let Err(payload) =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f.call()))
+                {
+                    panics.push(payload);
+                }
+            }
+            // avoid a double-panic abort (don't panic if already panicking)
+            if !panics.is_empty() && !std::thread::panicking() {
+                let messages: Vec<&str> = panics
+                    .iter()
+                    .map(|p| {
+                        p.downcast_ref::<&str>()
+                            .copied()
+                            .or_else(|| p.downcast_ref::<String>().map(String::as_str))
+                            .unwrap_or("<non-string panic payload>")
+                    })
+                    .collect();
+                panic!(
+                    "{} of {total} shutdown fn(s) panicked during AttachHandle::drop \
+                     (every shutdown fn still ran to completion, including cleanup): {messages:?}",
+                    panics.len()
+                );
             }
         }
     }
@@ -1555,7 +1580,6 @@ mod shutdown_registry_tests {
     }
 
     #[test]
-    #[ignore = "known bug"]
     fn sink_still_detaches_after_a_shutdown_fn_panics() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { sink, .. } = test_entry_sink();
@@ -1565,7 +1589,7 @@ mod shutdown_registry_tests {
             panic!("boom");
         }));
 
-        // drop() is expected to re-panic
+        // drop() is expected to re-panic, but the sink must still be detached
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(handle)));
 
         assert!(
@@ -1579,9 +1603,8 @@ mod shutdown_registry_tests {
     }
 
     #[test]
-    #[should_panic(expected = "sink must be detached even though a shutdown fn panicked")]
-    fn sink_wedged_after_a_shutdown_fn_panics_without_the_fix() {
-        // A panicking shutdown fn blocks the sink-detach closure from ever running.
+    #[should_panic(expected = "shutdown fn(s) panicked during AttachHandle::drop")]
+    fn panicking_shutdown_fn_does_not_block_sink_detach() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { sink, .. } = test_entry_sink();
 
@@ -1590,11 +1613,35 @@ mod shutdown_registry_tests {
             panic!("boom");
         }));
 
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(handle)));
+        drop(handle);
+    }
+
+    #[test]
+    fn drop_during_existing_panic_does_not_abort() {
+        // Check that dropping the handle while already unwinding from an unrelated panic
+        // doesn't double-panic and abort the whole process.
+        let result = std::thread::spawn(|| {
+            metrique_writer::sink::global_entry_sink! { Sink }
+            let TestEntrySink { sink, .. } = test_entry_sink();
+            let handle = Sink::attach((sink, ()));
+            Sink::register_shutdown_fn(ShutdownFn::new(|| {
+                panic!("shutdown fn panic");
+            }));
+
+            struct DropsHandleOnUnwind(Option<metrique_writer::sink::AttachHandle>);
+            impl Drop for DropsHandleOnUnwind {
+                fn drop(&mut self) {
+                    drop(self.0.take()); // AttachHandle::drop runs here, already unwinding
+                }
+            }
+            let _guard = DropsHandleOnUnwind(Some(handle));
+            panic!("original, unrelated panic");
+        })
+        .join();
 
         assert!(
-            Sink::try_sink().is_none(),
-            "sink must be detached even though a shutdown fn panicked"
+            result.is_err(),
+            "the spawned thread should have panicked exactly once, not aborted"
         );
     }
 }
