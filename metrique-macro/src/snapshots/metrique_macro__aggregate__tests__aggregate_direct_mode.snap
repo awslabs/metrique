@@ -1,5 +1,6 @@
 ---
 source: metrique-macro/src/aggregate.rs
+assertion_line: 978
 expression: parsed_file
 ---
 #[metrics]
@@ -33,6 +34,13 @@ impl ::metrique_aggregation::__macro_plumbing::Merge for RawData {
 impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for RawData {
     type Source = RawData;
     type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
+}
+impl ::metrique_aggregation::__macro_plumbing::CollectDimensions for RawData {
+    #[allow(deprecated)]
+    fn collect_dimensions(
+        &self,
+        _out: &mut ::metrique_aggregation::__macro_plumbing::DimensionSet,
+    ) {}
 }
 struct RawData {
     latency: Duration,

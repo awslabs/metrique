@@ -1,5 +1,6 @@
 ---
 source: metrique-macro/src/aggregate.rs
+assertion_line: 923
 expression: parsed_file
 ---
 #[metrics]
@@ -47,6 +48,13 @@ impl ::metrique_aggregation::__macro_plumbing::Merge for ApiCall {
 impl ::metrique_aggregation::__macro_plumbing::AggregateStrategy for ApiCall {
     type Source = ApiCall;
     type Key = ::metrique_aggregation::__macro_plumbing::NoKey;
+}
+impl ::metrique_aggregation::__macro_plumbing::CollectDimensions for ApiCall {
+    #[allow(deprecated)]
+    fn collect_dimensions(
+        &self,
+        _out: &mut ::metrique_aggregation::__macro_plumbing::DimensionSet,
+    ) {}
 }
 #[metrics]
 pub struct ApiCall {
