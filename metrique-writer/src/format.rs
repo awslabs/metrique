@@ -349,10 +349,8 @@ impl<F: Format> Format for Quantize<F> {
         entry: &impl Entry,
         output: &mut impl io::Write,
     ) -> Result<(), IoStreamError> {
-        self.stream.format(
-            &crate::entry::QuantizedEntry::new(entry, self.policy.clone()),
-            output,
-        )
+        let Self { stream, policy } = self;
+        stream.format(&crate::entry::QuantizedEntry::new(entry, policy), output)
     }
 }
 
@@ -368,8 +366,9 @@ impl<F: metrique_writer_core::sample::SampledFormat> metrique_writer_core::sampl
         // Implemented so that quantization can be applied either side of sampling. The two
         // orders are equivalent: quantizing changes values, sampling chooses which entries are
         // written, and neither depends on the other.
-        self.stream.format_with_sample_rate(
-            &crate::entry::QuantizedEntry::new(entry, self.policy.clone()),
+        let Self { stream, policy } = self;
+        stream.format_with_sample_rate(
+            &crate::entry::QuantizedEntry::new(entry, policy),
             output,
             rate,
         )

@@ -43,7 +43,7 @@ fn only_named_metrics_are_quantized() {
         ["LatencyNanos", "DownstreamNanos"],
     );
 
-    let entry = to_test_entry(QuantizedEntry::new(sample(), policy));
+    let entry = to_test_entry(QuantizedEntry::new(sample(), &policy));
 
     // 1_234_567 at 4 bits, floor.
     assert_eq!(entry.metrics["LatencyNanos"], 1_179_648);
@@ -59,7 +59,7 @@ fn a_predicate_policy_selects_by_name() {
         name.ends_with("Nanos")
     });
 
-    let entry = to_test_entry(QuantizedEntry::new(sample(), policy));
+    let entry = to_test_entry(QuantizedEntry::new(sample(), &policy));
 
     assert_eq!(entry.metrics["LatencyNanos"], 1_179_648);
     assert_eq!(entry.metrics["DownstreamNanos"], 960);
@@ -72,7 +72,7 @@ fn an_empty_policy_quantizes_nothing() {
     let policy =
         QuantizationPolicy::for_metrics(quantizer(1, Rounding::Floor), Vec::<String>::new());
 
-    let entry = to_test_entry(QuantizedEntry::new(sample(), policy));
+    let entry = to_test_entry(QuantizedEntry::new(sample(), &policy));
 
     assert_eq!(entry.metrics["LatencyNanos"], 1_234_567);
     assert_eq!(entry.metrics["DownstreamNanos"], 1000);
@@ -88,7 +88,7 @@ fn the_timestamp_is_never_quantized_even_when_the_filter_matches_everything() {
     let policy = QuantizationPolicy::matching(quantizer(1, Rounding::Floor), |_| true);
 
     let original = to_test_entry(sample());
-    let quantized = to_test_entry(QuantizedEntry::new(sample(), policy));
+    let quantized = to_test_entry(QuantizedEntry::new(sample(), &policy));
 
     assert_eq!(
         original.timestamp, quantized.timestamp,
@@ -120,7 +120,7 @@ fn a_policy_matching_everything_still_leaves_small_values_exact() {
             two_fifty_five: 255,
             two_fifty_six: 256,
         },
-        policy,
+        &policy,
     ));
 
     assert_eq!(entry.metrics["one"], 1);
@@ -137,6 +137,46 @@ fn policy_reports_what_it_applies_to() {
     assert!(policy.applies_to("B"));
     assert!(!policy.applies_to("C"));
     assert_eq!(policy.quantizer(), quantizer(8, Rounding::Ceil));
+}
+
+#[test]
+fn wrapping_an_entry_does_not_clone_the_policy() {
+    // `QuantizedEntry` can only be `Copy` while it *borrows* the policy: an owned
+    // `QuantizationPolicy` contains an `Arc` and is therefore not `Copy`. Asserting `Copy` here
+    // pins the design, so switching the field back to an owned policy — which would put a clone
+    // on the per-entry path — fails to compile rather than quietly costing an allocation per
+    // entry.
+    fn assert_copy<T: Copy>() {}
+    assert_copy::<QuantizedEntry<'_, &RequestMetrics>>();
+
+    // And a single policy can back many wrapped entries at once, which would not typecheck if
+    // each wrapper took ownership.
+    let policy =
+        QuantizationPolicy::for_metrics(quantizer(8, Rounding::Midpoint), ["LatencyNanos"]);
+    let first = sample();
+    let second = sample();
+    let wrapped = [
+        QuantizedEntry::new(&first, &policy),
+        QuantizedEntry::new(&second, &policy),
+    ];
+    assert_eq!(wrapped.len(), 2);
+}
+
+#[test]
+fn one_policy_can_be_shared_across_several_streams() {
+    // Cloning a policy is a refcount bump on the shared name set rather than a rehash, so
+    // configuring several streams from one policy is cheap.
+    let policy = QuantizationPolicy::for_metrics(
+        quantizer(4, Rounding::Floor),
+        (0..64).map(|i| format!("Metric{i:03}")),
+    );
+
+    let clones: Vec<_> = (0..8).map(|_| policy.clone()).collect();
+    for clone in &clones {
+        assert!(clone.applies_to("Metric007"));
+        assert!(!clone.applies_to("RequestCount"));
+        assert_eq!(clone.quantizer(), policy.quantizer());
+    }
 }
 
 #[test]
@@ -168,7 +208,7 @@ fn nested_entries_are_quantized_through_flatten() {
                 inner_count: 1000,
             },
         },
-        policy,
+        &policy,
     ));
 
     assert_eq!(entry.metrics["OuterNanos"], 960);

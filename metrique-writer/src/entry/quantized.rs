@@ -24,7 +24,9 @@ use crate::CowStr;
 /// one with [`QuantizationPolicy::for_metrics`] or [`QuantizationPolicy::matching`].
 #[derive(Clone)]
 enum MetricFilter {
-    Names(HashSet<CowStr>),
+    // Both variants are behind an `Arc` so that cloning a `QuantizationPolicy` is a refcount
+    // bump rather than a rehash of every name. Policies are cheap to share across streams.
+    Names(Arc<HashSet<CowStr>>),
     Predicate(Arc<dyn Fn(&str) -> bool + Send + Sync>),
 }
 
@@ -95,7 +97,7 @@ impl QuantizationPolicy {
     ) -> Self {
         Self {
             quantizer,
-            filter: MetricFilter::Names(names.into_iter().map(Into::into).collect()),
+            filter: MetricFilter::Names(Arc::new(names.into_iter().map(Into::into).collect())),
         }
     }
 
@@ -133,25 +135,28 @@ impl QuantizationPolicy {
 ///
 /// [`EntryIoStreamExt::with_quantization`]: crate::stream::EntryIoStreamExt::with_quantization
 /// [`FormatExt::with_quantization`]: crate::format::FormatExt::with_quantization
-#[derive(Clone, Debug)]
-pub struct QuantizedEntry<E> {
+/// The policy is borrowed rather than owned so that wrapping an entry costs nothing. A stream
+/// builds one of these per entry, and cloning a policy per entry would put a refcount bump (or,
+/// before the filter was `Arc`-backed, a full rehash of the name set) on the hot path.
+#[derive(Clone, Copy, Debug)]
+pub struct QuantizedEntry<'a, E> {
     entry: E,
-    policy: QuantizationPolicy,
+    policy: &'a QuantizationPolicy,
 }
 
-impl<E> QuantizedEntry<E> {
+impl<'a, E> QuantizedEntry<'a, E> {
     /// Reduce the precision of `entry`'s matching values when it is written.
-    pub fn new(entry: E, policy: QuantizationPolicy) -> Self {
+    pub fn new(entry: E, policy: &'a QuantizationPolicy) -> Self {
         Self { entry, policy }
     }
 
     /// The policy being applied.
-    pub fn policy(&self) -> &QuantizationPolicy {
-        &self.policy
+    pub fn policy(&self) -> &'a QuantizationPolicy {
+        self.policy
     }
 }
 
-impl<E> Deref for QuantizedEntry<E> {
+impl<E> Deref for QuantizedEntry<'_, E> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {
@@ -159,13 +164,13 @@ impl<E> Deref for QuantizedEntry<E> {
     }
 }
 
-impl<E> DerefMut for QuantizedEntry<E> {
+impl<E> DerefMut for QuantizedEntry<'_, E> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.entry
     }
 }
 
-impl<E: Entry> Entry for QuantizedEntry<E> {
+impl<E: Entry> Entry for QuantizedEntry<'_, E> {
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         struct Wrapper<'a, W> {
             writer: W,
@@ -197,7 +202,7 @@ impl<E: Entry> Entry for QuantizedEntry<E> {
 
         self.entry.write(&mut Wrapper {
             writer,
-            policy: &self.policy,
+            policy: self.policy,
         })
     }
 

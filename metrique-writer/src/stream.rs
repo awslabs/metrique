@@ -290,10 +290,10 @@ pub struct Quantize<S> {
 
 impl<S: EntryIoStream> EntryIoStream for Quantize<S> {
     fn next(&mut self, entry: &impl Entry) -> Result<(), IoStreamError> {
-        self.stream.next(&crate::entry::QuantizedEntry::new(
-            entry,
-            self.policy.clone(),
-        ))
+        // Destructured so the shared borrow of `policy` and the mutable borrow of `stream` are
+        // of disjoint fields. Wrapping the entry then costs nothing per entry.
+        let Self { stream, policy } = self;
+        stream.next(&crate::entry::QuantizedEntry::new(entry, policy))
     }
 
     fn flush(&mut self) -> io::Result<()> {
