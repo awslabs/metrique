@@ -96,6 +96,11 @@ use metrique_writer_core::EntrySink;
 use std::fmt::Debug;
 use std::sync::Arc;
 
+#[cfg(all(shuttle, feature = "_shuttle"))]
+use shuttle::sync::Mutex;
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+use std::sync::Mutex;
+
 pub use metrique_core::{
     CloseValue, CloseValueRef, Counter, CounterGuard, InflectableEntry, NameStyle,
     OwnedCounterGuard,
@@ -180,7 +185,9 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// A wrapper that appends and closes an entry when dropped.
 ///
 /// This struct holds a metric entry and a sink. When the struct is dropped,
-/// it closes the entry and appends it to the sink.
+/// it closes the entry and appends it to the sink. Construction is
+/// allocation-free; heap allocation is deferred until [`flush_guard`](Self::flush_guard)
+/// or [`force_flush_guard`](Self::force_flush_guard) is called.
 ///
 /// The [`metrics`] macro generates a type alias to this type
 /// named `<metric struct name>Guard`, you should normally mention that instead
@@ -211,17 +218,46 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// # }
 /// ```
 pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
-    inner: Parent<AppendAndCloseOnDropInner<E, S>>,
+    inner: Option<(E, S)>,
+    promoted: Mutex<Option<Parent<PendingEmit<E, S>>>>,
 }
+
+// SAFETY: Mutex<T>: Sync requires T: Send, which would tighten this type's
+// Sync bound to E: Send + Sync. We preserve the pre-existing bound (Sync when
+// E: Sync, S: Sync) because the `promoted` field is only populated through
+// `flush_guard`/`force_flush_guard`, which live on an impl block bounded
+// E: Send + Sync + 'static, S: Send + Sync + 'static.
+//
+// INVARIANT: No method or trait impl outside that bounded impl block may
+// access `self.promoted` through `&self`. Any new `&self` accessor on the
+// unbounded impl blocks must carry Send + Sync bounds, or this impl becomes
+// unsound. `Drop` accesses `promoted` only via `get_mut(&mut self)`
+// (exclusive, no lock).
+unsafe impl<E: CloseEntry + Sync, S: EntrySink<RootMetric<E>> + Sync> Sync
+    for AppendAndCloseOnDrop<E, S>
+{
+}
+
+// E and S are stored inline, so auto-Unpin would be conditional on E: Unpin.
+// Nothing pin-projects into E or S, so unconditional Unpin is correct.
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Unpin for AppendAndCloseOnDrop<E, S> {}
 
 impl<E: CloseEntry + Debug, S: EntrySink<RootMetric<E>> + Debug> Debug
     for AppendAndCloseOnDrop<E, S>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (entry, sink) = self.inner.as_ref().unwrap();
         f.debug_struct("AppendAndCloseOnDrop")
-            .field("value", &self.deref())
-            .field("sink", &self.inner.sink)
+            .field("value", entry)
+            .field("sink", sink)
             .finish()
+    }
+}
+
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> AppendAndCloseOnDrop<E, S> {
+    /// Drop without emitting. Any existing flush guards become no-ops.
+    pub fn discard(mut self) {
+        self.inner = None;
     }
 }
 
@@ -297,8 +333,10 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     /// }
     /// ```
     pub fn flush_guard(&self) -> FlushGuard {
+        let mut promoted = self.promoted.lock().unwrap_or_else(|e| e.into_inner());
+        let parent = promoted.get_or_insert_with(|| Parent::new(PendingEmit { pending: None }));
         FlushGuard {
-            _drop_guard: self.inner.new_guard(),
+            _drop_guard: parent.new_guard(),
         }
     }
 
@@ -322,7 +360,9 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     /// the metrics from the background task written after the timeout will not
     /// be emitted, but the rest the metric entry will be emitted.
     pub fn force_flush_guard(&self) -> ForceFlushGuard {
-        ForceFlushGuard::new(self.inner.force_drop_guard())
+        let mut promoted = self.promoted.lock().unwrap_or_else(|e| e.into_inner());
+        let parent = promoted.get_or_insert_with(|| Parent::new(PendingEmit { pending: None }));
+        ForceFlushGuard::new(parent.force_drop_guard())
     }
 
     /// Return a cloneable handle to the contents. The handle allows for cloneable,
@@ -378,45 +418,39 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     }
 }
 
-#[derive(Debug)]
-struct AppendAndCloseOnDropInner<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
-    entry: Option<E>,
-    sink: S,
-}
-
 impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Deref for AppendAndCloseOnDrop<E, S> {
     type Target = E;
 
     fn deref(&self) -> &Self::Target {
-        self.inner.deref()
+        &self.inner.as_ref().unwrap().0
     }
 }
-//
+
 impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> DerefMut for AppendAndCloseOnDrop<E, S> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.deref_mut()
+        &mut self.inner.as_mut().unwrap().0
     }
 }
 
-impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Deref for AppendAndCloseOnDropInner<E, S> {
-    type Target = E;
-
-    fn deref(&self) -> &Self::Target {
-        self.entry.as_ref().unwrap()
-    }
-}
-
-impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> DerefMut for AppendAndCloseOnDropInner<E, S> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.entry.as_mut().unwrap()
-    }
-}
-
-impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Drop for AppendAndCloseOnDropInner<E, S> {
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Drop for AppendAndCloseOnDrop<E, S> {
     fn drop(&mut self) {
-        let entry = self.entry.take().expect("only drop calls this");
-        let entry = entry.close();
-        self.sink.append(RootEntry::new(entry));
+        if let Some(inner) = self.inner.take() {
+            let promoted = self.promoted.get_mut().unwrap_or_else(|e| e.into_inner());
+            match promoted {
+                Some(parent) => {
+                    // CORRECTNESS: This transfers ownership of (E, S) into the
+                    // promoted PendingEmit so emission is deferred until the
+                    // last Guard/DropAll drops. Guard/DropAll never read Parent's
+                    // inner T. Happens-before to PendingEmit::drop comes from the
+                    // final Arc strong-count decrement (release/acquire pair).
+                    parent.pending = Some(inner);
+                }
+                None => {
+                    let (entry, sink) = inner;
+                    sink.append(RootEntry::new(entry.close()));
+                }
+            }
+        }
     }
 }
 
@@ -495,18 +529,25 @@ impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> std::ops::Deref
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
-pub fn append_and_close<
-    C: CloseEntry + Send + Sync + 'static,
-    S: EntrySink<RootMetric<C>> + Send + Sync + 'static,
->(
+pub fn append_and_close<C: CloseEntry, S: EntrySink<RootMetric<C>>>(
     base: C,
     sink: S,
 ) -> AppendAndCloseOnDrop<C, S> {
     AppendAndCloseOnDrop {
-        inner: Parent::new(AppendAndCloseOnDropInner {
-            entry: Some(base),
-            sink,
-        }),
+        inner: Some((base, sink)),
+        promoted: Mutex::new(None),
+    }
+}
+
+struct PendingEmit<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
+    pending: Option<(E, S)>,
+}
+
+impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Drop for PendingEmit<E, S> {
+    fn drop(&mut self) {
+        if let Some((entry, sink)) = self.pending.take() {
+            sink.append(RootEntry::new(entry.close()));
+        }
     }
 }
 
@@ -706,4 +747,80 @@ pub mod writer {
     // used by macros
     #[doc(hidden)]
     pub use metrique_writer::core;
+}
+
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_promotion_tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use metrique_writer_core::shuttle_test;
+
+    use super::*;
+
+    // Minimal entry that satisfies CloseEntry without the #[metrics] macro
+    // (which has crate-version conflicts under the shuttle cfg).
+    #[derive(Default)]
+    struct MinimalEntry;
+
+    impl CloseValue for MinimalEntry {
+        type Closed = MinimalClosed;
+        fn close(self) -> Self::Closed {
+            MinimalClosed
+        }
+    }
+
+    struct MinimalClosed;
+
+    impl InflectableEntry for MinimalClosed {
+        fn write<'a>(&'a self, _w: &mut impl metrique_writer_core::EntryWriter<'a>) {}
+    }
+
+    // Non-locking sink that counts appends via AtomicUsize.
+    #[derive(Clone)]
+    struct CountingSink(Arc<AtomicUsize>);
+
+    impl EntrySink<RootEntry<MinimalClosed>> for CountingSink {
+        fn append(&self, _entry: RootEntry<MinimalClosed>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+
+        fn flush_async(&self) -> metrique_writer_core::sink::FlushWait {
+            metrique_writer_core::sink::FlushWait::ready()
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 4;
+        /// Multiple threads concurrently calling `flush_guard()` on a shared
+        /// `AppendAndCloseOnDrop` must result in exactly one emission.
+        fn shuttle_concurrent_flush_guard_emits_exactly_once() {
+            let emit_count = Arc::new(AtomicUsize::new(0));
+            let sink = CountingSink(emit_count.clone());
+
+            let guard = Arc::new(append_and_close(MinimalEntry, sink));
+
+            let mut handles = vec![];
+            for _ in 0..4 {
+                let g = guard.clone();
+                handles.push(shuttle::thread::spawn(move || {
+                    let _fg = g.flush_guard();
+                    // flush guard dropped at end of scope
+                }));
+            }
+
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            // All flush guards dropped. Drop the last Arc ref to trigger emission.
+            drop(guard);
+
+            assert_eq!(
+                emit_count.load(Ordering::SeqCst),
+                1,
+                "entry must be emitted exactly once regardless of promotion race"
+            );
+        }
+    }
 }

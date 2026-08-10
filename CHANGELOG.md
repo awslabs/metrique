@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `AppendAndCloseOnDrop` no longer allocates on construction. Heap allocation is deferred until `flush_guard()` or `force_flush_guard()` is called. For the common case (no guards, no handles), construction is zero-allocation.
+
+### Added
+
+- `AppendAndCloseOnDrop::discard()`: drop without emitting, consistent with `TimerGuard::discard()`.
+
 ## [0.1.29](https://github.com/awslabs/metrique/compare/metrique-v0.1.28...metrique-v0.1.29) - 2026-07-27
 
 ### Fixed
