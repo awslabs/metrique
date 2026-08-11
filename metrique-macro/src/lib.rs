@@ -59,7 +59,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `format` | Path | Specifies the formatter (`ValueFormatter`) for the metric value | `#[metrics(format=EpochSeconds)]` |
-/// | `quantize` | List | Reduces the precision of the metric value to `bits` significant bits, with a bounded relative error. `rounding` is one of `floor`, `ceil`, or `midpoint` (the default). See [`metrique::writer::quantize`] | `#[metrics(quantize(bits = 8, rounding = floor))]` |
+/// | `quantize` | List | Reduces the precision of the metric value to `bits` significant bits, with a bounded relative error. `rounding` is one of `floor`, `ceil`, or `midpoint` (the default). See the [`quantize`] module for the error bound at each bit count | `#[metrics(quantize(bits = 8, rounding = floor))]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
 /// | `sample_group` | Flag | Marks a field as a sample group - it will still be emitted as a value | `#[metrics(sample_group)]` |
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
@@ -70,6 +70,8 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 /// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
 /// | `default_flags` | Path(s) | On a flatten field, applies flags to all child fields. Child field-level skips take precedence. | `#[metrics(flatten, default_flags(my_crate::flags::Export))]` |
+///
+/// [`quantize`]: https://docs.rs/metrique-writer/0.1/metrique_writer/quantize/
 ///
 /// # Variant Attributes
 ///
