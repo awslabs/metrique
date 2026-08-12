@@ -10,6 +10,9 @@ use smallvec::SmallVec;
 
 use crate::{CowStr, entry::WithGlobalDimensions};
 
+#[doc(inline)]
+pub use crate::entry::{QuantizationPolicy, QuantizedEntry};
+
 pub use metrique_writer_core::{EntryIoStream, IoStreamError};
 
 /// Extension trait for [`EntryIoStream`]. This adds methods that use types not
@@ -111,6 +114,54 @@ pub trait EntryIoStreamExt: EntryIoStream {
         Self: Sized,
     {
         tee(self, other)
+    }
+
+    /// Reduce the precision of the metrics selected by `policy`, for every entry written to this
+    /// stream.
+    ///
+    /// This is the stream-wide counterpart to `#[metrics(quantize(..))]`, for turning
+    /// quantization on without editing field declarations. There is intentionally both an
+    /// [`EntryIoStreamExt::with_quantization`] and a [`FormatExt::with_quantization`], which
+    /// do the same thing, so it can be used with interfaces that accept either an
+    /// [`EntryIoStream`] or a [`Format`].
+    ///
+    /// The policy must name the metrics it applies to; see [`QuantizationPolicy`] for why there
+    /// is no "quantize everything" option. Entry timestamps are never affected.
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    Entry, EntryIoStream, EntryIoStreamExt, format::FormatExt as _,
+    /// #    quantize::{Quantizer, Rounding, SignificantBits},
+    /// #    stream::QuantizationPolicy,
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::io;
+    /// fn set_up_emf(out: impl io::Write) -> impl EntryIoStream {
+    ///     let quantizer = Quantizer::new(
+    ///         SignificantBits::new(8).unwrap(),
+    ///         Rounding::Midpoint,
+    ///     );
+    ///
+    ///     Emf::all_validations("MyApp".into(), vec![vec![]])
+    ///         .output_to(out)
+    ///         // Latencies lose precision; counts do not.
+    ///         .with_quantization(QuantizationPolicy::for_metrics(
+    ///             quantizer,
+    ///             ["LatencyNanos", "DownstreamNanos"],
+    ///         ))
+    /// }
+    /// ```
+    ///
+    /// [`Format`]: crate::format::Format
+    /// [`FormatExt::with_quantization`]: crate::format::FormatExt::with_quantization
+    fn with_quantization(self, policy: QuantizationPolicy) -> Quantize<Self>
+    where
+        Self: Sized,
+    {
+        Quantize {
+            stream: self,
+            policy,
+        }
     }
 
     /// Report an error message to the relevant log streams in a way that
@@ -220,6 +271,29 @@ impl<S: EntryIoStream, const N: usize> EntryIoStream for MergeGlobalDimensions<S
             );
             self.stream.next(&entry_with_global_dimensions)
         }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
+    }
+}
+
+/// See [`EntryIoStreamExt::with_quantization`] or [`FormatExt::with_quantization`].
+///
+/// [`EntryIoStreamExt::with_quantization`]: crate::stream::EntryIoStreamExt::with_quantization
+/// [`FormatExt::with_quantization`]: crate::format::FormatExt::with_quantization
+#[derive(Clone, Debug)]
+pub struct Quantize<S> {
+    pub(crate) stream: S,
+    pub(crate) policy: QuantizationPolicy,
+}
+
+impl<S: EntryIoStream> EntryIoStream for Quantize<S> {
+    fn next(&mut self, entry: &impl Entry) -> Result<(), IoStreamError> {
+        // Destructured so the shared borrow of `policy` and the mutable borrow of `stream` are
+        // of disjoint fields. Wrapping the entry then costs nothing per entry.
+        let Self { stream, policy } = self;
+        stream.next(&crate::entry::QuantizedEntry::new(entry, policy))
     }
 
     fn flush(&mut self) -> io::Result<()> {

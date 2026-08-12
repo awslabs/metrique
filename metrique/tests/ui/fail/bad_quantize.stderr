@@ -1,0 +1,53 @@
+error: quantize bits must be in 1..=52, got 53. The ceiling is 52 because metric values are carried as f64 in places and an f64 significand holds 53 bits
+ --> tests/ui/fail/bad_quantize.rs:9:31
+  |
+9 |     #[metrics(quantize(bits = 53))]
+  |                               ^^
+
+error: quantize bits must be in 1..=52, got 0. The ceiling is 52 because metric values are carried as f64 in places and an f64 significand holds 53 bits
+  --> tests/ui/fail/bad_quantize.rs:12:31
+   |
+12 |     #[metrics(quantize(bits = 0))]
+   |                               ^
+
+error: unknown rounding mode `nearest`, expected floor, ceil, or midpoint
+  --> tests/ui/fail/bad_quantize.rs:18:45
+   |
+18 |     #[metrics(quantize(bits = 8, rounding = nearest))]
+   |                                             ^^^^^^^
+
+error: quantize takes a bit count, not decimal digits. For 2 significant decimal digits, use `bits = 8`
+  --> tests/ui/fail/bad_quantize.rs:26:24
+   |
+26 |     #[metrics(quantize(digits = 2))]
+   |                        ^^^^^^
+
+error: quantize requires `bits = N`, for example quantize(bits = 8)
+  --> tests/ui/fail/bad_quantize.rs:32:15
+   |
+32 |     #[metrics(quantize(rounding = floor))]
+   |               ^^^^^^^^
+
+error: unknown quantize option `precision`, expected `bits` or `rounding`
+  --> tests/ui/fail/bad_quantize.rs:38:34
+   |
+38 |     #[metrics(quantize(bits = 8, precision = 2))]
+   |                                  ^^^^^^^^^
+
+error: expected quantize(bits = N) or quantize(bits = N, rounding = floor|ceil|midpoint)
+  --> tests/ui/fail/bad_quantize.rs:44:15
+   |
+44 |     #[metrics(quantize = 8)]
+   |               ^^^^^^^^
+
+error: Cannot combine `timestamp` with `quantize`
+  --> tests/ui/fail/bad_quantize.rs:51:42
+   |
+51 |     #[metrics(timestamp, quantize(bits = 8))]
+   |                                          ^
+
+error: Cannot combine `flatten` with `quantize`
+  --> tests/ui/fail/bad_quantize.rs:57:40
+   |
+57 |     #[metrics(flatten, quantize(bits = 8))]
+   |                                        ^
