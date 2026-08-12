@@ -11,10 +11,12 @@ mod flags;
 mod force;
 mod formatter;
 mod primitive;
+mod quantized;
 
 pub use dimensions::{WithDimension, WithDimensions, WithVecDimensions};
 pub use force::{FlagConstructor, ForceFlag, ForceFlagEntryWriter};
 pub use formatter::{FormattedValue, Lifted, NotLifted, ToString, ValueFormatter};
+pub use quantized::{Quantized, QuantizingValueWriter, quantize_observation};
 use std::{borrow::Cow, fmt::Write, sync::Arc};
 
 pub use flags::{Distribution, MetricFlags, MetricOptions};
@@ -283,6 +285,37 @@ pub trait MetricValue: Value {
         I: Into<CowStr>,
     {
         WithDimensions::new_with_dimensions(self, dimensions)
+    }
+
+    /// Reduce the precision of this value when it is written, retaining `bits` significant
+    /// bits and using `rounding` to pick each bucket's representative.
+    ///
+    /// This trades a bounded amount of accuracy for a smaller set of distinct emitted values.
+    /// See the [`quantize`](crate::quantize) module for the error bound at each bit count and
+    /// for guidance on which values should not be quantized.
+    ///
+    /// If a unit conversion is also needed, convert first: the error bound applies to the
+    /// value as emitted.
+    ///
+    /// ```
+    /// use metrique_writer_core::quantize::{Rounding, SignificantBits};
+    /// use metrique_writer_core::value::MetricValue;
+    ///
+    /// let bits = SignificantBits::new(8).unwrap();
+    ///
+    /// // At 8 bits the emitted value is within 0.390625% of the true one.
+    /// let latency = 1_234_567u64.quantized(bits, Rounding::Midpoint);
+    /// assert_eq!(*latency, 1_234_567);
+    /// ```
+    fn quantized(
+        self,
+        bits: crate::quantize::SignificantBits,
+        rounding: crate::quantize::Rounding,
+    ) -> Quantized<Self, crate::quantize::Quantizer>
+    where
+        Self: Sized,
+    {
+        Quantized::new(self, crate::quantize::Quantizer::new(bits, rounding))
     }
 }
 

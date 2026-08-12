@@ -59,6 +59,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `format` | Path | Specifies the formatter (`ValueFormatter`) for the metric value | `#[metrics(format=EpochSeconds)]` |
+/// | `quantize` | List | Reduces the precision of the metric value to `bits` significant bits, with a bounded relative error. `rounding` is one of `floor`, `ceil`, or `midpoint` (the default). See the [`quantize`] module for the error bound at each bit count | `#[metrics(quantize(bits = 8, rounding = floor))]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
 /// | `sample_group` | Flag | Marks a field as a sample group - it will still be emitted as a value | `#[metrics(sample_group)]` |
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
@@ -69,6 +70,8 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 /// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
 /// | `default_flags` | Path(s) | On a flatten field, applies flags to all child fields. Child field-level skips take precedence. | `#[metrics(flatten, default_flags(my_crate::flags::Export))]` |
+///
+/// [`quantize`]: https://docs.rs/metrique-writer/0.1/metrique_writer/quantize/
 ///
 /// # Variant Attributes
 ///
@@ -760,6 +763,198 @@ impl From<RawTag> for Tag {
     }
 }
 
+/// A parsed `quantize(bits = N)` or `quantize(bits = N, rounding = mode)` attribute.
+#[derive(Debug, Clone)]
+pub(crate) struct QuantizeAttr {
+    /// Significant bits to retain. Validated to be in `1..=52` at parse time.
+    pub(crate) bits: u8,
+    /// The rounding mode, defaulting to midpoint.
+    pub(crate) rounding: QuantizeRounding,
+    pub(crate) span: Span,
+}
+
+/// The rounding mode named by a `quantize(..)` attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuantizeRounding {
+    Floor,
+    Ceil,
+    Midpoint,
+}
+
+impl QuantizeRounding {
+    fn tag_path(self) -> Ts2 {
+        match self {
+            QuantizeRounding::Floor => {
+                quote! { ::metrique::writer::quantize::rounding::Floor }
+            }
+            QuantizeRounding::Ceil => {
+                quote! { ::metrique::writer::quantize::rounding::Ceil }
+            }
+            QuantizeRounding::Midpoint => {
+                quote! { ::metrique::writer::quantize::rounding::Midpoint }
+            }
+        }
+    }
+}
+
+impl QuantizeAttr {
+    /// The `Bits<N, R>` type this attribute denotes.
+    pub(crate) fn tag_type(&self) -> Ts2 {
+        let bits = proc_macro2::Literal::u8_suffixed(self.bits);
+        let rounding = self.rounding.tag_path();
+        quote_spanned! { self.span=> ::metrique::writer::quantize::Bits<#bits, #rounding> }
+    }
+}
+
+impl FromMeta for QuantizeAttr {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+        // Parsed by hand rather than via darling's nested derive: a custom `FromMeta` using
+        // `from_list` is silently dropped when it sits alongside darling `Flag` fields in the
+        // same attribute, which is the same limitation `FlagsList` works around above.
+        let list = match item {
+            syn::Meta::List(list) => list,
+            _ => {
+                return Err(darling::Error::custom(
+                    "expected quantize(bits = N) or quantize(bits = N, rounding = floor|ceil|midpoint)",
+                )
+                .with_span(item));
+            }
+        };
+
+        let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
+            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+            .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
+
+        let mut bits: Option<(u8, Span)> = None;
+        let mut rounding: Option<QuantizeRounding> = None;
+
+        for meta in &parsed {
+            let name_value = match meta {
+                syn::Meta::NameValue(name_value) => name_value,
+                _ => {
+                    return Err(darling::Error::custom(
+                        "expected `bits = N` or `rounding = floor|ceil|midpoint`",
+                    )
+                    .with_span(meta));
+                }
+            };
+
+            if name_value.path.is_ident("bits") {
+                bits = Some(parse_quantize_bits(&name_value.value)?);
+            } else if name_value.path.is_ident("rounding") {
+                rounding = Some(parse_quantize_rounding(&name_value.value)?);
+            } else if name_value.path.is_ident("digits") {
+                // Readers who think in decimal significant digits will reach for this first.
+                // Point them at the bit count that delivers the precision they asked for
+                // rather than leaving them with an "unknown key" error.
+                let suggestion = parse_quantize_digits_suggestion(&name_value.value);
+                return Err(darling::Error::custom(format!(
+                    "quantize takes a bit count, not decimal digits. {suggestion}"
+                ))
+                .with_span(&name_value.path));
+            } else {
+                let key = name_value
+                    .path
+                    .get_ident()
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                return Err(darling::Error::custom(format!(
+                    "unknown quantize option `{key}`, expected `bits` or `rounding`"
+                ))
+                .with_span(&name_value.path));
+            }
+        }
+
+        let (bits, span) = bits.ok_or_else(|| {
+            darling::Error::custom("quantize requires `bits = N`, for example quantize(bits = 8)")
+                .with_span(list)
+        })?;
+
+        Ok(QuantizeAttr {
+            bits,
+            rounding: rounding.unwrap_or(QuantizeRounding::Midpoint),
+            span,
+        })
+    }
+}
+
+/// Parse and range-check `bits = N`.
+fn parse_quantize_bits(value: &syn::Expr) -> darling::Result<(u8, Span)> {
+    let lit = match value {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(lit),
+            ..
+        }) => lit,
+        _ => {
+            return Err(
+                darling::Error::custom("expected an integer literal for `bits`").with_span(value),
+            );
+        }
+    };
+
+    let parsed: u64 = lit.base10_parse().map_err(|_| {
+        darling::Error::custom("expected an integer literal for `bits`").with_span(lit)
+    })?;
+
+    // Mirrors `SignificantBits::new`, but reported at expansion time so the diagnostic points
+    // at the attribute rather than at generated code.
+    if !(1..=52).contains(&parsed) {
+        return Err(darling::Error::custom(format!(
+            "quantize bits must be in 1..=52, got {parsed}. \
+             The ceiling is 52 because metric values are carried as f64 in places and an f64 \
+             significand holds 53 bits"
+        ))
+        .with_span(lit));
+    }
+
+    Ok((parsed as u8, lit.span()))
+}
+
+/// Parse `rounding = floor|ceil|midpoint`.
+fn parse_quantize_rounding(value: &syn::Expr) -> darling::Result<QuantizeRounding> {
+    let ident = match value {
+        syn::Expr::Path(path) => path.path.get_ident().cloned().ok_or_else(|| {
+            darling::Error::custom("expected floor, ceil, or midpoint").with_span(value)
+        })?,
+        _ => {
+            return Err(
+                darling::Error::custom("expected floor, ceil, or midpoint").with_span(value)
+            );
+        }
+    };
+
+    match ident.to_string().as_str() {
+        "floor" => Ok(QuantizeRounding::Floor),
+        "ceil" => Ok(QuantizeRounding::Ceil),
+        "midpoint" => Ok(QuantizeRounding::Midpoint),
+        other => Err(darling::Error::custom(format!(
+            "unknown rounding mode `{other}`, expected floor, ceil, or midpoint"
+        ))
+        .with_span(&ident)),
+    }
+}
+
+/// Build the "use bits = N instead" half of the `digits = N` diagnostic.
+fn parse_quantize_digits_suggestion(value: &syn::Expr) -> String {
+    let digits = match value {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(lit),
+            ..
+        }) => lit.base10_parse::<u32>().ok(),
+        _ => None,
+    };
+
+    match digits {
+        // ceil(log2(2 * 10^digits)) is the smallest bit count whose relative error is below
+        // 10^-digits.
+        Some(digits) if (1..=6).contains(&digits) => {
+            let bits = (2.0 * 10f64.powi(digits as i32)).log2().ceil() as u32;
+            format!("For {digits} significant decimal digits, use `bits = {bits}`")
+        }
+        _ => "Use `bits = N`; 8 bits is roughly 2 significant decimal digits".to_string(),
+    }
+}
+
 /// A parsed `flags(Path)` or `flags(skip(Path))` attribute.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldTagAttr {
@@ -1039,6 +1234,9 @@ struct RawMetricsFieldAttrs {
     format: Option<SpannedKv<syn::Path>>,
 
     #[darling(default)]
+    quantize: Option<QuantizeAttr>,
+
+    #[darling(default)]
     name: Option<SpannedKv<String>>,
 
     #[darling(default)]
@@ -1210,6 +1408,15 @@ impl RawMetricsFieldAttrs {
         let name = get_field_option("name", &out, &name)?;
         let unit = get_field_option("unit", &out, &self.unit)?;
         let format = get_field_option("format", &out, &self.format)?;
+        // `get_field_option` wants a `SpannedKv`; `QuantizeAttr` carries its own span, so the
+        // same exclusivity check is spelled out here.
+        let quantize = match (&self.quantize, &out) {
+            (Some(attr), Some((_, other))) => {
+                return Err(cannot_combine_error(other, "quantize", attr.span));
+            }
+            (Some(attr), None) => Some(attr.clone()),
+            _ => None,
+        };
         let sample_group = get_field_flag("sample_group", &out, &self.sample_group)?;
         let close = !self.no_close.is_present();
         if let (false, Some((MetricsFieldKind::Ignore(span), _))) = (close, &out) {
@@ -1283,6 +1490,7 @@ impl RawMetricsFieldAttrs {
                     name: name.cloned(),
                     unit: unit.cloned(),
                     format: format.cloned(),
+                    quantize,
                 },
             },
             flags: {
@@ -1373,6 +1581,15 @@ impl MetricsField {
                 <#base_type as ::metrique::unit::AttachUnit>::Output<#expr>
             }
         }
+        // Applied after the unit wrapper, so the error bound describes the value in the unit it
+        // is emitted in. Quantizing first and converting afterwards would apply the bound in
+        // the source unit and then scale the result off the target unit's lattice.
+        if let Some(quantize) = self.quantize() {
+            let tag = quantize.tag_type();
+            base_type = quote_spanned! { quantize.span=>
+                ::metrique::writer::value::Quantized<#base_type, #tag>
+            }
+        }
         let inner = if named {
             quote! { #ident: #base_type }
         } else {
@@ -1392,6 +1609,33 @@ impl MetricsField {
             MetricsFieldKind::Field { unit, .. } => unit.as_ref(),
             _ => None,
         }
+    }
+
+    fn quantize(&self) -> Option<&QuantizeAttr> {
+        match &self.attrs.kind {
+            MetricsFieldKind::Field { quantize, .. } => quantize.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// The field's type after closing and after any unit conversion, but before quantization.
+    ///
+    /// Used to annotate the intermediate binding when a field carries both `unit` and
+    /// `quantize`: `Quantized::<_, Tag>::from(expr.into())` would otherwise leave the `.into()`
+    /// target ambiguous, since both conversions are generic.
+    fn closed_unit_type(&self) -> Ts2 {
+        let MetricsField { ty, span, .. } = self;
+        let mut base = if self.attrs.close {
+            quote_spanned! { *span=> <#ty as metrique::CloseValue>::Closed }
+        } else {
+            quote_spanned! { *span=> #ty }
+        };
+        if let Some(unit) = self.unit() {
+            base = quote_spanned! { unit.span()=>
+                <#base as ::metrique::unit::AttachUnit>::Output<#unit>
+            };
+        }
+        base
     }
 
     pub(crate) fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
@@ -1416,6 +1660,24 @@ impl MetricsField {
         let base = if let Some(unit) = self.unit() {
             quote_spanned! { unit.span() =>
                 #base.into()
+            }
+        } else {
+            base
+        };
+
+        // `Quantized::<_, Tag>::from` rather than a bare `.into()`, and via an explicitly typed
+        // binding: with a unit conversion also in play, two chained generic conversions would
+        // leave the intermediate type ambiguous.
+        let base = if let Some(quantize) = self.quantize() {
+            let tag = quantize.tag_type();
+            let intermediate = self.closed_unit_type();
+            quote_spanned! { quantize.span =>
+                {
+                    let __metrique_quantize_input: #intermediate = #base;
+                    ::metrique::writer::value::Quantized::<_, #tag>::from(
+                        __metrique_quantize_input,
+                    )
+                }
             }
         } else {
             base
@@ -1579,6 +1841,7 @@ enum MetricsFieldKind {
         unit: Option<syn::Path>,
         name: Option<String>,
         format: Option<syn::Path>,
+        quantize: Option<QuantizeAttr>,
         sample_group: Option<Span>,
     },
 }
