@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.30](https://github.com/awslabs/metrique/compare/metrique-v0.1.29...metrique-v0.1.30) - 2026-08-12
+
+### Added
+
+- *(metrique-writer-core)* add metric quantization ([#363](https://github.com/awslabs/metrique/pull/363))
+
+### Fixed
+
+- *(metrique-writer)* auto-shutdown BackgroundQueue when all clones drop ([#356](https://github.com/awslabs/metrique/pull/356))
+
+### Other
+
+- add Shuttle-based concurrency tests ([#338](https://github.com/awslabs/metrique/pull/338))
+
 ## [0.1.29](https://github.com/awslabs/metrique/compare/metrique-v0.1.28...metrique-v0.1.29) - 2026-07-27
 
 ### Fixed
