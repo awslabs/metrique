@@ -421,9 +421,18 @@ fn generate_close_value_impl_for_enum(
                     .map(|(i, td)| {
                         let binding = quote::format_ident!("v{}", i);
                         let close_expr = if td.close {
-                            quote::quote_spanned!(variant.ident.span()=>
-                                ::metrique::CloseValue::close(#binding)
-                            )
+                            match root_attrs.ownership_kind() {
+                                crate::OwnershipKind::ByValue => {
+                                    quote::quote_spanned!(variant.ident.span()=>
+                                        ::metrique::CloseValue::close(#binding)
+                                    )
+                                }
+                                crate::OwnershipKind::ByRef => crate::close_value_expr(
+                                    quote::quote_spanned!(variant.ident.span()=> #binding),
+                                    variant.ident.span(),
+                                    crate::OwnershipKind::ByRef,
+                                ),
+                            }
                         } else {
                             quote::quote_spanned!(variant.ident.span()=> #binding)
                         };
@@ -441,7 +450,10 @@ fn generate_close_value_impl_for_enum(
                     .iter()
                     .map(|f| {
                         let ident: &Ts2 = &f.ident;
-                        f.close_field_expr(quote::quote_spanned! {f.span=> #ident })
+                        f.close_field_expr(
+                            quote::quote_spanned! {f.span=> #ident },
+                            root_attrs.ownership_kind(),
+                        )
                     })
                     .collect();
                 quote::quote_spanned!(variant.ident.span()=>

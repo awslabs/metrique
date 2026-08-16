@@ -31,7 +31,9 @@ impl metrique::CloseValue for &'_ RequestValue {
         }
         #[allow(deprecated)]
         RequestValueValue {
-            1: metrique::CloseValue::close(&__metrique_self_expr!().1),
+            1: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(&__metrique_self_expr!().1),
+            ),
         }
     }
 }

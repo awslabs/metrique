@@ -137,8 +137,7 @@ pub use namestyle::{
     label = "This type must implement `CloseValue`",
     message = "CloseValue is not implemented for {Self}",
     note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly.",
-    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`",
-    note = "If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`."
+    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`"
 )]
 pub trait CloseValue {
     /// The type produced by closing this value
@@ -146,6 +145,18 @@ pub trait CloseValue {
 
     /// Close the value
     fn close(self) -> Self::Closed;
+}
+
+/// Diagnostic bridge for `#[metrics(subfield)]` fields that only close by value.
+#[doc(hidden)]
+pub struct IfYouSeeThisUseSubfieldOwned<T>(pub T);
+
+impl<T: CloseValue> CloseValue for IfYouSeeThisUseSubfieldOwned<T> {
+    type Closed = T::Closed;
+
+    fn close(self) -> Self::Closed {
+        self.0.close()
+    }
 }
 
 mod private {
