@@ -35,6 +35,7 @@ pub use metrique_writer_core as core;
 
 pub use format::FormatExt;
 pub use metrique_writer_core::global::{AttachGlobalEntrySink, ShutdownFn};
+pub use metrique_writer_core::quantize;
 pub use metrique_writer_core::unit;
 pub use stream::EntryIoStreamExt;
 

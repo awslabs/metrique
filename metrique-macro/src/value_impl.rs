@@ -60,6 +60,7 @@ pub fn validate_value_impl_for_struct(
             sample_group,
             name,
             format: _,
+            quantize: _,
         } = &field.attrs.kind
         {
             if sample_group.is_some() {
@@ -134,6 +135,7 @@ pub(crate) fn generate_value_impl_for_struct(
                 sample_group: _,
                 name: _,
                 format,
+                quantize: _,
             } => {
                 let ident = &field.ident;
                 let value = format_value(

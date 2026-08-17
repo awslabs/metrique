@@ -26,6 +26,7 @@ pub mod descriptor;
 pub mod entry;
 pub mod format;
 pub mod global;
+pub mod quantize;
 pub mod sample;
 pub mod sink;
 pub mod stream;
