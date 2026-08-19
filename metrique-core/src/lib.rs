@@ -147,8 +147,21 @@ pub trait CloseValue {
     fn close(self) -> Self::Closed;
 }
 
-/// Diagnostic bridge for `#[metrics(subfield)]` fields that only close by value.
-#[doc(hidden)]
+/// A diagnostic marker for metric fields that must be closed by value.
+///
+/// `#[metrics(subfield)]` closes fields by reference. When a field implements
+/// [`CloseValue`] only by value, compiler errors mention this type to point to
+/// `#[metrics(subfield_owned)]` as the alternative.
+///
+/// For example, a subfield containing a `String` must close by value:
+///
+/// ```
+/// # use metrique::unit_of_work::metrics;
+/// #[metrics(subfield_owned)]
+/// struct ChildMetrics {
+///     field: String,
+/// }
+/// ```
 pub struct IfYouSeeThisUseSubfieldOwned<T>(pub T);
 
 impl<T: CloseValue> CloseValue for IfYouSeeThisUseSubfieldOwned<T> {
