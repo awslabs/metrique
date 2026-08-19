@@ -677,23 +677,15 @@ pub(crate) enum Tag {
 }
 
 impl Tag {
-    /// Get the tag field name, applying inflection if using inflectable variant
-    pub(crate) fn field_name(&self, root_attrs: &RootAttributes) -> String {
-        match self {
-            Tag::Inflectable { name, .. } => root_attrs
-                .prefix
-                .as_ref()
-                .map(|p| p.apply(name, root_attrs.rename_all))
-                .unwrap_or_else(|| root_attrs.rename_all.apply(name)),
-            Tag::Exact { name, .. } => name.clone(),
-        }
-    }
-
     /// Get the tag field name as rendered under a propagated name style.
     /// `name_exact` tags are style-invariant: the name is emitted verbatim.
     pub(crate) fn styled_name(&self, root_attrs: &RootAttributes, style: NameStyle) -> String {
         match self {
-            Tag::Inflectable { .. } => style.apply(&self.field_name(root_attrs)),
+            Tag::Inflectable { name, .. } => root_attrs
+                .prefix
+                .as_ref()
+                .map(|prefix| prefix.apply(name, style))
+                .unwrap_or_else(|| style.apply(name)),
             Tag::Exact { name, .. } => name.clone(),
         }
     }
