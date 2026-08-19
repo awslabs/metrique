@@ -27,6 +27,10 @@ pub use tokio_metrics_reporter::{
     AttachGlobalEntrySinkTokioMetricsExt, TokioRuntimeMetricsConfig, TokioRuntimeSnapshot,
 };
 
+#[cfg(feature = "tokio-metrics-bridge")]
+#[cfg_attr(docsrs, doc(cfg(feature = "tokio-metrics-bridge")))]
+pub mod future_metrics;
+
 #[cfg(feature = "sysinfo-bridge")]
 mod sysinfo_reporter;
 #[cfg(feature = "sysinfo-bridge")]
