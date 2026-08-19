@@ -36,6 +36,27 @@ fn tag_field_name_respects_inflection() {
     assert_eq!(entry.metrics["api_count"], 42);
 }
 
+#[metrics(
+    exact_prefix = "API_",
+    rename_all = "PascalCase",
+    tag(name = "operation_type", sample_group)
+)]
+enum WithExactPrefixInflectableTag {
+    DoThing { some_field: u64 },
+}
+
+#[test]
+fn exact_prefix_is_preserved_on_tag_names() {
+    let entry = test_metric(WithExactPrefixInflectableTag::DoThing { some_field: 1 });
+
+    assert_eq!(entry.values["API_OperationType"], "DoThing");
+    assert_eq!(entry.metrics["API_SomeField"], 1);
+
+    let entry = RootEntry::new(WithExactPrefixInflectableTag::DoThing { some_field: 1 }.close());
+    let sample_group: Vec<_> = entry.sample_group().collect();
+    assert_eq!(sample_group[0].0, "API_OperationType");
+}
+
 // Tag with variant name override
 #[metrics(tag(name = "op"))]
 enum CustomName {
