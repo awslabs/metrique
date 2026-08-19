@@ -219,23 +219,7 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// ```
 pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Option<(E, S)>,
-    promoted: Mutex<Option<Parent<PendingEmit<E, S>>>>,
-}
-
-// SAFETY: Mutex<T>: Sync requires T: Send, which would tighten this type's
-// Sync bound to E: Send + Sync. We preserve the pre-existing bound (Sync when
-// E: Sync, S: Sync) because the `promoted` field is only populated through
-// `flush_guard`/`force_flush_guard`, which live on an impl block bounded
-// E: Send + Sync + 'static, S: Send + Sync + 'static.
-//
-// INVARIANT: No method or trait impl outside that bounded impl block may
-// access `self.promoted` through `&self`. Any new `&self` accessor on the
-// unbounded impl blocks must carry Send + Sync bounds, or this impl becomes
-// unsound. `Drop` accesses `promoted` only via `get_mut(&mut self)`
-// (exclusive, no lock).
-unsafe impl<E: CloseEntry + Sync, S: EntrySink<RootMetric<E>> + Sync> Sync
-    for AppendAndCloseOnDrop<E, S>
-{
+    promoted: LazyPromotionSlot<Parent<PendingEmit<E, S>>>,
 }
 
 // E and S are stored inline, so auto-Unpin would be conditional on E: Unpin.
@@ -333,11 +317,12 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     /// }
     /// ```
     pub fn flush_guard(&self) -> FlushGuard {
-        let mut promoted = self.promoted.lock().unwrap_or_else(|e| e.into_inner());
-        let parent = promoted.get_or_insert_with(|| Parent::new(PendingEmit { pending: None }));
-        FlushGuard {
-            _drop_guard: parent.new_guard(),
-        }
+        self.promoted.with_init(
+            || Parent::new(PendingEmit { pending: None }),
+            |parent| FlushGuard {
+                _drop_guard: parent.new_guard(),
+            },
+        )
     }
 
     /// <div class="warning">
@@ -360,9 +345,10 @@ impl<E: CloseEntry + Send + Sync + 'static, S: EntrySink<RootMetric<E>> + Send +
     /// the metrics from the background task written after the timeout will not
     /// be emitted, but the rest the metric entry will be emitted.
     pub fn force_flush_guard(&self) -> ForceFlushGuard {
-        let mut promoted = self.promoted.lock().unwrap_or_else(|e| e.into_inner());
-        let parent = promoted.get_or_insert_with(|| Parent::new(PendingEmit { pending: None }));
-        ForceFlushGuard::new(parent.force_drop_guard())
+        self.promoted.with_init(
+            || Parent::new(PendingEmit { pending: None }),
+            |parent| ForceFlushGuard::new(parent.force_drop_guard()),
+        )
     }
 
     /// Return a cloneable handle to the contents. The handle allows for cloneable,
@@ -435,7 +421,7 @@ impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> DerefMut for AppendAndCloseOnDr
 impl<E: CloseEntry, S: EntrySink<RootMetric<E>>> Drop for AppendAndCloseOnDrop<E, S> {
     fn drop(&mut self) {
         if let Some(inner) = self.inner.take() {
-            let promoted = self.promoted.get_mut().unwrap_or_else(|e| e.into_inner());
+            let promoted = self.promoted.get_mut();
             match promoted {
                 Some(parent) => {
                     // CORRECTNESS: This transfers ownership of (E, S) into the
@@ -535,9 +521,55 @@ pub fn append_and_close<C: CloseEntry, S: EntrySink<RootMetric<C>>>(
 ) -> AppendAndCloseOnDrop<C, S> {
     AppendAndCloseOnDrop {
         inner: Some((base, sink)),
-        promoted: Mutex::new(None),
+        promoted: LazyPromotionSlot::new(),
     }
 }
+
+/// A `Mutex<Option<T>>` wrapper that is unconditionally `Sync` by
+/// constraining population to `T: Send` contexts. The slot can only be
+/// filled via `lock_and_init` (bounded on `T: Send`), while `get_mut`
+/// requires `&mut self` (exclusive access, no cross-thread concern).
+///
+/// This encodes the safety invariant structurally: a `!Send` `T` cannot
+/// enter the slot because `lock_and_init` won't compile without `T: Send`.
+struct LazyPromotionSlot<T> {
+    inner: Mutex<Option<T>>,
+}
+
+impl<T> LazyPromotionSlot<T> {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(None),
+        }
+    }
+
+    fn get_mut(&mut self) -> &mut Option<T> {
+        // Ignore poison: &mut self guarantees exclusivity, so the data is
+        // safe to access regardless of whether a prior lock holder panicked.
+        self.inner.get_mut().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl<T: Send> LazyPromotionSlot<T> {
+    /// Initialize the slot (if empty) and access its contents while the lock
+    /// is held. `init` creates the value on first call; `f` receives a
+    /// reference to the stored value and its return value is forwarded.
+    /// The closure pattern is required because the `MutexGuard` cannot outlive
+    /// the method — returning `&T` directly would dangle.
+    fn with_init<R>(&self, init: impl FnOnce() -> T, f: impl FnOnce(&T) -> R) -> R {
+        // Ignore poison: the only code under the lock is `get_or_insert_with`
+        // which cannot observe inconsistent state from a prior panic.
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let value = guard.get_or_insert_with(init);
+        f(value)
+    }
+}
+
+// SAFETY: The only &self method that accesses the Mutex contents is
+// `with_init`, which requires T: Send. For !Send T, the slot can never be
+// populated through &self — it remains None for the struct's lifetime.
+// `get_mut` requires &mut self (exclusive access, no Sync concern).
+unsafe impl<T> Sync for LazyPromotionSlot<T> {}
 
 struct PendingEmit<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     pending: Option<(E, S)>,

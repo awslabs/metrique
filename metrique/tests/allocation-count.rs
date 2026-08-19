@@ -46,8 +46,16 @@ fn allocation_counts() {
     // Warm up: first Mutex::lock() allocates on some platforms (e.g. macOS).
     // Run each path once so subsequent measurements are stable.
     drop(TestMetrics::default().append_on_drop(DevNullSink::new()));
-    drop(TestMetrics::default().append_on_drop(DevNullSink::new()).flush_guard());
-    drop(TestMetrics::default().append_on_drop(DevNullSink::new()).handle());
+    drop(
+        TestMetrics::default()
+            .append_on_drop(DevNullSink::new())
+            .flush_guard(),
+    );
+    drop(
+        TestMetrics::default()
+            .append_on_drop(DevNullSink::new())
+            .handle(),
+    );
 
     // --- Common path: construct + mutate + drop = 0 allocations ---
     reset_count();
