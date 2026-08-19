@@ -525,13 +525,10 @@ pub fn append_and_close<C: CloseEntry, S: EntrySink<RootMetric<C>>>(
     }
 }
 
-/// A `Mutex<Option<T>>` wrapper that is unconditionally `Sync` by
-/// constraining population to `T: Send` contexts. The slot can only be
-/// filled via `lock_and_init` (bounded on `T: Send`), while `get_mut`
-/// requires `&mut self` (exclusive access, no cross-thread concern).
+/// A `Mutex<Option<T>>` wrapper that is unconditionally `Sync`.
 ///
-/// This encodes the safety invariant structurally: a `!Send` `T` cannot
-/// enter the slot because `lock_and_init` won't compile without `T: Send`.
+/// INVARIANT: Any `&self` method that accesses `T` must require `T: Send` in
+/// order for this type  to soundly implement `Sync`.
 struct LazyPromotionSlot<T> {
     inner: Mutex<Option<T>>,
 }
@@ -565,10 +562,10 @@ impl<T: Send> LazyPromotionSlot<T> {
     }
 }
 
-// SAFETY: The only &self method that accesses the Mutex contents is
-// `with_init`, which requires T: Send. For !Send T, the slot can never be
-// populated through &self — it remains None for the struct's lifetime.
-// `get_mut` requires &mut self (exclusive access, no Sync concern).
+// SAFETY: Any `&self` method that accesses `T` requires `T: Send` (currently
+// only `with_init`). `get_mut` requires `&mut self` (exclusive access, not a
+// Sync concern). Therefore `&LazyPromotionSlot<T>` cannot provide cross-thread
+// access to a `!Send` T.
 unsafe impl<T> Sync for LazyPromotionSlot<T> {}
 
 struct PendingEmit<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
