@@ -291,6 +291,14 @@ pub use shuttle::thread;
 /// `macro_rules!` can't synthesize a new identifier by concatenation on
 /// stable Rust, so `pct`/`determinism` stay fixed literal names,
 /// disambiguated by the enclosing module instead.
+///
+/// Using this macro on a test body that creates real shared state (e.g. by
+/// invoking `global_entry_sink!` inside it) rather than fresh local state
+/// per call (e.g. `AttachHandle::new`) will corrupt Shuttle's own internal
+/// bookkeeping: `pct` and `determinism` run concurrently by default, so two
+/// Shuttle scheduler sessions end up touching the same static at once. This
+/// can be avoided by writing `pct`/`determinism` by hand instead,
+/// serialized behind a plain `std::sync::Mutex`.
 #[macro_export]
 macro_rules! shuttle_test {
     (
