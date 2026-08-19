@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Cfg-gated concurrency primitives used by [`crate::global`] (std vs. shuttle).
+//! Cfg-gated concurrency primitives used by crate internals and macro-generated code.
 //!
 //! Gated on `feature = "_shuttle"` too, not `cfg(shuttle)` alone: `--cfg
 //! shuttle` is set process-wide via RUSTFLAGS, so it also reaches builds of

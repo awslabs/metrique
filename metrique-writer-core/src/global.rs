@@ -268,13 +268,19 @@ impl ShutdownFn {
     }
 }
 
-/// Runs the mandatory sink-detach function even if a subscriber shutdown function panics.
-struct DetachOnDrop(Option<ShutdownFn>);
+/// Runs a shutdown function when dropped.
+struct ShutdownOnDrop(Option<ShutdownFn>);
 
-impl Drop for DetachOnDrop {
+impl ShutdownOnDrop {
+    fn new(shutdown: ShutdownFn) -> Self {
+        Self(Some(shutdown))
+    }
+}
+
+impl Drop for ShutdownOnDrop {
     fn drop(&mut self) {
-        if let Some(detach) = self.0.take() {
-            detach.call();
+        if let Some(shutdown) = self.0.take() {
+            shutdown.call();
         }
     }
 }
@@ -285,11 +291,23 @@ impl Drop for DetachOnDrop {
 /// use [`AttachGlobalEntrySink::register_shutdown_fn`] instead.
 ///
 /// `None` means the registry has been closed (drained).
-pub struct ShutdownRegistry(crate::shuttle_primitives::Mutex<Option<Vec<ShutdownFn>>>);
+pub struct ShutdownRegistry {
+    functions: crate::primitives::Mutex<Option<ShutdownFunctions>>,
+}
+
+struct ShutdownFunctions {
+    detach: ShutdownFn,
+    subscribers: Vec<ShutdownFn>,
+}
 
 impl ShutdownRegistry {
-    fn new(initial: ShutdownFn) -> Self {
-        Self(crate::shuttle_primitives::Mutex::new(Some(vec![initial])))
+    fn new(detach: ShutdownFn) -> Self {
+        Self {
+            functions: crate::primitives::Mutex::new(Some(ShutdownFunctions {
+                detach,
+                subscribers: Vec::new(),
+            })),
+        }
     }
 
     /// Add a shutdown function. Functions run in LIFO order when the
@@ -299,19 +317,19 @@ impl ShutdownRegistry {
     /// concurrent (or prior) [`ShutdownRegistry::drain`].
     #[doc(hidden)]
     pub fn push(&self, f: ShutdownFn) -> bool {
-        match self.0.lock().unwrap().as_mut() {
-            Some(fns) => {
-                fns.push(f);
+        match self.functions.lock().unwrap().as_mut() {
+            Some(functions) => {
+                functions.subscribers.push(f);
                 true
             }
             None => false,
         }
     }
 
-    /// Close the registry and return whatever functions were registered before closure, in
-    /// registration order. Whichever of `push` or `drain` acquires the lock first wins outright.
-    fn drain(&self) -> Vec<ShutdownFn> {
-        self.0.lock().unwrap().take().unwrap_or_default()
+    /// Close the registry and return the detach function and subscriber functions registered
+    /// before closure. Whichever of `push` or `drain` acquires the lock first wins outright.
+    fn drain(&self) -> Option<ShutdownFunctions> {
+        self.functions.lock().unwrap().take()
     }
 }
 
@@ -387,16 +405,28 @@ impl Drop for TokioRuntimeTestSinkGuard {
 
 impl Drop for AttachHandle {
     fn drop(&mut self) {
-        if let Some(registry) = self.shutdown_registry.take() {
-            let mut shutdown_fns = registry.drain().into_iter();
-            let _detach = DetachOnDrop(shutdown_fns.next());
+        let Some(registry) = self.shutdown_registry.take() else {
+            return;
+        };
+        let Some(ShutdownFunctions {
+            detach,
+            subscribers,
+        }) = registry.drain()
+        else {
+            return;
+        };
 
-            // Subscriber shutdown functions are not panic-isolated. The detach guard still
-            // runs during unwinding so a panicking subscriber cannot wedge the global sink.
-            for f in shutdown_fns.rev() {
-                f.call();
-            }
-        }
+        let _detach = ShutdownOnDrop::new(detach);
+
+        // Arm every guard before running any subscriber. Owned slices drop front-to-back and
+        // continue dropping remaining elements during unwinding, preserving LIFO shutdown.
+        let subscribers = subscribers
+            .into_iter()
+            .rev()
+            .map(ShutdownOnDrop::new)
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        drop(subscribers);
     }
 }
 
@@ -425,20 +455,11 @@ impl AttachHandle {
     }
 
     #[doc(hidden)]
-    pub fn shutdown_registry(&self) -> Arc<ShutdownRegistry> {
+    pub fn shutdown_registry_weak(&self) -> Weak<ShutdownRegistry> {
         self.shutdown_registry
             .as_ref()
-            .expect("AttachHandle registry is unavailable after forget")
-            .clone()
-    }
-
-    #[doc(hidden)]
-    pub fn shutdown_registry_weak(&self) -> Weak<ShutdownRegistry> {
-        Arc::downgrade(
-            self.shutdown_registry
-                .as_ref()
-                .expect("AttachHandle registry is unavailable after forget"),
-        )
+            .map(Arc::downgrade)
+            .unwrap_or_default()
     }
 }
 
@@ -531,8 +552,8 @@ macro_rules! global_entry_sink {
         pub struct $name;
 
         const _: () = {
-            use ::std::{sync::Arc, boxed::Box, option::Option::{self, Some, None}, result::Result, any::Any, marker::{Send, Sync}};
-            use $crate::{Entry, BoxEntry, BoxEntrySink, EntrySink, global::{AttachGlobalEntrySink, AttachHandle, ShutdownFn, ShutdownRegistry}, shuttle_primitives::RwLock};
+            use ::std::{sync::Weak, boxed::Box, option::Option::{self, Some, None}, result::Result, any::Any, marker::{Send, Sync}};
+            use $crate::{Entry, BoxEntry, BoxEntrySink, EntrySink, global::{AttachGlobalEntrySink, AttachHandle, ShutdownFn, ShutdownRegistry}, primitives::RwLock};
 
             const NAME: &'static str = ::std::stringify!($name);
 
@@ -541,13 +562,13 @@ macro_rules! global_entry_sink {
             // one half of "attached" without the other.
             struct AttachedState {
                 sink: (BoxEntrySink, Box<dyn Send + Sync + 'static>),
-                shutdown_registry: Arc<ShutdownRegistry>,
+                shutdown_registry: Weak<ShutdownRegistry>,
             }
             static ATTACHED: RwLock<Option<AttachedState>> = RwLock::new(None);
 
             $crate::__test_util! {
                 use ::std::cell::RefCell;
-                use ::std::sync::Mutex;
+                use ::std::sync::{Arc, Mutex};
                 use ::std::collections::HashMap;
 
                 thread_local! {
@@ -609,7 +630,7 @@ macro_rules! global_entry_sink {
                     });
                     *write = Some(AttachedState {
                         sink: (sink, Box::new(handle)),
-                        shutdown_registry: attach_handle.shutdown_registry(),
+                        shutdown_registry: attach_handle.shutdown_registry_weak(),
                     });
                     drop(write);
 
@@ -648,7 +669,9 @@ macro_rules! global_entry_sink {
                 fn register_shutdown_fn(f: ShutdownFn) {
                     let read = ATTACHED.read().unwrap();
                     let attached = read.as_ref().expect("No sink attached — call attach() before subscribing");
-                    if !attached.shutdown_registry.push(f) {
+                    let registry = attached.shutdown_registry.upgrade()
+                        .expect("AttachHandle was dropped or forgotten — cannot register shutdown functions");
+                    if !registry.push(f) {
                         panic!("AttachHandle was dropped or forgotten — cannot register shutdown functions");
                     }
                 }
@@ -1434,7 +1457,10 @@ mod shutdown_registry_tests {
     #[test]
     fn drop_does_not_panic_with_outstanding_strong_ref() {
         let handle = super::AttachHandle::new(|| {});
-        let extra_strong_ref = handle.shutdown_registry();
+        let extra_strong_ref = handle
+            .shutdown_registry_weak()
+            .upgrade()
+            .expect("new handle must own its shutdown registry");
         drop(handle); // must not panic even though `extra_strong_ref` is still alive
         drop(extra_strong_ref);
     }
@@ -1445,8 +1471,11 @@ mod shutdown_registry_tests {
         let ran = Arc::new(AtomicBool::new(false));
         let registry = super::ShutdownRegistry::new(super::ShutdownFn::new(|| {}));
 
-        let drained = registry.drain();
-        assert_eq!(drained.len(), 1, "initial fn should be drained");
+        let drained = registry.drain().expect("registry should still be open");
+        assert!(
+            drained.subscribers.is_empty(),
+            "registry should initially contain no subscribers"
+        );
 
         let ran2 = ran.clone();
         let accepted = registry.push(super::ShutdownFn::new(move || {
@@ -1455,7 +1484,7 @@ mod shutdown_registry_tests {
 
         assert!(!accepted, "push after drain has started must be rejected");
         assert!(
-            registry.drain().is_empty(),
+            registry.drain().is_none(),
             "a rejected push must never be enqueued"
         );
         assert!(!ran.load(Ordering::SeqCst));
@@ -1498,18 +1527,30 @@ mod shutdown_registry_tests {
     }
 
     #[test]
-    fn sink_still_detaches_after_a_shutdown_fn_panics() {
+    fn remaining_shutdown_fns_run_and_sink_detaches_after_a_shutdown_fn_panics() {
         metrique_writer::sink::global_entry_sink! { Sink }
         let TestEntrySink { sink, .. } = test_entry_sink();
+        let order = Arc::new(Mutex::new(Vec::new()));
 
         let handle = Sink::attach((sink, ()));
-        Sink::register_shutdown_fn(ShutdownFn::new(|| {
+        let order1 = order.clone();
+        Sink::register_shutdown_fn(ShutdownFn::new(move || {
+            order1.lock().unwrap().push(1);
+        }));
+        let order2 = order.clone();
+        Sink::register_shutdown_fn(ShutdownFn::new(move || {
+            order2.lock().unwrap().push(2);
             panic!("boom");
+        }));
+        let order3 = order.clone();
+        Sink::register_shutdown_fn(ShutdownFn::new(move || {
+            order3.lock().unwrap().push(3);
         }));
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(handle)));
 
         assert!(result.is_err(), "the subscriber panic must propagate");
+        assert_eq!(*order.lock().unwrap(), vec![3, 2, 1]);
         assert!(
             Sink::try_sink().is_none(),
             "sink must be detached even though a shutdown fn panicked"
@@ -1546,7 +1587,10 @@ mod shuttle_tests {
             let ran = Arc::new(AtomicUsize::new(0));
             let rejected = Arc::new(AtomicUsize::new(0));
             let handle = AttachHandle::new(|| {});
-            let registry = handle.shutdown_registry();
+            let registry = handle
+                .shutdown_registry_weak()
+                .upgrade()
+                .expect("new handle must own its shutdown registry");
 
             let registrars: Vec<_> = (0..REGISTRARS)
                 .map(|_| {
@@ -1583,7 +1627,10 @@ mod shuttle_tests {
         fn concurrent_register_and_forget() {
             let ran = Arc::new(AtomicUsize::new(0));
             let handle = AttachHandle::new(|| {});
-            let registry = handle.shutdown_registry();
+            let registry = handle
+                .shutdown_registry_weak()
+                .upgrade()
+                .expect("new handle must own its shutdown registry");
 
             let ran2 = ran.clone();
             let registrar = shuttle::thread::spawn(move || {
@@ -1614,7 +1661,10 @@ mod shuttle_tests {
 
             let ran = Arc::new(AtomicUsize::new(0));
             let handle = AttachHandle::new(|| {});
-            let registry = handle.shutdown_registry();
+            let registry = handle
+                .shutdown_registry_weak()
+                .upgrade()
+                .expect("new handle must own its shutdown registry");
 
             let registrars: Vec<_> = (0..REGISTRARS)
                 .map(|_| {
@@ -1650,7 +1700,10 @@ mod shuttle_tests {
             let push_order = Arc::new(Mutex::new(Vec::new()));
             let run_order = Arc::new(Mutex::new(Vec::new()));
             let handle = AttachHandle::new(|| {});
-            let registry = handle.shutdown_registry();
+            let registry = handle
+                .shutdown_registry_weak()
+                .upgrade()
+                .expect("new handle must own its shutdown registry");
 
             let registrars: Vec<_> = (0..REGISTRARS)
                 .map(|i| {

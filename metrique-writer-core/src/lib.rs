@@ -54,4 +54,4 @@ pub mod shuttle_test_support;
 /// code. Public only so that expansion works from downstream crates; not
 /// meant to be used directly.
 #[doc(hidden)]
-pub mod shuttle_primitives;
+pub mod primitives;
