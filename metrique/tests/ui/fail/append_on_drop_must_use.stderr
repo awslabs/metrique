@@ -1,0 +1,19 @@
+error: unused `AppendAndCloseOnDrop` that must be used
+  --> tests/ui/fail/append_on_drop_must_use.rs:13:5
+   |
+13 | /     MyMetrics {
+14 | |         operation: "example",
+15 | |     }
+16 | |     .append_on_drop(ServiceMetrics::sink());
+   | |___________________________________________^
+   |
+   = note: guard will emit immediately if not bound to a variable
+note: the lint level is defined here
+  --> tests/ui/fail/append_on_drop_must_use.rs:1:9
+   |
+ 1 | #![deny(unused_must_use)]
+   |         ^^^^^^^^^^^^^^^
+help: use `let _ = ...` to ignore the resulting value
+   |
+13 |     let _ = MyMetrics {
+   |     +++++++
