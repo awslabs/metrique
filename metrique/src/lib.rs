@@ -219,6 +219,7 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
+#[must_use = "use `drop(metric.append_on_drop(sink))` to emit immediately, or `let _metric = metric.append_on_drop(sink);` to emit at the end of the current scope"]
 pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Option<(E, S)>,
     promoted: LazyPromotionSlot<Parent<PendingEmit<E, S>>>,

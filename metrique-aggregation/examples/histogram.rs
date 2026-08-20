@@ -32,7 +32,7 @@ fn main() {
     metrics.size.add_value(2048u32);
     metrics.size.add_value(2048u32);
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     println!("{:?}", entries[0].metrics);
