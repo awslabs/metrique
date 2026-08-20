@@ -34,7 +34,6 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 #[derive(Debug)]
 enum MacroError {
     Syn(syn::Error),
-    Syn2(syn2::Error),
     Darling(darling::Error),
 }
 
@@ -43,12 +42,6 @@ type MacroResult<T> = std::result::Result<T, MacroError>;
 impl From<syn::Error> for MacroError {
     fn from(error: syn::Error) -> Self {
         Self::Syn(error)
-    }
-}
-
-impl From<syn2::Error> for MacroError {
-    fn from(error: syn2::Error) -> Self {
-        Self::Syn2(error)
     }
 }
 
@@ -62,7 +55,6 @@ impl std::fmt::Display for MacroError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Syn(error) => error.fmt(formatter),
-            Self::Syn2(error) => error.fmt(formatter),
             Self::Darling(error) => error.fmt(formatter),
         }
     }
@@ -72,7 +64,6 @@ impl MacroError {
     fn into_compile_errors(self) -> Ts2 {
         match self {
             Self::Syn(error) => error.into_compile_error(),
-            Self::Syn2(error) => error.into_compile_error(),
             Self::Darling(error) => error.write_errors(),
         }
     }
@@ -80,46 +71,9 @@ impl MacroError {
     fn into_darling(self) -> darling::Error {
         match self {
             Self::Syn(error) => darling::Error::custom(error.to_string()).with_span(&error.span()),
-            Self::Syn2(error) => darling::Error::from(error),
             Self::Darling(error) => error,
         }
     }
-}
-
-fn metrics_attrs_to_syn2(attrs: &[syn::Attribute]) -> syn::Result<Vec<syn2::Attribute>> {
-    use syn2::parse::Parser as _;
-
-    let attrs = attrs
-        .iter()
-        .filter(|attribute| attribute.path().is_ident("metrics"));
-    syn2::Attribute::parse_outer
-        .parse2(quote! { #(#attrs)* })
-        .map_err(|error| syn::Error::new(error.span(), error.to_string()))
-}
-
-fn field_to_syn2(field: &syn::Field) -> syn::Result<syn2::Field> {
-    Ok(syn2::Field {
-        attrs: metrics_attrs_to_syn2(&field.attrs)?,
-        vis: syn2::Visibility::Inherited,
-        mutability: syn2::FieldMutability::None,
-        ident: field.ident.clone(),
-        colon_token: field.ident.as_ref().map(|_| Default::default()),
-        ty: syn2::parse_quote!(()),
-    })
-}
-
-fn variant_to_syn2(variant: &syn::Variant) -> syn::Result<syn2::Variant> {
-    Ok(syn2::Variant {
-        attrs: metrics_attrs_to_syn2(&variant.attrs)?,
-        ident: variant.ident.clone(),
-        fields: syn2::Fields::Unit,
-        discriminant: None,
-    })
-}
-
-fn path_to_syn3(path: &syn2::Path) -> darling::Result<syn::Path> {
-    syn::parse2(path.to_token_stream())
-        .map_err(|error| darling::Error::custom(error.to_string()).with_span(path))
 }
 
 /// Transforms a struct or enum into a wide event (metric record).
@@ -890,12 +844,12 @@ impl QuantizeAttr {
 }
 
 impl FromMeta for QuantizeAttr {
-    fn from_meta(item: &syn2::Meta) -> darling::Result<Self> {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
         // Parsed by hand rather than via darling's nested derive: a custom `FromMeta` using
         // `from_list` is silently dropped when it sits alongside darling `Flag` fields in the
         // same attribute, which is the same limitation `FlagsList` works around above.
         let list = match item {
-            syn2::Meta::List(list) => list,
+            syn::Meta::List(list) => list,
             _ => {
                 return Err(darling::Error::custom(
                     "expected quantize(bits = N) or quantize(bits = N, rounding = floor|ceil|midpoint)",
@@ -904,8 +858,8 @@ impl FromMeta for QuantizeAttr {
             }
         };
 
-        let parsed: syn2::punctuated::Punctuated<syn2::Meta, syn2::Token![,]> = list
-            .parse_args_with(syn2::punctuated::Punctuated::parse_terminated)
+        let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
+            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
             .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
 
         let mut bits: Option<(u8, Span)> = None;
@@ -913,7 +867,7 @@ impl FromMeta for QuantizeAttr {
 
         for meta in &parsed {
             let name_value = match meta {
-                syn2::Meta::NameValue(name_value) => name_value,
+                syn::Meta::NameValue(name_value) => name_value,
                 _ => {
                     return Err(darling::Error::custom(
                         "expected `bits = N` or `rounding = floor|ceil|midpoint`",
@@ -962,10 +916,10 @@ impl FromMeta for QuantizeAttr {
 }
 
 /// Parse and range-check `bits = N`.
-fn parse_quantize_bits(value: &syn2::Expr) -> darling::Result<(u8, Span)> {
+fn parse_quantize_bits(value: &syn::Expr) -> darling::Result<(u8, Span)> {
     let lit = match value {
-        syn2::Expr::Lit(syn2::ExprLit {
-            lit: syn2::Lit::Int(lit),
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(lit),
             ..
         }) => lit,
         _ => {
@@ -994,9 +948,9 @@ fn parse_quantize_bits(value: &syn2::Expr) -> darling::Result<(u8, Span)> {
 }
 
 /// Parse `rounding = floor|ceil|midpoint`.
-fn parse_quantize_rounding(value: &syn2::Expr) -> darling::Result<QuantizeRounding> {
+fn parse_quantize_rounding(value: &syn::Expr) -> darling::Result<QuantizeRounding> {
     let ident = match value {
-        syn2::Expr::Path(path) => path.path.get_ident().cloned().ok_or_else(|| {
+        syn::Expr::Path(path) => path.path.get_ident().cloned().ok_or_else(|| {
             darling::Error::custom("expected floor, ceil, or midpoint").with_span(value)
         })?,
         _ => {
@@ -1018,10 +972,10 @@ fn parse_quantize_rounding(value: &syn2::Expr) -> darling::Result<QuantizeRoundi
 }
 
 /// Build the "use bits = N instead" half of the `digits = N` diagnostic.
-fn parse_quantize_digits_suggestion(value: &syn2::Expr) -> String {
+fn parse_quantize_digits_suggestion(value: &syn::Expr) -> String {
     let digits = match value {
-        syn2::Expr::Lit(syn2::ExprLit {
-            lit: syn2::Lit::Int(lit),
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(lit),
             ..
         }) => lit.base10_parse::<u32>().ok(),
         _ => None,
@@ -1041,7 +995,7 @@ fn parse_quantize_digits_suggestion(value: &syn2::Expr) -> String {
 /// A parsed `flags(Path)` or `flags(skip(Path))` attribute.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldTagAttr {
-    pub(crate) path: syn2::Path,
+    pub(crate) path: syn::Path,
     pub(crate) skip: bool,
     pub(crate) span: Span,
 }
@@ -1069,18 +1023,24 @@ impl FromMeta for FlagsList {
                     )
                     .with_span(lit));
                 }
+                darling::ast::NestedMeta::NameValueInvalidExpr(meta) => {
+                    return Err(darling::Error::custom(
+                        "expected a path or skip(Path) in flags(...)",
+                    )
+                    .with_span(&meta.path));
+                }
             }
         }
         Ok(FlagsList(flags))
     }
 
-    fn from_meta(item: &syn2::Meta) -> darling::Result<Self> {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
         // Handle Meta::List by parsing tokens directly as comma-separated items.
         // This bypasses darling's NestedMeta parsing which fails alongside Flag fields.
         match item {
-            syn2::Meta::List(list) => {
-                let parsed: syn2::punctuated::Punctuated<syn2::Meta, syn2::Token![,]> = list
-                    .parse_args_with(syn2::punctuated::Punctuated::parse_terminated)
+            syn::Meta::List(list) => {
+                let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
+                    .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
                     .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
                 let mut flags = Vec::new();
                 for meta in &parsed {
@@ -1096,15 +1056,15 @@ impl FromMeta for FlagsList {
     }
 }
 
-fn parse_single_flag(meta: &syn2::Meta) -> darling::Result<FieldTagAttr> {
+fn parse_single_flag(meta: &syn::Meta) -> darling::Result<FieldTagAttr> {
     match meta {
-        syn2::Meta::Path(path) => Ok(FieldTagAttr {
+        syn::Meta::Path(path) => Ok(FieldTagAttr {
             path: path.clone(),
             skip: false,
             span: path.span(),
         }),
-        syn2::Meta::List(list) if list.path.is_ident("skip") => {
-            let inner: syn2::Path = syn2::parse2(list.tokens.clone())
+        syn::Meta::List(list) if list.path.is_ident("skip") => {
+            let inner: syn::Path = syn::parse2(list.tokens.clone())
                 .map_err(|_| darling::Error::custom("expected skip(Path)").with_span(list))?;
             Ok(FieldTagAttr {
                 path: inner,
@@ -1311,10 +1271,10 @@ struct RawMetricsFieldAttrs {
     ignore: Flag,
 
     #[darling(default)]
-    unit: Option<SpannedKv<syn2::Path>>,
+    unit: Option<SpannedKv<syn::Path>>,
 
     #[darling(default)]
-    format: Option<SpannedKv<syn2::Path>>,
+    format: Option<SpannedKv<syn::Path>>,
 
     #[darling(default)]
     quantize: Option<QuantizeAttr>,
@@ -1345,10 +1305,10 @@ pub(crate) struct SpannedKv<T> {
 }
 
 impl<T: FromMeta> FromMeta for SpannedKv<T> {
-    fn from_meta(item: &syn2::Meta) -> darling::Result<Self> {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
         let value = T::from_meta(item).map_err(|e| e.with_span(item))?;
         let (key_span, value_span) = match item {
-            syn2::Meta::NameValue(nv) => (nv.path.span(), nv.value.span()),
+            syn::Meta::NameValue(nv) => (nv.path.span(), nv.value.span()),
             _ => return Err(darling::Error::custom("expected a key value pair").with_span(item)),
         };
 
@@ -1373,9 +1333,8 @@ pub(crate) fn parse_metric_fields(
             None => (quote! { #i }, None, field.ty.span()),
         };
 
-        let field2 = field_to_syn2(field)?;
         let attrs = match errors
-            .handle(RawMetricsFieldAttrs::from_field(&field2).and_then(|attr| attr.validate()))
+            .handle(RawMetricsFieldAttrs::from_field(field).and_then(|attr| attr.validate()))
         {
             Some(attrs) => attrs,
             None => {
@@ -1576,8 +1535,8 @@ impl RawMetricsFieldAttrs {
                 None => MetricsFieldKind::Field {
                     sample_group,
                     name: name.cloned(),
-                    unit: unit.map(path_to_syn3).transpose()?,
-                    format: format.map(path_to_syn3).transpose()?,
+                    unit: unit.cloned(),
+                    format: format.cloned(),
                     quantize,
                 },
             },
@@ -2203,7 +2162,7 @@ mod tests {
     // This allows us to test the macro without needing to use the proc_macro API directly
     fn metrics_impl(input: Ts2, attrs: Ts2) -> Ts2 {
         let input = syn::parse2(input).unwrap();
-        let meta: syn2::Meta = syn2::parse2(attrs).unwrap();
+        let meta: syn::Meta = syn::parse2(attrs).unwrap();
         let root_attrs = RawRootAttributes::from_meta(&meta)
             .unwrap()
             .validate()
@@ -2215,7 +2174,7 @@ mod tests {
         let output = metrics_impl(input, attrs);
 
         // Parse the output back into a syn::File for pretty printing
-        match syn2::parse2::<syn2::File>(output.clone()) {
+        match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => {
                 // If parsing fails, print the error and use the raw string output
@@ -2227,7 +2186,7 @@ mod tests {
     #[test]
     fn test_darling_root_attrs() {
         use darling::FromMeta;
-        RawRootAttributes::from_meta(&syn2::parse_quote! {
+        RawRootAttributes::from_meta(&syn::parse_quote! {
             metrics(
                 rename_all = "PascalCase",
                 emf::dimension_sets = [["bar"]]
@@ -2239,7 +2198,7 @@ mod tests {
     }
 
     #[test]
-    fn test_metrics_preserves_field_defaults_across_syn2_boundary() {
+    fn test_metrics_preserves_field_defaults() {
         let input: syn::DeriveInput = syn::parse2(quote! {
             struct Defaults {
                 #[metrics(name = "renamed")]
@@ -2470,7 +2429,7 @@ mod tests {
         };
 
         let input = syn::parse2(input).unwrap();
-        let root_attrs = RawRootAttributes::from_meta(&syn2::parse_quote!(metrics()))
+        let root_attrs = RawRootAttributes::from_meta(&syn::parse_quote!(metrics()))
             .unwrap()
             .validate()
             .unwrap();

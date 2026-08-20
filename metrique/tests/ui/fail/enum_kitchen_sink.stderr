@@ -67,7 +67,7 @@ error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entr
 error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]
   --> tests/ui/fail/enum_kitchen_sink.rs:75:13
    |
-75 |     Variant(#[metrics(timestamp)] metrique::Timestamp),
+75 |     Variant(#[metrics(timestamp)] metrique::timers::Timestamp),
    |             ^
 
 error: Cannot combine `flatten` with `unit`
@@ -75,24 +75,6 @@ error: Cannot combine `flatten` with `unit`
    |
 81 |     Variant(#[metrics(flatten, unit = metrique::writer::unit::Millisecond)] u32),
    |                                ^^^^
-
-error[E0412]: cannot find type `Timestamp` in crate `metrique`
-  --> tests/ui/fail/enum_kitchen_sink.rs:75:45
-   |
-75 |     Variant(#[metrics(timestamp)] metrique::Timestamp),
-   |                                             ^^^^^^^^^ not found in `metrique`
-   |
-help: consider importing one of these structs
-   |
- 4 + use jiff::Timestamp;
-   |
- 4 + use metrique::timers::Timestamp;
-   |
-help: if you import `Timestamp`, refer to it directly
-   |
-75 -     Variant(#[metrics(timestamp)] metrique::Timestamp),
-75 +     Variant(#[metrics(timestamp)] Timestamp),
-   |
 
 error[E0277]: CloseValue is not implemented for &TimestampOnClose
   --> tests/ui/fail/enum_kitchen_sink.rs:91:5

@@ -126,7 +126,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             .filter(|attr| attr.path().is_ident("metrics"))
             .cloned()
             .collect();
-        let has_unit = crate::RawMetricsFieldAttrs::from_field(&crate::field_to_syn2(field)?)
+        let has_unit = crate::RawMetricsFieldAttrs::from_field(field)
             .ok()
             .and_then(|attrs| attrs.unit)
             .is_some();
@@ -530,7 +530,7 @@ mod tests {
 
     fn aggregate_impl_string(input: Ts2) -> String {
         let output = aggregate_impl(input, false);
-        match syn2::parse2::<syn2::File>(output.clone()) {
+        match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         }
@@ -603,7 +603,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, true);
-        let parsed_file = match syn2::parse2::<syn2::File>(output.clone()) {
+        let parsed_file = match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };
@@ -622,7 +622,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, false);
-        let parsed_file = match syn2::parse2::<syn2::File>(output.clone()) {
+        let parsed_file = match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };

@@ -17,8 +17,7 @@ quote = { workspace = true }
 darling = { workspace = true }
 str_inflector = { workspace = true }
 synstructure = { workspace = true }
-# darling and synstructure expose syn 2 AST types as part of their public APIs.
-syn = { version = "2.0" }
+syn = { workspace = true }
 
 [package.metadata.docs.rs]
 all-features = true

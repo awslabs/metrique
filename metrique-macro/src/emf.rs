@@ -4,7 +4,7 @@
 use darling::FromMeta;
 use proc_macro2::TokenStream as Ts2;
 use quote::{ToTokens, quote};
-use syn2::{Expr, spanned::Spanned};
+use syn::{Expr, spanned::Spanned};
 
 #[derive(Debug, Clone)]
 pub(crate) struct DimensionSet {
@@ -12,9 +12,9 @@ pub(crate) struct DimensionSet {
 }
 
 impl DimensionSet {
-    fn from_expr(expr: &syn2::Expr) -> darling::Result<Self> {
+    fn from_expr(expr: &syn::Expr) -> darling::Result<Self> {
         match expr {
-            syn2::Expr::Array(array) => Ok(DimensionSet {
+            syn::Expr::Array(array) => Ok(DimensionSet {
                 dimensions: array.elems.iter().cloned().collect(),
             }),
             _other => Err(darling::Error::custom(
@@ -31,9 +31,9 @@ pub(crate) struct DimensionSets {
 }
 
 impl FromMeta for DimensionSets {
-    fn from_expr(expr: &syn2::Expr) -> darling::Result<Self> {
+    fn from_expr(expr: &syn::Expr) -> darling::Result<Self> {
         match expr {
-            syn2::Expr::Array(array) => {
+            syn::Expr::Array(array) => {
                 let mut accum = darling::Error::accumulator();
                 let sets = array
                     .elems

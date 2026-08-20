@@ -105,8 +105,7 @@ fn parse_variant_data(fields: &syn::Fields) -> MacroResult<Option<VariantData>> 
                 .unnamed
                 .iter()
                 .map(|field| -> MacroResult<TupleData> {
-                    let field2 = crate::field_to_syn2(field)?;
-                    let raw_attrs = RawMetricsFieldAttrs::from_field(&field2)?;
+                    let raw_attrs = RawMetricsFieldAttrs::from_field(field)?;
                     let attrs = raw_attrs.validate()?;
 
                     match &attrs.kind {
@@ -203,8 +202,7 @@ pub(crate) fn parse_enum_variants(
         };
 
         let attrs = if mode != VariantMode::SkipAttributeParsing {
-            let variant2 = crate::variant_to_syn2(variant)?;
-            match errors.handle(RawMetricsVariantAttrs::from_variant(&variant2)) {
+            match errors.handle(RawMetricsVariantAttrs::from_variant(variant)) {
                 Some(attrs) => attrs.validate(mode)?,
                 None => {
                     continue;
