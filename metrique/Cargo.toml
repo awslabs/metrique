@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.29"
+version = "0.1.30"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating wide event metrics"
@@ -9,10 +9,13 @@ readme = "README.md"
 rust-version = "1.91" # See .github/workflows/ci.yml
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)', 'cfg(shuttle)'] }
 
 [features]
 default = ["service-metrics"]
+# Runs keep_alive's Guard/DropAll race on shuttle-native primitives instead
+# of std, so Shuttle's scheduler can explore its interleavings. Test-only.
+_shuttle = ["dep:shuttle", "metrique-writer-core/_shuttle"]
 # re-exports metrique-writer-format-emf as metrique::emf
 emf = ["dep:metrique-writer-format-emf"]
 # re-exports metrique-writer-format-json as metrique::json
@@ -48,6 +51,7 @@ ryu = { workspace = true }
 itoa = { workspace = true }
 serde_json = { workspace = true, optional = true }
 jiff = { workspace = true, optional = true }
+shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }

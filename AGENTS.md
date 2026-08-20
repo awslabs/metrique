@@ -27,8 +27,31 @@
     let entries = inspector.take();
     assert!(entries.iter().any(|e| e.metrics["Field"] == expected));
     ```
-  
+
 - Both `metrique` and `metrique-aggregation` have their own set of UI tests in metrique/tests/ui and metrique-aggregation/tests/ui. These both only run on Rust 1.91 (or whatever the current pinned Rust version is for ui tests). The current version is defined in .github/workflows/ci.yml
+
+## Shuttle
+
+Packages that have [Shuttle](https://github.com/awslabs/shuttle)-based
+deterministic concurrency tests behind an optional `_shuttle` feature and
+`#[cfg(all(test, shuttle, feature = "_shuttle"))]`:
+
+- `metrique-writer-core` — `src/global.rs` (`AttachHandle`/`ShutdownRegistry` shutdown handshake)
+- `metrique-writer` — `src/sink/background.rs` (the background queue)
+- `metrique-util` — `src/pending_sink.rs`
+- `metrique` — `src/keep_alive.rs`
+- `metrique-aggregation` — `src/sink/worker.rs`
+
+- These are **not** part of `cargo nextest run` or the normal build/test
+  matrix — they need `RUSTFLAGS="--cfg shuttle"` plus `--features _shuttle`,
+  which isn't part of the default feature set. Run them with:
+  ```bash
+  ./scripts/test-shuttle.sh
+  ```
+- `./scripts/shuttle-coverage.sh` produces an HTML coverage report for local
+  inspection; it's not wired into CI.
+- If you touch any of the five files above, run `./scripts/test-shuttle.sh`
+  in addition to the normal test suite.
 
 ## Finishing Up
 When instructed to "finish up", follow this process:

@@ -2080,6 +2080,28 @@ fn enum_tag_name_inflects_with_propagated_style() {
     assert_eq!(descriptor_order(&entry), write_order(&entry));
 }
 
+#[metrics(
+    exact_prefix = "API_",
+    rename_all = "PascalCase",
+    tag(name = "operation_type")
+)]
+enum ExactPrefixTagStyleEnum {
+    DoThing { some_field: u64 },
+}
+
+#[test]
+fn enum_tag_exact_prefix_is_preserved_in_descriptor() {
+    let m = ExactPrefixTagStyleEnum::DoThing { some_field: 1 };
+    let closed = metrique::CloseValue::close(m);
+    let entry = metrique::RootEntry::new(closed);
+
+    let expected = vec!["API_OperationType".to_owned(), "API_SomeField".to_owned()];
+    assert_eq!(
+        (write_order(&entry), descriptor_order(&entry)),
+        (expected.clone(), expected)
+    );
+}
+
 #[metrics(subfield, tag(name_exact = "raw_name"))]
 pub enum ExactTagStyleEnum {
     DoThing { some_field: u64 },
