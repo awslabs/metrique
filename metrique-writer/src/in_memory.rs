@@ -75,10 +75,11 @@
 //!     .unwrap();
 //!
 //! // The fetcher pulls the formatted EMF records on demand.
-//! let records = buffer.drain();
-//! assert!(!records.is_empty());
+//! let drained = buffer.drain();
+//! assert!(!drained.bytes.is_empty());
+//! assert_eq!(drained.records_dropped, 0);
 //! // A second drain returns nothing — the buffer was emptied.
-//! assert!(buffer.drain().is_empty());
+//! assert!(buffer.drain().bytes.is_empty());
 //! ```
 
 use std::{
@@ -157,23 +158,37 @@ impl InMemoryMakeWriter {
         }
     }
 
-    /// Remove and return all buffered bytes (newline-delimited records), leaving
-    /// the buffer empty.
+    /// Remove and return everything buffered, leaving the buffer empty.
     ///
-    /// Because every entry is written under a single lock hold (see the [module
-    /// documentation](self)), the returned bytes always end on a complete,
-    /// newline-terminated record.
-    pub fn drain(&self) -> Vec<u8> {
+    /// Returns the newline-delimited record bytes together with the number of
+    /// records dropped due to overflow since the previous drain, read
+    /// atomically under one lock hold. Coupling them means the drop count
+    /// always describes exactly the returned batch; reading them separately
+    /// would race with a concurrent writer and mis-attribute the loss.
+    ///
+    /// The returned bytes always end on a complete, newline-terminated record
+    /// (see the [module documentation](self)).
+    pub fn drain(&self) -> Drained {
         let mut inner = self.inner.lock().unwrap();
-        inner.records_dropped = 0;
-        std::mem::take(&mut inner.buf)
+        Drained {
+            records_dropped: std::mem::take(&mut inner.records_dropped),
+            bytes: std::mem::take(&mut inner.buf),
+        }
     }
+}
 
-    /// The number of records that have been dropped (evicted) due to overflow
-    /// since the last [`drain`](Self::drain).
-    pub fn records_dropped(&self) -> u64 {
-        self.inner.lock().unwrap().records_dropped
-    }
+/// The result of [`InMemoryMakeWriter::drain`]: the buffered record bytes and
+/// the number of records dropped due to overflow, captured together in one
+/// atomic drain.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Drained {
+    /// The drained, newline-delimited record bytes. Always ends on a complete
+    /// record (never a partial one).
+    pub bytes: Vec<u8>,
+    /// How many records were evicted (oldest-first) to stay within capacity
+    /// since the previous drain — i.e. records that were formatted but never
+    /// returned to a fetcher. `0` means no loss.
+    pub records_dropped: u64,
 }
 
 impl<'a> MakeWriter<'a> for InMemoryMakeWriter {
@@ -194,16 +209,10 @@ impl<'a> MakeWriter<'a> for InMemoryMakeWriter {
 /// The [`Write`] handle handed to a [`Format`](crate::format::Format) for a
 /// single entry by [`InMemoryMakeWriter`].
 ///
-/// The entry is formatted into a private, unlocked `scratch` buffer (a format
-/// may issue several [`io::Write::write`] calls). Only when the writer is
-/// dropped — i.e. the entry is complete — is the shared buffer locked, the
-/// finished record appended, and capacity enforced, all in one brief hold.
-///
-/// This keeps the shared lock out of the (potentially expensive) formatting
-/// path: writers don't serialize on each other while formatting, a concurrent
-/// [`drain`](InMemoryMakeWriter::drain) is only ever blocked for the length of
-/// an append, and a panic *during* formatting can neither poison the shared
-/// lock nor leave a partial record behind (see [`Drop`]).
+/// The entry is formatted into a private, unlocked `scratch` buffer; the
+/// finished record is committed to the shared buffer under a brief lock only
+/// when the writer is dropped. See the [module documentation](self) for why the
+/// lock is kept out of the formatting path.
 #[derive(Debug)]
 pub struct InMemoryWriter<'a> {
     inner: &'a Mutex<Inner>,
@@ -297,10 +306,10 @@ mod tests {
             }
         }
 
-        assert_eq!(buffer.drain(), expected.as_bytes().to_vec());
+        assert_eq!(buffer.drain().bytes, expected.as_bytes());
 
         // Drain always empties the buffer: a second drain yields nothing.
-        assert!(buffer.drain().is_empty());
+        assert!(buffer.drain().bytes.is_empty());
     }
 
     #[test]
@@ -320,13 +329,13 @@ mod tests {
         );
         // ...and the uncommitted record is not visible to a drain yet.
         assert!(
-            buffer.drain().is_empty(),
+            buffer.drain().bytes.is_empty(),
             "record must not be visible before the writer is dropped"
         );
 
         // Dropping commits the record atomically.
         drop(writer);
-        assert_eq!(buffer.drain(), b"pending\n");
+        assert_eq!(buffer.drain().bytes, b"pending\n");
     }
 
     #[test]
@@ -343,9 +352,9 @@ mod tests {
         assert!(result.is_err());
 
         // Nothing committed, and the lock is not poisoned.
-        assert!(buffer.drain().is_empty());
+        assert!(buffer.drain().bytes.is_empty());
         buffer.make_writer().write_all(b"ok\n").unwrap();
-        assert_eq!(buffer.drain(), b"ok\n");
+        assert_eq!(buffer.drain().bytes, b"ok\n");
     }
 
     #[test]
@@ -355,9 +364,9 @@ mod tests {
 
         buffer.make_writer().write_all(b"shared\n").unwrap();
         // The clone observes the write and drains it.
-        assert_eq!(clone.drain(), b"shared\n".to_vec());
+        assert_eq!(clone.drain().bytes, b"shared\n");
         // The original handle now sees the emptied buffer too.
-        assert!(buffer.drain().is_empty());
+        assert!(buffer.drain().bytes.is_empty());
     }
 
     #[test]
@@ -365,18 +374,16 @@ mod tests {
         // Capacity is 10 bytes. Write 3 records that together exceed it.
         let buffer = InMemoryMakeWriter::with_max_capacity(10);
 
-        // "aaaa\n" = 5 bytes
-        buffer.make_writer().write_all(b"aaaa\n").unwrap();
-        // "bbbb\n" = 5 bytes, total = 10, still fits
-        buffer.make_writer().write_all(b"bbbb\n").unwrap();
-        assert_eq!(buffer.records_dropped(), 0);
+        buffer.make_writer().write_all(b"aaaa\n").unwrap(); // 5 bytes
+        buffer.make_writer().write_all(b"bbbb\n").unwrap(); // total 10, still fits
+        buffer.make_writer().write_all(b"cccc\n").unwrap(); // 15 → evict oldest until ≤ 10
 
-        // "cccc\n" = 5 bytes, total would be 15 → evict oldest until ≤ 10
-        buffer.make_writer().write_all(b"cccc\n").unwrap();
-        assert_eq!(buffer.records_dropped(), 1);
+        let drained = buffer.drain();
+        assert_eq!(drained.bytes, b"bbbb\ncccc\n");
+        assert_eq!(drained.records_dropped, 1);
 
-        assert_eq!(buffer.drain(), b"bbbb\ncccc\n");
-        assert_eq!(buffer.records_dropped(), 0); // reset on drain
+        // The counter is reset by the drain that reported it.
+        assert_eq!(buffer.drain().records_dropped, 0);
     }
 
     #[test]
@@ -390,8 +397,10 @@ mod tests {
         // Third record is large enough that evicting a single record isn't
         // enough: 6 + 5 = 11 > 6. Evict "aa\n" -> 8 (>6), evict "bb\n" -> 5 (<=6).
         buffer.make_writer().write_all(b"cccc\n").unwrap(); // 5 bytes
-        assert_eq!(buffer.records_dropped(), 2);
-        assert_eq!(buffer.drain(), b"cccc\n");
+
+        let drained = buffer.drain();
+        assert_eq!(drained.records_dropped, 2);
+        assert_eq!(drained.bytes, b"cccc\n");
     }
 
     #[test]
@@ -400,9 +409,10 @@ mod tests {
 
         // Write a record that on its own exceeds capacity.
         buffer.make_writer().write_all(b"huge_record\n").unwrap();
-        assert_eq!(buffer.records_dropped(), 0);
 
-        assert_eq!(buffer.drain(), b"huge_record\n");
+        let drained = buffer.drain();
+        assert_eq!(drained.records_dropped, 0);
+        assert_eq!(drained.bytes, b"huge_record\n");
     }
 
     #[test]
@@ -414,8 +424,9 @@ mod tests {
         // Now write one that alone exceeds capacity:
         buffer.make_writer().write_all(b"large_one\n").unwrap();
 
-        assert_eq!(buffer.records_dropped(), 2);
-        assert_eq!(buffer.drain(), b"large_one\n");
+        let drained = buffer.drain();
+        assert_eq!(drained.records_dropped, 2);
+        assert_eq!(drained.bytes, b"large_one\n");
     }
 
     #[test]
@@ -431,8 +442,9 @@ mod tests {
             buffer.make_writer().write_all(b"record\n").unwrap();
         }
         // Nothing is ever evicted: all 1000 records (7 bytes each) are retained.
-        assert_eq!(buffer.records_dropped(), 0);
-        assert_eq!(buffer.drain().len(), 7000);
+        let drained = buffer.drain();
+        assert_eq!(drained.records_dropped, 0);
+        assert_eq!(drained.bytes.len(), 7000);
     }
 
     struct Ping {
@@ -460,7 +472,7 @@ mod tests {
             })
             .unwrap();
 
-        let bytes = buffer.drain();
+        let bytes = buffer.drain().bytes;
         let line = bytes
             .strip_suffix(b"\n")
             .expect("EMF record should be newline-terminated");
@@ -475,7 +487,7 @@ mod tests {
         assert_eq!(emf["_aws"]["CloudWatchMetrics"][0]["Namespace"], "Test");
 
         // Buffer is reusable after a drain: a second drain yields nothing.
-        assert!(buffer.drain().is_empty());
+        assert!(buffer.drain().bytes.is_empty());
     }
 
     use metrique_writer_format_emf::Emf;
