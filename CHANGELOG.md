@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `AppendAndCloseOnDrop` no longer allocates on construction. Heap allocation is deferred until `flush_guard()` or `force_flush_guard()` is called. For the common case (no guards, no handles), construction is zero-allocation.
+
+### Added
+
+- `AppendAndCloseOnDrop::discard()`: drop without emitting, consistent with `TimerGuard::discard()`.
+- *(metrique-writer)* re-export `SampleGroup` from `metrique_writer::sample` so it can be implemented for custom sample-group keys without depending on the doc-hidden `core` path
+
 ## [0.1.30](https://github.com/awslabs/metrique/compare/metrique-v0.1.29...metrique-v0.1.30) - 2026-08-12
 
 ### Added
