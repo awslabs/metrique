@@ -35,7 +35,7 @@
 //!
 //! # Capacity and overflow
 //!
-//! The buffer has a configurable **maximum capacity** in bytes (default: 1 MiB).
+//! The buffer has a configurable **maximum capacity** in bytes (default: 8 MiB).
 //! When a newly completed record would cause the buffer to exceed this limit,
 //! the oldest records are dropped (from the front) until there is room. This
 //! **drop-oldest** policy matches
@@ -92,8 +92,8 @@ use tracing_subscriber::fmt::MakeWriter;
 
 use crate::rate_limit::rate_limited;
 
-/// Default maximum buffer capacity: 1 MiB.
-const DEFAULT_MAX_CAPACITY: usize = 1024 * 1024;
+/// Default maximum buffer capacity: 8 MiB.
+const DEFAULT_MAX_CAPACITY: usize = 8 * 1024 * 1024;
 
 /// Shared state behind an [`InMemoryMakeWriter`].
 #[derive(Debug)]
@@ -137,7 +137,7 @@ impl Default for InMemoryMakeWriter {
 
 impl InMemoryMakeWriter {
     /// Create a new [`InMemoryMakeWriter`] with the default maximum capacity
-    /// (1 MiB).
+    /// (8 MiB).
     pub fn new() -> Self {
         Self::default()
     }
