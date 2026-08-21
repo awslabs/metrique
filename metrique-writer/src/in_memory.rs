@@ -85,9 +85,12 @@
 use std::{
     io::{self, Write},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use tracing_subscriber::fmt::MakeWriter;
+
+use crate::rate_limit::rate_limited;
 
 /// Default maximum buffer capacity: 1 MiB.
 const DEFAULT_MAX_CAPACITY: usize = 1024 * 1024;
@@ -272,6 +275,15 @@ impl Drop for InMemoryWriter<'_> {
         if drop_up_to > 0 {
             inner.buf.drain(..drop_up_to);
             inner.records_dropped += dropped;
+            // Rate-limited so a fetcher that has fallen behind can't flood the
+            // logs. The exact count since the last drain is also surfaced via
+            // `Drained::records_dropped`.
+            rate_limited!(
+                Duration::from_secs(1),
+                tracing::error!(
+                    "in-memory metric buffer is full, oldest records are being dropped"
+                )
+            );
         }
     }
 }
