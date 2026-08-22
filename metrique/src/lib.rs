@@ -217,6 +217,7 @@ pub type DefaultSink = metrique_writer_core::sink::BoxEntrySink;
 /// // When `metrics` is dropped, it will be closed and appended to the sink
 /// # }
 /// ```
+#[must_use = "guard will emit immediately if not bound to a variable"]
 pub struct AppendAndCloseOnDrop<E: CloseEntry, S: EntrySink<RootMetric<E>>> {
     inner: Option<(E, S)>,
     promoted: LazyPromotionSlot<Parent<PendingEmit<E, S>>>,
