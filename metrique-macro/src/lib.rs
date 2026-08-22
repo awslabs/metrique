@@ -25,11 +25,56 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{ToTokens, quote, quote_spanned};
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Result, Type,
-    Visibility, parse_macro_input, spanned::Spanned,
+    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Type, Visibility,
+    parse_macro_input, spanned::Spanned,
 };
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
+
+#[derive(Debug)]
+enum MacroError {
+    Syn(syn::Error),
+    Darling(darling::Error),
+}
+
+type MacroResult<T> = std::result::Result<T, MacroError>;
+
+impl From<syn::Error> for MacroError {
+    fn from(error: syn::Error) -> Self {
+        Self::Syn(error)
+    }
+}
+
+impl From<darling::Error> for MacroError {
+    fn from(error: darling::Error) -> Self {
+        Self::Darling(error)
+    }
+}
+
+impl std::fmt::Display for MacroError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Syn(error) => error.fmt(formatter),
+            Self::Darling(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl MacroError {
+    fn into_compile_errors(self) -> Ts2 {
+        match self {
+            Self::Syn(error) => error.into_compile_error(),
+            Self::Darling(error) => error.write_errors(),
+        }
+    }
+
+    fn into_darling(self) -> darling::Error {
+        match self {
+            Self::Syn(error) => darling::Error::custom(error.to_string()).with_span(&error.span()),
+            Self::Darling(error) => error,
+        }
+    }
+}
 
 /// Transforms a struct or enum into a wide event (metric record).
 ///
@@ -453,7 +498,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
         Ok(root_attrs) => root_attrs,
         Err(e) => {
             // recover and use an empty root attributes
-            e.to_compile_error().to_tokens(&mut base_token_stream);
+            e.into_compile_errors().to_tokens(&mut base_token_stream);
             RootAttributes::default()
         }
     };
@@ -465,7 +510,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
             // Always generate the base struct without metrics attributes to avoid cascading errors
             clean_base_adt(&input).to_tokens(&mut base_token_stream);
             // Include the error and the base struct without metrics attributes
-            err.to_compile_error().to_tokens(&mut base_token_stream);
+            err.into_compile_errors().to_tokens(&mut base_token_stream);
         }
     };
     base_token_stream.into()
@@ -978,6 +1023,12 @@ impl FromMeta for FlagsList {
                     )
                     .with_span(lit));
                 }
+                darling::ast::NestedMeta::NameValueInvalidExpr(meta) => {
+                    return Err(darling::Error::custom(
+                        "expected a path or skip(Path) in flags(...)",
+                    )
+                    .with_span(&meta.path));
+                }
             }
         }
         Ok(FlagsList(flags))
@@ -1271,7 +1322,7 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
 
 pub(crate) fn parse_metric_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Vec<MetricsField>> {
+) -> MacroResult<Vec<MetricsField>> {
     let mut parsed_fields = vec![];
     let mut errors = darling::Error::accumulator();
 
@@ -1296,7 +1347,11 @@ pub(crate) fn parse_metric_fields(
             name,
             span,
             ty: field.ty.clone(),
-            vis: field.vis.clone(),
+            base_field: {
+                let mut field = field.clone();
+                field.attrs = clean_attrs(&field.attrs);
+                field
+            },
             external_attrs: clean_attrs(&field.attrs),
             attrs,
         });
@@ -1519,11 +1574,11 @@ struct MetricsFieldAttrs {
 }
 
 pub(crate) struct MetricsField {
-    pub(crate) vis: Visibility,
     pub(crate) ident: Ts2,
     pub(crate) name: Option<String>,
     pub(crate) span: Span,
     pub(crate) ty: Type,
+    pub(crate) base_field: syn::Field,
     pub(crate) external_attrs: Vec<Attribute>,
     pub(crate) attrs: MetricsFieldAttrs,
 }
@@ -1540,20 +1595,8 @@ impl MetricsField {
 }
 
 impl MetricsField {
-    fn core_field(&self, is_named: bool) -> Ts2 {
-        let MetricsField {
-            ref external_attrs,
-            ref ident,
-            ref ty,
-            ref vis,
-            ..
-        } = *self;
-        let field = if is_named {
-            quote! { #ident: #ty }
-        } else {
-            quote! { #ty }
-        };
-        quote! { #(#external_attrs)* #vis #field }
+    fn core_field(&self, _is_named: bool) -> Ts2 {
+        self.base_field.to_token_stream()
     }
 
     fn entry_field(&self, named: bool) -> Option<Ts2> {
@@ -1853,12 +1896,12 @@ fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
     }
 }
 
-fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
+fn parse_root_attrs(attr: TokenStream) -> MacroResult<RootAttributes> {
     let nested_meta = NestedMeta::parse_meta_list(attr.into())?;
     Ok(RawRootAttributes::from_list(&nested_meta)?.validate()?)
 }
 
-fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
+fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> MacroResult<Ts2> {
     // Check if #[aggregate] attribute is present
     if input
         .attrs
@@ -1868,7 +1911,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
         return Err(Error::new_spanned(
             &input,
             "#[aggregate] must be placed before #[metrics], not after",
-        ));
+        )
+        .into());
     }
 
     let output = match root_attributes.mode {
@@ -1879,7 +1923,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                         return Err(Error::new_spanned(
                             &input,
                             "`tag` attribute is only supported on entry enums",
-                        ));
+                        )
+                        .into());
                     }
                     let fields = match &data_struct.fields {
                         Fields::Named(fields_named) => &fields_named.named,
@@ -1887,7 +1932,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                             return Err(Error::new_spanned(
                                 &input,
                                 "Only named fields are supported",
-                            ));
+                            )
+                            .into());
                         }
                     };
                     structs::generate_metrics_for_struct(root_attributes, &input, fields)?
@@ -1901,7 +1947,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     return Err(Error::new_spanned(
                         &input,
                         "Only structs and enums are supported for entries",
-                    ));
+                    )
+                    .into());
                 }
             }
         }
@@ -1911,10 +1958,9 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     Fields::Named(fields_named) => &fields_named.named,
                     Fields::Unnamed(fields_unnamed) => &fields_unnamed.unnamed,
                     _ => {
-                        return Err(Error::new_spanned(
-                            &input,
-                            "Only named fields are supported",
-                        ));
+                        return Err(
+                            Error::new_spanned(&input, "Only named fields are supported").into(),
+                        );
                     }
                 };
                 structs::generate_metrics_for_struct(root_attributes, &input, fields)?
@@ -1923,7 +1969,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                 return Err(Error::new_spanned(
                     &input,
                     "Only structs are supported with value, use value(string) with enums",
-                ));
+                )
+                .into());
             }
         },
         MetricMode::ValueString => {
@@ -1933,7 +1980,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     return Err(Error::new_spanned(
                         &input,
                         "Only enums are supported with value(string)",
-                    ));
+                    )
+                    .into());
                 }
             };
             let variants = enums::parse_enum_variants(variants, enums::VariantMode::ValueString)?;
@@ -2107,7 +2155,6 @@ mod tests {
     use insta::assert_snapshot;
     use proc_macro2::TokenStream as Ts2;
     use quote::quote;
-    use syn::{parse_quote, parse2};
 
     use crate::RawRootAttributes;
 
@@ -2127,7 +2174,7 @@ mod tests {
         let output = metrics_impl(input, attrs);
 
         // Parse the output back into a syn::File for pretty printing
-        match parse2::<syn::File>(output.clone()) {
+        match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => {
                 // If parsing fails, print the error and use the raw string output
@@ -2139,7 +2186,7 @@ mod tests {
     #[test]
     fn test_darling_root_attrs() {
         use darling::FromMeta;
-        RawRootAttributes::from_meta(&parse_quote! {
+        RawRootAttributes::from_meta(&syn::parse_quote! {
             metrics(
                 rename_all = "PascalCase",
                 emf::dimension_sets = [["bar"]]
@@ -2148,6 +2195,118 @@ mod tests {
         .unwrap()
         .validate()
         .unwrap();
+    }
+
+    #[test]
+    fn test_metrics_preserves_field_defaults() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            struct Defaults {
+                #[metrics(name = "renamed")]
+                value: usize = DOES_NOT_EXIST,
+            }
+        })
+        .unwrap();
+        let syn::Data::Struct(data) = input.data else {
+            unreachable!()
+        };
+        let syn::Fields::Named(fields) = data.fields else {
+            unreachable!()
+        };
+
+        let parsed = super::parse_metric_fields(&fields.named).unwrap();
+
+        assert_eq!(
+            parsed[0].core_field(true).to_string(),
+            quote! { value: usize = DOES_NOT_EXIST }.to_string()
+        );
+        assert!(matches!(
+            &parsed[0].attrs.kind,
+            super::MetricsFieldKind::Field {
+                name: Some(name),
+                ..
+            } if name == "renamed"
+        ));
+    }
+
+    #[test]
+    fn test_metrics_parses_variant_with_defaulted_field() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            enum Defaults {
+                #[metrics(name = "renamed")]
+                Variant {
+                    value: usize = DOES_NOT_EXIST,
+                },
+                Tuple(
+                    #[allow(dead_code)]
+                    #[metrics(ignore)]
+                    usize,
+                ),
+            }
+        })
+        .unwrap();
+        let syn::Data::Enum(data) = input.data else {
+            unreachable!()
+        };
+
+        let variants =
+            super::enums::parse_enum_variants(&data.variants, super::enums::VariantMode::Entry)
+                .unwrap();
+
+        assert_eq!(variants[0].attrs.name.as_deref(), Some("renamed"));
+        assert_eq!(
+            variants[0].core_variant().to_string(),
+            quote! {
+                Variant {
+                    value: usize = DOES_NOT_EXIST,
+                }
+            }
+            .to_string()
+        );
+        assert_eq!(
+            variants[1].core_variant().to_string(),
+            quote! {
+                Tuple(
+                    #[allow(dead_code)]
+                    usize,
+                )
+            }
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn test_enum_error_recovery_preserves_syn3_fields() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            enum Defaults {
+                #[metrics(name = "renamed")]
+                Variant {
+                    #[metrics(name = "value")]
+                    value: usize = DOES_NOT_EXIST,
+                },
+                Tuple(
+                    #[allow(dead_code)]
+                    #[metrics(ignore)]
+                    usize,
+                ),
+            }
+        })
+        .unwrap();
+
+        assert_eq!(
+            super::clean_base_adt(&input).to_string(),
+            quote! {
+                enum Defaults {
+                    Variant {
+                        value: usize = DOES_NOT_EXIST,
+                    },
+                    Tuple(
+                        #[allow(dead_code)]
+                        usize,
+                    )
+                }
+            }
+            .to_string()
+        );
     }
 
     #[test]
@@ -2270,7 +2429,7 @@ mod tests {
         };
 
         let input = syn::parse2(input).unwrap();
-        let root_attrs = RawRootAttributes::from_meta(&parse_quote!(metrics()))
+        let root_attrs = RawRootAttributes::from_meta(&syn::parse_quote!(metrics()))
             .unwrap()
             .validate()
             .unwrap();

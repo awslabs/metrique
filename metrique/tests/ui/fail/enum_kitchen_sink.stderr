@@ -67,7 +67,7 @@ error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entr
 error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]
   --> tests/ui/fail/enum_kitchen_sink.rs:75:13
    |
-75 |     Variant(#[metrics(timestamp)] metrique::Timestamp),
+75 |     Variant(#[metrics(timestamp)] metrique::timers::Timestamp),
    |             ^
 
 error: Cannot combine `flatten` with `unit`

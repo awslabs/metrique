@@ -1,11 +1,10 @@
+use crate::MetricMode;
+use crate::structs::entry_struct_ident;
 use darling::FromField;
 use proc_macro2::{Ident, TokenStream as Ts2};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Attribute, Data, DeriveInput, Error, Fields, Result, Type};
-
-use crate::MetricMode;
-use crate::structs::entry_struct_ident;
 
 #[derive(Debug)]
 struct AggregateField {
@@ -16,6 +15,7 @@ struct AggregateField {
     is_ignored: bool,
     use_clone: bool,
     metrics_attrs: Vec<Attribute>,
+    has_unit: bool,
 }
 
 #[derive(Debug)]
@@ -126,6 +126,10 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             .filter(|attr| attr.path().is_ident("metrics"))
             .cloned()
             .collect();
+        let has_unit = crate::RawMetricsFieldAttrs::from_field(field)
+            .ok()
+            .and_then(|attrs| attrs.unit)
+            .is_some();
 
         parsed_fields.push(AggregateField {
             name,
@@ -135,6 +139,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             is_ignored,
             use_clone,
             metrics_attrs,
+            has_unit,
         });
     }
 
@@ -242,22 +247,8 @@ pub(crate) fn generate_aggregate_strategy_impl(
             quote! { #field_ty }
         };
 
-        // Check if field has a unit attribute by parsing metrics attributes
-        // Only dereference in entry mode, where the field is wrapped in WithUnit
-        let has_unit = entry_mode && crate::RawMetricsFieldAttrs::from_field(&syn::Field {
-            attrs: f.metrics_attrs.clone(),
-            vis: syn::Visibility::Inherited,
-            mutability: syn::FieldMutability::None,
-            ident: Some(f.name.clone()),
-            colon_token: None,
-            ty: f.ty.clone(),
-        })
-        .ok()
-        .and_then(|attrs| attrs.unit)
-        .is_some();
-
         // In entry mode with unit, need to unwrap WithUnit wrapper
-        let entry_value = if has_unit {
+        let entry_value = if entry_mode && f.has_unit {
             quote! { input.#name.into_inner() }
         } else {
             quote! { input.#name }
@@ -491,14 +482,9 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => {
                 let fields = fields_named.named.iter().map(|f| {
-                    let name = &f.ident;
-                    let ty = &f.ty;
-                    let vis = &f.vis;
-                    let attrs = clean_aggregate_attrs(&f.attrs);
-                    quote! {
-                        #(#attrs)*
-                        #vis #name: #ty
-                    }
+                    let mut field = f.clone();
+                    field.attrs = clean_aggregate_attrs(&field.attrs);
+                    field
                 });
                 quote! {
                     #(#filtered_attrs)*
@@ -525,7 +511,6 @@ fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
 mod tests {
     use super::*;
     use quote::quote;
-    use syn::parse2;
 
     fn aggregate_impl(input: Ts2, entry_mode: bool) -> Ts2 {
         let input = syn::parse2(input).unwrap();
@@ -545,7 +530,7 @@ mod tests {
 
     fn aggregate_impl_string(input: Ts2) -> String {
         let output = aggregate_impl(input, false);
-        match parse2::<syn::File>(output.clone()) {
+        match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         }
@@ -618,7 +603,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, true);
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
+        let parsed_file = match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };
@@ -637,7 +622,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, false);
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
+        let parsed_file = match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };
@@ -659,6 +644,29 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         insta::assert_snapshot!("aggregate_with_ignore", parsed_file);
+    }
+
+    #[test]
+    fn test_clean_aggregate_preserves_field_defaults() {
+        let input = syn::parse2(quote! {
+            struct Defaults {
+                #[aggregate(strategy = Sum)]
+                value: usize = DOES_NOT_EXIST,
+            }
+        })
+        .unwrap();
+
+        let cleaned = clean_aggregate_adt(&input);
+
+        assert_eq!(
+            cleaned.to_string(),
+            quote! {
+                struct Defaults {
+                    value: usize = DOES_NOT_EXIST
+                }
+            }
+            .to_string()
+        );
     }
 
     #[test]
