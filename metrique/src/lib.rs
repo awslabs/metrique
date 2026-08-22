@@ -107,7 +107,9 @@ pub use metrique_core::{
 };
 
 #[doc(hidden)]
-pub use metrique_core::{Identity, KebabCase, PascalCase, SnakeCase, Styles};
+pub use metrique_core::{
+    Identity, IfYouSeeThisUseSubfieldOwned, KebabCase, PascalCase, SnakeCase, Styles,
+};
 
 /// Unit types and utilities for metrics.
 ///
