@@ -532,16 +532,19 @@ impl NameStyle {
     }
 
     fn apply(self, name: &str) -> String {
-        use inflector::Inflector;
+        use heck::{
+            ToKebabCase, ToLowerCamelCase, ToShoutyKebabCase, ToShoutySnakeCase, ToSnakeCase,
+            ToUpperCamelCase,
+        };
         match self {
             NameStyle::LowerCase => name.to_ascii_lowercase(),
             NameStyle::UpperCase => name.to_ascii_uppercase(),
-            NameStyle::PascalCase => name.to_pascal_case(),
-            NameStyle::CamelCase => name.to_camel_case(),
+            NameStyle::PascalCase => name.to_upper_camel_case(),
+            NameStyle::CamelCase => name.to_lower_camel_case(),
             NameStyle::SnakeCase => name.to_snake_case(),
-            NameStyle::ScreamingSnakeCase => name.to_screaming_snake_case(),
+            NameStyle::ScreamingSnakeCase => name.to_shouty_snake_case(),
             NameStyle::KebabCase => name.to_kebab_case(),
-            NameStyle::ScreamingKebabCase => name.to_kebab_case().to_ascii_uppercase(),
+            NameStyle::ScreamingKebabCase => name.to_shouty_kebab_case(),
         }
     }
 }

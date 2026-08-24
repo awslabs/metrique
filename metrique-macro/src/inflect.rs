@@ -45,20 +45,20 @@ impl NameStyle {
     };
 
     pub(crate) fn apply(self, name: &str) -> String {
-        use inflector::Inflector;
+        use heck::{ToKebabCase, ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
         match self {
-            NameStyle::PascalCase => name.to_pascal_case(),
+            NameStyle::PascalCase => name.to_upper_camel_case(),
             NameStyle::SnakeCase => name.to_snake_case(),
-            NameStyle::ScreamingSnakeCase => name.to_screaming_snake_case(),
+            NameStyle::ScreamingSnakeCase => name.to_shouty_snake_case(),
             NameStyle::Preserve => name.to_string(),
             NameStyle::KebabCase => name.to_kebab_case(),
         }
     }
 
     pub(crate) fn apply_prefix(self, name: &str) -> String {
-        use inflector::Inflector;
+        use heck::{ToKebabCase, ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
         match self {
-            NameStyle::PascalCase => name.to_pascal_case(),
+            NameStyle::PascalCase => name.to_upper_camel_case(),
             NameStyle::SnakeCase => {
                 let mut res = name.to_snake_case();
                 if !res.ends_with("_") {
@@ -67,7 +67,7 @@ impl NameStyle {
                 res
             }
             NameStyle::ScreamingSnakeCase => {
-                let mut res = name.to_screaming_snake_case();
+                let mut res = name.to_shouty_snake_case();
                 if !res.ends_with("_") {
                     res.push('_');
                 }

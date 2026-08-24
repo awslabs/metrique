@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `AppendAndCloseOnDrop` no longer allocates on construction. Heap allocation is deferred until `flush_guard()` or `force_flush_guard()` is called. For the common case (no guards, no handles), construction is zero-allocation.
+- Metric-name inflection (`rename_all` and inflected `prefix`) now uses `heck` instead of `Inflector`. For names containing digits or runs of consecutive uppercase letters, the emitted name can change: `heck` keeps digits attached to adjacent letters (e.g. `latency_p99` → `LATENCY_P99` rather than `LATENCY_P_99`) and renders acronyms more consistently in `PascalCase`/`camelCase` (e.g. `XMLHttpRequest` → `XmlHttpRequest` rather than `XmlhttpRequest`). Names without digits or uppercase runs are unaffected. If you depend on exact metric-key strings, [add tests](https://docs.rs/metrique/latest/metrique/_guide/testing/) validating the produced keys.
 
 ### Added
 

@@ -3,16 +3,6 @@
 version = 4
 
 [[package]]
-name = "Inflector"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fe438c63458706e03479442743baae6c88256498e6431708f6dfc520a26515d3"
-dependencies = [
- "lazy_static",
- "regex",
-]
-
-[[package]]
 name = "aggregate-dep"
 version = "0.0.0"
 dependencies = [
@@ -1812,9 +1802,9 @@ dependencies = [
 name = "metrique-macro"
 version = "0.1.21"
 dependencies = [
- "Inflector",
  "assert2",
  "darling",
+ "heck",
  "insta",
  "metrique",
  "metrique-aggregation",
@@ -2026,10 +2016,10 @@ name = "metrique-writer-macro"
 version = "0.1.10"
 dependencies = [
  "darling",
+ "heck",
  "insta",
  "proc-macro2",
  "quote",
- "str_inflector",
  "syn",
  "synstructure",
 ]
@@ -3024,16 +3014,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "str_inflector"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec0b848d5a7695b33ad1be00f84a3c079fe85c9278a325ff9159e6c99cef4ef7"
-dependencies = [
- "lazy_static",
- "regex",
-]
 
 [[package]]
 name = "strsim"

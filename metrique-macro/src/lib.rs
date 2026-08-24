@@ -168,7 +168,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// ## Inflection
 ///
 /// Metric names are inflected to allow them to fit into the name style used by the
-/// application. This uses the `Inflector` crate and supports inflecting metrics into
+/// application. This uses the `heck` crate and supports inflecting metrics into
 /// PascalCase, snake_case, and kebab-case.
 ///
 /// Metric names assigned via the `name` attribute are not inflected, but if they are
