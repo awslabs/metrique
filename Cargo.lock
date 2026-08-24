@@ -1734,7 +1734,7 @@ dependencies = [
 
 [[package]]
 name = "metrique"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "anyhow",
  "assert2",
@@ -1810,7 +1810,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-macro"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "Inflector",
  "assert2",
@@ -1910,7 +1910,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer"
-version = "0.1.26"
+version = "0.1.27"
 dependencies = [
  "ahash",
  "assert-json-diff",
@@ -1963,7 +1963,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-core"
-version = "0.1.20"
+version = "0.1.21"
 dependencies = [
  "assert-json-diff",
  "derive-where",
