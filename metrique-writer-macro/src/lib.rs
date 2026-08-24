@@ -551,6 +551,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn name_style_digits_and_acronyms() {
+        use std::fmt::Write as _;
+
+        // Names containing digits or runs of uppercase letters exercise the
+        // inflection library's word-boundary rules, where behavior is most
+        // likely to shift if the underlying library changes. Snapshot the full
+        // grid (every name in every style) so any such shift is visible in
+        // review.
+        let styles = [
+            ("lowercase", NameStyle::LowerCase),
+            ("UPPERCASE", NameStyle::UpperCase),
+            ("PascalCase", NameStyle::PascalCase),
+            ("camelCase", NameStyle::CamelCase),
+            ("snake_case", NameStyle::SnakeCase),
+            ("SCREAMING_SNAKE_CASE", NameStyle::ScreamingSnakeCase),
+            ("kebab-case", NameStyle::KebabCase),
+            ("SCREAMING-KEBAB-CASE", NameStyle::ScreamingKebabCase),
+        ];
+        let inputs = [
+            "latency_p99",
+            "s3_requests",
+            "utf8_string",
+            "XMLHttpRequest",
+        ];
+        let mut grid = String::new();
+        for input in inputs {
+            writeln!(grid, "{input}").unwrap();
+            for (label, style) in styles {
+                writeln!(grid, "  {label:<20} {}", style.apply(input)).unwrap();
+            }
+            grid.push('\n');
+        }
+        insta::assert_snapshot!("name_style_digits_and_acronyms", grid);
+    }
+
+    #[test]
     fn test_binary_tree_chain() {
         assert_eq!(
             make_binary_tree_chain(vec![]).to_string(),

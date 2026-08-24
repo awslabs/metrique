@@ -1,0 +1,43 @@
+---
+source: metrique-writer-macro/src/lib.rs
+expression: grid
+---
+latency_p99
+  lowercase            latency_p99
+  UPPERCASE            LATENCY_P99
+  PascalCase           LatencyP99
+  camelCase            latencyP99
+  snake_case           latency_p_99
+  SCREAMING_SNAKE_CASE LATENCY_P_99
+  kebab-case           latency-p-99
+  SCREAMING-KEBAB-CASE LATENCY-P-99
+
+s3_requests
+  lowercase            s3_requests
+  UPPERCASE            S3_REQUESTS
+  PascalCase           S3Requests
+  camelCase            s3Requests
+  snake_case           s_3_requests
+  SCREAMING_SNAKE_CASE S_3_REQUESTS
+  kebab-case           s-3-requests
+  SCREAMING-KEBAB-CASE S-3-REQUESTS
+
+utf8_string
+  lowercase            utf8_string
+  UPPERCASE            UTF8_STRING
+  PascalCase           Utf8String
+  camelCase            utf8String
+  snake_case           utf_8_string
+  SCREAMING_SNAKE_CASE UTF_8_STRING
+  kebab-case           utf-8-string
+  SCREAMING-KEBAB-CASE UTF-8-STRING
+
+XMLHttpRequest
+  lowercase            xmlhttprequest
+  UPPERCASE            XMLHTTPREQUEST
+  PascalCase           XmlhttpRequest
+  camelCase            xmlhttpRequest
+  snake_case           xml_http_request
+  SCREAMING_SNAKE_CASE XML_HTTP_REQUEST
+  kebab-case           xml-http-request
+  SCREAMING-KEBAB-CASE XML-HTTP-REQUEST

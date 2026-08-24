@@ -1,0 +1,31 @@
+---
+source: metrique-macro/src/inflect.rs
+expression: grid
+---
+latency_p99
+  Preserve       latency_p99
+  Pascal         LatencyP99
+  Snake          latency_p_99
+  Kebab          latency-p-99
+  ScreamingSnake LATENCY_P_99
+
+s3_requests
+  Preserve       s3_requests
+  Pascal         S3Requests
+  Snake          s_3_requests
+  Kebab          s-3-requests
+  ScreamingSnake S_3_REQUESTS
+
+utf8_string
+  Preserve       utf8_string
+  Pascal         Utf8String
+  Snake          utf_8_string
+  Kebab          utf-8-string
+  ScreamingSnake UTF_8_STRING
+
+XMLHttpRequest
+  Preserve       XMLHttpRequest
+  Pascal         XmlhttpRequest
+  Snake          xml_http_request
+  Kebab          xml-http-request
+  ScreamingSnake XML_HTTP_REQUEST

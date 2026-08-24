@@ -211,6 +211,32 @@ mod test {
     }
 
     #[test]
+    fn test_inflect_digits_and_acronyms() {
+        use std::fmt::Write as _;
+
+        // Names containing digits or runs of uppercase letters exercise the
+        // inflection library's word-boundary rules, where behavior is most
+        // likely to shift if the underlying library changes. Snapshot the full
+        // grid (every name in every style) so any such shift is visible in
+        // review.
+        let inputs = [
+            "latency_p99",
+            "s3_requests",
+            "utf8_string",
+            "XMLHttpRequest",
+        ];
+        let mut grid = String::new();
+        for input in inputs {
+            writeln!(grid, "{input}").unwrap();
+            for style in NameStyle::ALL {
+                writeln!(grid, "  {:<14} {}", style.to_word(), style.apply(input)).unwrap();
+            }
+            grid.push('\n');
+        }
+        insta::assert_snapshot!("inflect_digits_and_acronyms", grid);
+    }
+
+    #[test]
     fn test_uninflectables() {
         assert_eq!(name_contains_uninflectables("foo-bar_baz"), None);
         assert_eq!(name_contains_uninflectables("foo:bar"), Some(':'));
