@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AppendAndCloseOnDrop::discard()`: drop without emitting, consistent with `TimerGuard::discard()`.
 - *(metrique-writer)* re-export `SampleGroup` from `metrique_writer::sample` so it can be implemented for custom sample-group keys without depending on the doc-hidden `core` path
 
+### Fixed
+
+- *(metrique-aggregation)* `MutexSink` now implements `FlushableSink`. A `KeyedAggregator` behind a `MutexSink` previously had no flush path, so it accumulated entries and never emitted them.
+
 ## [0.1.30](https://github.com/awslabs/metrique/compare/metrique-v0.1.29...metrique-v0.1.30) - 2026-08-12
 
 ### Added
