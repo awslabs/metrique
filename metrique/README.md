@@ -384,7 +384,7 @@ struct RequestMetrics {
 }
 ```
 
-Supported case styles include: `"PascalCase"`, `"camelCase"`, `"snake_case"`.
+Supported case styles are: `"PascalCase"`, `"snake_case"`, `"SCREAMING_SNAKE_CASE"`, `"kebab-case"`, and `"preserve"` (the default, which leaves names unchanged).
 
 **Important:** `rename_all` is transitive—it will apply to all child structures that are `#[metrics(flatten)]`'d into the entry. **You SHOULD only set `rename_all` on your root struct.** If a struct explicitly sets a name scheme with `rename_all`, it will not be overridden by a parent.
 
@@ -449,7 +449,7 @@ struct MyMetrics {
 Prefixes will be inflected to the case metrics are emitted in, so if you let `rename_all`
 vary, the inner metric name will be:
 
- 1. in `rename_all = "Preserve"`, `Downstreamsuccess` / `OtherDownstreamsuccess`
+ 1. in `rename_all = "preserve"`, `Downstreamsuccess` / `OtherDownstreamsuccess`
  2. in `rename_all = "PascalCase"`, `DownstreamSuccess` / `OtherDownstreamSuccess`
  3. in `rename_all = "kebab-case"`, `downstream-success` / `other-downstream-success`
  4. in `rename_all = "snake_case"`, `downstream_success` / `other_downstream_success`
