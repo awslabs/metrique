@@ -288,8 +288,16 @@ impl metrique::CloseValue for &'_ Metadata {
         }
         #[allow(deprecated)]
         MetadataEntry {
-            operation: metrique::CloseValue::close(&__metrique_self_expr!().operation),
-            request_id: metrique::CloseValue::close(&__metrique_self_expr!().request_id),
+            operation: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(
+                    &__metrique_self_expr!().operation,
+                ),
+            ),
+            request_id: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(
+                    &__metrique_self_expr!().request_id,
+                ),
+            ),
         }
     }
 }

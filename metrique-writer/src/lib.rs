@@ -22,6 +22,8 @@ pub use crate::sink::AttachGlobalEntrySinkExt;
 
 pub mod entry;
 pub mod format;
+#[cfg(feature = "tracing-subscriber-03")]
+pub mod in_memory;
 pub mod rate_limit;
 pub mod sample;
 pub mod sink;

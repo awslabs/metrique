@@ -139,8 +139,5 @@ error[E0277]: CloseValue is not implemented for &std::string::String
    = help: the trait `CloseValue` is not implemented for `&std::string::String`
    = note: You may need to add `#[metrics]` to `&std::string::String` or implement `CloseValue` directly.
    = note: if &std::string::String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-help: consider dereferencing here
-   |
-78 |     *field: String,
-   |     +
+   = help: the trait `CloseValue` is implemented for `std::string::String`
+   = note: required for `IfYouSeeThisUseSubfieldOwned<&std::string::String>` to implement `CloseValue`

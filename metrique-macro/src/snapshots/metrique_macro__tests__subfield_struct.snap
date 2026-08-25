@@ -119,7 +119,11 @@ impl metrique::CloseValue for &'_ NestedMetrics {
         }
         #[allow(deprecated)]
         NestedMetricsEntry {
-            counter: metrique::CloseValue::close(&__metrique_self_expr!().counter),
+            counter: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(
+                    &__metrique_self_expr!().counter,
+                ),
+            ),
         }
     }
 }
