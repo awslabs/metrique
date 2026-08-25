@@ -1637,14 +1637,14 @@ impl MetricsField {
             OwnershipKind::ByValue => quote_spanned! {span=> __metrique_self_expr!().#ident },
             OwnershipKind::ByRef => quote_spanned! {span=> &__metrique_self_expr!().#ident },
         };
-        self.close_field_expr(field_expr)
+        self.close_field_expr(field_expr, ownership_kind)
     }
 
-    pub(crate) fn close_field_expr(&self, field_expr: Ts2) -> Ts2 {
+    pub(crate) fn close_field_expr(&self, field_expr: Ts2, ownership_kind: OwnershipKind) -> Ts2 {
         let ident = &self.ident;
         let span = self.span;
         let base = if self.attrs.close {
-            quote_spanned! {span=> metrique::CloseValue::close(#field_expr) }
+            close_value_expr(field_expr, span, ownership_kind)
         } else {
             field_expr
         };
@@ -1677,6 +1677,19 @@ impl MetricsField {
 
         let cfg_attrs = self.cfg_attrs();
         quote! { #(#cfg_attrs)* #ident: #base }
+    }
+}
+
+pub(crate) fn close_value_expr(field_expr: Ts2, span: Span, ownership_kind: OwnershipKind) -> Ts2 {
+    match ownership_kind {
+        OwnershipKind::ByValue => {
+            quote_spanned! {span=> metrique::CloseValue::close(#field_expr) }
+        }
+        OwnershipKind::ByRef => quote_spanned! {span=>
+            metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(#field_expr)
+            )
+        },
     }
 }
 
