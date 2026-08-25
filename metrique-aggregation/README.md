@@ -147,7 +147,7 @@ async fn setup_queue_processor() {
 
 **Choosing between WorkerSink and MutexSink:**
 
-- **[`MutexSink`]** - Use when you have inputs from a smaller number of threads. Great for supporting `close_and_merge` with embedded metrics. Does not flush on a timer, so call [`FlushableSink`] yourself when combining it with [`KeyedAggregator`].
+- **[`MutexSink`]** - Use when you have inputs from a smaller number of threads. Great for supporting `close_and_merge` with embedded metrics. Does not flush on a timer, so call [`FlushableSink::flush`] yourself when combining it with [`KeyedAggregator`].
 - **[`WorkerSink`]** - Use for sink-level aggregation from many producers across many threads. The channel-based design reduces contention and provides configurable flush timing.
 
 See the `sink_level` example for a complete working implementation.
