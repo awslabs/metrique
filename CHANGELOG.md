@@ -7,14 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.31](https://github.com/awslabs/metrique/compare/metrique-v0.1.30...metrique-v0.1.31) - 2026-08-24
+
+### Added
+
+- `AppendAndCloseOnDrop` now avoids allocations unless required ([#362](https://github.com/awslabs/metrique/pull/362))
+- `AppendAndCloseOnDrop::discard()`: drop without emitting, consistent with `TimerGuard::discard()`.
+- *(metrique-writer)* add in-memory MakeWriter for pull-based delivery ([#368](https://github.com/awslabs/metrique/pull/368))
+- *(metrique-writer)* re-export SampleGroup from the sample module ([#373](https://github.com/awslabs/metrique/pull/373))
+
 ### Changed
 
 - `AppendAndCloseOnDrop` no longer allocates on construction. Heap allocation is deferred until `flush_guard()` or `force_flush_guard()` is called. For the common case (no guards, no handles), construction is zero-allocation.
 
-### Added
+### Fixed
 
-- `AppendAndCloseOnDrop::discard()`: drop without emitting, consistent with `TimerGuard::discard()`.
-- *(metrique-writer)* re-export `SampleGroup` from `metrique_writer::sample` so it can be implemented for custom sample-group keys without depending on the doc-hidden `core` path
+- *(metrique-writer-core)* resolve AttachHandle::drop panic on concurrent shutdown registration ([#361](https://github.com/awslabs/metrique/pull/361))
+
+### Other
+
+- Preserve exact prefixes on enum tag names ([#370](https://github.com/awslabs/metrique/pull/370))
 
 ### Fixed
 

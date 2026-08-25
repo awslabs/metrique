@@ -1,0 +1,23 @@
+error[E0277]: CloseValue is not implemented for &OwnedOnly
+  --> tests/ui/fail/subfield_owned_suggestion.rs:18:5
+   |
+18 |     value: OwnedOnly,
+   |     ^^^^^ This type must implement `CloseValue`
+   |
+   = help: the trait `CloseValue` is not implemented for `&OwnedOnly`
+   = note: You may need to add `#[metrics]` to `&OwnedOnly` or implement `CloseValue` directly.
+   = note: if &OwnedOnly implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = help: the trait `CloseValue` is implemented for `OwnedOnly`
+   = note: required for `IfYouSeeThisUseSubfieldOwned<&OwnedOnly>` to implement `CloseValue`
+
+error[E0277]: CloseValue is not implemented for &OwnedOnly
+  --> tests/ui/fail/subfield_owned_suggestion.rs:24:9
+   |
+24 |         value: OwnedOnly,
+   |         ^^^^^ This type must implement `CloseValue`
+   |
+   = help: the trait `CloseValue` is not implemented for `&OwnedOnly`
+   = note: You may need to add `#[metrics]` to `&OwnedOnly` or implement `CloseValue` directly.
+   = note: if &OwnedOnly implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
+   = help: the trait `CloseValue` is implemented for `OwnedOnly`
+   = note: required for `IfYouSeeThisUseSubfieldOwned<&OwnedOnly>` to implement `CloseValue`

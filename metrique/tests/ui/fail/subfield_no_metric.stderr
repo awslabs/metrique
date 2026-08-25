@@ -11,7 +11,6 @@ help: the trait `CloseValue` is not implemented for `ChildMetrics`
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
@@ -36,7 +35,6 @@ help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
@@ -71,7 +69,6 @@ help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
@@ -103,7 +100,6 @@ help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
@@ -140,7 +136,6 @@ help: the trait `CloseValue` is not implemented for `ChildMetrics`
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
@@ -165,7 +160,6 @@ help: the trait `CloseValue` is not implemented for `ChildMetrics`
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
@@ -191,7 +185,6 @@ help: within `RootMetricsEntry`, the trait `CloseValue` is not implemented for `
    | ^^^^^^^^^^^^^^^^^^^
    = note: You may need to add `#[metrics]` to `ChildMetrics` or implement `CloseValue` directly.
    = note: if ChildMetrics implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the following other types implement trait `CloseValue`:
              &AtomicBool
              &AtomicU16
