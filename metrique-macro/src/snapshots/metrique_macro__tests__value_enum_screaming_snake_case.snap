@@ -76,6 +76,12 @@ impl metrique::CloseValue for Operation {
         <&Self>::close(&self)
     }
 }
+impl metrique::CloseValue for OperationValue {
+    type Closed = OperationValue;
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
 impl ::std::convert::From<&'_ Operation> for &'static str {
     fn from(value: &Operation) -> Self {
         #[allow(deprecated)]

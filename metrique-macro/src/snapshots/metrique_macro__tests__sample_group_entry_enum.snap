@@ -68,6 +68,12 @@ impl metrique::CloseValue for Operation {
         <&Self>::close(&self)
     }
 }
+impl metrique::CloseValue for OperationValue {
+    type Closed = OperationValue;
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
 impl ::std::convert::From<&'_ Operation> for &'static str {
     fn from(value: &Operation) -> Self {
         #[allow(deprecated)]
@@ -305,6 +311,12 @@ impl metrique::CloseValue for Metadata {
     type Closed = MetadataEntry;
     fn close(self) -> Self::Closed {
         <&Self>::close(&self)
+    }
+}
+impl metrique::CloseValue for MetadataEntry {
+    type Closed = MetadataEntry;
+    fn close(self) -> Self::Closed {
+        self
     }
 }
 
@@ -826,6 +838,12 @@ impl metrique::CloseValue for RequestResult {
                 RequestResultEntry::Cancelled(::metrique::CloseValue::close(v0), v1)
             }
         }
+    }
+}
+impl metrique::CloseValue for RequestResultEntry {
+    type Closed = RequestResultEntry;
+    fn close(self) -> Self::Closed {
+        self
     }
 }
 impl ::std::convert::From<&'_ RequestResult> for &'static str {

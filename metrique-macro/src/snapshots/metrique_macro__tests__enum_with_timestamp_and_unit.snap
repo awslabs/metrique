@@ -287,6 +287,12 @@ impl metrique::CloseValue for TimestampEnum {
         }
     }
 }
+impl metrique::CloseValue for TimestampEnumEntry {
+    type Closed = TimestampEnumEntry;
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
 impl ::std::convert::From<&'_ TimestampEnum> for &'static str {
     fn from(value: &TimestampEnum) -> Self {
         #[allow(deprecated)]

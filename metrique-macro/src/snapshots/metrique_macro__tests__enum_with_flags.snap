@@ -261,6 +261,12 @@ impl metrique::CloseValue for FlaggedEnum {
         }
     }
 }
+impl metrique::CloseValue for FlaggedEnumEntry {
+    type Closed = FlaggedEnumEntry;
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
 impl ::std::convert::From<&'_ FlaggedEnum> for &'static str {
     fn from(value: &FlaggedEnum) -> Self {
         #[allow(deprecated)]

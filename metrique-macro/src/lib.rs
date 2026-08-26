@@ -111,7 +111,7 @@ impl MacroError {
 /// | `exact_prefix` | String | Adds a prefix to flattened entries without inflection | `#[metrics(flatten, exact_prefix="API_")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
 /// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
-/// | `no_close` | Flag | Use the entry directly instead of closing it | `#[metrics(no_close)]` |
+/// | `no_close` | Flag | Use a value that is already in closed form directly, instead of calling `CloseValue::close`. Needed for foreign or hand-written types that implement `Entry` (via `flatten_entry`) or a value formatter's input (via `format`) but not `CloseValue`. Generated `#[metrics]` entries implement an identity `CloseValue`, so they do not need this. | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 /// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
 /// | `default_flags` | Path(s) | On a flatten field, applies flags to all child fields. Child field-level skips take precedence. | `#[metrics(flatten, default_flags(my_crate::flags::Export))]` |
@@ -2099,6 +2099,18 @@ fn generate_close_value_impls(
         }
     };
 
+    // Identity `CloseValue` on the generated closed entry type. An already-closed
+    // entry is a valid closing field of another `#[metrics]` struct without needing
+    // `#[metrics(no_close)]`. See awslabs/metrique#382.
+    let identity_impl = quote!(
+        impl #impl_generics metrique::CloseValue for #closed_ty #ty_generics #where_clause {
+            type Closed = #closed_ty #ty_generics;
+            fn close(self) -> Self::Closed {
+                self
+            }
+        }
+    );
+
     quote! {
         impl #impl_generics metrique::CloseValue for #metrics_struct_ty #where_clause {
             type Closed = #closed_ty #ty_generics;
@@ -2106,6 +2118,7 @@ fn generate_close_value_impls(
         }
 
         #proxy_impl
+        #identity_impl
     }
 }
 
