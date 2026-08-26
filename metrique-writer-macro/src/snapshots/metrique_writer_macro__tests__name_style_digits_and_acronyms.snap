@@ -1,0 +1,93 @@
+---
+source: metrique-writer-macro/src/lib.rs
+expression: grid
+---
+latency_p99
+  lowercase            latency_p99
+  UPPERCASE            LATENCY_P99
+  PascalCase           LatencyP99
+  camelCase            latencyP99
+  snake_case           latency_p_99
+  SCREAMING_SNAKE_CASE LATENCY_P_99
+  kebab-case           latency-p-99
+  SCREAMING-KEBAB-CASE LATENCY-P-99
+
+s3_requests
+  lowercase            s3_requests
+  UPPERCASE            S3_REQUESTS
+  PascalCase           S3Requests
+  camelCase            s3Requests
+  snake_case           s_3_requests
+  SCREAMING_SNAKE_CASE S_3_REQUESTS
+  kebab-case           s-3-requests
+  SCREAMING-KEBAB-CASE S-3-REQUESTS
+
+utf8_string
+  lowercase            utf8_string
+  UPPERCASE            UTF8_STRING
+  PascalCase           Utf8String
+  camelCase            utf8String
+  snake_case           utf_8_string
+  SCREAMING_SNAKE_CASE UTF_8_STRING
+  kebab-case           utf-8-string
+  SCREAMING-KEBAB-CASE UTF-8-STRING
+
+XMLHttpRequest
+  lowercase            xmlhttprequest
+  UPPERCASE            XMLHTTPREQUEST
+  PascalCase           XmlhttpRequest
+  camelCase            xmlhttpRequest
+  snake_case           xml_http_request
+  SCREAMING_SNAKE_CASE XML_HTTP_REQUEST
+  kebab-case           xml-http-request
+  SCREAMING-KEBAB-CASE XML-HTTP-REQUEST
+
+status_5xx
+  lowercase            status_5xx
+  UPPERCASE            STATUS_5XX
+  PascalCase           Status5Xx
+  camelCase            status5Xx
+  snake_case           status_5xx
+  SCREAMING_SNAKE_CASE STATUS_5XX
+  kebab-case           status-5xx
+  SCREAMING-KEBAB-CASE STATUS-5XX
+
+concurrency_avg_10s
+  lowercase            concurrency_avg_10s
+  UPPERCASE            CONCURRENCY_AVG_10S
+  PascalCase           ConcurrencyAvg10S
+  camelCase            concurrencyAvg10S
+  snake_case           concurrency_avg_1_0s
+  SCREAMING_SNAKE_CASE CONCURRENCY_AVG_1_0S
+  kebab-case           concurrency-avg-1-0s
+  SCREAMING-KEBAB-CASE CONCURRENCY-AVG-1-0S
+
+e2e_us
+  lowercase            e2e_us
+  UPPERCASE            E2E_US
+  PascalCase           E2EUs
+  camelCase            e2EUs
+  snake_case           e_2e_us
+  SCREAMING_SNAKE_CASE E_2E_US
+  kebab-case           e-2e-us
+  SCREAMING-KEBAB-CASE E-2E-US
+
+FooBARBaz
+  lowercase            foobarbaz
+  UPPERCASE            FOOBARBAZ
+  PascalCase           FooBARBaz
+  camelCase            fooBARBaz
+  snake_case           foo_bar_baz
+  SCREAMING_SNAKE_CASE FOO_BAR_BAZ
+  kebab-case           foo-bar-baz
+  SCREAMING-KEBAB-CASE FOO-BAR-BAZ
+
+request_count_10sec
+  lowercase            request_count_10sec
+  UPPERCASE            REQUEST_COUNT_10SEC
+  PascalCase           RequestCount10Sec
+  camelCase            requestCount10Sec
+  snake_case           request_count_1_0sec
+  SCREAMING_SNAKE_CASE REQUEST_COUNT_1_0SEC
+  kebab-case           request-count-1-0sec
+  SCREAMING-KEBAB-CASE REQUEST-COUNT-1-0SEC
