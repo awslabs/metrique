@@ -118,7 +118,9 @@ impl metrique::CloseValue for &'_ Nested {
         }
         #[allow(deprecated)]
         NestedEntry {
-            value: metrique::CloseValue::close(&__metrique_self_expr!().value),
+            value: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(&__metrique_self_expr!().value),
+            ),
         }
     }
 }
@@ -421,17 +423,30 @@ impl metrique::CloseValue for &'_ Status {
         match __metrique_self_expr!() {
             Status::Active { count, latency } => {
                 StatusEntry::Active {
-                    count: metrique::CloseValue::close(count),
-                    latency: metrique::CloseValue::close(latency).into(),
+                    count: metrique::CloseValue::close(
+                        ::metrique::IfYouSeeThisUseSubfieldOwned(count),
+                    ),
+                    latency: metrique::CloseValue::close(
+                            ::metrique::IfYouSeeThisUseSubfieldOwned(latency),
+                        )
+                        .into(),
                 }
             }
             Status::Pending(v0) => {
-                StatusEntry::Pending(::metrique::CloseValue::close(v0))
+                StatusEntry::Pending(
+                    metrique::CloseValue::close(
+                        ::metrique::IfYouSeeThisUseSubfieldOwned(v0),
+                    ),
+                )
             }
             Status::Multi(v0, v1) => {
                 StatusEntry::Multi(
-                    ::metrique::CloseValue::close(v0),
-                    ::metrique::CloseValue::close(v1),
+                    metrique::CloseValue::close(
+                        ::metrique::IfYouSeeThisUseSubfieldOwned(v0),
+                    ),
+                    metrique::CloseValue::close(
+                        ::metrique::IfYouSeeThisUseSubfieldOwned(v1),
+                    ),
                 )
             }
         }

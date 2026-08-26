@@ -5,5 +5,7 @@
 
 mod dimensions;
 mod map;
+mod quantized;
 pub use dimensions::WithGlobalDimensions;
 pub use map::EnumMapEntry;
+pub use quantized::{QuantizationPolicy, QuantizedEntry};

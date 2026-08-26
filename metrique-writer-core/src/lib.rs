@@ -26,6 +26,7 @@ pub mod descriptor;
 pub mod entry;
 pub mod format;
 pub mod global;
+pub mod quantize;
 pub mod sample;
 pub mod sink;
 pub mod stream;
@@ -48,3 +49,9 @@ pub mod test_stream;
 #[cfg(all(shuttle, feature = "_shuttle"))]
 #[doc(hidden)]
 pub mod shuttle_test_support;
+
+/// Cfg-gated concurrency primitives (std vs. shuttle) used by macro-generated
+/// code. Public only so that expansion works from downstream crates; not
+/// meant to be used directly.
+#[doc(hidden)]
+pub mod primitives;

@@ -16,7 +16,7 @@ use smallvec::SmallVec;
 use crate::{
     CowStr,
     entry::WithGlobalDimensions,
-    stream::{MergeGlobalDimensions, MergeGlobals},
+    stream::{MergeGlobalDimensions, MergeGlobals, QuantizationPolicy, Quantize},
 };
 
 /// Extension trait for [`Format`]. This adds methods that use types not
@@ -247,6 +247,51 @@ pub trait FormatExt: Format {
             global_dimensions_denylist: global_dimensions_denylist.unwrap_or_default(),
         }
     }
+
+    /// Reduce the precision of the metrics selected by `policy`, for every entry this format
+    /// writes.
+    ///
+    /// This is the stream-wide counterpart to `#[metrics(quantize(..))]`, for turning
+    /// quantization on without editing field declarations. There is intentionally both a
+    /// [`FormatExt::with_quantization`] and an [`EntryIoStreamExt::with_quantization`], which do
+    /// the same thing, so it can be used with interfaces that accept either a [`Format`] or an
+    /// [`EntryIoStream`].
+    ///
+    /// The policy must name the metrics it applies to; see [`QuantizationPolicy`] for why there
+    /// is no "quantize everything" option. Entry timestamps are never affected.
+    ///
+    /// ```
+    /// # use metrique_writer::{
+    /// #    EntryIoStream, format::FormatExt as _,
+    /// #    quantize::{Quantizer, Rounding, SignificantBits},
+    /// #    stream::QuantizationPolicy,
+    /// # };
+    /// # use metrique_writer_format_emf::Emf;
+    /// # use std::io;
+    /// fn set_up_emf(out: impl io::Write) -> impl EntryIoStream {
+    ///     let quantizer = Quantizer::new(
+    ///         SignificantBits::new(8).unwrap(),
+    ///         Rounding::Midpoint,
+    ///     );
+    ///
+    ///     Emf::all_validations("MyApp".into(), vec![vec![]])
+    ///         .with_quantization(QuantizationPolicy::matching(quantizer, |name| {
+    ///             name.ends_with("Nanos")
+    ///         }))
+    ///         .output_to(out)
+    /// }
+    /// ```
+    ///
+    /// [`EntryIoStreamExt::with_quantization`]: crate::stream::EntryIoStreamExt::with_quantization
+    fn with_quantization(self, policy: QuantizationPolicy) -> Quantize<Self>
+    where
+        Self: Sized,
+    {
+        Quantize {
+            stream: self,
+            policy,
+        }
+    }
 }
 impl<T: Format + ?Sized> FormatExt for T {}
 
@@ -295,6 +340,38 @@ impl<F: Format, const N: usize> Format for MergeGlobalDimensions<F, N> {
             );
             self.stream.format(&entry_with_global_dimensions, output)
         }
+    }
+}
+
+impl<F: Format> Format for Quantize<F> {
+    fn format(
+        &mut self,
+        entry: &impl Entry,
+        output: &mut impl io::Write,
+    ) -> Result<(), IoStreamError> {
+        let Self { stream, policy } = self;
+        stream.format(&crate::entry::QuantizedEntry::new(entry, policy), output)
+    }
+}
+
+impl<F: metrique_writer_core::sample::SampledFormat> metrique_writer_core::sample::SampledFormat
+    for Quantize<F>
+{
+    fn format_with_sample_rate(
+        &mut self,
+        entry: &impl Entry,
+        output: &mut impl io::Write,
+        rate: f32,
+    ) -> Result<(), IoStreamError> {
+        // Implemented so that quantization can be applied either side of sampling. The two
+        // orders are equivalent: quantizing changes values, sampling chooses which entries are
+        // written, and neither depends on the other.
+        let Self { stream, policy } = self;
+        stream.format_with_sample_rate(
+            &crate::entry::QuantizedEntry::new(entry, policy),
+            output,
+            rate,
+        )
     }
 }
 

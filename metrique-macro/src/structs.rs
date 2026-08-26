@@ -3,13 +3,11 @@
 
 use proc_macro2::TokenStream as Ts2;
 use quote::{format_ident, quote};
-use syn::{
-    Attribute, DeriveInput, FieldsNamed, FieldsUnnamed, Generics, Ident, Result, Visibility,
-};
+use syn::{Attribute, DeriveInput, FieldsNamed, FieldsUnnamed, Generics, Ident, Visibility};
 
 use crate::{
-    MetricMode, MetricsField, MetricsFieldKind, RootAttributes, clean_attrs, entry_impl,
-    generate_on_drop_wrapper, parse_metric_fields, value_impl,
+    MacroResult, MetricMode, MetricsField, MetricsFieldKind, RootAttributes, clean_attrs,
+    entry_impl, generate_on_drop_wrapper, parse_metric_fields, value_impl,
 };
 
 /// The canonical name of the generated entry struct for a `#[metrics]` type.
@@ -30,7 +28,7 @@ pub(crate) fn generate_metrics_for_struct(
     root_attributes: RootAttributes,
     input: &DeriveInput,
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Ts2> {
+) -> MacroResult<Ts2> {
     let struct_name = &input.ident;
     let entry_name = entry_struct_ident(struct_name, root_attributes.mode);
     let guard_name = format_ident!("{}Guard", struct_name);
@@ -124,7 +122,7 @@ fn generate_base_struct(
     generics: &Generics,
     attrs: &[Attribute],
     fields: &[MetricsField],
-) -> Result<Ts2> {
+) -> MacroResult<Ts2> {
     let has_named_fields = fields.iter().any(|f| f.name.is_some());
     let fields = fields.iter().map(|f| f.core_field(has_named_fields));
     let body = wrap_fields_into_struct_decl(has_named_fields, fields);
@@ -149,7 +147,7 @@ fn generate_entry_struct(
     fields: &[MetricsField],
     root_attrs: &RootAttributes,
     base_attrs: &[Attribute],
-) -> Result<Ts2> {
+) -> MacroResult<Ts2> {
     let has_named_fields = fields.iter().any(|f| f.name.is_some());
     let config = root_attrs.configuration_fields();
 
@@ -199,17 +197,9 @@ pub(crate) fn clean_base_struct(
 ) -> Ts2 {
     // Strip out `metrics` attribute
     let clean_fields = fields.named.iter().map(|field| {
-        let field_name = field.ident.as_ref().unwrap();
-        let field_type = &field.ty;
-        let field_vis = &field.vis;
-
-        // Filter out metrics attributes
-        let field_attrs = clean_attrs(&field.attrs);
-
-        quote! {
-            #(#field_attrs)*
-            #field_vis #field_name: #field_type
-        }
+        let mut field = field.clone();
+        field.attrs = clean_attrs(&field.attrs);
+        field
     });
 
     let expanded = quote! {
@@ -231,16 +221,9 @@ pub(crate) fn clean_base_unnamed_struct(
 ) -> Ts2 {
     // Strip out `metrics` attribute
     let clean_fields = fields.unnamed.iter().map(|field| {
-        let field_type = &field.ty;
-        let field_vis = &field.vis;
-
-        // Filter out metrics attributes
-        let field_attrs = clean_attrs(&field.attrs);
-
-        quote! {
-            #(#field_attrs)*
-            #field_vis #field_type
-        }
+        let mut field = field.clone();
+        field.attrs = clean_attrs(&field.attrs);
+        field
     });
 
     let expanded = quote! {
