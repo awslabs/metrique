@@ -11,7 +11,6 @@ readme = "README.md"
 [dependencies]
 metrique-writer-core = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
-str_inflector = { workspace = true }
 
 [dev-dependencies]
 metrique = { workspace = true, features = ["service-metrics"] }

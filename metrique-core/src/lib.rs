@@ -8,8 +8,8 @@
 use metrique_writer_core::{EntryWriter, entry::SampleGroupElement};
 
 mod atomics;
-mod close_value_impls;
 pub mod case_convert;
+mod close_value_impls;
 pub mod concat;
 mod inflectable_entry_impls;
 mod namestyle;
