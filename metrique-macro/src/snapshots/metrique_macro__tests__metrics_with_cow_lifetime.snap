@@ -184,12 +184,6 @@ impl<'a> metrique::CloseValue for Foo<'a> {
         }
     }
 }
-impl<'a> metrique::CloseValue for FooEntry<'a> {
-    type Closed = FooEntry<'a>;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
 #[doc = concat!(
     "Metrics guard returned from [`", "Foo",
     "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."

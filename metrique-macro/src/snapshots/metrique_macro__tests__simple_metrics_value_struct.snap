@@ -46,9 +46,3 @@ impl metrique::CloseValue for RequestValue {
         <&Self>::close(&self)
     }
 }
-impl metrique::CloseValue for RequestValueValue {
-    type Closed = RequestValueValue;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}

@@ -1,14 +1,16 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Regression coverage for awslabs/metrique#382: a macro-generated closed entry
-//! type implements an identity `CloseValue`, so an already-closed entry is a
-//! valid closing field of another `#[metrics]` struct without `#[metrics(no_close)]`.
+//! Regression coverage for awslabs/metrique#382: with `#[metrics(closeable_entry)]`,
+//! a macro-generated closed entry type implements an identity `CloseValue`, so an
+//! already-closed entry is a valid closing field of another `#[metrics]` struct
+//! without `#[metrics(no_close)]`. The flag is opt-in because adding `CloseValue`
+//! for the generated entry is a breaking change.
 
 use assert2::check;
 use metrique::{CloseValue, test_util::test_metric, unit_of_work::metrics};
 
-#[metrics]
+#[metrics(closeable_entry)]
 #[derive(Clone)]
 struct Inner {
     count: u64,

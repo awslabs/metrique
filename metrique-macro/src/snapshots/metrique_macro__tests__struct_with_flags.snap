@@ -251,12 +251,6 @@ impl metrique::CloseValue for FlaggedMetrics {
         }
     }
 }
-impl metrique::CloseValue for FlaggedMetricsEntry {
-    type Closed = FlaggedMetricsEntry;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
 #[doc = concat!(
     "Metrics guard returned from [`", "FlaggedMetrics",
     "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."

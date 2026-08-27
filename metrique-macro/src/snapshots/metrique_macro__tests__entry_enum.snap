@@ -130,12 +130,6 @@ impl metrique::CloseValue for Nested {
         <&Self>::close(&self)
     }
 }
-impl metrique::CloseValue for NestedEntry {
-    type Closed = NestedEntry;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
 
 enum Status {
     Active { count: u32, latency: u64 },
@@ -464,12 +458,6 @@ impl metrique::CloseValue for Status {
         <&Self>::close(&self)
     }
 }
-impl metrique::CloseValue for StatusEntry {
-    type Closed = StatusEntry;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
 impl ::std::convert::From<&'_ Status> for &'static str {
     fn from(value: &Status) -> Self {
         #[allow(deprecated)]
@@ -688,12 +676,6 @@ impl metrique::CloseValue for Operation {
                 OperationEntry::Write(::metrique::CloseValue::close(v0))
             }
         }
-    }
-}
-impl metrique::CloseValue for OperationEntry {
-    type Closed = OperationEntry;
-    fn close(self) -> Self::Closed {
-        self
     }
 }
 impl ::std::convert::From<&'_ Operation> for &'static str {

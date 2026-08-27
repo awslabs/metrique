@@ -60,12 +60,6 @@ impl metrique::CloseValue for Foo {
         <&Self>::close(&self)
     }
 }
-impl metrique::CloseValue for FooValue {
-    type Closed = FooValue;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
 impl ::std::convert::From<&'_ Foo> for &'static str {
     fn from(value: &Foo) -> Self {
         #[allow(deprecated)]

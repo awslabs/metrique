@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- *(metrique-macro)* generated closed entry types now implement an identity `CloseValue`, so an already-closed entry can be used as a closing field of another `#[metrics]` struct without `#[metrics(no_close)]` ([#382](https://github.com/awslabs/metrique/issues/382))
+- *(metrique-macro)* `#[metrics(closeable_entry)]` gives the generated closed entry type an identity `CloseValue` impl, so an already-closed entry can be used as a closing field of another `#[metrics]` struct without `#[metrics(no_close)]`. Opt-in, because adding the impl is a breaking change; intended to become the default in a future major version ([#382](https://github.com/awslabs/metrique/issues/382))
 
 ## [0.1.31](https://github.com/awslabs/metrique/compare/metrique-v0.1.30...metrique-v0.1.31) - 2026-08-24
 

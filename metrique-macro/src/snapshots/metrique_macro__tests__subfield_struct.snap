@@ -133,9 +133,3 @@ impl metrique::CloseValue for NestedMetrics {
         <&Self>::close(&self)
     }
 }
-impl metrique::CloseValue for NestedMetricsEntry {
-    type Closed = NestedMetricsEntry;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}

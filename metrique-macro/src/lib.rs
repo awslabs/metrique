@@ -96,6 +96,7 @@ impl MacroError {
 /// | `value(string)` | Flag | Used for *enums*. Transforms the enum into a string value. Automatically derives `Debug`, `Clone`, and `Copy` on the generated Value enum. The base enum is left untouched — derive what you need on it yourself. | `#[metrics(value(string))]` |
 /// | `sample_group` | Flag | On `#[metrics(value)]`, forwards `sample_group` to the inner field | `#[metrics(value, sample_group)]` |
 /// | `default_flags` | Path | Applies a flag to all direct fields in this struct for format and sink usage. Does not propagate to flattened children (use field-level `default_flags` on the flatten site for that). Fields can override with `flags(skip(T))`. | `#[metrics(default_flags(my_crate::flags::MyFlag))]` |
+/// | `closeable_entry` | Flag | The `#[metrics]` macro generates a `<TypeName>Entry` struct for the closed form. This flag additionally gives that entry an identity `CloseValue` impl, so an already-closed entry can be used as a closing field of another `#[metrics]` struct without `#[metrics(no_close)]`. Note that you normally want to use the `#[metrics]`-annotated struct, *not* the `Entry` struct. Off by default because adding the impl is a breaking change. | `#[metrics(closeable_entry)]` |
 ///
 /// # Field Attributes
 ///
@@ -111,7 +112,7 @@ impl MacroError {
 /// | `exact_prefix` | String | Adds a prefix to flattened entries without inflection | `#[metrics(flatten, exact_prefix="API_")]` |
 /// | `flatten` | Flag | Flattens nested `CloseEntry` metric structs | `#[metrics(flatten)]` |
 /// | `flatten_entry` | Flag | Flattens nested `CloseValue<Closed: Entry>` metric structs, with no prefix or inflection | `#[metrics(flatten_entry)]` |
-/// | `no_close` | Flag | Use a value that is already in closed form directly, instead of calling `CloseValue::close`. Needed for foreign or hand-written types that implement `Entry` (via `flatten_entry`) or a value formatter's input (via `format`) but not `CloseValue`. Generated `#[metrics]` entries implement an identity `CloseValue`, so they do not need this. | `#[metrics(no_close)]` |
+/// | `no_close` | Flag | Use a value that is already in closed form directly, instead of calling `CloseValue::close`. Needed for foreign or hand-written types that implement `Entry` (via `flatten_entry`) or a value formatter's input (via `format`) but not `CloseValue`. A generated `#[metrics]` entry can be used without this if its type is declared `#[metrics(closeable_entry)]`. | `#[metrics(no_close)]` |
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 /// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
 /// | `default_flags` | Path(s) | On a flatten field, applies flags to all child fields. Child field-level skips take precedence. | `#[metrics(flatten, default_flags(my_crate::flags::Export))]` |
@@ -1098,6 +1099,9 @@ struct RawRootAttributes {
     sample_group: Flag,
     value: Option<ValueAttributes>,
 
+    #[darling(rename = "closeable_entry")]
+    closeable_entry: Flag,
+
     #[darling(default)]
     default_flags: FlagsList,
 }
@@ -1123,6 +1127,8 @@ struct RootAttributes {
     tag: Option<Tag>,
 
     sample_group: bool,
+
+    closeable_entry: bool,
 
     mode: MetricMode,
 
@@ -1207,6 +1213,7 @@ impl RawRootAttributes {
             emf_dimensions: self.emf_dimensions,
             tag,
             sample_group,
+            closeable_entry: self.closeable_entry.is_present(),
             mode,
             default_flags: self.default_flags.0,
         })
@@ -2099,17 +2106,25 @@ fn generate_close_value_impls(
         }
     };
 
-    // Identity `CloseValue` on the generated closed entry type. An already-closed
-    // entry is a valid closing field of another `#[metrics]` struct without needing
-    // `#[metrics(no_close)]`. See awslabs/metrique#382.
-    let identity_impl = quote!(
-        impl #impl_generics metrique::CloseValue for #closed_ty #ty_generics #where_clause {
-            type Closed = #closed_ty #ty_generics;
-            fn close(self) -> Self::Closed {
-                self
+    // Opt-in identity `CloseValue` on the generated closed entry type. When
+    // `#[metrics(closeable_entry)]` is set, an already-closed entry is a valid closing
+    // field of another `#[metrics]` struct without needing `#[metrics(no_close)]`.
+    //
+    // This is off by default because it is a breaking change: adding `CloseValue` for
+    // the generated entry conflicts with any hand-written impl in the wild. See
+    // awslabs/metrique#382.
+    let identity_impl = if root_attrs.closeable_entry {
+        quote!(
+            impl #impl_generics metrique::CloseValue for #closed_ty #ty_generics #where_clause {
+                type Closed = #closed_ty #ty_generics;
+                fn close(self) -> Self::Closed {
+                    self
+                }
             }
-        }
-    );
+        )
+    } else {
+        quote!()
+    };
 
     quote! {
         impl #impl_generics metrique::CloseValue for #metrics_struct_ty #where_clause {
@@ -2348,6 +2363,21 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics()));
         assert_snapshot!("simple_metrics_struct", parsed_file);
+    }
+
+    #[test]
+    fn test_closeable_entry_struct() {
+        // `closeable_entry` adds an identity `CloseValue` impl on the generated
+        // `RequestMetricsEntry`; without the flag no such impl is generated.
+        let input = quote! {
+            struct RequestMetrics {
+                operation: &'static str,
+                latency: std::time::Duration
+            }
+        };
+
+        let parsed_file = metrics_impl_string(input, quote!(metrics(closeable_entry)));
+        assert_snapshot!("closeable_entry_struct", parsed_file);
     }
 
     #[test]
