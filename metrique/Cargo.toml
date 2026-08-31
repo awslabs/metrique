@@ -1,6 +1,6 @@
 [package]
 name = "metrique"
-version = "0.1.27"
+version = "0.1.30"
 edition = "2024"
 license = "Apache-2.0"
 description = "Library for generating wide event metrics"

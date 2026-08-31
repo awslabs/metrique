@@ -82,11 +82,9 @@ pub struct TaskTiming {
 impl TaskTiming {
     /// Instruments the request's future. Awaiting the returned future yields the
     /// future's output paired with the `TaskTiming` to fold into your metrics.
-    pub fn instrument<F: Future>(task: F) -> impl Future<Output = (F::Output, TaskTiming)> {
-        async move {
-            let (output, metrics) = FutureMonitor::new().instrument(task).await;
-            (output, TaskTiming { metrics })
-        }
+    pub async fn instrument<F: Future>(task: F) -> (F::Output, TaskTiming) {
+        let (output, metrics) = FutureMonitor::new().instrument(task).await;
+        (output, TaskTiming { metrics })
     }
 
     /// The metrics captured for this request.
