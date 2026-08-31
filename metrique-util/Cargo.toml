@@ -33,7 +33,7 @@ metrique-core = { workspace = true }
 metrique = { workspace = true, optional = true }
 arc-swap = { version = "1", optional = true }
 tokio = { workspace = true, optional = true, features = ["time", "rt"] }
-tokio-metrics = { version = "0.5.0", optional = true, features = ["rt", "metrique-integration"] }
+tokio-metrics = { version = "0.5.2", optional = true, features = ["rt", "metrique-integration"] }
 sysinfo = { version = "0.38.4", optional = true, default-features = false, features = [
     "component",
     "disk",
@@ -65,6 +65,11 @@ required-features = ["sysinfo-bridge", "tokio-metrics-bridge"]
 
 [[example]]
 name = "tokio-metrics-folded"
+required-features = ["tokio-metrics-bridge"]
+doc-scrape-examples = false
+
+[[example]]
+name = "individual-task-metrics"
 required-features = ["tokio-metrics-bridge"]
 doc-scrape-examples = false
 
