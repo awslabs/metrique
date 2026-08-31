@@ -72,7 +72,7 @@ enum EntryEnumTupleFieldWithUnit {
 // Entry enum tuple field with timestamp (no flatten) should error
 #[metrics]
 enum EntryEnumTupleFieldWithTimestamp {
-    Variant(#[metrics(timestamp)] metrique::Timestamp),
+    Variant(#[metrics(timestamp)] metrique::timers::Timestamp),
 }
 
 // Entry enum tuple field with incompatible attributes should error

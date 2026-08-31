@@ -1,0 +1,67 @@
+---
+source: metrique-macro/src/inflect.rs
+assertion_line: 241
+expression: grid
+---
+latency_p99
+  Preserve       latency_p99
+  Pascal         LatencyP99
+  Snake          latency_p_99
+  Kebab          latency-p-99
+  ScreamingSnake LATENCY_P_99
+
+s3_requests
+  Preserve       s3_requests
+  Pascal         S3Requests
+  Snake          s_3_requests
+  Kebab          s-3-requests
+  ScreamingSnake S_3_REQUESTS
+
+utf8_string
+  Preserve       utf8_string
+  Pascal         Utf8String
+  Snake          utf_8_string
+  Kebab          utf-8-string
+  ScreamingSnake UTF_8_STRING
+
+XMLHttpRequest
+  Preserve       XMLHttpRequest
+  Pascal         XmlhttpRequest
+  Snake          xml_http_request
+  Kebab          xml-http-request
+  ScreamingSnake XML_HTTP_REQUEST
+
+status_5xx
+  Preserve       status_5xx
+  Pascal         Status5Xx
+  Snake          status_5xx
+  Kebab          status-5xx
+  ScreamingSnake STATUS_5XX
+
+concurrency_avg_10s
+  Preserve       concurrency_avg_10s
+  Pascal         ConcurrencyAvg10S
+  Snake          concurrency_avg_1_0s
+  Kebab          concurrency-avg-1-0s
+  ScreamingSnake CONCURRENCY_AVG_1_0S
+
+e2e_us
+  Preserve       e2e_us
+  Pascal         E2EUs
+  Snake          e_2e_us
+  Kebab          e-2e-us
+  ScreamingSnake E_2E_US
+
+FooBARBaz
+  Preserve       FooBARBaz
+  Pascal         FooBARBaz
+  Snake          foo_bar_baz
+  Kebab          foo-bar-baz
+  ScreamingSnake FOO_BAR_BAZ
+
+request_count_10sec
+  Preserve       request_count_10sec
+  Pascal         RequestCount10Sec
+  Snake          request_count_1_0sec
+  Kebab          request-count-1-0sec
+  ScreamingSnake REQUEST_COUNT_1_0SEC

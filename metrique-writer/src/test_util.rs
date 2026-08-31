@@ -318,6 +318,14 @@ impl ValueWriter for TestValueWriter<'_> {
     fn error(self, error: metrique_writer_core::ValidationError) {
         panic!("metric returned an error: {error}")
     }
+
+    fn values<'a, V: metrique_writer_core::Value + 'a>(
+        self,
+        values: impl IntoIterator<Item = &'a V>,
+    ) {
+        // Lists surface as a joined `TestValue::Property`.
+        metrique_writer_core::value::write_values_as_string(self, values)
+    }
 }
 
 /// Converts an [`Entry`] into a `TestEntry` that can be introspected

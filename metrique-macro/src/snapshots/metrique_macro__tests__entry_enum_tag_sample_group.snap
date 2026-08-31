@@ -165,10 +165,10 @@ const _: () = {
                                         ::metrique::writer::core::FieldDescriptor::builder(
                                                 "operation",
                                             )
-                                            .pascal("operation")
+                                            .pascal("Operation")
                                             .snake("operation")
                                             .kebab("operation")
-                                            .screaming_snake("operation")
+                                            .screaming_snake("OPERATION")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(

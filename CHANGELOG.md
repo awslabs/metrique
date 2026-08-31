@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.31](https://github.com/awslabs/metrique/compare/metrique-v0.1.30...metrique-v0.1.31) - 2026-08-24
+
+### Added
+
+- `AppendAndCloseOnDrop` now avoids allocations unless required ([#362](https://github.com/awslabs/metrique/pull/362))
+- `AppendAndCloseOnDrop::discard()`: drop without emitting, consistent with `TimerGuard::discard()`.
+- *(metrique-writer)* add in-memory MakeWriter for pull-based delivery ([#368](https://github.com/awslabs/metrique/pull/368))
+- *(metrique-writer)* re-export SampleGroup from the sample module ([#373](https://github.com/awslabs/metrique/pull/373))
+
+### Changed
+
+- `AppendAndCloseOnDrop` no longer allocates on construction. Heap allocation is deferred until `flush_guard()` or `force_flush_guard()` is called. For the common case (no guards, no handles), construction is zero-allocation.
+
+### Fixed
+
+- *(metrique-writer-core)* resolve AttachHandle::drop panic on concurrent shutdown registration ([#361](https://github.com/awslabs/metrique/pull/361))
+
+### Other
+
+- Preserve exact prefixes on enum tag names ([#370](https://github.com/awslabs/metrique/pull/370))
+
+### Fixed
+
+- *(metrique-aggregation)* `MutexSink` now implements `FlushableSink`. A `KeyedAggregator` behind a `MutexSink` previously had no flush path, so it accumulated entries and never emitted them.
+
+## [0.1.30](https://github.com/awslabs/metrique/compare/metrique-v0.1.29...metrique-v0.1.30) - 2026-08-12
+
+### Added
+
+- *(metrique-writer-core)* add metric quantization ([#363](https://github.com/awslabs/metrique/pull/363))
+
+### Fixed
+
+- *(metrique-writer)* auto-shutdown BackgroundQueue when all clones drop ([#356](https://github.com/awslabs/metrique/pull/356))
+
+### Other
+
+- add Shuttle-based concurrency tests ([#338](https://github.com/awslabs/metrique/pull/338))
+
+## [0.1.29](https://github.com/awslabs/metrique/compare/metrique-v0.1.28...metrique-v0.1.29) - 2026-07-27
+
+### Fixed
+
+- forward ValueWriter::values() through value wrapper writers ([#346](https://github.com/awslabs/metrique/pull/346))
+- Yield descriptor segments in Entry::write order for flattened entries ([#347](https://github.com/awslabs/metrique/pull/347))
+
+## [0.1.28](https://github.com/awslabs/metrique/compare/metrique-v0.1.27...metrique-v0.1.28) - 2026-07-20
+
+### Other
+
+- Fix cross-crate E0119 for entry-mode #[aggregate] ([#339](https://github.com/awslabs/metrique/pull/339))
+
 ## [0.1.27](https://github.com/awslabs/metrique/compare/metrique-v0.1.26...metrique-v0.1.27) - 2026-07-08
 
 ### Added

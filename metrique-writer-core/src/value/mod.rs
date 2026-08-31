@@ -11,10 +11,12 @@ mod flags;
 mod force;
 mod formatter;
 mod primitive;
+mod quantized;
 
 pub use dimensions::{WithDimension, WithDimensions, WithVecDimensions};
 pub use force::{FlagConstructor, ForceFlag, ForceFlagEntryWriter};
 pub use formatter::{FormattedValue, Lifted, NotLifted, ToString, ValueFormatter};
+pub use quantized::{Quantized, QuantizingValueWriter, quantize_observation};
 use std::{borrow::Cow, fmt::Write, sync::Arc};
 
 pub use flags::{Distribution, MetricFlags, MetricOptions};
@@ -66,6 +68,14 @@ pub trait Value {
 }
 
 /// Provided by a format for each call to [`crate::EntryWriter::value()`].
+///
+/// # Note for wrapper implementations
+///
+/// Implementations that wrap another `ValueWriter` (forwarding calls to it, possibly
+/// modifying them) must also forward [`values()`](ValueWriter::values). Relying on the
+/// default implementation silently downgrades lists to a comma-joined string, bypassing
+/// the inner writer's native array support and dropping any per-element adjustments the
+/// wrapper makes in `metric()`.
 pub trait ValueWriter: Sized {
     /// Write an arbitrary string property to the entry. This may populate entry-wide dimensions in EMF.
     ///
@@ -106,23 +116,53 @@ pub trait ValueWriter: Sized {
     }
 
     /// Write a list of values. Formats that support native arrays (e.g. EMF) can override this
-    /// to emit a structured representation. The default comma-joins each element's string
-    /// representation, skipping elements that write nothing (e.g. `None`).
+    /// to emit a structured representation. The default is [`write_values_as_string`], which
+    /// comma-joins each element's string representation.
+    ///
+    /// Wrapper writers must forward this to the writer they wrap (see the trait-level note).
+    #[cfg(not(metrique_require_explicit_impls))]
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        let mut buf = String::new();
-        for value in values {
-            let before = buf.len();
-            if !buf.is_empty() {
-                buf.push(',');
-            }
-            let after_sep = buf.len();
-            value.write(StringCapture(&mut buf));
-            if buf.len() <= after_sep {
-                buf.truncate(before);
-            }
-        }
-        self.string(&buf);
+        write_values_as_string(self, values)
     }
+
+    /// Write a list of values. See the non-`metrique_require_explicit_impls` version, which
+    /// documents this method and defaults it to [`write_values_as_string`].
+    #[cfg(metrique_require_explicit_impls)]
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>);
+}
+
+// Inline capacity for the buffer a wrapper `ValueWriter` needs when forwarding `values`:
+// the inner writer takes an iterator of references, so re-wrapped elements have to be
+// materialized first. Elements are 8-24 bytes, so this costs at most ~200 bytes of stack and
+// spills to the heap beyond 8. 8 is what these buffers used before the const existed, not a
+// measured optimum.
+#[doc(hidden)]
+pub const VALUES_INLINE_CAPACITY: usize = 8;
+
+/// The fallback [`ValueWriter::values`] behaviour: comma-join each element's string representation
+/// into a single [`ValueWriter::string`] call, skipping elements that write nothing (e.g. `None`).
+/// An empty list still calls `string("")`.
+///
+/// This is lossy: per-element metric attributes (units, dimensions, flags) are dropped, and formats
+/// with native array support never see the individual elements. Writers that wrap another
+/// `ValueWriter` should forward `values` instead of calling this.
+pub fn write_values_as_string<'a, V: Value + 'a>(
+    writer: impl ValueWriter,
+    values: impl IntoIterator<Item = &'a V>,
+) {
+    let mut buf = String::new();
+    for value in values {
+        let before = buf.len();
+        if !buf.is_empty() {
+            buf.push(',');
+        }
+        let after_sep = buf.len();
+        value.write(StringCapture(&mut buf));
+        if buf.len() <= after_sep {
+            buf.truncate(before);
+        }
+    }
+    writer.string(&buf);
 }
 
 /// Adapter that captures a [`Value`]'s string representation into a buffer.
@@ -163,6 +203,11 @@ impl ValueWriter for StringCapture<'_> {
     }
 
     fn error(self, _error: ValidationError) {}
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // A list nested inside a list element flattens into the joined representation.
+        write_values_as_string(self, values)
+    }
 }
 
 /// The numeric value of a observation to include in a metric value.
@@ -240,6 +285,37 @@ pub trait MetricValue: Value {
         I: Into<CowStr>,
     {
         WithDimensions::new_with_dimensions(self, dimensions)
+    }
+
+    /// Reduce the precision of this value when it is written, retaining `bits` significant
+    /// bits and using `rounding` to pick each bucket's representative.
+    ///
+    /// This trades a bounded amount of accuracy for a smaller set of distinct emitted values.
+    /// See the [`quantize`](crate::quantize) module for the error bound at each bit count and
+    /// for guidance on which values should not be quantized.
+    ///
+    /// If a unit conversion is also needed, convert first: the error bound applies to the
+    /// value as emitted.
+    ///
+    /// ```
+    /// use metrique_writer_core::quantize::{Rounding, SignificantBits};
+    /// use metrique_writer_core::value::MetricValue;
+    ///
+    /// let bits = SignificantBits::new(8).unwrap();
+    ///
+    /// // At 8 bits the emitted value is within 0.390625% of the true one.
+    /// let latency = 1_234_567u64.quantized(bits, Rounding::Midpoint);
+    /// assert_eq!(*latency, 1_234_567);
+    /// ```
+    fn quantized(
+        self,
+        bits: crate::quantize::SignificantBits,
+        rounding: crate::quantize::Rounding,
+    ) -> Quantized<Self, crate::quantize::Quantizer>
+    where
+        Self: Sized,
+    {
+        Quantized::new(self, crate::quantize::Quantizer::new(bits, rounding))
     }
 }
 

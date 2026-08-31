@@ -1,3 +1,5 @@
+use crate::MetricMode;
+use crate::structs::entry_struct_ident;
 use darling::FromField;
 use proc_macro2::{Ident, TokenStream as Ts2};
 use quote::{ToTokens, format_ident, quote, quote_spanned};
@@ -13,6 +15,7 @@ struct AggregateField {
     is_ignored: bool,
     use_clone: bool,
     metrics_attrs: Vec<Attribute>,
+    has_unit: bool,
 }
 
 #[derive(Debug)]
@@ -123,6 +126,10 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             .filter(|attr| attr.path().is_ident("metrics"))
             .cloned()
             .collect();
+        let has_unit = crate::RawMetricsFieldAttrs::from_field(field)
+            .ok()
+            .and_then(|attrs| attrs.unit)
+            .is_some();
 
         parsed_fields.push(AggregateField {
             name,
@@ -132,6 +139,7 @@ fn parse_aggregate_fields(input: &DeriveInput) -> Result<ParsedAggregate> {
             is_ignored,
             use_clone,
             metrics_attrs,
+            has_unit,
         });
     }
 
@@ -215,6 +223,18 @@ pub(crate) fn generate_aggregate_strategy_impl(
         quote! { #original_name }
     };
 
+    // The type used as `Self` in the `Merge` impl. In entry mode we use the *concrete*
+    // entry struct name (e.g. `ApiCallEntry`) rather than the projection
+    // `<ApiCall as CloseValue>::Closed`, because coherence does not normalize projections
+    // and would reject two such impls across crates as potentially overlapping (E0119).
+    // The name is derived from the same shared helper `#[metrics]` uses, so they always agree.
+    let merge_self_ty = if entry_mode {
+        let entry_ident = entry_struct_ident(original_name, MetricMode::RootEntry);
+        quote! { #entry_ident }
+    } else {
+        quote! { #original_name }
+    };
+
     // Generate Merge impl
     let merge_calls = parsed.fields.iter().filter(|f| !f.is_key && !f.is_ignored).map(|f| {
         let name = &f.name;
@@ -227,22 +247,8 @@ pub(crate) fn generate_aggregate_strategy_impl(
             quote! { #field_ty }
         };
 
-        // Check if field has a unit attribute by parsing metrics attributes
-        // Only dereference in entry mode, where the field is wrapped in WithUnit
-        let has_unit = entry_mode && crate::RawMetricsFieldAttrs::from_field(&syn::Field {
-            attrs: f.metrics_attrs.clone(),
-            vis: syn::Visibility::Inherited,
-            mutability: syn::FieldMutability::None,
-            ident: Some(f.name.clone()),
-            colon_token: None,
-            ty: f.ty.clone(),
-        })
-        .ok()
-        .and_then(|attrs| attrs.unit)
-        .is_some();
-
         // In entry mode with unit, need to unwrap WithUnit wrapper
-        let entry_value = if has_unit {
+        let entry_value = if entry_mode && f.has_unit {
             quote! { input.#name.into_inner() }
         } else {
             quote! { input.#name }
@@ -264,7 +270,7 @@ pub(crate) fn generate_aggregate_strategy_impl(
 
     // Generate Merge impl
     let merge_impl = quote! {
-        impl ::metrique_aggregation::__macro_plumbing::Merge for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::Merge for #merge_self_ty {
             type Merged = #aggregated_name;
             type MergeConfig = ();
 
@@ -377,9 +383,11 @@ pub(crate) fn generate_merge_ref_impl(
 
     let original_name = &input.ident;
 
-    // Determine the source type
-    let source_ty = if entry_mode {
-        quote! { <#original_name as metrique::CloseValue>::Closed }
+    // Determine the self-type for MergeRef: use concrete entry ident in entry mode
+    // to avoid cross-crate coherence errors (E0119).
+    let merge_self_ty = if entry_mode {
+        let entry_ident = entry_struct_ident(original_name, MetricMode::RootEntry);
+        quote! { #entry_ident }
     } else {
         quote! { #original_name }
     };
@@ -420,7 +428,7 @@ pub(crate) fn generate_merge_ref_impl(
     }).collect::<Vec<_>>();
 
     let merge_ref_impl = quote! {
-        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #source_ty {
+        impl ::metrique_aggregation::__macro_plumbing::MergeRef for #merge_self_ty {
             fn merge_ref(accum: &mut Self::Merged, input: &Self) {
                 #(#merge_ref_calls)*
             }
@@ -469,18 +477,14 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
     let generics = &input.generics;
 
     let filtered_attrs = clean_aggregate_attrs(&input.attrs);
+
     match &input.data {
         Data::Struct(data_struct) => match &data_struct.fields {
             Fields::Named(fields_named) => {
                 let fields = fields_named.named.iter().map(|f| {
-                    let name = &f.ident;
-                    let ty = &f.ty;
-                    let vis = &f.vis;
-                    let attrs = clean_aggregate_attrs(&f.attrs);
-                    quote! {
-                        #(#attrs)*
-                        #vis #name: #ty
-                    }
+                    let mut field = f.clone();
+                    field.attrs = clean_aggregate_attrs(&field.attrs);
+                    field
                 });
                 quote! {
                     #(#filtered_attrs)*
@@ -495,6 +499,7 @@ pub(crate) fn clean_aggregate_adt(input: &DeriveInput) -> Ts2 {
     }
 }
 
+/// Remove `#[aggregate(...)]` attributes, leaving the rest (e.g. `#[metrics]`) intact.
 fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
     attr.iter()
         .filter(|attr| !attr.path().is_ident("aggregate"))
@@ -506,7 +511,6 @@ fn clean_aggregate_attrs(attr: &[Attribute]) -> Vec<Attribute> {
 mod tests {
     use super::*;
     use quote::quote;
-    use syn::parse2;
 
     fn aggregate_impl(input: Ts2, entry_mode: bool) -> Ts2 {
         let input = syn::parse2(input).unwrap();
@@ -526,7 +530,7 @@ mod tests {
 
     fn aggregate_impl_string(input: Ts2) -> String {
         let output = aggregate_impl(input, false);
-        match parse2::<syn::File>(output.clone()) {
+        match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         }
@@ -599,7 +603,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, true);
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
+        let parsed_file = match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };
@@ -618,7 +622,7 @@ mod tests {
         };
 
         let output = aggregate_impl(input, false);
-        let parsed_file = match parse2::<syn::File>(output.clone()) {
+        let parsed_file = match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => output.to_string(),
         };
@@ -640,6 +644,29 @@ mod tests {
 
         let parsed_file = aggregate_impl_string(input);
         insta::assert_snapshot!("aggregate_with_ignore", parsed_file);
+    }
+
+    #[test]
+    fn test_clean_aggregate_preserves_field_defaults() {
+        let input = syn::parse2(quote! {
+            struct Defaults {
+                #[aggregate(strategy = Sum)]
+                value: usize = DOES_NOT_EXIST,
+            }
+        })
+        .unwrap();
+
+        let cleaned = clean_aggregate_adt(&input);
+
+        assert_eq!(
+            cleaned.to_string(),
+            quote! {
+                struct Defaults {
+                    value: usize = DOES_NOT_EXIST
+                }
+            }
+            .to_string()
+        );
     }
 
     #[test]

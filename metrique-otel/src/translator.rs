@@ -244,4 +244,9 @@ impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
     fn error(self, _error: ValidationError) {
         // Validation errors are silently dropped for now.
     }
+
+    fn values<'c, V: Value + 'c>(self, values: impl IntoIterator<Item = &'c V>) {
+        // No OTel list instrument, so a list becomes one joined entry attribute.
+        metrique_writer_core::value::write_values_as_string(self, values)
+    }
 }

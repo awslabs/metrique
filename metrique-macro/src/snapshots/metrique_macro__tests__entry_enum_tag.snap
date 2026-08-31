@@ -18,7 +18,7 @@ const _: () = {
     impl NestedEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+        fn __metrique_descriptor_run_0() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
@@ -100,7 +100,7 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                 ::std::iter::once(
                     ::metrique::writer::core::DescriptorRef::from_static(
-                        NestedEntry::__metrique_descriptor(),
+                        NestedEntry::__metrique_descriptor_run_0(),
                         <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                     ),
                 ),
@@ -118,7 +118,9 @@ impl metrique::CloseValue for &'_ Nested {
         }
         #[allow(deprecated)]
         NestedEntry {
-            value: metrique::CloseValue::close(&__metrique_self_expr!().value),
+            value: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(&__metrique_self_expr!().value),
+            ),
         }
     }
 }
@@ -314,10 +316,10 @@ const _: () = {
                                         ::metrique::writer::core::FieldDescriptor::builder(
                                                 "operation",
                                             )
-                                            .pascal("operation")
+                                            .pascal("Operation")
                                             .snake("operation")
                                             .kebab("operation")
-                                            .screaming_snake("operation")
+                                            .screaming_snake("OPERATION")
                                             .flags(&__METRIQUE_V0_FLAGS_0)
                                             .skipped_flags(&__METRIQUE_V0_SKIPPED_0)
                                             .maybe_unit(
@@ -370,10 +372,10 @@ const _: () = {
                                             ::metrique::writer::core::FieldDescriptor::builder(
                                                     "operation",
                                                 )
-                                                .pascal("operation")
+                                                .pascal("Operation")
                                                 .snake("operation")
                                                 .kebab("operation")
-                                                .screaming_snake("operation")
+                                                .screaming_snake("OPERATION")
                                                 .flags(&__METRIQUE_V1_FLAGS_0)
                                                 .skipped_flags(&__METRIQUE_V1_SKIPPED_0)
                                                 .maybe_unit(

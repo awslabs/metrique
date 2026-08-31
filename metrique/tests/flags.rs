@@ -275,3 +275,32 @@ fn force_flag_type_wrapper_still_works() {
     let hr_metric = metrics.iter().find(|m| m["Name"] == "HighRes").unwrap();
     assert_eq!(hr_metric["StorageResolution"], 1);
 }
+
+// --- EMF: flags on a Vec field still produce a native JSON array ---
+
+#[metrics(rename_all = "PascalCase")]
+struct FlaggedVecField {
+    #[metrics(timestamp)]
+    timestamp: SystemTime,
+    #[metrics(flags(metrique::emf::flags::HighStorageResolution))]
+    tags: Vec<String>,
+}
+
+#[test]
+fn flags_on_vec_field_preserves_native_array() {
+    let m = FlaggedVecField {
+        timestamp: UNIX_EPOCH,
+        tags: vec!["a".into(), "b".into()],
+    };
+    let closed = CloseValue::close(m);
+    let entry = RootEntry::new(closed);
+
+    let mut emf = Emf::all_validations("Test".to_string(), vec![vec![]]);
+    let mut output = vec![];
+    emf.format(&entry, &mut output).unwrap();
+    let json: Value = serde_json::from_slice(&output).unwrap();
+
+    // Regression: ForceFlag's write-path wrapper previously did not forward
+    // `values()`, so this comma-joined into the string "a,b".
+    assert_eq!(json["Tags"], serde_json::json!(["a", "b"]));
+}

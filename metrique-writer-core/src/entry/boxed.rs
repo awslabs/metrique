@@ -7,7 +7,7 @@ use smallvec::SmallVec;
 
 use crate::{
     Descriptors, Entry, EntryWriter, Observation, Unit, ValidationError, Value, ValueWriter,
-    value::MetricFlags,
+    value::{MetricFlags, VALUES_INLINE_CAPACITY},
 };
 
 use super::EntryConfig;
@@ -215,7 +215,7 @@ impl ValueWriter for ValueWriterFromDyn<'_> {
     }
 
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        let strs: SmallVec<[String; 8]> = values
+        let strs: SmallVec<[String; VALUES_INLINE_CAPACITY]> = values
             .into_iter()
             .filter_map(|v| {
                 let mut s = String::new();
@@ -223,7 +223,8 @@ impl ValueWriter for ValueWriterFromDyn<'_> {
                 if s.is_empty() { None } else { Some(s) }
             })
             .collect();
-        let refs: SmallVec<[&str; 8]> = strs.iter().map(|s| s.as_str()).collect();
+        let refs: SmallVec<[&str; VALUES_INLINE_CAPACITY]> =
+            strs.iter().map(|s| s.as_str()).collect();
         self.0.values_str(&refs)
     }
 }

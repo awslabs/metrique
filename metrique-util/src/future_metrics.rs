@@ -21,7 +21,7 @@ use tokio_metrics::{FutureMetrics, FutureMonitor};
 /// returned future yields the future's output together with a `TaskTiming`. Fold
 /// that into your metric struct with `#[metrics(flatten)]` and, on close, it
 /// emits the request's poll, idle, first-poll, and scheduling metrics (see
-/// [`FutureMetrics`](tokio_metrics::FutureMetrics) for the full list).
+/// [`FutureMetrics`] for the full list).
 ///
 ///
 /// # Accuracy

@@ -67,7 +67,7 @@ error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entr
 error: tuple variant fields must use #[metrics(flatten)], #[metrics(flatten_entry)], or #[metrics(ignore)]
   --> tests/ui/fail/enum_kitchen_sink.rs:75:13
    |
-75 |     Variant(#[metrics(timestamp)] metrique::Timestamp),
+75 |     Variant(#[metrics(timestamp)] metrique::timers::Timestamp),
    |             ^
 
 error: Cannot combine `flatten` with `unit`
@@ -85,8 +85,8 @@ error[E0277]: CloseValue is not implemented for &TimestampOnClose
    = help: the trait `CloseValue` is not implemented for `&TimestampOnClose`
    = note: You may need to add `#[metrics]` to `&TimestampOnClose` or implement `CloseValue` directly.
    = note: if &TimestampOnClose implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
    = help: the trait `CloseValue` is implemented for `TimestampOnClose`
+   = note: required for `IfYouSeeThisUseSubfieldOwned<&TimestampOnClose>` to implement `CloseValue`
 
 error[E0277]: CloseValue is not implemented for &std::string::String
   --> tests/ui/fail/enum_kitchen_sink.rs:96:5
@@ -97,11 +97,8 @@ error[E0277]: CloseValue is not implemented for &std::string::String
    = help: the trait `CloseValue` is not implemented for `&std::string::String`
    = note: You may need to add `#[metrics]` to `&std::string::String` or implement `CloseValue` directly.
    = note: if &std::string::String implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-   = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
-help: consider dereferencing here
-   |
-96 |     *value: String,
-   |     +
+   = help: the trait `CloseValue` is implemented for `std::string::String`
+   = note: required for `IfYouSeeThisUseSubfieldOwned<&std::string::String>` to implement `CloseValue`
 
 error[E0277]: CloseValue is not implemented for &TimestampOnClose
    --> tests/ui/fail/enum_kitchen_sink.rs:101:14
@@ -112,5 +109,5 @@ error[E0277]: CloseValue is not implemented for &TimestampOnClose
     = help: the trait `CloseValue` is not implemented for `&TimestampOnClose`
     = note: You may need to add `#[metrics]` to `&TimestampOnClose` or implement `CloseValue` directly.
     = note: if &TimestampOnClose implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`
-    = note: If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`.
     = help: the trait `CloseValue` is implemented for `TimestampOnClose`
+    = note: required for `IfYouSeeThisUseSubfieldOwned<&TimestampOnClose>` to implement `CloseValue`

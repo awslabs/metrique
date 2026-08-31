@@ -26,7 +26,7 @@ use std::{io, marker::PhantomData, time::Duration};
 use metrique_writer_core::{Entry, IoStreamError, format::Format};
 use rand::{Rng, RngCore, rngs::ThreadRng};
 
-pub use metrique_writer_core::sample::SampledFormat;
+pub use metrique_writer_core::sample::{SampleGroup, SampledFormat};
 
 mod congress;
 pub use congress::{CongressSample, CongressSampleBuilder};

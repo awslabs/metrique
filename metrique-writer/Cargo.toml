@@ -1,6 +1,6 @@
 [package]
 name = "metrique-writer"
-version = "0.1.24"
+version = "0.1.27"
 edition = "2024"
 rust-version = "1.91" # See .github/workflows/ci.yml
 license = "Apache-2.0"
@@ -9,7 +9,7 @@ repository = "https://github.com/awslabs/metrique"
 readme = "README.md"
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_impls)', 'cfg(shuttle)'] }
 
 [dependencies]
 ahash = { workspace = true }
@@ -23,6 +23,7 @@ tracing-appender = { workspace = true, optional = true }
 rand = { workspace = true }
 crossbeam-queue = { workspace = true, optional = true }
 crossbeam-utils = { workspace = true, optional = true }
+shuttle = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true, default-features = false, features = [
     "sync",
 ] }
@@ -76,6 +77,9 @@ background-queue = [
     "dep:crossbeam-utils",
     "dep:tracing",
 ]
+# Runs the background-queue implementation on shuttle-native primitives instead of
+# crossbeam, so Shuttle's scheduler can explore thread interleavings. Test-only.
+_shuttle = ["dep:shuttle", "background-queue", "metrique-writer-core/_shuttle"]
 # Deprecated name of tracing-subscriber-03 feature
 tracing_subscriber_03 = ["tracing-subscriber-03"]
 tracing-subscriber-03 = ["dep:tracing-subscriber"]

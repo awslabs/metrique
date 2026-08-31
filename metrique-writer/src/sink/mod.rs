@@ -12,6 +12,8 @@ mod background;
 mod immediate_flush;
 mod metrics;
 mod observer;
+#[cfg(feature = "background-queue")]
+mod shuttle_primitives;
 
 #[cfg(feature = "background-queue")]
 pub use background::{BACKGROUND_QUEUE_METRICS, describe_sink_metrics};

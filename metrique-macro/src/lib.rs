@@ -25,11 +25,56 @@ use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as Ts2};
 use quote::{ToTokens, quote, quote_spanned};
 use syn::{
-    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Result, Type,
-    Visibility, parse_macro_input, spanned::Spanned,
+    Attribute, Data, DeriveInput, Error, Fields, GenericParam, Generics, Ident, Type, Visibility,
+    parse_macro_input, spanned::Spanned,
 };
 
 use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter};
+
+#[derive(Debug)]
+enum MacroError {
+    Syn(syn::Error),
+    Darling(darling::Error),
+}
+
+type MacroResult<T> = std::result::Result<T, MacroError>;
+
+impl From<syn::Error> for MacroError {
+    fn from(error: syn::Error) -> Self {
+        Self::Syn(error)
+    }
+}
+
+impl From<darling::Error> for MacroError {
+    fn from(error: darling::Error) -> Self {
+        Self::Darling(error)
+    }
+}
+
+impl std::fmt::Display for MacroError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Syn(error) => error.fmt(formatter),
+            Self::Darling(error) => error.fmt(formatter),
+        }
+    }
+}
+
+impl MacroError {
+    fn into_compile_errors(self) -> Ts2 {
+        match self {
+            Self::Syn(error) => error.into_compile_error(),
+            Self::Darling(error) => error.write_errors(),
+        }
+    }
+
+    fn into_darling(self) -> darling::Error {
+        match self {
+            Self::Syn(error) => darling::Error::custom(error.to_string()).with_span(&error.span()),
+            Self::Darling(error) => error,
+        }
+    }
+}
 
 /// Transforms a struct or enum into a wide event (metric record).
 ///
@@ -59,6 +104,7 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `name` | String | Overrides the field name in metrics | `#[metrics(name = "CustomName")]` |
 /// | `unit` | Path | Specifies the unit for the metric value | `#[metrics(unit = Millisecond)]` |
 /// | `format` | Path | Specifies the formatter (`ValueFormatter`) for the metric value | `#[metrics(format=EpochSeconds)]` |
+/// | `quantize` | List | Reduces the precision of the metric value to `bits` significant bits, with a bounded relative error. `rounding` is one of `floor`, `ceil`, or `midpoint` (the default). See the [`quantize`] module for the error bound at each bit count | `#[metrics(quantize(bits = 8, rounding = floor))]` |
 /// | `timestamp` | Flag | Marks a field as the canonical timestamp | `#[metrics(timestamp)]` |
 /// | `sample_group` | Flag | Marks a field as a sample group - it will still be emitted as a value | `#[metrics(sample_group)]` |
 /// | `prefix` | String | Adds a prefix to flattened entries. Prefix will get inflected to the right case style | `#[metrics(flatten, prefix="prefix-")]` |
@@ -69,6 +115,8 @@ use crate::inflect::{name_contains_dot, name_contains_uninflectables, name_ends_
 /// | `ignore` | Flag | Excludes the field from metrics | `#[metrics(ignore)]` |
 /// | `flags` | Path(s) | Applies a flag to this field for format and sink usage. Use `skip(T)` to explicitly exclude. | `#[metrics(flags(my_crate::flags::Export, skip(OtherFlag)))]` |
 /// | `default_flags` | Path(s) | On a flatten field, applies flags to all child fields. Child field-level skips take precedence. | `#[metrics(flatten, default_flags(my_crate::flags::Export))]` |
+///
+/// [`quantize`]: https://docs.rs/metrique-writer/0.1/metrique_writer/quantize/
 ///
 /// # Variant Attributes
 ///
@@ -450,7 +498,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
         Ok(root_attrs) => root_attrs,
         Err(e) => {
             // recover and use an empty root attributes
-            e.to_compile_error().to_tokens(&mut base_token_stream);
+            e.into_compile_errors().to_tokens(&mut base_token_stream);
             RootAttributes::default()
         }
     };
@@ -462,7 +510,7 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
             // Always generate the base struct without metrics attributes to avoid cascading errors
             clean_base_adt(&input).to_tokens(&mut base_token_stream);
             // Include the error and the base struct without metrics attributes
-            err.to_compile_error().to_tokens(&mut base_token_stream);
+            err.into_compile_errors().to_tokens(&mut base_token_stream);
         }
     };
     base_token_stream.into()
@@ -674,14 +722,15 @@ pub(crate) enum Tag {
 }
 
 impl Tag {
-    /// Get the tag field name, applying inflection if using inflectable variant
-    pub(crate) fn field_name(&self, root_attrs: &RootAttributes) -> String {
+    /// Get the tag field name as rendered under a propagated name style.
+    /// `name_exact` tags are style-invariant: the name is emitted verbatim.
+    pub(crate) fn styled_name(&self, root_attrs: &RootAttributes, style: NameStyle) -> String {
         match self {
             Tag::Inflectable { name, .. } => root_attrs
                 .prefix
                 .as_ref()
-                .map(|p| p.apply(name, root_attrs.rename_all))
-                .unwrap_or_else(|| root_attrs.rename_all.apply(name)),
+                .map(|prefix| prefix.apply(name, style))
+                .unwrap_or_else(|| style.apply(name)),
             Tag::Exact { name, .. } => name.clone(),
         }
     }
@@ -751,6 +800,198 @@ impl From<RawTag> for Tag {
     }
 }
 
+/// A parsed `quantize(bits = N)` or `quantize(bits = N, rounding = mode)` attribute.
+#[derive(Debug, Clone)]
+pub(crate) struct QuantizeAttr {
+    /// Significant bits to retain. Validated to be in `1..=52` at parse time.
+    pub(crate) bits: u8,
+    /// The rounding mode, defaulting to midpoint.
+    pub(crate) rounding: QuantizeRounding,
+    pub(crate) span: Span,
+}
+
+/// The rounding mode named by a `quantize(..)` attribute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum QuantizeRounding {
+    Floor,
+    Ceil,
+    Midpoint,
+}
+
+impl QuantizeRounding {
+    fn tag_path(self) -> Ts2 {
+        match self {
+            QuantizeRounding::Floor => {
+                quote! { ::metrique::writer::quantize::rounding::Floor }
+            }
+            QuantizeRounding::Ceil => {
+                quote! { ::metrique::writer::quantize::rounding::Ceil }
+            }
+            QuantizeRounding::Midpoint => {
+                quote! { ::metrique::writer::quantize::rounding::Midpoint }
+            }
+        }
+    }
+}
+
+impl QuantizeAttr {
+    /// The `Bits<N, R>` type this attribute denotes.
+    pub(crate) fn tag_type(&self) -> Ts2 {
+        let bits = proc_macro2::Literal::u8_suffixed(self.bits);
+        let rounding = self.rounding.tag_path();
+        quote_spanned! { self.span=> ::metrique::writer::quantize::Bits<#bits, #rounding> }
+    }
+}
+
+impl FromMeta for QuantizeAttr {
+    fn from_meta(item: &syn::Meta) -> darling::Result<Self> {
+        // Parsed by hand rather than via darling's nested derive: a custom `FromMeta` using
+        // `from_list` is silently dropped when it sits alongside darling `Flag` fields in the
+        // same attribute, which is the same limitation `FlagsList` works around above.
+        let list = match item {
+            syn::Meta::List(list) => list,
+            _ => {
+                return Err(darling::Error::custom(
+                    "expected quantize(bits = N) or quantize(bits = N, rounding = floor|ceil|midpoint)",
+                )
+                .with_span(item));
+            }
+        };
+
+        let parsed: syn::punctuated::Punctuated<syn::Meta, syn::Token![,]> = list
+            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+            .map_err(|e| darling::Error::custom(e.to_string()).with_span(list))?;
+
+        let mut bits: Option<(u8, Span)> = None;
+        let mut rounding: Option<QuantizeRounding> = None;
+
+        for meta in &parsed {
+            let name_value = match meta {
+                syn::Meta::NameValue(name_value) => name_value,
+                _ => {
+                    return Err(darling::Error::custom(
+                        "expected `bits = N` or `rounding = floor|ceil|midpoint`",
+                    )
+                    .with_span(meta));
+                }
+            };
+
+            if name_value.path.is_ident("bits") {
+                bits = Some(parse_quantize_bits(&name_value.value)?);
+            } else if name_value.path.is_ident("rounding") {
+                rounding = Some(parse_quantize_rounding(&name_value.value)?);
+            } else if name_value.path.is_ident("digits") {
+                // Readers who think in decimal significant digits will reach for this first.
+                // Point them at the bit count that delivers the precision they asked for
+                // rather than leaving them with an "unknown key" error.
+                let suggestion = parse_quantize_digits_suggestion(&name_value.value);
+                return Err(darling::Error::custom(format!(
+                    "quantize takes a bit count, not decimal digits. {suggestion}"
+                ))
+                .with_span(&name_value.path));
+            } else {
+                let key = name_value
+                    .path
+                    .get_ident()
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_else(|| "?".to_string());
+                return Err(darling::Error::custom(format!(
+                    "unknown quantize option `{key}`, expected `bits` or `rounding`"
+                ))
+                .with_span(&name_value.path));
+            }
+        }
+
+        let (bits, span) = bits.ok_or_else(|| {
+            darling::Error::custom("quantize requires `bits = N`, for example quantize(bits = 8)")
+                .with_span(list)
+        })?;
+
+        Ok(QuantizeAttr {
+            bits,
+            rounding: rounding.unwrap_or(QuantizeRounding::Midpoint),
+            span,
+        })
+    }
+}
+
+/// Parse and range-check `bits = N`.
+fn parse_quantize_bits(value: &syn::Expr) -> darling::Result<(u8, Span)> {
+    let lit = match value {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(lit),
+            ..
+        }) => lit,
+        _ => {
+            return Err(
+                darling::Error::custom("expected an integer literal for `bits`").with_span(value),
+            );
+        }
+    };
+
+    let parsed: u64 = lit.base10_parse().map_err(|_| {
+        darling::Error::custom("expected an integer literal for `bits`").with_span(lit)
+    })?;
+
+    // Mirrors `SignificantBits::new`, but reported at expansion time so the diagnostic points
+    // at the attribute rather than at generated code.
+    if !(1..=52).contains(&parsed) {
+        return Err(darling::Error::custom(format!(
+            "quantize bits must be in 1..=52, got {parsed}. \
+             The ceiling is 52 because metric values are carried as f64 in places and an f64 \
+             significand holds 53 bits"
+        ))
+        .with_span(lit));
+    }
+
+    Ok((parsed as u8, lit.span()))
+}
+
+/// Parse `rounding = floor|ceil|midpoint`.
+fn parse_quantize_rounding(value: &syn::Expr) -> darling::Result<QuantizeRounding> {
+    let ident = match value {
+        syn::Expr::Path(path) => path.path.get_ident().cloned().ok_or_else(|| {
+            darling::Error::custom("expected floor, ceil, or midpoint").with_span(value)
+        })?,
+        _ => {
+            return Err(
+                darling::Error::custom("expected floor, ceil, or midpoint").with_span(value)
+            );
+        }
+    };
+
+    match ident.to_string().as_str() {
+        "floor" => Ok(QuantizeRounding::Floor),
+        "ceil" => Ok(QuantizeRounding::Ceil),
+        "midpoint" => Ok(QuantizeRounding::Midpoint),
+        other => Err(darling::Error::custom(format!(
+            "unknown rounding mode `{other}`, expected floor, ceil, or midpoint"
+        ))
+        .with_span(&ident)),
+    }
+}
+
+/// Build the "use bits = N instead" half of the `digits = N` diagnostic.
+fn parse_quantize_digits_suggestion(value: &syn::Expr) -> String {
+    let digits = match value {
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Int(lit),
+            ..
+        }) => lit.base10_parse::<u32>().ok(),
+        _ => None,
+    };
+
+    match digits {
+        // ceil(log2(2 * 10^digits)) is the smallest bit count whose relative error is below
+        // 10^-digits.
+        Some(digits) if (1..=6).contains(&digits) => {
+            let bits = (2.0 * 10f64.powi(digits as i32)).log2().ceil() as u32;
+            format!("For {digits} significant decimal digits, use `bits = {bits}`")
+        }
+        _ => "Use `bits = N`; 8 bits is roughly 2 significant decimal digits".to_string(),
+    }
+}
+
 /// A parsed `flags(Path)` or `flags(skip(Path))` attribute.
 #[derive(Debug, Clone)]
 pub(crate) struct FieldTagAttr {
@@ -781,6 +1022,12 @@ impl FromMeta for FlagsList {
                         "expected a path or skip(Path) in flags(...)",
                     )
                     .with_span(lit));
+                }
+                darling::ast::NestedMeta::NameValueInvalidExpr(meta) => {
+                    return Err(darling::Error::custom(
+                        "expected a path or skip(Path) in flags(...)",
+                    )
+                    .with_span(&meta.path));
                 }
             }
         }
@@ -1030,6 +1277,9 @@ struct RawMetricsFieldAttrs {
     format: Option<SpannedKv<syn::Path>>,
 
     #[darling(default)]
+    quantize: Option<QuantizeAttr>,
+
+    #[darling(default)]
     name: Option<SpannedKv<String>>,
 
     #[darling(default)]
@@ -1072,7 +1322,7 @@ impl<T: FromMeta> FromMeta for SpannedKv<T> {
 
 pub(crate) fn parse_metric_fields(
     fields: &syn::punctuated::Punctuated<syn::Field, syn::token::Comma>,
-) -> Result<Vec<MetricsField>> {
+) -> MacroResult<Vec<MetricsField>> {
     let mut parsed_fields = vec![];
     let mut errors = darling::Error::accumulator();
 
@@ -1097,7 +1347,11 @@ pub(crate) fn parse_metric_fields(
             name,
             span,
             ty: field.ty.clone(),
-            vis: field.vis.clone(),
+            base_field: {
+                let mut field = field.clone();
+                field.attrs = clean_attrs(&field.attrs);
+                field
+            },
             external_attrs: clean_attrs(&field.attrs),
             attrs,
         });
@@ -1201,6 +1455,15 @@ impl RawMetricsFieldAttrs {
         let name = get_field_option("name", &out, &name)?;
         let unit = get_field_option("unit", &out, &self.unit)?;
         let format = get_field_option("format", &out, &self.format)?;
+        // `get_field_option` wants a `SpannedKv`; `QuantizeAttr` carries its own span, so the
+        // same exclusivity check is spelled out here.
+        let quantize = match (&self.quantize, &out) {
+            (Some(attr), Some((_, other))) => {
+                return Err(cannot_combine_error(other, "quantize", attr.span));
+            }
+            (Some(attr), None) => Some(attr.clone()),
+            _ => None,
+        };
         let sample_group = get_field_flag("sample_group", &out, &self.sample_group)?;
         let close = !self.no_close.is_present();
         if let (false, Some((MetricsFieldKind::Ignore(span), _))) = (close, &out) {
@@ -1274,6 +1537,7 @@ impl RawMetricsFieldAttrs {
                     name: name.cloned(),
                     unit: unit.cloned(),
                     format: format.cloned(),
+                    quantize,
                 },
             },
             flags: {
@@ -1310,11 +1574,11 @@ struct MetricsFieldAttrs {
 }
 
 pub(crate) struct MetricsField {
-    pub(crate) vis: Visibility,
     pub(crate) ident: Ts2,
     pub(crate) name: Option<String>,
     pub(crate) span: Span,
     pub(crate) ty: Type,
+    pub(crate) base_field: syn::Field,
     pub(crate) external_attrs: Vec<Attribute>,
     pub(crate) attrs: MetricsFieldAttrs,
 }
@@ -1331,20 +1595,8 @@ impl MetricsField {
 }
 
 impl MetricsField {
-    fn core_field(&self, is_named: bool) -> Ts2 {
-        let MetricsField {
-            ref external_attrs,
-            ref ident,
-            ref ty,
-            ref vis,
-            ..
-        } = *self;
-        let field = if is_named {
-            quote! { #ident: #ty }
-        } else {
-            quote! { #ty }
-        };
-        quote! { #(#external_attrs)* #vis #field }
+    fn core_field(&self, _is_named: bool) -> Ts2 {
+        self.base_field.to_token_stream()
     }
 
     fn entry_field(&self, named: bool) -> Option<Ts2> {
@@ -1362,6 +1614,15 @@ impl MetricsField {
         if let Some(expr) = self.unit() {
             base_type = quote_spanned! { expr.span()=>
                 <#base_type as ::metrique::unit::AttachUnit>::Output<#expr>
+            }
+        }
+        // Applied after the unit wrapper, so the error bound describes the value in the unit it
+        // is emitted in. Quantizing first and converting afterwards would apply the bound in
+        // the source unit and then scale the result off the target unit's lattice.
+        if let Some(quantize) = self.quantize() {
+            let tag = quantize.tag_type();
+            base_type = quote_spanned! { quantize.span=>
+                ::metrique::writer::value::Quantized<#base_type, #tag>
             }
         }
         let inner = if named {
@@ -1385,6 +1646,33 @@ impl MetricsField {
         }
     }
 
+    fn quantize(&self) -> Option<&QuantizeAttr> {
+        match &self.attrs.kind {
+            MetricsFieldKind::Field { quantize, .. } => quantize.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// The field's type after closing and after any unit conversion, but before quantization.
+    ///
+    /// Used to annotate the intermediate binding when a field carries both `unit` and
+    /// `quantize`: `Quantized::<_, Tag>::from(expr.into())` would otherwise leave the `.into()`
+    /// target ambiguous, since both conversions are generic.
+    fn closed_unit_type(&self) -> Ts2 {
+        let MetricsField { ty, span, .. } = self;
+        let mut base = if self.attrs.close {
+            quote_spanned! { *span=> <#ty as metrique::CloseValue>::Closed }
+        } else {
+            quote_spanned! { *span=> #ty }
+        };
+        if let Some(unit) = self.unit() {
+            base = quote_spanned! { unit.span()=>
+                <#base as ::metrique::unit::AttachUnit>::Output<#unit>
+            };
+        }
+        base
+    }
+
     pub(crate) fn close_value(&self, ownership_kind: OwnershipKind) -> Ts2 {
         let ident = &self.ident;
         let span = self.span;
@@ -1392,14 +1680,14 @@ impl MetricsField {
             OwnershipKind::ByValue => quote_spanned! {span=> __metrique_self_expr!().#ident },
             OwnershipKind::ByRef => quote_spanned! {span=> &__metrique_self_expr!().#ident },
         };
-        self.close_field_expr(field_expr)
+        self.close_field_expr(field_expr, ownership_kind)
     }
 
-    pub(crate) fn close_field_expr(&self, field_expr: Ts2) -> Ts2 {
+    pub(crate) fn close_field_expr(&self, field_expr: Ts2, ownership_kind: OwnershipKind) -> Ts2 {
         let ident = &self.ident;
         let span = self.span;
         let base = if self.attrs.close {
-            quote_spanned! {span=> metrique::CloseValue::close(#field_expr) }
+            close_value_expr(field_expr, span, ownership_kind)
         } else {
             field_expr
         };
@@ -1412,8 +1700,39 @@ impl MetricsField {
             base
         };
 
+        // `Quantized::<_, Tag>::from` rather than a bare `.into()`, and via an explicitly typed
+        // binding: with a unit conversion also in play, two chained generic conversions would
+        // leave the intermediate type ambiguous.
+        let base = if let Some(quantize) = self.quantize() {
+            let tag = quantize.tag_type();
+            let intermediate = self.closed_unit_type();
+            quote_spanned! { quantize.span =>
+                {
+                    let __metrique_quantize_input: #intermediate = #base;
+                    ::metrique::writer::value::Quantized::<_, #tag>::from(
+                        __metrique_quantize_input,
+                    )
+                }
+            }
+        } else {
+            base
+        };
+
         let cfg_attrs = self.cfg_attrs();
         quote! { #(#cfg_attrs)* #ident: #base }
+    }
+}
+
+pub(crate) fn close_value_expr(field_expr: Ts2, span: Span, ownership_kind: OwnershipKind) -> Ts2 {
+    match ownership_kind {
+        OwnershipKind::ByValue => {
+            quote_spanned! {span=> metrique::CloseValue::close(#field_expr) }
+        }
+        OwnershipKind::ByRef => quote_spanned! {span=>
+            metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(#field_expr)
+            )
+        },
     }
 }
 
@@ -1570,6 +1889,7 @@ enum MetricsFieldKind {
         unit: Option<syn::Path>,
         name: Option<String>,
         format: Option<syn::Path>,
+        quantize: Option<QuantizeAttr>,
         sample_group: Option<Span>,
     },
 }
@@ -1589,12 +1909,12 @@ fn proc_macro_warning(span: Span, warning: &str) -> Ts2 {
     }
 }
 
-fn parse_root_attrs(attr: TokenStream) -> Result<RootAttributes> {
+fn parse_root_attrs(attr: TokenStream) -> MacroResult<RootAttributes> {
     let nested_meta = NestedMeta::parse_meta_list(attr.into())?;
     Ok(RawRootAttributes::from_list(&nested_meta)?.validate()?)
 }
 
-fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Result<Ts2> {
+fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> MacroResult<Ts2> {
     // Check if #[aggregate] attribute is present
     if input
         .attrs
@@ -1604,7 +1924,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
         return Err(Error::new_spanned(
             &input,
             "#[aggregate] must be placed before #[metrics], not after",
-        ));
+        )
+        .into());
     }
 
     let output = match root_attributes.mode {
@@ -1615,7 +1936,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                         return Err(Error::new_spanned(
                             &input,
                             "`tag` attribute is only supported on entry enums",
-                        ));
+                        )
+                        .into());
                     }
                     let fields = match &data_struct.fields {
                         Fields::Named(fields_named) => &fields_named.named,
@@ -1623,7 +1945,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                             return Err(Error::new_spanned(
                                 &input,
                                 "Only named fields are supported",
-                            ));
+                            )
+                            .into());
                         }
                     };
                     structs::generate_metrics_for_struct(root_attributes, &input, fields)?
@@ -1637,7 +1960,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     return Err(Error::new_spanned(
                         &input,
                         "Only structs and enums are supported for entries",
-                    ));
+                    )
+                    .into());
                 }
             }
         }
@@ -1647,10 +1971,9 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     Fields::Named(fields_named) => &fields_named.named,
                     Fields::Unnamed(fields_unnamed) => &fields_unnamed.unnamed,
                     _ => {
-                        return Err(Error::new_spanned(
-                            &input,
-                            "Only named fields are supported",
-                        ));
+                        return Err(
+                            Error::new_spanned(&input, "Only named fields are supported").into(),
+                        );
                     }
                 };
                 structs::generate_metrics_for_struct(root_attributes, &input, fields)?
@@ -1659,7 +1982,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                 return Err(Error::new_spanned(
                     &input,
                     "Only structs are supported with value, use value(string) with enums",
-                ));
+                )
+                .into());
             }
         },
         MetricMode::ValueString => {
@@ -1669,7 +1993,8 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
                     return Err(Error::new_spanned(
                         &input,
                         "Only enums are supported with value(string)",
-                    ));
+                    )
+                    .into());
                 }
             };
             let variants = enums::parse_enum_variants(variants, enums::VariantMode::ValueString)?;
@@ -1678,7 +2003,7 @@ fn generate_metrics(root_attributes: RootAttributes, input: DeriveInput) -> Resu
     };
 
     if std::env::var("MACRO_DEBUG").is_ok() {
-        eprintln!("{}", &output);
+        eprintln!("{}", output);
     }
 
     Ok(output)
@@ -1843,7 +2168,6 @@ mod tests {
     use insta::assert_snapshot;
     use proc_macro2::TokenStream as Ts2;
     use quote::quote;
-    use syn::{parse_quote, parse2};
 
     use crate::RawRootAttributes;
 
@@ -1863,7 +2187,7 @@ mod tests {
         let output = metrics_impl(input, attrs);
 
         // Parse the output back into a syn::File for pretty printing
-        match parse2::<syn::File>(output.clone()) {
+        match syn::parse2::<syn::File>(output.clone()) {
             Ok(file) => prettyplease::unparse(&file),
             Err(_) => {
                 // If parsing fails, print the error and use the raw string output
@@ -1875,7 +2199,7 @@ mod tests {
     #[test]
     fn test_darling_root_attrs() {
         use darling::FromMeta;
-        RawRootAttributes::from_meta(&parse_quote! {
+        RawRootAttributes::from_meta(&syn::parse_quote! {
             metrics(
                 rename_all = "PascalCase",
                 emf::dimension_sets = [["bar"]]
@@ -1884,6 +2208,118 @@ mod tests {
         .unwrap()
         .validate()
         .unwrap();
+    }
+
+    #[test]
+    fn test_metrics_preserves_field_defaults() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            struct Defaults {
+                #[metrics(name = "renamed")]
+                value: usize = DOES_NOT_EXIST,
+            }
+        })
+        .unwrap();
+        let syn::Data::Struct(data) = input.data else {
+            unreachable!()
+        };
+        let syn::Fields::Named(fields) = data.fields else {
+            unreachable!()
+        };
+
+        let parsed = super::parse_metric_fields(&fields.named).unwrap();
+
+        assert_eq!(
+            parsed[0].core_field(true).to_string(),
+            quote! { value: usize = DOES_NOT_EXIST }.to_string()
+        );
+        assert!(matches!(
+            &parsed[0].attrs.kind,
+            super::MetricsFieldKind::Field {
+                name: Some(name),
+                ..
+            } if name == "renamed"
+        ));
+    }
+
+    #[test]
+    fn test_metrics_parses_variant_with_defaulted_field() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            enum Defaults {
+                #[metrics(name = "renamed")]
+                Variant {
+                    value: usize = DOES_NOT_EXIST,
+                },
+                Tuple(
+                    #[allow(dead_code)]
+                    #[metrics(ignore)]
+                    usize,
+                ),
+            }
+        })
+        .unwrap();
+        let syn::Data::Enum(data) = input.data else {
+            unreachable!()
+        };
+
+        let variants =
+            super::enums::parse_enum_variants(&data.variants, super::enums::VariantMode::Entry)
+                .unwrap();
+
+        assert_eq!(variants[0].attrs.name.as_deref(), Some("renamed"));
+        assert_eq!(
+            variants[0].core_variant().to_string(),
+            quote! {
+                Variant {
+                    value: usize = DOES_NOT_EXIST,
+                }
+            }
+            .to_string()
+        );
+        assert_eq!(
+            variants[1].core_variant().to_string(),
+            quote! {
+                Tuple(
+                    #[allow(dead_code)]
+                    usize,
+                )
+            }
+            .to_string()
+        );
+    }
+
+    #[test]
+    fn test_enum_error_recovery_preserves_syn3_fields() {
+        let input: syn::DeriveInput = syn::parse2(quote! {
+            enum Defaults {
+                #[metrics(name = "renamed")]
+                Variant {
+                    #[metrics(name = "value")]
+                    value: usize = DOES_NOT_EXIST,
+                },
+                Tuple(
+                    #[allow(dead_code)]
+                    #[metrics(ignore)]
+                    usize,
+                ),
+            }
+        })
+        .unwrap();
+
+        assert_eq!(
+            super::clean_base_adt(&input).to_string(),
+            quote! {
+                enum Defaults {
+                    Variant {
+                        value: usize = DOES_NOT_EXIST,
+                    },
+                    Tuple(
+                        #[allow(dead_code)]
+                        usize,
+                    )
+                }
+            }
+            .to_string()
+        );
     }
 
     #[test]
@@ -2006,7 +2442,7 @@ mod tests {
         };
 
         let input = syn::parse2(input).unwrap();
-        let root_attrs = RawRootAttributes::from_meta(&parse_quote!(metrics()))
+        let root_attrs = RawRootAttributes::from_meta(&syn::parse_quote!(metrics()))
             .unwrap()
             .validate()
             .unwrap();

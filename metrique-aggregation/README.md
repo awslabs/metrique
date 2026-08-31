@@ -83,9 +83,11 @@ metrics.api_calls.insert(ApiCall {
 
 ## Sink-Level Aggregation
 
-Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric entries where the entire entry is aggregated. Both can be combined with [`KeyedAggregator`] to perform aggregation against a set of keys or [`Aggregate`] when there are no keys. These sinks will be backed by a traditional sink that emits to EMF or other destination.
+Use [`WorkerSink`] or [`MutexSink`] when you want to produce aggregated metric entries where the entire entry is aggregated. Both can be combined with [`KeyedAggregator`] to perform aggregation against a set of keys or [`Aggregate<T>`] when there are no keys. These sinks will be backed by a traditional sink that emits to EMF or other destination.
 
 [`WorkerSink`] performs aggregation in a background thread that periodically flushes aggregated data to a backing sink. [`MutexSink`] is alternative sink that manages concurrency with a mutex instead of a channel.
+
+A [`KeyedAggregator`] only emits when it is flushed, so a [`MutexSink`] wrapping one needs an explicit [`FlushableSink`] call. An [`Aggregate<T>`] does not, because it is drained through `CloseValue` instead.
 
 ```rust
 use metrique::unit_of_work::metrics;
@@ -145,7 +147,7 @@ async fn setup_queue_processor() {
 
 **Choosing between WorkerSink and MutexSink:**
 
-- **[`MutexSink`]** - Use when you have inputs from a smaller number of threads. Great for supporting `close_and_merge` with embedded metrics. Currently does not support automatic flushing.
+- **[`MutexSink`]** - Use when you have inputs from a smaller number of threads. Great for supporting `close_and_merge` with embedded metrics. Does not flush on a timer, so call [`FlushableSink`]'s `flush` yourself when combining it with [`KeyedAggregator`].
 - **[`WorkerSink`]** - Use for sink-level aggregation from many producers across many threads. The channel-based design reduces contention and provides configurable flush timing.
 
 See the `sink_level` example for a complete working implementation.
@@ -349,6 +351,7 @@ See the `histogram` example for more usage patterns.
 [`Key`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.Key.html
 [`AggregateStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.AggregateStrategy.html
 [`AggregateSink<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.AggregateSink.html
+[`FlushableSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.FlushableSink.html
 [`ExponentialAggregationStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.ExponentialAggregationStrategy.html
 [`SortAndMerge`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.SortAndMerge.html
 [`AtomicExponentialAggregationStrategy`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.AtomicExponentialAggregationStrategy.html

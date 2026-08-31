@@ -22,6 +22,8 @@ pub use crate::sink::AttachGlobalEntrySinkExt;
 
 pub mod entry;
 pub mod format;
+#[cfg(feature = "tracing-subscriber-03")]
+pub mod in_memory;
 pub mod rate_limit;
 pub mod sample;
 pub mod sink;
@@ -35,6 +37,7 @@ pub use metrique_writer_core as core;
 
 pub use format::FormatExt;
 pub use metrique_writer_core::global::{AttachGlobalEntrySink, ShutdownFn};
+pub use metrique_writer_core::quantize;
 pub use metrique_writer_core::unit;
 pub use stream::EntryIoStreamExt;
 

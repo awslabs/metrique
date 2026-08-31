@@ -5,20 +5,41 @@
 //!
 //! See [`new()`] for details.
 
-use std::sync::{
-    Arc, OnceLock,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
-};
+use std::sync::Arc;
 
-use crossbeam_queue::ArrayQueue;
 use metrique_writer_core::{
     entry::BoxEntry,
     sink::{BoxEntrySink, EntrySink, FlushWait},
 };
 
+// Cfg-gated concurrency primitives (std/crossbeam vs. shuttle). Gated on both
+// `cfg(shuttle)` and `feature = "_shuttle"`, not `cfg(shuttle)` alone: `--cfg
+// shuttle` is set process-wide via RUSTFLAGS, so it also reaches builds of
+// this crate (e.g. as a dev-dependency with different requested features)
+// that don't have `_shuttle` enabled and therefore don't have the optional
+// `shuttle` crate linked at all.
+//
+// Real hardware atomics and `crossbeam_queue::ArrayQueue` are invisible to
+// shuttle's scheduler (no yield points), so without this swap a shuttle test
+// here wouldn't actually explore any interleavings of the buffer/resolve
+// protocol below. Shuttle also always treats atomics as `SeqCst` regardless
+// of the ordering used, so it can find scheduling/logic bugs in this
+// protocol but not pure Acquire/Release memory-ordering bugs.
+#[cfg(all(shuttle, feature = "_shuttle"))]
+use shuttle::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+use crossbeam_queue::ArrayQueue;
+#[cfg(all(shuttle, feature = "_shuttle"))]
+use metrique_writer_core::shuttle_test_support::ArrayQueue;
+
+use once_slot::OnceSlot;
+
 struct Inner {
     buffer: ArrayQueue<BoxEntry>,
-    sink: OnceLock<BoxEntrySink>,
+    sink: OnceSlot<BoxEntrySink>,
     cancelled: AtomicBool,
     /// Number of append() calls currently in the buffering path (between the
     /// sink.get() check and the force_push completion). resolve() waits for
@@ -26,33 +47,92 @@ struct Inner {
     buffering: AtomicUsize,
 }
 
+/// A slot that can be set at most once, then read back via [`with`](Self::with).
+///
+/// Under `cfg(not(shuttle))` this is a zero-cost wrapper around
+/// [`std::sync::OnceLock`] -- `with` just calls `f` on `self.0.get()`
+/// directly, no lock, no clone, matching `OnceLock`'s own performance.
+///
+/// Under `cfg(shuttle)` it's `metrique_writer_core::shuttle_test_support::OnceSlot`,
+/// backed by a `shuttle::sync::Mutex` so the scheduler can see `get`/`set`
+/// as real interleaving points. It clones the value out and releases the
+/// lock *before* calling `f` -- not while holding it -- so that `f` (which
+/// in practice calls into the wrapped `BoxEntrySink`, arbitrary user code)
+/// is never run with this lock held. Holding it across `f` would
+/// artificially serialize concurrent post-resolution appends against each
+/// other through a lock that doesn't exist in production, which isn't part
+/// of what this module's protocol needs to guarantee (that's the real
+/// sink's own thread-safety contract). This is why the shuttle side needs
+/// `T: Clone` and the non-shuttle side doesn't.
+mod once_slot {
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    pub(super) struct OnceSlot<T>(std::sync::OnceLock<T>);
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    impl<T> OnceSlot<T> {
+        pub(super) fn new() -> Self {
+            Self(std::sync::OnceLock::new())
+        }
+        pub(super) fn with<R>(&self, f: impl FnOnce(Option<&T>) -> R) -> R {
+            f(self.0.get())
+        }
+        pub(super) fn set(&self, value: T) -> Result<(), T> {
+            self.0.set(value)
+        }
+    }
+
+    #[cfg(all(shuttle, feature = "_shuttle"))]
+    pub(super) use metrique_writer_core::shuttle_test_support::OnceSlot;
+}
+
 struct PendingSink(Arc<Inner>);
+
+/// Forwards `entry` to `slot`'s sink if resolved, handing it back (unused)
+/// otherwise -- `BoxEntry` can only be moved once, so this is the shape a
+/// "maybe consume it" check needs when the check itself goes through a
+/// `with`-style closure API rather than returning a plain reference.
+fn forward_or_return(slot: &OnceSlot<BoxEntrySink>, entry: BoxEntry) -> Option<BoxEntry> {
+    slot.with(|sink| match sink {
+        Some(sink) => {
+            sink.append(entry);
+            None
+        }
+        None => Some(entry),
+    })
+}
 
 impl EntrySink<BoxEntry> for PendingSink {
     fn append(&self, entry: BoxEntry) {
-        if let Some(sink) = self.0.sink.get() {
-            sink.append(entry);
-        } else if !self.0.cancelled.load(Ordering::Acquire) {
-            self.0.buffering.fetch_add(1, Ordering::AcqRel);
-            // Re-check after incrementing: if the sink was set between our
-            // first check and the increment, forward directly instead.
-            if let Some(sink) = self.0.sink.get() {
+        let Some(entry) = forward_or_return(&self.0.sink, entry) else {
+            return;
+        };
+        if self.0.cancelled.load(Ordering::Acquire) {
+            return;
+        }
+        self.0.buffering.fetch_add(1, Ordering::AcqRel);
+        // Re-check after incrementing: if the sink was set between our
+        // first check and the increment, forward directly instead
+        let leftover = self.0.sink.with(|sink| match sink {
+            Some(sink) => {
                 self.0.buffering.fetch_sub(1, Ordering::AcqRel);
                 sink.append(entry);
-            } else {
-                // force_push: drop oldest when full, consistent with BackgroundQueue
-                self.0.buffer.force_push(entry);
-                self.0.buffering.fetch_sub(1, Ordering::AcqRel);
+                None
             }
+            None => Some(entry),
+        });
+        if let Some(entry) = leftover {
+            // force_push before decrementing: resolve()'s spin-wait treats
+            // buffering == 0 as a promise that nothing can still write to the
+            // buffer, so the push must be visible before the count drops.
+            self.0.buffer.force_push(entry);
+            self.0.buffering.fetch_sub(1, Ordering::AcqRel);
         }
     }
 
     fn flush_async(&self) -> FlushWait {
-        if let Some(sink) = self.0.sink.get() {
-            EntrySink::<BoxEntry>::flush_async(sink)
-        } else {
-            FlushWait::ready()
-        }
+        self.0.sink.with(|sink| match sink {
+            Some(sink) => EntrySink::<BoxEntry>::flush_async(sink),
+            None => FlushWait::ready(),
+        })
     }
 }
 
@@ -78,13 +158,26 @@ impl PendingSinkResolver {
             };
             // Wait for any in-flight buffering appenders to finish pushing.
             while inner.buffering.load(Ordering::Acquire) != 0 {
+                // A bare spin_loop() hint gives shuttle's scheduler no reason to
+                // consider switching threads fairly, which can pathologically
+                // starve this loop within a single exploration (real OS
+                // preemption doesn't have that failure mode). Yield explicitly
+                // under shuttle; std::hint::spin_loop() covers the real path.
+                #[cfg(all(shuttle, feature = "_shuttle"))]
+                shuttle::thread::yield_now();
+                #[cfg(not(all(shuttle, feature = "_shuttle")))]
                 std::hint::spin_loop();
             }
-            // Drain all buffered entries.
-            let sink = inner.sink.get().unwrap();
-            while let Some(entry) = inner.buffer.pop() {
-                sink.append(entry);
-            }
+            // Drain all buffered entries. Fetched once, not per-entry: nothing
+            // else can still be racing this (buffering == 0, and the sink was
+            // already set for good above), so there's no reason to pay a
+            // separate `with` (lock, under shuttle) per entry.
+            inner.sink.with(|sink| {
+                let sink = sink.unwrap();
+                while let Some(entry) = inner.buffer.pop() {
+                    sink.append(entry);
+                }
+            });
         }
     }
 }
@@ -136,7 +229,7 @@ pub fn new(capacity: usize) -> (BoxEntrySink, PendingSinkResolver) {
     assert!(capacity > 0, "pending sink capacity must be greater than 0");
     let inner = Arc::new(Inner {
         buffer: ArrayQueue::new(capacity),
-        sink: OnceLock::new(),
+        sink: OnceSlot::new(),
         cancelled: AtomicBool::new(false),
         buffering: AtomicUsize::new(0),
     });
@@ -330,6 +423,167 @@ mod tests {
 
             let got = appended.lock().unwrap().len();
             assert_eq!(got, expected, "lost {} entries", expected - got);
+        }
+    }
+}
+
+// Shuttle interleaving test for the buffer/resolve protocol above (a
+// hand-rolled quiescence scheme: an in-flight counter plus a double-checked
+// sink slot, guarding against `resolve()` draining while an `append()` is
+// still mid-flight). `stress_no_entry_loss_on_concurrent_resolve` in `mod
+// tests` above already probes this with 1000 real-thread iterations; this
+// explores interleavings directly instead of sampling them.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use std::sync::Mutex;
+
+    use metrique_writer_core::shuttle_test;
+    use metrique_writer_core::sink::AnyEntrySink;
+
+    use super::*;
+
+    struct TestEntry(u64);
+    impl metrique_writer_core::Entry for TestEntry {
+        fn write<'a>(&'a self, writer: &mut impl metrique_writer_core::EntryWriter<'a>) {
+            writer.value("value", &self.0);
+        }
+    }
+
+    struct CountingSink {
+        count: Arc<Mutex<u64>>,
+    }
+
+    impl EntrySink<BoxEntry> for CountingSink {
+        fn append(&self, _entry: BoxEntry) {
+            *self.count.lock().unwrap() += 1;
+        }
+        fn flush_async(&self) -> FlushWait {
+            FlushWait::ready()
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Entries appended concurrently with `resolve()` must never be lost, no
+        /// matter which side of the race each append lands on (buffered then
+        /// drained, or forwarded directly).
+        fn concurrent_appends_racing_resolve_lose_nothing() {
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 2;
+            const TOTAL: u64 = THREADS * PER_THREAD;
+
+            let (sink, resolver) = new((TOTAL as usize) + 16);
+            let count = Arc::new(Mutex::new(0u64));
+
+            let appenders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.append_any(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
+                })
+                .collect();
+
+            resolver.resolve(BoxEntrySink::new(CountingSink {
+                count: count.clone(),
+            }));
+
+            for a in appenders {
+                a.join().unwrap();
+            }
+
+            assert_eq!(*count.lock().unwrap(), TOTAL);
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// The resolver can be dropped without ever calling `resolve()`
+        /// (documented behavior: cancels the sink, discarding buffered entries)
+        /// concurrently with in-flight `append()` calls. Unlike the resolve()
+        /// race above, there's no "must not lose entries" guarantee here --
+        /// discarding is the documented outcome -- so the invariant this checks
+        /// is narrower but still real: this race must never panic or hang, for
+        /// every interleaving shuttle explores, regardless of whether each
+        /// append's `cancelled` check lands before or after the drop takes
+        /// effect.
+        fn concurrent_append_racing_resolver_drop() {
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 2;
+
+            let (sink, resolver) = new(64);
+
+            let appenders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.append_any(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
+                })
+                .collect();
+
+            // Cancels the sink; may race with any of the appends above.
+            drop(resolver);
+
+            for a in appenders {
+                a.join().unwrap();
+            }
+            // Reaching here without panicking or hanging is the test.
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `flush_async()` can be called concurrently with `resolve()` itself,
+        /// not just after it like the test above does with `append()`. Before
+        /// resolution it's documented to be a no-op (see the real-thread test
+        /// `flush_is_noop_while_pending`); this checks that calling it
+        /// concurrently with `resolve()` never panics or hangs whichever side of
+        /// the race it lands on, and that doing so doesn't interfere with the
+        /// core no-entry-loss guarantee entries appended concurrently still
+        /// depend on.
+        fn concurrent_flush_racing_resolve_lose_nothing() {
+            const THREADS: u64 = 2;
+            const PER_THREAD: u64 = 2;
+            const TOTAL: u64 = THREADS * PER_THREAD;
+
+            let (sink, resolver) = new((TOTAL as usize) + 16);
+            let count = Arc::new(Mutex::new(0u64));
+
+            let appenders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    shuttle::thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.append_any(TestEntry(t * PER_THREAD + i));
+                        }
+                    })
+                })
+                .collect();
+
+            let flusher = {
+                let sink = sink.clone();
+                shuttle::thread::spawn(move || {
+                    // Not polled to completion -- constructing it without panicking
+                    // is what this test checks; see the comment above.
+                    let _flush = AnyEntrySink::flush_async(&sink);
+                })
+            };
+
+            resolver.resolve(BoxEntrySink::new(CountingSink {
+                count: count.clone(),
+            }));
+
+            for a in appenders {
+                a.join().unwrap();
+            }
+            flusher.join().unwrap();
+
+            assert_eq!(*count.lock().unwrap(), TOTAL);
         }
     }
 }

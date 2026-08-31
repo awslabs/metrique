@@ -157,6 +157,11 @@ impl<F: FnMut(Observation) -> Result<(), ValidationError>> ValueWriter for &'_ m
     fn error(self, error: ValidationError) {
         self.error.extend_mut(error);
     }
+
+    fn values<'a, V: Value + 'a>(self, _values: impl IntoIterator<Item = &'a V>) {
+        // Reported directly: the joined-string fallback would blame strings instead.
+        self.invalid("can't collect a list into a distribution")
+    }
 }
 
 impl<V: MetricValue, const N: usize> FromIterator<V> for Distribution<V, N> {

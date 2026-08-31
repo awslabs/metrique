@@ -110,7 +110,7 @@ const _: () = {
     impl MetadataEntry {
         #[doc(hidden)]
         #[inline(always)]
-        fn __metrique_descriptor() -> &'static ::metrique::writer::core::EntryDescriptor {
+        fn __metrique_descriptor_run_0() -> &'static ::metrique::writer::core::EntryDescriptor {
             {
                 static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
                 static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
@@ -270,7 +270,7 @@ const _: () = {
             ::metrique::writer::core::Descriptors::available(
                 ::std::iter::once(
                     ::metrique::writer::core::DescriptorRef::from_static(
-                        MetadataEntry::__metrique_descriptor(),
+                        MetadataEntry::__metrique_descriptor_run_0(),
                         <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
                     ),
                 ),
@@ -288,8 +288,16 @@ impl metrique::CloseValue for &'_ Metadata {
         }
         #[allow(deprecated)]
         MetadataEntry {
-            operation: metrique::CloseValue::close(&__metrique_self_expr!().operation),
-            request_id: metrique::CloseValue::close(&__metrique_self_expr!().request_id),
+            operation: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(
+                    &__metrique_self_expr!().operation,
+                ),
+            ),
+            request_id: metrique::CloseValue::close(
+                ::metrique::IfYouSeeThisUseSubfieldOwned(
+                    &__metrique_self_expr!().request_id,
+                ),
+            ),
         }
     }
 }

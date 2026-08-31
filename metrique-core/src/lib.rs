@@ -137,8 +137,7 @@ pub use namestyle::{
     label = "This type must implement `CloseValue`",
     message = "CloseValue is not implemented for {Self}",
     note = "You may need to add `#[metrics]` to `{Self}` or implement `CloseValue` directly.",
-    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`",
-    note = "If this type is `&T`, is closed inside a flattened entry, and `T` implements `CloseValue`, consider using `#[metrics(subfield_owned)]`."
+    note = "if {Self} implements `Value` but not `CloseValue`, add `#[metrics(no_close)]`"
 )]
 pub trait CloseValue {
     /// The type produced by closing this value
@@ -146,6 +145,31 @@ pub trait CloseValue {
 
     /// Close the value
     fn close(self) -> Self::Closed;
+}
+
+/// A diagnostic marker for metric fields that must be closed by value.
+///
+/// `#[metrics(subfield)]` closes fields by reference. When a field implements
+/// [`CloseValue`] only by value, compiler errors mention this type to point to
+/// `#[metrics(subfield_owned)]` as the alternative.
+///
+/// For example, a subfield containing a `String` must close by value:
+///
+/// ```
+/// # use metrique::unit_of_work::metrics;
+/// #[metrics(subfield_owned)]
+/// struct ChildMetrics {
+///     field: String,
+/// }
+/// ```
+pub struct IfYouSeeThisUseSubfieldOwned<T>(pub T);
+
+impl<T: CloseValue> CloseValue for IfYouSeeThisUseSubfieldOwned<T> {
+    type Closed = T::Closed;
+
+    fn close(self) -> Self::Closed {
+        self.0.close()
+    }
 }
 
 mod private {

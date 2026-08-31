@@ -15,10 +15,69 @@ use core::{
     cell::UnsafeCell,
     ops::{Deref, DerefMut, Drop},
 };
-use std::{
-    fmt::Debug,
-    sync::{Arc, Mutex, Weak},
-};
+use std::{fmt::Debug, sync::Arc};
+
+// `Arc`/`Weak`'s own atomics aren't shuttle-instrumented, so a `DropAll`
+// racing ordinary `Guard`s (which only involves `Arc`/`Weak`) wouldn't be
+// Shuttle-testable with plain `Arc`/`Weak`.
+mod guard_rc {
+    #[cfg(not(all(shuttle, feature = "_shuttle")))]
+    mod imp {
+        use std::sync::{Arc, Mutex, Weak};
+
+        pub(crate) struct GuardArc<T>(Arc<Mutex<Option<T>>>);
+        pub(crate) struct GuardWeak<T>(Weak<Mutex<Option<T>>>);
+
+        // `#[inline]`: these just forward to the same `Arc`/`Mutex`/`Weak`
+        // calls the pre-`GuardArc` code made directly, so this wrapper
+        // should compile down to zero overhead
+        impl<T> GuardArc<T> {
+            #[inline]
+            pub(crate) fn new(value: T) -> Self {
+                Self(Arc::new(Mutex::new(Some(value))))
+            }
+
+            #[inline]
+            pub(crate) fn downgrade(this: &Self) -> GuardWeak<T> {
+                GuardWeak(Arc::downgrade(&this.0))
+            }
+
+            #[inline]
+            pub(crate) fn is_present(&self) -> bool {
+                self.0.lock().unwrap().is_some()
+            }
+
+            #[inline]
+            pub(crate) fn take(&self) -> Option<T> {
+                self.0.lock().unwrap().take()
+            }
+        }
+
+        impl<T> Clone for GuardArc<T> {
+            #[inline]
+            fn clone(&self) -> Self {
+                Self(self.0.clone())
+            }
+        }
+
+        impl<T> GuardWeak<T> {
+            #[inline]
+            pub(crate) fn upgrade(&self) -> Option<GuardArc<T>> {
+                self.0.upgrade().map(GuardArc)
+            }
+        }
+    }
+
+    #[cfg(all(shuttle, feature = "_shuttle"))]
+    mod imp {
+        pub(crate) use metrique_writer_core::shuttle_test_support::{GuardArc, GuardWeak};
+    }
+
+    pub(crate) use imp::{GuardArc, GuardWeak};
+}
+
+use guard_rc::{GuardArc, GuardWeak};
+
 /// [`Parent`] owner
 ///
 /// The [`Parent`] provides exclusive mutable access to its inner value.
@@ -41,23 +100,23 @@ unsafe impl<T> Send for Parent<T> where T: Send {}
 unsafe impl<T> Sync for Parent<T> where T: Sync {}
 
 // Why all these layers?
-// They exist to make `DropAll` possible. We want to have a single switch to make all of the existing guards
+// They exist to make `DropAll` possible. We want a single switch to make all of the existing guards
 // release their handle on `Parent` to allow the inner value to Drop.
 //
-// 1. Mutex: This is inside an Arc. We need to be able to take the function out of the
-// 2. Option: Allow taking ownership of the:
-// 3. Box<dyn Fn Once()...>: Function pointer (which inside of it holds a reference to the main `Arc`)
+// 1. GuardArc: The switch itself. `take()`s the payload out, whichever of "last `Guard` dropped" or
+//    "a `DropAll` dropped" gets there first.
+// 2. Box<dyn FnOnce()...>: Function pointer (which inside of it holds a reference to the main `Arc`)
 //    Why the Function pointer? It allows us to erase the generic in the guard.
-type GuardInner = Mutex<Option<Box<dyn FnOnce() + Send + Sync>>>;
+type GuardPayload = Box<dyn FnOnce() + Send + Sync>;
 
 /// Any guards that remain alive will prevent the `value` within `Parent` from being dropped
 pub(crate) struct Guard {
-    _value: Arc<GuardInner>,
+    _value: GuardArc<GuardPayload>,
 }
 
 impl Debug for Guard {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let is_open = self._value.lock().unwrap().is_some();
+        let is_open = self._value.is_present();
         f.debug_struct("Guard").field("open", &is_open).finish()
     }
 }
@@ -67,11 +126,11 @@ impl Debug for Guard {
 /// Dropping a `DropAll` will cause `value` to drop if and only if the `Parent` has been dropped already.
 /// Keeping a `DropAll` alive will NOT prevent the `Parent` from being dropped, if it and all standard guards have
 /// already been dropped.
-pub(crate) struct DropAll(Weak<GuardInner>);
+pub(crate) struct DropAll(GuardWeak<GuardPayload>);
 impl Drop for DropAll {
     fn drop(&mut self) {
         if let Some(guard) = self.0.upgrade() {
-            if let Some(f) = guard.lock().unwrap().take() {
+            if let Some(f) = guard.take() {
                 (f)()
             }
         }
@@ -88,7 +147,7 @@ impl<T: Send + Sync + 'static> Parent<T> {
         unsafe impl<T> Sync for AssertSendSync<T> {}
         let guard_value = AssertSendSync(value.clone());
         let guard = Guard {
-            _value: Arc::new(Mutex::new(Some(Box::new(|| drop(guard_value))))),
+            _value: GuardArc::new(Box::new(|| drop(guard_value))),
         };
         Self { value, guard }
     }
@@ -114,7 +173,7 @@ impl<T: Send + Sync + 'static> Parent<T> {
     ///
     /// It remains safe to hold `Guard` after this API is called and used.
     pub(crate) fn force_drop_guard(&self) -> DropAll {
-        DropAll(Arc::downgrade(&self.guard._value))
+        DropAll(GuardArc::downgrade(&self.guard._value))
     }
 }
 
@@ -139,7 +198,7 @@ mod test {
     use core::{
         assert_eq,
         ops::Drop,
-        sync::atomic::{AtomicBool, Ordering},
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     use std::sync::Arc;
 
@@ -265,5 +324,291 @@ mod test {
         assert_eq!(is_dropped.load(Ordering::Relaxed), true);
 
         drop(_guard_2);
+    }
+
+    struct DropCounter {
+        count: Arc<AtomicUsize>,
+    }
+
+    impl DropCounter {
+        fn new() -> (Self, Arc<AtomicUsize>) {
+            let count = Arc::new(AtomicUsize::new(0));
+            (
+                DropCounter {
+                    count: count.clone(),
+                },
+                count,
+            )
+        }
+    }
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// The value must be released exactly once: not zero (a leak)
+    /// and not more than once (a double drop, which given `Parent`'s
+    /// `unsafe impl Send`/`Sync` and `UnsafeCell` would risk real
+    /// undefined behavior, not just a logic bug).
+    #[test]
+    fn stress_concurrent_guard_and_drop_all_race_releases_value_exactly_once() {
+        use std::sync::Barrier;
+
+        const GUARDS: usize = 4;
+
+        for _ in 0..1000 {
+            let (tester, drop_count) = DropCounter::new();
+            let primary = Parent::new(tester);
+
+            let guards: Vec<_> = (0..GUARDS).map(|_| primary.new_guard()).collect();
+            let drop_all = primary.force_drop_guard();
+
+            // GUARDS threads dropping their guard + 1 thread dropping
+            // `drop_all` + this thread dropping `primary` -- all racing
+            // through the same barrier.
+            let barrier = Arc::new(Barrier::new(GUARDS + 1 + 1));
+
+            let mut handles: Vec<_> = guards
+                .into_iter()
+                .map(|guard| {
+                    let barrier = barrier.clone();
+                    std::thread::spawn(move || {
+                        barrier.wait();
+                        drop(guard);
+                    })
+                })
+                .collect();
+
+            handles.push({
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    drop(drop_all);
+                })
+            });
+
+            barrier.wait();
+            drop(primary);
+
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            assert_eq!(
+                drop_count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how the guard/drop_all/primary drops interleaved"
+            );
+        }
+    }
+}
+
+// Shuttle interleaving tests for `Guard`/`DropAll` races.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use core::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use super::Parent;
+    use metrique_writer_core::shuttle_test;
+
+    struct DropCounter {
+        count: Arc<AtomicUsize>,
+    }
+
+    impl Drop for DropCounter {
+        fn drop(&mut self) {
+            self.count.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Two `DropAll`s dropped concurrently, racing each other (and
+        /// `Parent`'s own drop) on the same slot. Unlike a `DropAll` racing
+        /// ordinary `Guard`s (which races inside `Arc`'s own atomics, outside
+        /// what Shuttle instruments), this race sits entirely between two
+        /// `Mutex` operations Shuttle does control.
+        fn concurrent_drop_alls_race_releases_value_exactly_once() {
+            let count = Arc::new(AtomicUsize::new(0));
+            let tester = DropCounter {
+                count: count.clone(),
+            };
+            let primary = Parent::new(tester);
+
+            let drop_all_1 = primary.force_drop_guard();
+            let drop_all_2 = primary.force_drop_guard();
+
+            let h1 = shuttle::thread::spawn(move || drop(drop_all_1));
+            let h2 = shuttle::thread::spawn(move || drop(drop_all_2));
+
+            drop(primary);
+
+            h1.join().unwrap();
+            h2.join().unwrap();
+
+            assert_eq!(
+                count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how the two DropAlls and primary interleave"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Ordinary `Guard`s racing each other (and `Parent`'s drop), no
+        /// `DropAll` -- the load-bearing race plain `Arc`/`Weak` couldn't expose.
+        fn concurrent_guards_race_releases_value_exactly_once() {
+            const GUARDS: usize = 2;
+
+            let count = Arc::new(AtomicUsize::new(0));
+            let tester = DropCounter {
+                count: count.clone(),
+            };
+            let primary = Parent::new(tester);
+
+            let guards: Vec<_> = (0..GUARDS).map(|_| primary.new_guard()).collect();
+            let handles: Vec<_> = guards
+                .into_iter()
+                .map(|guard| shuttle::thread::spawn(move || drop(guard)))
+                .collect();
+
+            drop(primary);
+
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            assert_eq!(
+                count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how the guards and primary interleave"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Ordinary `Guard`s racing a `DropAll` (and `Parent`'s drop) -- same
+        /// shape as the real-thread stress test above, made exhaustive.
+        fn concurrent_guards_and_drop_all_race_releases_value_exactly_once() {
+            const GUARDS: usize = 2;
+
+            let count = Arc::new(AtomicUsize::new(0));
+            let tester = DropCounter {
+                count: count.clone(),
+            };
+            let primary = Parent::new(tester);
+
+            let guards: Vec<_> = (0..GUARDS).map(|_| primary.new_guard()).collect();
+            let drop_all = primary.force_drop_guard();
+
+            let mut handles: Vec<_> = guards
+                .into_iter()
+                .map(|guard| shuttle::thread::spawn(move || drop(guard)))
+                .collect();
+            handles.push(shuttle::thread::spawn(move || drop(drop_all)));
+
+            drop(primary);
+
+            for h in handles {
+                h.join().unwrap();
+            }
+
+            assert_eq!(
+                count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how the guards, drop_all, and primary interleave"
+            );
+        }
+    }
+
+    /// Verifies release doesn't wait on a lingering `DropAll`.
+    fn drop_all_lingering_does_not_delay_release() {
+        let count = Arc::new(AtomicUsize::new(0));
+        let tester = DropCounter {
+            count: count.clone(),
+        };
+        let primary = Parent::new(tester);
+        let drop_all = primary.force_drop_guard();
+
+        drop(primary);
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "value must release once Parent (and all Guards) drop, even with a live DropAll"
+        );
+
+        drop(drop_all);
+    }
+
+    #[test]
+    fn drop_all_lingering_does_not_delay_release_check() {
+        shuttle::check(drop_all_lingering_does_not_delay_release);
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// `new_guard()` itself called concurrently from multiple threads
+        /// `Parent: Sync` implies this must be safe; exercised here.
+        fn concurrent_guard_creation_and_drop_releases_value_exactly_once() {
+            const GUARDS: usize = 2;
+
+            let count = Arc::new(AtomicUsize::new(0));
+            let tester = DropCounter {
+                count: count.clone(),
+            };
+            let primary = Parent::new(tester);
+
+            shuttle::thread::scope(|s| {
+                for _ in 0..GUARDS {
+                    s.spawn(|| drop(primary.new_guard()));
+                }
+            });
+
+            drop(primary);
+
+            assert_eq!(
+                count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how concurrent guard creation and drop interleave"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Guard creation, guard drops, `DropAll` creation, and
+        /// `DropAll` drops, all racing each other (and `Parent`'s drop) at once
+        fn concurrent_guard_and_drop_all_creation_and_drop_releases_value_exactly_once() {
+            const GUARDS: usize = 2;
+            const DROP_ALLS: usize = 2;
+
+            let count = Arc::new(AtomicUsize::new(0));
+            let tester = DropCounter {
+                count: count.clone(),
+            };
+            let primary = Parent::new(tester);
+
+            shuttle::thread::scope(|s| {
+                for _ in 0..GUARDS {
+                    s.spawn(|| drop(primary.new_guard()));
+                }
+                for _ in 0..DROP_ALLS {
+                    s.spawn(|| drop(primary.force_drop_guard()));
+                }
+            });
+
+            drop(primary);
+
+            assert_eq!(
+                count.load(Ordering::SeqCst),
+                1,
+                "value must be dropped exactly once, regardless of how concurrent guard/DropAll creation and drop interleave"
+            );
+        }
     }
 }

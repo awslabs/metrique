@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use metrique_core::CloseValue;
 
-use crate::traits::{AggregateSink, RootSink};
+use crate::traits::{AggregateSink, FlushableSink, RootSink};
 
 /// Sink that aggregates a single type of entry backed by a mutex
 ///
@@ -63,6 +63,21 @@ where
 {
     fn merge(&self, entry: T) {
         self.inner.lock().unwrap().merge(entry);
+    }
+}
+
+/// Flushing a [`MutexSink`] flushes the aggregator it wraps.
+///
+/// This is how a [`crate::aggregator::KeyedAggregator`] behind a `MutexSink` emits: it
+/// accumulates on `merge` and only writes to its inner sink when flushed. An
+/// [`crate::aggregator::Aggregate`] does not need this, because it is drained through
+/// [`CloseValue`] instead.
+impl<Inner> FlushableSink for MutexSink<Inner>
+where
+    Inner: FlushableSink,
+{
+    fn flush(&mut self) {
+        self.inner.lock().unwrap().flush();
     }
 }
 

@@ -3,13 +3,41 @@
 use std::{
     marker::PhantomData,
     sync::Arc,
-    sync::mpsc::{RecvTimeoutError, Sender, channel},
-    thread,
+    sync::mpsc::RecvTimeoutError,
     time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
 
 use crate::traits::{AggregateSink, FlushableSink, RootSink};
+
+// Cfg-gated concurrency primitives (std vs. shuttle). Gated on both
+// `cfg(shuttle)` and `feature = "_shuttle"` so it also reaches
+// builds of this crate that don't have `_shuttle` enabled (e.g. as a
+// dev-dependency with different requested features) and therefore don't
+// have the optional `shuttle` crate linked at all.
+//
+// `RecvTimeoutError` needs no swap -- shuttle re-exports std's type
+// unchanged. Its `recv_timeout` never actually times out though, that's a
+// known gap documented in Shuttle itself; `channel()`'s shuttle-side
+// substitute (in `metrique_writer_core::shuttle_test_support`, shared with
+// sibling crates) wraps the receiver half so it randomly synthesizes a
+// `Timeout` instead. `threshold_elapsed` does the same for the
+// merge-triggered flush check below: real wall-clock time barely advances
+// during a fast shuttle iteration, so `last_flush.elapsed() >= flush_interval`
+// alone would (almost) never fire under shuttle.
+#[cfg(all(shuttle, feature = "_shuttle"))]
+use metrique_writer_core::shuttle_test_support::{Sender, channel, thread, threshold_elapsed};
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+use std::{
+    sync::mpsc::{Sender, channel},
+    thread,
+};
+
+/// Whether `threshold` has elapsed since `since`. Trivial outside shuttle.
+#[cfg(not(all(shuttle, feature = "_shuttle")))]
+fn threshold_elapsed(since: Instant, threshold: Duration) -> bool {
+    since.elapsed() >= threshold
+}
 
 enum QueueMessage<T> {
     Entry(T),
@@ -49,7 +77,7 @@ where
                 match receiver.recv_timeout(time_until_flush) {
                     Ok(QueueMessage::Entry(entry)) => {
                         inner.merge(entry);
-                        if last_flush.elapsed() >= flush_interval {
+                        if threshold_elapsed(last_flush, flush_interval) {
                             inner.flush();
                             last_flush = Instant::now();
                         }
@@ -146,5 +174,359 @@ mod tests {
             1,
             "worker should flush exactly once before exiting on disconnect",
         );
+    }
+
+    #[tokio::test]
+    async fn flush_does_not_resolve_before_inner_flush_runs() {
+        for _ in 0..20_000 {
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<(), _>::new(
+                CountingSink {
+                    flushes: flushes.clone(),
+                },
+                Duration::from_secs(60),
+            );
+            sink.flush().await;
+            assert_eq!(
+                flushes.load(Ordering::SeqCst),
+                1,
+                "flush() resolved before inner.flush() actually ran"
+            );
+        }
+    }
+
+    /// Not Shuttle-testable (Shuttle doesn't model time), so this asserts real
+    /// elapsed-time behavior directly.
+    #[test]
+    fn flushes_periodically_under_continuous_load() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            Duration::from_millis(1),
+        );
+
+        let start = Instant::now();
+        loop {
+            sink.send(());
+            if flushes.load(Ordering::SeqCst) > 10 {
+                break;
+            }
+            if start.elapsed() > Duration::from_secs(60) {
+                panic!(
+                    "only flushed {} times in 60s of continuous sending -- periodic flush \
+                     must fire even while entries keep arriving",
+                    flushes.load(Ordering::SeqCst)
+                );
+            }
+            std::thread::sleep(Duration::from_micros(1));
+        }
+    }
+
+    /// The merge-triggered auto-flush must reset `last_flush`, or every
+    /// later entry would also look overdue and re-trigger it.
+    #[test]
+    fn merge_triggered_flush_resets_last_flush() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            Duration::from_millis(20),
+        );
+
+        let start = Instant::now();
+        let mut sends = 0u64;
+        while start.elapsed() < Duration::from_millis(200) {
+            sink.send(());
+            sends += 1;
+        }
+        // Give the background thread a moment to drain the last few sends.
+        std::thread::sleep(Duration::from_millis(20));
+
+        // ~200ms of continuous sending with a 20ms flush_interval crosses
+        // the deadline roughly 10 times -- nowhere near one flush per send.
+        let count = flushes.load(Ordering::SeqCst);
+        assert!(
+            count <= 25,
+            "flushed {count} times for {sends} continuous sends over ~200ms with a \
+             20ms flush_interval -- merge-triggered flush must reset last_flush, not \
+             fire on every subsequent entry"
+        );
+    }
+
+    /// Nothing must have flushed yet at 0.6x (which a `flush_interval / 2` bug would already
+    /// have crossed), and something must have flushed by 1.6x (which a
+    /// `flush_interval * 2` bug would not yet have reached).
+    #[test]
+    fn merge_triggered_flush_uses_full_flush_interval() {
+        const FLUSH_INTERVAL: Duration = Duration::from_millis(300);
+
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let sink = WorkerSink::<(), _>::new(
+            CountingSink {
+                flushes: flushes.clone(),
+            },
+            FLUSH_INTERVAL,
+        );
+
+        let start = Instant::now();
+        while start.elapsed() < FLUSH_INTERVAL.mul_f64(0.6) {
+            sink.send(());
+        }
+        assert_eq!(
+            flushes.load(Ordering::SeqCst),
+            0,
+            "flushed before 0.6x flush_interval of continuous sending -- merge-triggered \
+             flush must compare against the full flush_interval, not a fraction of it"
+        );
+
+        while start.elapsed() < FLUSH_INTERVAL.mul_f64(1.6) {
+            sink.send(());
+        }
+        assert!(
+            flushes.load(Ordering::SeqCst) >= 1,
+            "did not flush by 1.6x flush_interval of continuous sending -- merge-triggered \
+             flush must compare against the full flush_interval, not a multiple of it"
+        );
+    }
+}
+
+// Shuttle interleaving tests for `WorkerSink`, covering merge correctness,
+// clean exit on channel disconnect, and the periodic-flush-on-timeout path.
+#[cfg(all(test, shuttle, feature = "_shuttle"))]
+mod shuttle_tests {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    // `futures::executor::block_on`'s real thread park/unpark on wake
+    // is invisible to shuttle and can deadlock the exploration. Shuttle's own
+    // `block_on` polls and yields to its scheduler on `Pending` instead of
+    // really blocking, using shuttle's own waker under the hood.
+    use shuttle::future::block_on;
+
+    use super::*;
+    use metrique_writer_core::shuttle_test;
+
+    struct CollectingSink {
+        merged: Arc<Mutex<Vec<u64>>>,
+        flushes: Arc<AtomicUsize>,
+    }
+
+    impl AggregateSink<u64> for CollectingSink {
+        fn merge(&mut self, entry: u64) {
+            self.merged.lock().unwrap().push(entry);
+        }
+    }
+
+    impl FlushableSink for CollectingSink {
+        fn flush(&mut self) {
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    /// `flush_interval`'s actual value barely matters under shuttle: both
+    /// paths that compare against it are randomized rather than driven by real elapsed time.
+    fn flush_interval() -> Duration {
+        Duration::from_secs(60)
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Entries sent concurrently from several cloned handles are all merged
+        /// by the time `flush()`'s returned future resolves, for every
+        /// interleaving shuttle explores.
+        fn concurrent_sends_all_merged_before_flush_returns() {
+            const THREADS: u64 = 3;
+            const PER_THREAD: u64 = 3;
+
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
+
+            let senders: Vec<_> = (0..THREADS)
+                .map(|t| {
+                    let sink = sink.clone();
+                    thread::spawn(move || {
+                        for i in 0..PER_THREAD {
+                            sink.send(t * PER_THREAD + i);
+                        }
+                    })
+                })
+                .collect();
+            for t in senders {
+                t.join().unwrap();
+            }
+
+            block_on(sink.flush());
+
+            let mut values = merged.lock().unwrap().clone();
+            values.sort();
+            assert_eq!(values, (0..(THREADS * PER_THREAD)).collect::<Vec<_>>());
+
+            let handle = Arc::clone(&sink._handle);
+            drop(sink);
+            Arc::into_inner(handle)
+                .expect("sole handle ref after dropping the only WorkerSink")
+                .join()
+                .expect("worker thread panicked");
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Several cloned handles send an entry and drop concurrently.
+        /// The background thread must still exit, flush at least once,
+        /// and lose no entries, no matter how the drops, the final disconnect,
+        /// and any periodic flush interleave.
+        fn concurrent_drops_exit_cleanly_and_flush_once() {
+            const CLONES: u64 = 2;
+
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
+            let handle = Arc::clone(&sink._handle);
+
+            let droppers: Vec<_> = (0..CLONES)
+                .map(|i| {
+                    let sink = sink.clone();
+                    thread::spawn(move || {
+                        sink.send(i);
+                        drop(sink);
+                    })
+                })
+                .collect();
+
+            drop(sink);
+            for d in droppers {
+                d.join().unwrap();
+            }
+
+            Arc::into_inner(handle)
+                .expect("all WorkerSink clones dropped, sole handle ref remains")
+                .join()
+                .expect("worker thread panicked");
+
+            let mut values = merged.lock().unwrap().clone();
+            values.sort();
+            assert_eq!(values, (0..CLONES).collect::<Vec<_>>());
+            assert!(
+                flushes.load(Ordering::SeqCst) >= 1,
+                "must flush at least once (at shutdown, possibly earlier too via a periodic flush)"
+            );
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// The shared mpsc channel preserves each sender's own order, so this thread's
+        /// entries must be merged by the time its own `flush()` resolves.
+        fn flush_resolves_after_own_prior_sends() {
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
+
+            let other = {
+                let sink = sink.clone();
+                shuttle::thread::spawn(move || {
+                    for i in 100..102 {
+                        sink.send(i);
+                    }
+                })
+            };
+
+            for i in 0..2 {
+                sink.send(i);
+            }
+            block_on(sink.flush());
+
+            let values = merged.lock().unwrap().clone();
+            for i in 0..2 {
+                assert!(
+                    values.contains(&i),
+                    "flush() resolved without observing entry {i} sent before it on the same thread"
+                );
+            }
+
+            other.join().unwrap();
+            let handle = Arc::clone(&sink._handle);
+            drop(sink);
+            Arc::into_inner(handle)
+                .expect("sole handle ref after dropping the only WorkerSink")
+                .join()
+                .expect("worker thread panicked");
+        }
+    }
+
+    shuttle_test! {
+        num_iters = 2_000, depth = 3;
+        /// Same property as `flush_resolves_after_own_prior_sends`, but with
+        /// enough sends per thread to give the randomized `recv_timeout` wrapper
+        /// above a real chance to fire a periodic flush (a `Timeout` when the
+        /// channel is briefly empty) mid-run, not just at the final `flush()`.
+        /// `flush()`'s own-prior-sends guarantee must hold either way.
+        fn flush_resolves_after_own_prior_sends_even_with_periodic_flushes() {
+            const PER_THREAD: u64 = 20;
+
+            let merged: Arc<Mutex<Vec<u64>>> = Arc::default();
+            let flushes = Arc::new(AtomicUsize::new(0));
+            let sink = WorkerSink::<u64, _>::new(
+                CollectingSink {
+                    merged: merged.clone(),
+                    flushes: flushes.clone(),
+                },
+                flush_interval(),
+            );
+
+            let other = {
+                let sink = sink.clone();
+                shuttle::thread::spawn(move || {
+                    for i in 0..PER_THREAD {
+                        sink.send(i);
+                    }
+                })
+            };
+
+            for i in PER_THREAD..(PER_THREAD * 2) {
+                sink.send(i);
+            }
+            block_on(sink.flush());
+
+            let values = merged.lock().unwrap().clone();
+            for i in PER_THREAD..(PER_THREAD * 2) {
+                assert!(
+                    values.contains(&i),
+                    "flush() resolved without observing entry {i} sent before it on the same \
+                     thread, even though a periodic flush may have fired mid-run"
+                );
+            }
+
+            other.join().unwrap();
+            let handle = Arc::clone(&sink._handle);
+            drop(sink);
+            Arc::into_inner(handle)
+                .expect("sole handle ref after dropping the only WorkerSink")
+                .join()
+                .expect("worker thread panicked");
+        }
     }
 }
