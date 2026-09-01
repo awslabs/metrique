@@ -1,21 +1,13 @@
 use darling::FromMeta;
+use metrique_core::case_convert::CaseStyle;
 
 use crate::{MetricsField, MetricsFieldKind, RootAttributes, enums::MetricsVariant};
 
-pub(crate) fn name_contains_uninflectables(name: &str) -> Option<char> {
-    name.chars()
-        .find(|&c| !c.is_alphanumeric() && c != '_' && c != '-')
-}
-
-pub(crate) fn name_ends_with_delimiter(name: &str) -> bool {
-    let last = name.chars().last();
-    last == Some('_') || last == Some('-')
-}
-
-// `.` is currently used in production, make it a warning instead of an error
-pub(crate) fn name_contains_dot(name: &str) -> bool {
-    name.contains('.')
-}
+// Case-conversion primitives live in `metrique_core::case_convert`; re-export
+// the validation helpers so existing call sites keep working.
+pub(crate) use metrique_core::case_convert::{
+    name_contains_dot, name_contains_uninflectables, name_ends_with_delimiter,
+};
 
 #[allow(clippy::enum_variant_names)] // "Case" is part of the name...
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, FromMeta)]
@@ -44,44 +36,23 @@ impl NameStyle {
         arr
     };
 
-    pub(crate) fn apply(self, name: &str) -> String {
-        use inflector::Inflector;
+    /// Map this macro-level style onto the shared [`CaseStyle`] primitive.
+    fn to_case_style(self) -> CaseStyle {
         match self {
-            NameStyle::PascalCase => name.to_pascal_case(),
-            NameStyle::SnakeCase => name.to_snake_case(),
-            NameStyle::ScreamingSnakeCase => name.to_screaming_snake_case(),
-            NameStyle::Preserve => name.to_string(),
-            NameStyle::KebabCase => name.to_kebab_case(),
+            NameStyle::PascalCase => CaseStyle::Pascal,
+            NameStyle::SnakeCase => CaseStyle::Snake,
+            NameStyle::ScreamingSnakeCase => CaseStyle::ScreamingSnake,
+            NameStyle::KebabCase => CaseStyle::Kebab,
+            NameStyle::Preserve => CaseStyle::Preserve,
         }
     }
 
+    pub(crate) fn apply(self, name: &str) -> String {
+        self.to_case_style().apply(name)
+    }
+
     pub(crate) fn apply_prefix(self, name: &str) -> String {
-        use inflector::Inflector;
-        match self {
-            NameStyle::PascalCase => name.to_pascal_case(),
-            NameStyle::SnakeCase => {
-                let mut res = name.to_snake_case();
-                if !res.ends_with("_") {
-                    res.push('_');
-                }
-                res
-            }
-            NameStyle::ScreamingSnakeCase => {
-                let mut res = name.to_screaming_snake_case();
-                if !res.ends_with("_") {
-                    res.push('_');
-                }
-                res
-            }
-            NameStyle::Preserve => name.to_string(),
-            NameStyle::KebabCase => {
-                let mut res = name.to_kebab_case();
-                if !res.ends_with("-") {
-                    res.push('-');
-                }
-                res
-            }
-        }
+        self.to_case_style().apply_prefix(name)
     }
 
     pub(crate) fn to_word(self) -> &'static str {

@@ -532,17 +532,18 @@ impl NameStyle {
     }
 
     fn apply(self, name: &str) -> String {
-        use inflector::Inflector;
-        match self {
-            NameStyle::LowerCase => name.to_ascii_lowercase(),
-            NameStyle::UpperCase => name.to_ascii_uppercase(),
-            NameStyle::PascalCase => name.to_pascal_case(),
-            NameStyle::CamelCase => name.to_camel_case(),
-            NameStyle::SnakeCase => name.to_snake_case(),
-            NameStyle::ScreamingSnakeCase => name.to_screaming_snake_case(),
-            NameStyle::KebabCase => name.to_kebab_case(),
-            NameStyle::ScreamingKebabCase => name.to_kebab_case().to_ascii_uppercase(),
-        }
+        use metrique_core::case_convert::CaseStyle;
+        let style = match self {
+            NameStyle::LowerCase => CaseStyle::Lower,
+            NameStyle::UpperCase => CaseStyle::Upper,
+            NameStyle::PascalCase => CaseStyle::Pascal,
+            NameStyle::CamelCase => CaseStyle::Camel,
+            NameStyle::SnakeCase => CaseStyle::Snake,
+            NameStyle::ScreamingSnakeCase => CaseStyle::ScreamingSnake,
+            NameStyle::KebabCase => CaseStyle::Kebab,
+            NameStyle::ScreamingKebabCase => CaseStyle::ScreamingKebab,
+        };
+        style.apply(name)
     }
 }
 
