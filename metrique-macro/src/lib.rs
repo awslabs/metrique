@@ -517,6 +517,44 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
     base_token_stream.into()
 }
 
+/// Parses the `#[aggregate(...)]` struct-level flag list (`direct`, `ref`) into
+/// `(has_direct, has_ref)`, rejecting anything else instead of silently ignoring it.
+///
+/// A naive `attr_str != "direct"` / `attr_str.contains("ref")` check (the previous
+/// implementation) accepts any typo as "not direct" and can accidentally enable
+/// `ref` mode via substring match (e.g. a typo like `direfc`). Parsing the flags
+/// as a real comma-separated identifier list catches both failure modes at
+/// compile time. `ref` is a Rust keyword, so `Ident::parse_any` is required to
+/// accept it as a bare identifier here.
+fn parse_aggregate_attr_flags(attr: Ts2) -> syn::Result<(bool, bool)> {
+    use syn::ext::IdentExt;
+    use syn::parse::Parser;
+    use syn::punctuated::Punctuated;
+
+    let parser = |input: syn::parse::ParseStream| {
+        Punctuated::<Ident, syn::Token![,]>::parse_terminated_with(input, Ident::parse_any)
+    };
+    let idents = parser.parse2(attr)?;
+
+    let mut has_direct = false;
+    let mut has_ref = false;
+    for ident in &idents {
+        match ident.to_string().as_str() {
+            "direct" => has_direct = true,
+            "ref" => has_ref = true,
+            other => {
+                return Err(syn::Error::new_spanned(
+                    ident,
+                    format!(
+                        "unknown #[aggregate(...)] flag '{other}'; expected `direct` and/or `ref`"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok((has_direct, has_ref))
+}
+
 /// Generates aggregation support for metrics structs.
 ///
 /// This macro enables combining multiple observations of the same metric into a single aggregated
@@ -658,9 +696,11 @@ pub fn metrics(attr: TokenStream, input: proc_macro::TokenStream) -> proc_macro:
 #[proc_macro_attribute]
 pub fn aggregate(attr: TokenStream, input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let attr_str = attr.to_string();
-    let entry_mode = attr.is_empty() || attr_str.trim() != "direct";
-    let enable_merge_ref = attr_str.contains("ref");
+    let (has_direct, enable_merge_ref) = match parse_aggregate_attr_flags(Ts2::from(attr)) {
+        Ok(flags) => flags,
+        Err(e) => return TokenStream::from(e.to_compile_error()),
+    };
+    let entry_mode = !has_direct;
 
     let mut output = Ts2::new();
 
@@ -2808,5 +2848,32 @@ mod tests {
 
         let parsed_file = metrics_impl_string(input, quote!(metrics(rename_all = "PascalCase")));
         assert_snapshot!("enum_with_timestamp_and_unit", parsed_file);
+    }
+
+    #[test]
+    fn test_aggregate_attr_flags_valid() {
+        use crate::parse_aggregate_attr_flags;
+        use assert2::check;
+
+        check!(parse_aggregate_attr_flags(quote!()).unwrap() == (false, false));
+        check!(parse_aggregate_attr_flags(quote!(direct)).unwrap() == (true, false));
+        check!(parse_aggregate_attr_flags(quote!(ref)).unwrap() == (false, true));
+        check!(parse_aggregate_attr_flags(quote!(direct, ref)).unwrap() == (true, true));
+        check!(parse_aggregate_attr_flags(quote!(ref, direct)).unwrap() == (true, true));
+    }
+
+    #[test]
+    fn test_aggregate_attr_flags_rejects_typo() {
+        use crate::parse_aggregate_attr_flags;
+        use assert2::check;
+
+        // A typo of `direct` must be rejected, not silently treated as "not direct".
+        let err = parse_aggregate_attr_flags(quote!(diretc)).unwrap_err();
+        check!(err.to_string().contains("unknown #[aggregate(...)] flag 'diretc'"));
+
+        // A typo that happens to contain the substring "ref" must not silently
+        // enable MergeRef via substring match.
+        let err = parse_aggregate_attr_flags(quote!(direfc)).unwrap_err();
+        check!(err.to_string().contains("unknown #[aggregate(...)] flag 'direfc'"));
     }
 }
