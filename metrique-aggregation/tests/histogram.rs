@@ -57,7 +57,7 @@ fn test_histogram() {
     metrics.size.add_value(2048u32);
     metrics.size.add_value(2048u32);
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     check!(entries.len() == 1);
@@ -128,7 +128,7 @@ fn test_sort_and_merge() {
     metrics.latency.add_value(Duration::from_millis(5));
     metrics.latency.add_value(Duration::from_millis(15));
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     check!(entries.len() == 1);
@@ -186,7 +186,7 @@ fn test_sort_and_merge_merges_duplicates() {
     metrics.latency.add_value(Duration::from_millis(3));
     metrics.latency.add_value(Duration::from_millis(3));
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     check!(entries.len() == 1);
@@ -238,7 +238,7 @@ fn test_atomic_histogram() {
     metrics.latency.add_value(Duration::from_millis(15));
     metrics.latency.add_value(Duration::from_millis(25));
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     check!(entries.len() == 1);
@@ -291,7 +291,7 @@ fn test_histogram_with_dimensions() {
     metrics.latency.add_value(Duration::from_millis(5));
     metrics.latency.add_value(Duration::from_millis(15));
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     check!(entries.len() == 1);
@@ -320,7 +320,7 @@ fn test_sort_and_merge_with_nan() {
     metrics.latency.add_value(f64::NAN);
     metrics.latency.add_value(15.0);
 
-    metrics.append_on_drop(sink.sink);
+    drop(metrics.append_on_drop(sink.sink));
 
     let entries = sink.inspector.entries();
     check!(entries.len() == 1);
