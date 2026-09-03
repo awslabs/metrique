@@ -233,6 +233,21 @@ fn test_vec_u64_emits_json_array_in_emf() {
     assert_json_diff::assert_json_eq!(output["Counts"], serde_json::json!([10, 20, 30]));
 }
 
+// Regression test for #349: a boxed entry must emit u64 list elements as JSON numbers, not
+// strings. Before the fix, the dyn bridge stringified every element (`["10","20","30"]`).
+#[test]
+fn test_vec_u64_emits_json_array_through_boxed_entry() {
+    let sink = TestSink::default();
+    let mut stream = Emf::all_validations("App".into(), vec![vec![]]).output_to(sink.clone());
+    let boxed = VecU64Entry {
+        counts: vec![10, 20, 30],
+    }
+    .boxed();
+    stream.next(&boxed).unwrap();
+    let output: serde_json::Value = serde_json::from_str(&sink.dump()).unwrap();
+    assert_json_diff::assert_json_eq!(output["Counts"], serde_json::json!([10, 20, 30]));
+}
+
 #[test]
 fn test_single_u64_vec_in_emf() {
     let sink = TestSink::default();
