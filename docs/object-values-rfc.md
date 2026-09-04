@@ -1,18 +1,16 @@
 # RFC: Object-valued fields
 
-> Status: RFC (design only, no prototype)
+> Status: RFC (design with prototype)
 >
 > Applies to: `metrique-writer-core`, `metrique-writer`,
 > `metrique-writer-format-emf`, `metrique-writer-format-json`, `metrique-macro`
 
-For a summarized list of proposed changes, see the
-[Changes checklist](#changes-checklist).
-
 This RFC proposes a way to emit a struct field as a nested object rather than a
 flat scalar. On formats that support structured values (JSON, EMF), the field is
-written as a native nested object. On formats that do not, the field is dropped.
-A descriptor-time warning fires once at setup to inform the user which fields
-will not render. This addresses
+written as a native nested object. On formats that do not, the field falls back
+to a JSON-encoded string (matching the existing `values()` precedent). A
+descriptor-time warning fires once at setup to inform the user which fields are
+being serialized rather than rendered natively. This addresses
 [#355](https://github.com/awslabs/metrique/issues/355).
 
 ---
@@ -26,611 +24,486 @@ existing `#[metrics(format = ...)]` attribute, a nested object reuses the
 `#[metrics]` struct can be nested with no re-annotation. A bare struct-typed
 field remains a compile error, so nothing becomes an object by accident._
 
+_This RFC is deliberately scoped to the object-rendering primitive and its
+derive integration. Some ergonomic concerns are deferred for follow up work._
+
+_The design has been prototyped end to end, and the claims below about what
+compiles, what allocates, and what the output looks like come from that
+prototype rather than from reasoning. I have flagged the places where I am
+inferring instead. The prototype is not proposed as the implementation; it is
+how the design was tested. Anything described as observed there should be
+re-confirmed as it lands._
+
 ---
 
 ## Motivation
 
-`metrique` maps each field of a `#[metrics]` struct to a flat scalar. A field is
-either a metric (a number with a unit and dimensions, such as a `Timer` or a
-counter) or a property (a string, an identifier, some context). There is
-currently no way to attach a structured, nested object to an entry.
-
-Today, a user who wants to attach a multi-field blob of context has two options,
-and neither is good:
-
-1. Flatten every field into top-level fields. For a dynamic tree of
-   units-of-work, this produces field names that are not known at compile time,
-   which makes the log event difficult for a human operator to read when
-   investigating a problem. Furthermore, CloudWatch Logs Insights does not
-   support querying dynamic field names — it requires exact field names or
-   regex-based matching on the raw log event, neither of which is practical for
-   a recursive data structure whose shape is caller-defined.
-2. Serialize the blob to a string by hand and emit it as a string property. This
-   throws away structure that downstream systems could otherwise use.
-
-The second option is worse than it first appears. CloudWatch Logs Insights has
-no `parse_json` command, so a field emitted as a JSON-encoded string is not
-queryable as structured data in that backend. In other words, stringifying is
-not merely inconvenient; for a common query path it is lossy.
+`metrique` maps each field of a `#[metrics]` struct to either a metric (a number
+or distribution with a unit and dimensions) or a property (a string, an
+identifier, some context). Fields can carry repeated observations (histograms,
+distributions), but there is currently no way to attach a structured, nested
+object with user-defined subfields to an entry.
 
 The concrete case that motivates this proposal is a tree of units of work whose
-shape is not known at compile time. Consider a calculator service that accepts
-an expression such as `(2 + 4) * (8 - 1)` and evaluates it. The request has a
-top-level unit of work, and each phase of evaluation (parsing, each operation)
-is itself a unit of work. The phases nest, and the set of operations is defined
-by the caller's input rather than by the service author. The desired output
-attaches the phase tree to the request entry as a native nested structure:
+shape is not known at compile time. A request is a unit of work, and so is each
+phase within it. Consider a calculator service that evaluates an expression such
+as `(2 + 4) * (8 - 1)`: the request has a top-level unit of work, and each phase
+of evaluation (parsing, each operation) is itself a unit of work. The phases
+nest, and the set of operations is defined by the caller's input rather than by
+the service author.
+
+The phase tree is not known at compile time, because phases can be created by
+customers. At scale we cannot emit a full record per phase, so phases are
+aggregated. However, we also want to sample some requests with their phase trees
+intact, so that a sampled request and its phases can be correlated. The
+structure _is_ the data here: parent/child nesting cannot be recovered from
+correlated IDs without emitting explicit parent pointers and rebuilding the tree
+at query time. The desired output attaches the phase tree to the request entry
+as a native nested structure:
 
 ```json
 {
-  "Time": 123,
-  "RequestId": "123e4567-e89b-12d3-a456-426614174000",
+  "RequestId": "abcd1234",
   "Phases": [
-    { "Type": "parse_expr", "Duration": 11 },
+    { "Kind": "parse_expr", "DurationMs": 11 },
     {
-      "Type": "eval",
-      "Duration": 22,
-      "Phases": [
+      "Kind": "eval",
+      "DurationMs": 22,
+      "Children": [
         {
-          "Type": "multiply",
-          "Duration": 33,
-          "Phases": [
-            { "Type": "add", "Duration": 44 },
-            { "Type": "sub", "Duration": 55 }
+          "Kind": "multiply",
+          "DurationMs": 33,
+          "Children": [
+            { "Kind": "add", "DurationMs": 44 },
+            { "Kind": "sub", "DurationMs": 55 }
           ]
         }
       ]
-    },
-    { "Type": "result_serialization", "Duration": 66 }
+    }
   ]
 }
 ```
 
-Each phase is an ordinary unit-of-work metric struct. The user should be able to
-reuse the metric structs they already have, rather than build a parallel
-mechanism to produce this tree.
+More generally, structured context (an error detail, a request shape, a list of
+downstream calls) is currently either flattened into the metric namespace, which
+changes what the fields mean, or hand-serialised to a string, which throws away
+structure that EMF and JSON could carry.
 
-## Terminology
+## Non-goals
 
-- **Object field**: A field of a `#[metrics]` struct that is rendered as a
-  nested object rather than a flat scalar.
-- **Object payload**: The value written as an object. Either an ordinary
-  `#[metrics]` struct or a type that hand-implements `ObjectValue`.
-- **Native object**: A structured object emitted directly in a format that
-  supports it (a JSON object in JSON and EMF; a self-describing value in a
-  future OTel integration).
+- Objects are not metrics. Units, dimensions, and flags do not apply inside an
+  object, and nested object fields cannot participate in `emf::dimension_sets`.
+- Nested object fields do not become aggregate metrics in a parent aggregate
+  record. Aggregate them separately with a normal strategy, and mark the object
+  field `#[aggregate(ignore)]`.
+- No structural descriptor for object internals. See "Descriptors" for why this
+  is the right answer rather than a shortcut.
+- `Vec<Vec<T>>` is deferred rather than designed for. A tree is `Vec<Phase>`
+  where `Phase` contains `Vec<Phase>`, never a nested `Vec`, so nothing here
+  needs it. It could be added later if a real use case appears (see open
+  question 3).
+- Sharing a single finalized child across more than one record is out of scope
+  for this RFC. The hand-written `Arc` pattern works today (see the `no_close`
+  note under "Supported field shapes"); the ergonomic story is follow-up work.
 
-## The user experience if this RFC is implemented
+---
+
+# User-facing documentation
 
 This section is written as the public documentation users should be able to read
 once the feature is released.
 
-### Nesting an existing metric struct
+## Choosing how to attach a child
 
-Any `#[metrics]` struct can be nested inside another entry as an object. The
-nested struct requires no new annotation; the parent field selects object
-rendering with `#[metrics(format = AsObject)]`:
+Consider the following questions:
 
-```rust,ignore
-use metrique::unit_of_work::metrics;
-use metrique::writer::value::AsObject;
+**Is it one child whose fields are metrics of the parent?** Use `flatten`. A
+latency and a retry count belong in the parent's namespace, and `flatten` keeps
+their units and dimensions.
 
+**Is it many children whose per-child structure, order, or other individual
+detail matters?** Use `AsObject`. The sub-operation tree in #355 is the case:
+which phase nested inside which is the data, so collapsing them loses the point.
+
+**Is it many children whose per-child structure does _not_ matter?** Aggregate
+them. `Aggregate<T>` merges N children field-by-field, each field per its
+strategy (`Histogram` produces a distribution, `Sum` a total, `KeepLast` a
+gauge), and flattens the merged result into the parent, so a set of `Phase`
+values becomes a flat `DurationMs: {histogram}` rather than an array of objects.
+This is the README's first example and works today.
+
+The distinction between the last two is worth being explicit about, because
+reaching for `AsObject` when you wanted aggregation is an easy mistake and
+produces a much larger record. Objects preserve per-element structure;
+aggregation discards it and keeps a merged value per field. Constructing an
+`Aggregate<T>` directly from a `Vec<Phase>` you already hold is a separate
+ergonomic gap tracked in #386.
+
+```rust
 #[metrics(rename_all = "PascalCase")]
-struct Phase {
-    r#type: &'static str,
-    duration: Duration,
+struct Timing {
+    #[metrics(unit = Millisecond)]
+    elapsed: Duration,
+    retries: u32,
 }
 
 #[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
-    request_id: &'static str,
+    /// `Elapsed` and `Retries` become metrics of the request, with units preserved.
+    #[metrics(flatten)]
+    timing: Timing,
 
+    /// A nested object. Its members are properties, so `Elapsed` carries no unit.
     #[metrics(format = AsObject)]
-    root_phase: Phase,
+    shape: Timing,
 }
 ```
 
-When `RequestMetrics` closes, `root_phase` is a nested object:
+Nothing about `Timing` is object-specific. The same struct can be flattened,
+nested as an object, or emitted on its own.
 
-```json
-{
-  "RequestId": "...",
-  "RootPhase": { "Type": "parse_expr", "Duration": 11 }
-}
-```
+## Supported field shapes
 
-The nested object is a fresh naming scope. `Phase` applies its own `rename_all`;
-the parent's field name (`root_phase`) becomes the object's key, and the phase's
-field names are the object's members.
+`AsObject` works on a `#[metrics]` type and on the common wrappers around one:
 
-### Nesting a tree of metric structs
+| Field type                | Emits                                         |
+| ------------------------- | --------------------------------------------- |
+| `Phase`                   | one object                                    |
+| `Vec<Phase>`              | array of objects                              |
+| `Option<Phase>`           | the object, or the key is omitted when `None` |
+| `Box<Phase>`              | one object                                    |
+| `Arc<Phase>`              | one object (see the `no_close` note below)    |
+| `Option<Vec<Arc<Phase>>>` | array of objects, or omitted                  |
 
-A recursive tree is a struct with a field holding a `Vec` of itself. The `Vec`
-of objects uses `#[metrics(format = Each<AsObject>)]`:
+Recursion works, so a type may contain a `Vec` of itself. The object type may be
+a `#[metrics]` struct or an entry-mode enum; an enum renders as an object the
+same way it renders as a flat entry (see "Generated `ObjectValue` impls").
 
-```rust,ignore
-use metrique::writer::value::{AsObject, Each};
+An empty `Vec` emits `[]` and an object whose members all write nothing emits
+`{}`. Neither is omitted, so a consumer can distinguish "no children" from
+"children not recorded".
 
+A field that closes normally (the common case) needs no extra attribute: a plain
+`phases: Vec<Phase>` closes each `Phase` and renders the result as an array of
+objects.
+
+A field that already holds _closed_ entries (`phases: Vec<PhaseEntry>`,
+where `PhaseEntry` is declared `#[metrics(closeable_entry)]`) also needs no
+`#[metrics(no_close)]`, because `closeable_entry` gives the closed type an
+identity `CloseValue` impl.
+
+The one shape that still needs `#[metrics(no_close)]` is an `Arc` of an
+already-closed entry:
+
+```rust
 #[metrics(rename_all = "PascalCase")]
-struct Phase {
-    r#type: &'static str,
-    duration: Duration,
-
-    #[metrics(format = Each<AsObject>)]
-    phases: Vec<Phase>,
-}
-```
-
-This produces the nested `Phases` array shown in the [Motivation](#motivation)
-section, to arbitrary depth. The set of phases does not need to be known at
-compile time.
-
-### Fields inside an object are plain values, not metrics
-
-All fields inside an object are rendered as regular JSON values. Numeric fields
-are bare numbers with no unit, no dimensions, and no aggregation. String fields
-are bare strings. No field inside an object is registered as a CloudWatch
-metric, and no `_aws` metadata (metric directives, namespace, dimension sets) is
-emitted for a nested object. A `Timer` or a counter placed inside an object
-renders as its bare numeric value; its unit and dimensions are discarded.
-
-This is structural, not advisory. The nested object writer ignores `config()`
-(so EMF configuration such as namespace and dimension sets has no effect), and
-the inner member `ValueWriter` strips metric semantics from numeric values
-(discards unit, dimensions, and flags, writing only the raw observation). There
-is no code path through which `_aws` metadata can reach a nested object.
-
-This is the same rule that already applies to numbers inside an array (see
-[#266](https://github.com/awslabs/metrique/pull/266)).
-
-### Objects on a type you do not own
-
-An object payload does not have to be a `#[metrics]` struct. A type that cannot
-be annotated (for example, a type from another crate) can be rendered as an
-object by wrapping it in a newtype and implementing both `ObjectValue` and
-`ValueFormatter` by hand:
-
-```rust,ignore
-use metrique::writer::{EntryWriter, ValueWriter, value::{ObjectValue, AsObject}};
-use metrique::writer::value::ValueFormatter;
-
-struct EndpointObject(third_party::Endpoint);
-
-impl ObjectValue for EndpointObject {
-    fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        writer.value("host", &self.0.host);
-        writer.value("port", &self.0.port);
-    }
-}
-
-impl ValueFormatter<EndpointObject> for AsObject {
-    fn format_value(writer: impl ValueWriter, value: &EndpointObject) {
-        writer.object(value)
-    }
-}
-
-#[metrics]
 struct RequestMetrics {
-    #[metrics(format = AsObject)]
-    endpoint: EndpointObject,
+    #[metrics(format = AsObject, no_close)]
+    phases: Vec<Arc<PhaseEntry>>,
 }
 ```
 
-`ObjectValue::write_object` receives the same `EntryWriter` that a hand-written
-`Entry` receives, so each member is written with `writer.value(name, value)`.
-Every member passed to `writer.value()` must implement `Value`; if a member does
-not (for example, another nested struct), wrap it with its own `AsObject`
-formatter or implement `Value` for it. The concrete `ValueFormatter` impl is
-boilerplate (it calls `writer.object(value)`), but it is required so that
-`L`-inference is unambiguous at the macro's use site.
+An `Arc` cannot be consumed, so it can only close _by reference_, which requires
+`CloseValueRef`—`&PhaseEntry: CloseValue`, producing an owned closed entry
+from a borrow. `closeable_entry` provides only the by-value identity impl, and a
+by-reference one cannot be generated in general: it would have to clone, but a
+closed entry is not necessarily `Clone` (neither a histogram's nor a timer's
+closed form is), and even where it is, cloning through the `Arc` would discard
+the sharing. So the derive cannot close an `Arc<PhaseEntry>` on its own;
+`no_close` tells it the field already holds a finalized value and should be
+rendered as-is. Close first, then wrap: `Arc<T>: CloseValue` closes to
+`T::Closed`, not `Arc<T::Closed>`, so closing _through_ an `Arc` would discard
+the sharing. This can be addressed in follow up work.
 
-### What happens on formats without native objects
+## What formats do
 
-On formats that support native objects (JSON, EMF), `AsObject` renders the field
-as a structured object. On formats that do not, the field is **dropped** — it
-does not appear in the output. A descriptor-time warning (see below) informs the
-user at setup which fields will not render on which formats.
+| Format        | Object                                         | Array of objects              |
+| ------------- | ---------------------------------------------- | ----------------------------- |
+| EMF           | native nested object in the properties section | native array                  |
+| JSON          | native nested object                           | native array                  |
+| `LocalFormat` | native                                         | native                        |
+| OTel*         | JSON-encoded string attribute                  | one JSON-encoded array string |
+| Anything else | JSON-encoded string                            | JSON-encoded array string     |
 
-Dropping is preferable to a string fallback as the default: it avoids surprise
-size inflation from unqueryable JSON blobs on flat formats, and the warning
-makes the omission a conscious choice rather than a silent loss.
+The fallback is a string rather than a drop, so a field is never silently lost.
+The array fallback is bracketed, so one `JSON.parse` recovers it.
 
-### A warning when a format cannot render an object
+_\* NOTE: OTel supports object properties as
+[Complex Attributes](https://opentelemetry.io/blog/2025/complex-attribute-types/),
+but
+[opentelemetry-sdk](https://docs.rs/opentelemetry_sdk/0.32.1/opentelemetry_sdk/)
+has not been updated to reflect that yet._
 
-When an entry containing an object field is written to a format that does not
-support native objects, the framework emits a warning once at entry-format setup
-time (not per-write). The warning names the field and the format.
+## Naming
 
-The mechanism is described in
-[Descriptor shape and the format-capability warning](#descriptor-shape-and-the-format-capability-warning).
+A nested object is a **fresh naming scope**. The child's own `rename_all`
+applies; if it declares none, its members are emitted verbatim. The parent's
+style does not flow across the object boundary.
 
-## How to actually implement this RFC
+This differs from `flatten`, where the parent's case style does propagate, and
+the difference is deliberate. Under transitive naming a `Phase` emitted
+standalone has `duration_ms` while the same `Phase` inside a `PascalCase` parent
+has `DurationMs`: same type, same data, two schemas, and anything consuming both
+has to know which context each record came from. Emitting a sampled embedded
+child and the same child aggregated separately is the entire point of #355, so a
+stable per-type schema matters more than one uniform convention per document.
 
-### An object is an `Entry`, not a new kind of value
+The fresh scope also gives the right answer for `prefix`. A parent's prefix
+belongs on the object's own key, not on its members, and a fresh scope produces
+that without a special case.
 
-A nested object is a visitor over named fields written into a `{ ... }` scope.
-This is exactly the contract of the existing `EntryWriter`:
+The **default** is the one naming decision that must be settled before this
+ships, because it is wire-observable: changing it later changes emitted field
+names, and every dashboard, alarm, and saved query built on them stops matching,
+even though all downstream code still compiles. A field-level override is
+additive and can be tracked as its own issue.
 
-```rust,ignore
-// metrique-writer-core/src/entry/mod.rs
-pub trait EntryWriter<'a> {
-    fn timestamp(&mut self, timestamp: SystemTime);
-    fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized));
-    fn config(&mut self, config: &'a dyn EntryConfig);
-}
-```
+---
 
-Rather than introduce a parallel object-writer trait, each format provides a
-small `EntryWriter` implementation that renders `value(name, v)` as
-`"name": <v>` into a nested scope, and ignores `timestamp` and `config` (an
-object has no timestamp and no entry-level configuration).
+# Reference
 
-The single new public trait is `ObjectValue`:
+## `ObjectValue`
 
-```rust,ignore
-// metrique-writer-core/src/value/object.rs
+```rust
 pub trait ObjectValue {
-    /// Emit this object's members. Each `value(name, v)` call becomes a
-    /// `"name": <v>` member of the object. `timestamp` and `config` calls
-    /// are ignored.
     fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>);
 }
 ```
 
-`ObjectValue` is obtained two ways: the `#[metrics]` derive generates it for
-every entry-producing struct, and a user hand-implements it for a type they do
-not own (through a newtype, as shown above). There is deliberately no blanket
-`impl<T: InflectableEntry> ObjectValue for T`: such a blanket would make the
-compiler unable to prove that a hand-written `impl ObjectValue for MyNewtype`
-does not overlap it, so hand-implementation and a blanket bridge are mutually
-exclusive. Generating an explicit impl per type in the derive avoids the
-conflict.
+The object writer is `EntryWriter`, reusing the existing named-field visitor
+rather than introducing a parallel one. An entry and an object are both "a
+sequence of named values"; `HashMap<K, V>: Entry` already demonstrates that.
 
-### One new `ValueWriter` method
+Two things make this safe rather than sloppy. `EntryWriter::timestamp` and
+`::config` are meaningless inside an object body and are **silently ignored**;
+in the prototype, an object body calling both left the enclosing entry's
+timestamp and dimension sets untouched. And the member writer strips unit,
+dimension, and flag metadata, so no `_aws` metadata can reach a nested object.
+Object internals are properties structurally, not by convention.
 
-`ValueWriter` gains `object`, following the same default-plus-override pattern
-that `values()` established:
+`ObjectValue` is not dyn-compatible, because `write_object` is generic over the
+writer. That is not a regression: the boxed-entry path already bridges it
+through an internal `DynObjectValue`.
 
-```rust,ignore
-// metrique-writer-core/src/value/mod.rs
-pub trait ValueWriter: Sized {
-    // ... string, metric, error, invalid, values ...
+## `ValueWriter::object`
 
-    /// Write a nested object. Formats with native object support override
-    /// this to emit a structured object. The default drops the field (emits
-    /// nothing). The descriptor-time warning ensures the user knows which
-    /// formats will drop.
-    fn object<O: ObjectValue + ?Sized>(self, _object: &O) {}
+```rust
+fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+    write_object_as_string(self, object)
 }
 ```
 
-Formats that support native objects (JSON, EMF) override `object` to render the
-structure. Formats that do not inherit the default no-op.
+The default is a JSON-encoded string. A no-op default was the earlier proposal,
+and prototyping it showed why that is the wrong choice: with a no-op default,
+EMF dropped the field entirely and `Emf::all_validations` still returned `Ok`.
+Unlike `values`, which at least degrades to something visible in the output, a
+dropped object leaves no evidence.
 
-This satisfies the tee case. A single entry written to an EMF-aggregating sink
-and a non-EMF sampling sink at the same time resolves per-format at write time,
-because each format supplies (or inherits) its own override. There is no
-per-struct or per-sink static choice.
+`object` should be added to the `metrique_require_explicit_impls` gate (#336) so
+first-party writers state their choice.
 
-The EMF override writes the object into `string_fields_buf` (the plain-JSON body
-of the EMF document), never into the `_aws` metrics directive. The JSON override
-writes into `properties_buf`. The per-format nested object `EntryWriter` uses a
-monomorphic buffer-borrowing writer (not a generic wrapper over `W`) to avoid
-recursive monomorphization. Both formats reuse their existing array-element
-writers to render member values as bare numbers, which is what gives object
-numbers their non-metric semantics.
+## `AsObject` and the wrapper matrix
 
-Every wrapper `ValueWriter` must forward `object`, exactly as it must already
-forward `values`. A wrapper that does not forward will silently drop a
-would-be-native object. The `metrique_require_explicit_impls` cfg gate should be
-extended to cover `object` so that CI catches missing forwarding impls.
+`AsObject` is a `ValueFormatter`. It needs three impls, all `NotLifted`:
 
-### Rendering is a formatter
+```rust
+impl<O: ObjectValue + ?Sized> ValueFormatter<O, NotLifted> for AsObject { … }
+impl<O: ObjectValue> ValueFormatter<Vec<O>, NotLifted> for AsObject { … }
+impl<O: ObjectValue> ValueFormatter<Option<O>, NotLifted> for AsObject { … }
+```
 
-Object rendering is expressed through the existing `#[metrics(format = ...)]`
-mechanism. The `format` attribute value is parsed via `parse_nested_meta` (the
-same approach used by `#[aggregate(strategy = Histogram<Duration>)]`), which
-gives a raw `ParseStream` after the `=` and parses it as a `syn::Type`. This
-allows generic syntax like `Each<AsObject>` without string quoting or turbofish,
-because in type grammar `<>` is unambiguous.
+`Arc<O>` and `Box<O>` need no formatter impls at all, because `ObjectValue`
+itself forwards through them:
 
-A `ValueFormatter` receives the `ValueWriter` and chooses which method to call:
+```rust
+impl<O: ObjectValue + ?Sized> ObjectValue for Box<O> { … }
+impl<O: ObjectValue + ?Sized> ObjectValue for Arc<O> { … }
+```
 
-```rust,ignore
-pub struct AsObject;
+That is why the wrapper matrix falls out without per-shape fights, and why
+`AsObject` does not need `Lifted` liftability. `Option<Vec<O>>` needs one more
+impl of the same shape.
 
-// Macro-generated per entry type (or hand-written for newtypes):
-impl ValueFormatter<PhaseEntry> for AsObject {
+Note that the scalar and `Vec` impls are disjoint only as long as no `Vec<_>` is
+ever `ObjectValue`. That holds today, and both impls should carry a comment
+saying so.
+
+## Generated `ObjectValue` impls
+
+The derive generates, per entry type:
+
+```rust
+impl ObjectValue for FooEntry {
+    fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+        <Self as InflectableEntry<Identity>>::write(self, writer)
+    }
+}
+```
+
+Per-type generation is the only viable route, and this is worth recording
+because both blanket alternatives look plausible and neither works:
+
+- `impl<E: Entry> ObjectValue for E` compiles and **never fires**. In the
+  prototype it produced `error[E0277]: FooEntry is not a metric entry` at every
+  use site, because generated closed structs implement `InflectableEntry`, not
+  `Entry`. The only bridge to `Entry` is
+  `impl<M: InflectableEntry> Entry for RootEntry<M>`.
+- `impl<E: InflectableEntry> ObjectValue for E` is an `E0210` orphan violation
+  from `metrique-core`, since `ObjectValue` lives in `metrique-writer-core` and
+  `metrique-core` depends on it.
+
+The general lesson, which recurred three times while prototyping this: coherence
+only ever grants you a type you own. Every dead end here was an attempt to
+express a relationship between two foreign types, and every fix introduced a
+local one.
+
+If #166 lands and moves the `NameStyle` parameter to `CloseValue`,
+`InflectableEntry` disappears and the first blanket becomes viable. This design
+does not depend on that either way.
+
+The same impl is generated for entry-mode enums, not just structs. An entry enum
+already implements `InflectableEntry` (that is how it renders when flattened),
+so the identical one-line delegation makes it render as an object exactly the
+way it renders as a flat entry today: the active variant's fields, untagged by
+default, with a variant-name tag member when `#[metrics(tag(...))]` is set. The
+entry stays representation-neutral. Whether a nested enum object should instead
+be _externally_ tagged (`{"Read": {…}}`, fields nested under the variant name)
+is a formatter or writer decision layered on top, not something baked into the
+entry, so it can be added later without changing what the derive emits.
+
+## Arrays
+
+`AsObject`'s `Vec` impl reinterprets the slice rather than materialising
+wrappers:
+
+```rust
+#[repr(transparent)]
+pub struct ObjectRef<O: ?Sized>(O);
+
+impl<O: ObjectValue + ?Sized> Value for ObjectRef<O> {
     const SHAPE: FieldShape<'static> = FieldShape::Object;
-    fn format_value(writer: impl ValueWriter, value: &PhaseEntry) {
-        writer.object(value)
-    }
+    fn write(&self, writer: impl ValueWriter) { writer.object(&self.0) }
 }
 ```
 
-`AsObject` is a unit struct with no blanket impl in the library. Every type that
-uses it — whether derive-generated or hand-written — gets its own concrete
-`Lifted` impl. This is required for two reasons:
+`&[O]` becomes `&[ObjectRef<O>]` in place, so `writer.values(…)` sees elements
+that implement `Value` without a collect. This is a pointer cast, and it is why
+an `Each<F>` combinator is unnecessary. An earlier draft had one; it allocated
+once per array per nesting level, and for a recursive tree that compounds.
 
-1. A blanket `impl<O: ObjectValue> ValueFormatter<O, NotLifted> for AsObject`
-   causes `E0283` inference ambiguity at the macro's use site (the compiler
-   cannot choose between `Lifted` and `NotLifted` when both satisfy the bound).
-2. Without a concrete `Lifted` impl, `Option`/`Box`/`Arc` auto-lifting does not
-   work (the lifting blankets are keyed on `L = Lifted`).
+The cast is the one piece of `unsafe` in the design. It should live in a single
+function with the `#[repr(transparent)]` invariant documented on it.
 
-The derive generates `impl ValueFormatter<PhaseEntry> for AsObject` per type.
-Hand-implementors write the same impl. Because every impl is concrete and
-`Lifted`, the lifting blankets compose automatically for all types.
+## The string fallback for arrays
 
-### The `Each` format combinator
+`write_values_as_string` comma-joins elements. For objects that produces
+`{…},{…}` with no brackets, which no consumer can parse. The fallback therefore
+branches on the element shape:
 
-The recursive case requires rendering a `Vec<Phase>` as an array of objects. The
-closed form is `Vec<PhaseEntry>`, where `PhaseEntry` implements
-`InflectableEntry`, not `Value`. The existing `ValueWriter::values` requires its
-items to implement `Value`, so it cannot take a `Vec<PhaseEntry>` directly.
+```rust
+let bracket = matches!(V::SHAPE, FieldShape::Object);
+```
 
-`Each<F>` is a general format combinator that applies a formatter `F` to each
-element of a collection and writes the results as an array via `values()`. It
-joins the family of lifting types alongside `Option`, `Box`, `Arc`, and `Cow`:
+This is a compile-time branch on an associated const, so non-object lists are
+unaffected.
 
-```rust,ignore
-pub struct Each<F>(PhantomData<F>);
+The shape has to be carried across the boxed-entry boundary as well, because
+`ValueFromDyn` erases its element's `SHAPE` to `Opaque`. `Value::SHAPE` is a
+const, so the wrapper needs a type-level shape marker and `values_dyn` needs to
+receive the element shape. #390 restores per-element _typing_ across this
+boundary (each element crosses as `&dyn DynValue`), but not the element's
+`SHAPE`, so carrying the shape is part of this feature's work rather than
+something #390 delivers. The match over `FieldShape` there should be exhaustive
+rather than using a wildcard: the enum is `#[non_exhaustive]` but local to the
+crate, so a new shape that needs its own treatment then fails to compile instead
+of silently taking the opaque path.
 
-impl<V, F> ValueFormatter<Vec<V>> for Each<F>
-where
-    F: ValueFormatter<V>,
-{
-    const SHAPE: FieldShape<'static> =
-        FieldShape::List(ShapeRef::new(&<F as ValueFormatter<V>>::SHAPE));
+## The boxed-entry bridge
 
-    fn format_value(writer: impl ValueWriter, value: &Vec<V>) {
-        let wrapped: SmallVec<[FormattedValue<_, F, _>; VALUES_INLINE_CAPACITY]> =
-            value.iter().map(FormattedValue::new).collect();
-        writer.values(wrapped.iter());
-    }
+`DefaultSink` is `BoxEntrySink`, so this path is the common one and it must not
+be left for later. The prototype builds it with `EntryWriter` as the object
+writer, which settles an earlier concern that doing so would force a narrower
+`ObjectWriter` trait. The bridge mirrors the existing `DynEntry`/`DynValue`
+pattern:
+
+```rust
+trait DynObjectValue {
+    fn write_object<'a>(&'a self, writer: &mut dyn DynEntryWriter<'a>);
 }
 ```
 
-`Each<F>` wraps each element in `FormattedValue` (which already implements
-`Value`), then passes the wrapped iterator to `values()`. No separate bridge
-type is needed.
+Lifetime-generic methods are dyn-compatible; only type and const generics are
+not. `DynEntry::write` already has this exact shape.
 
-Because `Each<F>` is a concrete type (not a blanket impl), it is `Lifted` by
-default and composes with the existing lifting blankets. `Option<Vec<Phase>>`
-with `format = Each<AsObject>` auto-lifts through the `Option` blanket.
+## Descriptors
 
-`Each` is not specific to objects. It is a general combinator for rendering
-collections where each element needs a formatter applied:
+Add `FieldShape::Object`. Adding a variant is additive under
+`#[non_exhaustive]`, and the descriptor docs already sanction new variants.
 
-- `format = Each<AsObject>` — array of native objects
-- `format = Each<AsEpochSeconds>` — array of formatted timestamps
-- `format = Each<Each<AsObject>>` — nested `Vec<Vec<Phase>>`
+`Object` is a **leaf** marker. It does not describe the object's members, and
+that is correct rather than a shortcut: a recursive type has no finite
+structural descriptor. `ShapeRef` cannot reference an `EntryDescriptor` anyway.
 
-The re-wrap-into-a-`SmallVec` step is the same pattern `ForceFlag::values`
-already uses. For arrays that exceed `VALUES_INLINE_CAPACITY`, this spills to a
-heap allocation per level of nesting. This is the same cost `ForceFlag` already
-pays and is acceptable for the expected use case (tens of elements per level,
-not thousands). The format changes required for recursion are that the
-array-element writers gain native `object()` (for objects inside arrays) and the
-object-member writers gain native `values()` (for arrays inside objects). Both
-directions must be implemented to support arbitrary nesting.
+Object fields carry their flags and appear in the parent's descriptor like any
+other field, so a descriptor-aware sink can gate an entire nested subtree by
+flag using the mechanism `metrique/tests/descriptor_sink.rs` already exercises.
+Members inside an object cannot be filtered individually, which is the
+appropriate granularity for gating verbose context.
 
-Recursion works because `Vec` supplies the heap indirection that keeps the
-recursive closed type `Sized`, and because each element's `write` calls back
-into `object()`, which drives the element's `write_object`, which reaches the
-next `Vec` and repeats.
+## Memory Implications
 
-### The strong guarantee: a bare struct field does not compile
+Measured on the prototype with a counting global allocator, on the render step
+only, constructing everything before resetting the counter, in debug and
+release:
 
-The derive generates `ObjectValue` for an entry struct, but it does not generate
-a `Value` impl that emits an object. A bare field such as `phase: Phase`
-therefore takes the ordinary field path, which requires the field's closed type
-to implement `Value`. The closed type of a `#[metrics]` struct (`PhaseEntry`)
-implements `InflectableEntry`, not `Value`, so a bare struct-typed field is a
-compile error. The existing `Value` `#[diagnostic::on_unimplemented]` message
-already points the user toward flattening.
+| Shape                                     | Allocations |
+| ----------------------------------------- | ----------- |
+| single object                             | 0           |
+| array of 1, 8, 9, 64 objects              | 0           |
+| 31-node and 91-node trees                 | 0           |
+| `Arc`-shared children, shared-subtree DAG | 0           |
 
-To render a struct as an object, the field must carry
-`#[metrics(format = AsObject)]` (or `Each<AsObject>` for arrays). Nothing
-becomes a nested object implicitly. This keeps the escape hatch visible at the
-point of use, which is the mitigation for the "pit of success" concern raised in
-[#355](https://github.com/awslabs/metrique/issues/355).
+Identical under EMF and JSON. A `SmallVec` spill at N=64 would have shown up and
+did not, which is the evidence that `ObjectRef::wrap_slice` is a cast rather
+than a collect.
 
-### Descriptor shape and the format-capability warning
+The boxed path adds 3 allocations per `values` call that exceeds
+`VALUES_INLINE_CAPACITY` (prototype uses 8, but could be adjusted).
 
-The macro currently reports `FieldShape::Opaque` for any field that uses
-`format = ...`, because the formatter's liftability parameter is not inferable
-in a `const` position and the macro cannot uniformly read an arbitrary
-formatter's `SHAPE`.
+---
 
-However, the library-shipped formatters are a known set. The macro can
-**recursively pattern-match the formatter type** at compile time to derive the
-shape:
+# Alternatives considered
 
-- `AsObject` → `FieldShape::Object`
-- `ToString` → `FieldShape::Known(KnownShape::String)`
-- `Each<inner>` → `FieldShape::List(ShapeRef::new(&shape_of(inner)))`
-- Anything unrecognized → `FieldShape::Opaque` (same as today)
+These are the designs that were tried and rejected on the way to the one above.
 
-This is a recursive walk: `Each<Each<AsObject>>` → `List(List(Object))`. The set
-of recognized leaf formatters is finite (the library-shipped set); `Each` is the
-structural combinator. User-defined formatters degrade to `Opaque` and do not
-participate in the warning.
-
-The warning mechanism is a first-write check: the first time a format writes an
-entry whose descriptor contains `Object` (or `List` containing `Object`), it
-checks whether it overrides `object()`. If not, it emits a warning naming the
-field and the format. The check is guarded by a `Once`-style flag per
-(entry-type, format) pair so it fires at most once. No new trait method or
-registration hook is needed — the check runs inline on the first write for each
-entry type.
-
-This is a stopgap. A general descriptor-based format-capability validation
-system (where formats declare their capabilities and entries are validated
-against them at registration time) is the proper long-term solution; see
-[#359](https://github.com/awslabs/metrique/issues/359). Once that exists, this
-first-write check can be removed.
-
-### Known limitation: the boxed entry path
-
-The `BoxEntry` / `DynValueWriter` path
-(`metrique-writer-core/src/entry/boxed.rs`) interposes a dyn-dispatch boundary
-between the `Value::write` call and the real format writer. `ValueWriterFromDyn`
-would inherit the default no-op for `object()`, silently dropping object fields
-even when the underlying format (EMF, JSON) supports them.
-
-This is the same class of limitation that `values()` already has today:
-`ValueWriterFromDyn::values()` stringifies every element through
-`StringCapture`, losing type information. Neither issue is new to this RFC.
-
-Because `BoxEntrySink` is the default sink path (returned by
-`ServiceMetrics::sink()`), this limitation affects the common case. Users who
-need object fields must use a non-boxed sink path (e.g., a typed
-`FlushImmediately` or `BackgroundQueue` sink). This is a UX concern and should
-be addressed — but it is a pre-existing architectural limitation of the
-dyn-dispatch boundary, not a regression introduced by this feature.
-
-## Changes checklist
-
-This RFC does not include a prototype. The list below is the proposed
-implementation scope, not completed work.
-
-### Core
-
-- [ ] Add the `ObjectValue` trait to `metrique-writer-core`, re-exported through
-      `metrique::writer::value`.
-- [ ] Add `ValueWriter::object` with a default no-op (drop) implementation.
-- [ ] Add `object` to the `metrique_require_explicit_impls` cfg gate so CI
-      catches missing forwarding impls.
-- [ ] Add the `AsObject` formatter unit struct (no library blanket impl; the
-      derive and hand-impl users provide concrete `Lifted` impls per type).
-- [ ] Add the `Each<F>` format combinator (`Lifted`; applies `F` per element via
-      `FormattedValue`, writes via `values()`).
-- [ ] Forward `object` through every wrapper `ValueWriter` (all impls covered by
-      the `metrique_require_explicit_impls` gate).
-
-### Formats
-
-- [ ] EMF: override `object` to write into `string_fields_buf` using a
-      monomorphic nested `EntryWriter`; add native `object()` to the
-      array-element writer; add native `values()` to the object-member writer.
-- [ ] JSON: override `object` to write into `properties_buf` using a monomorphic
-      nested `EntryWriter`; add native `object()` to the array-element writer;
-      add native `values()` to the object-member writer.
-- [ ] LocalFormat: override `object` to write a native JSON object (LocalFormat
-      is JSON-based and should support objects natively).
-- [ ] Confirm numeric members inside an object render as bare numbers and are
-      not registered as metrics.
-
-### Macro
-
-- [ ] Parse `format` via `parse_nested_meta` (same approach as
-      `#[aggregate(strategy = ...)]`): extract the format value from the raw
-      `ParseStream` as a `syn::Type` before darling processes the attribute, so
-      generic syntax like `Each<AsObject>` works without string quoting.
-- [ ] Generate `impl ObjectValue` for every entry-producing `#[metrics]` mode
-      (`RootEntry`, `Subfield`, `SubfieldOwned`).
-- [ ] Generate a concrete `Lifted` `impl ValueFormatter<FooEntry> for AsObject`
-      per entry type, so that `Option`/`Box`/`Arc` auto-lift and `L`-inference
-      succeeds.
-
-### Descriptors and warning
-
-- [ ] Add the `FieldShape::Object` variant (additive; `FieldShape` is
-      `#[non_exhaustive]`).
-- [ ] Implement recursive shape derivation in the macro's `shape_expr`:
-      recognize `AsObject` → `Object`, `ToString` → `Known(String)`,
-      `Each<inner>` → `List(shape_of(inner))`, else `Opaque`.
-- [ ] Implement the first-write warning: on the first write of an entry type to
-      a format, check the descriptor for `Object` (or `List` containing
-      `Object`) and warn if the format does not override `object()`. Guard with
-      a `Once`-style flag per (entry-type, format) pair. This is a stopgap
-      pending general descriptor-based format-capability validation
-      ([#359](https://github.com/awslabs/metrique/issues/359)).
-
-### Tests and docs
-
-- [ ] Cover: a nested struct; a recursive `Vec<Self>` tree two or three levels
-      deep; a hand-written `ObjectValue` on a newtype with its concrete
-      `ValueFormatter` impl.
-- [ ] Verify that a metric-typed field inside an object (e.g. a `Timer` with a
-      unit) renders as a bare number, carries no unit or dimensions, and does
-      not appear in the `_aws.CloudWatchMetrics` metric directive.
-- [ ] Verify that an object payload with `emf::dimension_sets` and a namespace
-      configured on it produces no `_aws` metadata in the nested object output
-      (the nested `EntryWriter` must discard `config()` entirely).
-- [ ] Verify wrapper/dimension/force-flag combinations: a field wrapped with
-      `WithUnit` or `ForceFlag` that contains an object confirms metric
-      semantics do not leak inward through the forwarded `object()` call.
-- [ ] Tee test: one entry written to a native-object format (EMF) and a flat
-      format simultaneously. The native format renders the object; the flat
-      format drops it.
-- [ ] Warning test: first-write warning fires exactly once per (entry-type,
-      format) pair, names the field and format correctly, and does not fire on
-      subsequent writes of the same entry type.
-- [ ] Array→object→array recursion: a `Vec<Phase>` where `Phase` contains a
-      `Vec<SubPhase>` where `SubPhase` contains a `Vec<u64>`. Verify all three
-      levels render correctly.
-- [ ] Empty arrays: `Each<AsObject>` on an empty `Vec<Phase>` renders `[]`.
-- [ ] LocalFormat: verify objects render as native JSON in local output.
-- [ ] Compile-fail: a bare struct-typed field without the format attribute.
-- [ ] Add crate-level public documentation and a changelog entry.
-
-### Before stabilization
-
-- [ ] Address the boxed entry path (`DynValueWriter` / `ValueWriterFromDyn`):
-      either add an `object` bridge to the dyn layer, or document clearly that
-      object fields require a non-boxed sink. This is the same architectural gap
-      that `values()` has today (stringifies through the dyn boundary).
-- [ ] Decide whether duplicate keys within an object should be validated (EMF
-      and JSON validate only top-level names today).
-- [ ] Decide the empty-object representation (`{}` for present objects; nothing
-      for an absent `Option`).
-- [ ] Decide the empty-array representation (`Each<AsObject>` on an empty `Vec`
-      should likely emit `[]`, matching existing `values()` behavior for empty
-      arrays).
-- [ ] Decide whether object numeric members should carry sampling multiplicity
-      (the recommendation is to ignore it, matching array elements).
-- [ ] Review the names `ObjectValue`, `AsObject`, and `Each`.
-
-## Future work
-
-Because rendering is expressed as a formatter that chooses which `ValueWriter`
-method to call, the following can be added later without any change to the core
-traits proposed here.
-
-- **`AsJson` string formatter.** A `ValueFormatter` for any `T: Serialize` that
-  calls `serde_json::to_string(v)` and writes the result through
-  `writer.string(...)`. This is a convenience for attaching a structured type as
-  a JSON-encoded string without implementing `ObjectValue`. It never produces a
-  native object. Gate behind a `serde` feature.
-- **Native objects from `serde::Serialize`.** `AsJson` renders a `Serialize`
-  type as a JSON _string_. A formatter that renders it as a _native_ object
-  would require a `serde::Serializer` implementation that, rather than producing
-  bytes, drives `EntryWriter::value(name, v)` and the array machinery. This is a
-  well-defined but non-trivial component: it must map serde's data model (struct
-  fields, maps, sequences, enums, `Option`) onto object members, reconcile serde
-  map keys of arbitrary type against string-only object keys, and decide how
-  serde attributes such as `#[serde(flatten)]`, `rename`, and `skip` affect the
-  emitted shape. That last point is the reason it is deferred: it makes the
-  field's wire shape follow serde's rules rather than metrique's, which is a
-  semantic commitment worth making deliberately.
-- **A native OTel object representation.** The OTel specification supports
-  complex attributes, but the Rust SDK (`opentelemetry` 0.32, the version
-  `metrique-otel` depends on) does not yet expose a map/object variant in its
-  `Value` enum — it is limited to `Bool | I64 | F64 | String | Array`
-  (homogeneous). So native OTel object rendering is blocked on a future SDK
-  version adding the complex attribute type. Once available, `metrique-otel`
-  would override `object()` to produce the appropriate `Value` variant.
-- **Alternative rendering formatters.** An `AsObjectString` formatter (always
-  emits a JSON-encoded string, even on formats with native support) and an
-  `AsObjectWithStringFallback` formatter (native where supported, string where
-  not, rather than drop) can be added if use cases arise. These would use a
-  `write_object_as_string` utility function (analogous to
-  `write_values_as_string`) that drives the object through a string-building
-  `EntryWriter`.
-- **Attribute sugar.** Thin sugar such as `#[metrics(object)]` /
-  `#[metrics(object_array)]` could desugar to the corresponding `format = As...`
-  formatters for readability.
-- **`each(F)` parse sugar.** The macro could parse `format = each(F)` as sugar
-  for `Each<F>`, saving users from writing the generic syntax directly.
+- **A new value kind with a dedicated `ObjectWriter` trait.** An earlier design
+  modeled a nested object as its own kind of `Value` written through a bespoke
+  `ObjectWriter`. Rejected because an object is "a sequence of named values,"
+  which is exactly the existing `EntryWriter` contract (`HashMap<K, V>: Entry`
+  already demonstrates it). Reusing `EntryWriter` avoids a parallel visitor and
+  lets any `#[metrics]` struct nest with no new machinery. See
+  "[`ObjectValue`](#objectvalue)".
+- **A dedicated `object_array` (or entry-accepting array) method on
+  `ValueWriter`.** Rejected: every format and every wrapper would need to
+  implement a new method. Instead each element is bridged to `Value` through a
+  `#[repr(transparent)]` `ObjectRef` cast, so the existing `values()` path
+  renders arrays with no new writer method. See "[Arrays](#arrays)".
+- **An `Each<F>` array combinator.** An early draft materialised array wrappers
+  through an `Each<F>` combinator. Rejected: it allocated once per array per
+  nesting level, which compounds for a recursive tree. The slice cast is
+  allocation-free (see "[Memory Implications](#memory-implications)").
+- **Blanket `ObjectValue` impls.** `impl<E: Entry> ObjectValue for E` compiles
+  but never fires, because generated closed structs implement
+  `InflectableEntry`, not `Entry`; `impl<E: InflectableEntry> ObjectValue for E`
+  is an orphan violation from `metrique-core`. Rejected in favor of per-type
+  derive generation. See
+  "[Generated `ObjectValue` impls](#generated-objectvalue-impls)".
+- **A no-op default for `ValueWriter::object`.** Rejected because on a format
+  without native object support it dropped the field silently, leaving no
+  evidence in the output and still returning `Ok` from validation. The default
+  is a JSON-encoded string instead. See
+  "[`ValueWriter::object`](#valuewriterobject)".
+- **Transitive naming across the object boundary.** Rejected because letting the
+  parent's `rename_all` flow into the object would make the same type emit two
+  different schemas depending on the parent it is nested in. A nested object is
+  a fresh naming scope. See "[Naming](#naming)".
