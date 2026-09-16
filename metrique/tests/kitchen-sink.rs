@@ -264,7 +264,7 @@ fn flatten_flush_as_expected_snake() {
 #[test]
 fn flatten_flush_as_expected_mixed_prefix_casing() {
     let vec_sink = VecEntrySink::new();
-    PrefixSnake3::default().append_on_drop(vec_sink.clone());
+    drop(PrefixSnake3::default().append_on_drop(vec_sink.clone()));
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
 
@@ -276,7 +276,7 @@ fn flatten_flush_as_expected_mixed_prefix_casing() {
 #[test]
 fn flatten_flush_as_expected_mixed_prefix_casing_exact() {
     let vec_sink = VecEntrySink::new();
-    ExactPrefix3a::default().append_on_drop(vec_sink.clone());
+    drop(ExactPrefix3a::default().append_on_drop(vec_sink.clone()));
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
 
@@ -287,7 +287,7 @@ fn flatten_flush_as_expected_mixed_prefix_casing_exact() {
 #[test]
 fn flatten_flush_as_expected_mixed_prefix_root_and_name() {
     let vec_sink = VecEntrySink::new();
-    Outer::default().append_on_drop(vec_sink.clone());
+    drop(Outer::default().append_on_drop(vec_sink.clone()));
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
 
@@ -422,11 +422,13 @@ struct WithVecProperty {
 #[test]
 fn vec_property_comma_joins_in_default_format() {
     let vec_sink = VecEntrySink::new();
-    WithVecProperty {
-        plugins: vec!["auth".into(), "logging".into(), "cache".into()],
-        count: 42,
-    }
-    .append_on_drop(vec_sink.clone());
+    drop(
+        WithVecProperty {
+            plugins: vec!["auth".into(), "logging".into(), "cache".into()],
+            count: 42,
+        }
+        .append_on_drop(vec_sink.clone()),
+    );
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
     assert_eq!(entry.values["Plugins"], "auth,logging,cache");
@@ -436,11 +438,13 @@ fn vec_property_comma_joins_in_default_format() {
 #[test]
 fn empty_vec_property_emits_empty_string() {
     let vec_sink = VecEntrySink::new();
-    WithVecProperty {
-        plugins: vec![],
-        count: 0,
-    }
-    .append_on_drop(vec_sink.clone());
+    drop(
+        WithVecProperty {
+            plugins: vec![],
+            count: 0,
+        }
+        .append_on_drop(vec_sink.clone()),
+    );
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
     assert_eq!(entry.values["Plugins"], "");
@@ -455,10 +459,12 @@ struct WithOptionalVecProperty {
 #[test]
 fn vec_with_none_elements_skips_them_in_default_format() {
     let vec_sink = VecEntrySink::new();
-    WithOptionalVecProperty {
-        tags: vec![Some("a".into()), None, Some("c".into())],
-    }
-    .append_on_drop(vec_sink.clone());
+    drop(
+        WithOptionalVecProperty {
+            tags: vec![Some("a".into()), None, Some("c".into())],
+        }
+        .append_on_drop(vec_sink.clone()),
+    );
     let entries = vec_sink.drain();
     let entry = test_util::to_test_entry(&entries[0]);
     assert_eq!(entry.values["Tags"], "a,c");
