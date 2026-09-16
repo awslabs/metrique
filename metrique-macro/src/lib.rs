@@ -2869,11 +2869,17 @@ mod tests {
 
         // A typo of `direct` must be rejected, not silently treated as "not direct".
         let err = parse_aggregate_attr_flags(quote!(diretc)).unwrap_err();
-        check!(err.to_string().contains("unknown #[aggregate(...)] flag 'diretc'"));
+        check!(
+            err.to_string()
+                .contains("unknown #[aggregate(...)] flag 'diretc'")
+        );
 
         // A typo that happens to contain the substring "ref" must not silently
         // enable MergeRef via substring match.
         let err = parse_aggregate_attr_flags(quote!(direfc)).unwrap_err();
-        check!(err.to_string().contains("unknown #[aggregate(...)] flag 'direfc'"));
+        check!(
+            err.to_string()
+                .contains("unknown #[aggregate(...)] flag 'direfc'")
+        );
     }
 }
