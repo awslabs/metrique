@@ -478,6 +478,9 @@ impl MacroError {
 ///
 /// # Generated Types
 ///
+/// See [`metrique::example_generated`](https://docs.rs/metrique/latest/metrique/example_generated/)
+/// for the documented shape of a representative macro expansion.
+///
 /// For a struct or entry enum named `MyMetrics`, the macro generates:
 /// - `MyMetricsEntry`: The internal representation used for serialization, implements `InflectableEntry`
 /// - `MyMetricsGuard`: A wrapper that implements `Deref`/`DerefMut` to the original struct and handles emission on drop.
@@ -1102,6 +1105,9 @@ struct RawRootAttributes {
     #[darling(rename = "closeable_entry")]
     closeable_entry: Flag,
 
+    #[darling(rename = "__docs")]
+    docs: Flag,
+
     #[darling(default)]
     default_flags: FlagsList,
 }
@@ -1129,6 +1135,8 @@ struct RootAttributes {
     sample_group: bool,
 
     closeable_entry: bool,
+
+    docs: bool,
 
     mode: MetricMode,
 
@@ -1214,6 +1222,7 @@ impl RawRootAttributes {
             tag,
             sample_group,
             closeable_entry: self.closeable_entry.is_present(),
+            docs: self.docs.is_present(),
             mode,
             default_flags: self.default_flags.0,
         })
@@ -1606,7 +1615,7 @@ impl MetricsField {
         self.base_field.to_token_stream()
     }
 
-    fn entry_field(&self, named: bool) -> Option<Ts2> {
+    fn entry_field(&self, named: bool, docs: bool) -> Option<Ts2> {
         if let MetricsFieldKind::Ignore(_span) = self.attrs.kind {
             return None;
         }
@@ -1633,15 +1642,30 @@ impl MetricsField {
             }
         }
         let inner = if named {
-            quote! { #ident: #base_type }
+            if docs {
+                quote! {
+                    #[doc = "Closed metric field generated from the input field of the same name."]
+                    pub #ident: #base_type
+                }
+            } else {
+                quote! { #ident: #base_type }
+            }
         } else {
-            quote! { #base_type }
+            if docs {
+                quote! {
+                    #[doc = "Closed metric field generated from the input field at the same position."]
+                    pub #base_type
+                }
+            } else {
+                quote! { #base_type }
+            }
         };
         let cfg_attrs = self.cfg_attrs();
+        let hidden = (!docs).then(|| quote!(#[doc(hidden)]));
         Some(quote_spanned! { *span=>
                 #(#cfg_attrs)*
                 #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
-                #[doc(hidden)]
+                #hidden
                 #inner
         })
     }
