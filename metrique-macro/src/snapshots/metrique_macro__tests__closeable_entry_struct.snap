@@ -1,0 +1,211 @@
+---
+source: metrique-macro/src/lib.rs
+expression: parsed_file
+---
+struct RequestMetrics {
+    operation: &'static str,
+    latency: std::time::Duration,
+}
+#[doc(hidden)]
+#[allow(clippy::type_complexity)]
+pub struct RequestMetricsEntry {
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    operation: <&'static str as metrique::CloseValue>::Closed,
+    #[deprecated(
+        note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`"
+    )]
+    #[doc(hidden)]
+    latency: <std::time::Duration as metrique::CloseValue>::Closed,
+}
+const _: () = {
+    impl RequestMetricsEntry {
+        #[doc(hidden)]
+        #[inline(always)]
+        fn __metrique_descriptor_run_0() -> &'static ::metrique::writer::core::EntryDescriptor {
+            {
+                static __METRIQUE__FLAGS_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_0: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FLAGS_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__SKIPPED_1: [::metrique::writer::core::FieldFlag; 0usize] = [];
+                static __METRIQUE__FIELDS: [::metrique::writer::core::FieldDescriptor; 2usize] = [
+                    ::metrique::writer::core::FieldDescriptor::builder("operation")
+                        .pascal("Operation")
+                        .snake("operation")
+                        .kebab("operation")
+                        .screaming_snake("OPERATION")
+                        .flags(&__METRIQUE__FLAGS_0)
+                        .skipped_flags(&__METRIQUE__SKIPPED_0)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<&'_ str as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
+                        .build(),
+                    ::metrique::writer::core::FieldDescriptor::builder("latency")
+                        .pascal("Latency")
+                        .snake("latency")
+                        .kebab("latency")
+                        .screaming_snake("LATENCY")
+                        .flags(&__METRIQUE__FLAGS_1)
+                        .skipped_flags(&__METRIQUE__SKIPPED_1)
+                        .maybe_unit(
+                            ::metrique::writer::core::Unit::to_option(
+                                <<std::time::Duration as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::UNIT,
+                            ),
+                        )
+                        .shape(
+                            <<std::time::Duration as ::metrique::CloseValue>::Closed as ::metrique::writer::core::Value>::SHAPE,
+                        )
+                        .build(),
+                ];
+                static __METRIQUE__DESC: ::metrique::writer::core::EntryDescriptor = ::metrique::writer::core::EntryDescriptor::builder(
+                        "RequestMetrics",
+                        &__METRIQUE__FIELDS,
+                    )
+                    .maybe_timestamp(None)
+                    .build();
+                &__METRIQUE__DESC
+            }
+        }
+    }
+    #[expect(deprecated)]
+    impl<NS: ::metrique::NameStyle> ::metrique::InflectableEntry<NS>
+    for RequestMetricsEntry {
+        fn write<'__metrique_write>(
+            &'__metrique_write self,
+            writer: &mut impl ::metrique::writer::EntryWriter<'__metrique_write>,
+        ) {
+            let __metrique_self = self;
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct OperationPreserve;
+                    impl ::metrique::concat::ConstStr for OperationPreserve {
+                        const VAL: &'static str = "operation";
+                    }
+                    struct OperationKebab;
+                    impl ::metrique::concat::ConstStr for OperationKebab {
+                        const VAL: &'static str = "operation";
+                    }
+                    struct OperationPascal;
+                    impl ::metrique::concat::ConstStr for OperationPascal {
+                        const VAL: &'static str = "Operation";
+                    }
+                    struct OperationSnake;
+                    impl ::metrique::concat::ConstStr for OperationSnake {
+                        const VAL: &'static str = "operation";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            OperationPreserve,
+                            OperationPascal,
+                            OperationSnake,
+                            OperationKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.operation,
+            );
+            ::metrique::writer::EntryWriter::value(
+                writer,
+                {
+                    struct LatencyPreserve;
+                    impl ::metrique::concat::ConstStr for LatencyPreserve {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyKebab;
+                    impl ::metrique::concat::ConstStr for LatencyKebab {
+                        const VAL: &'static str = "latency";
+                    }
+                    struct LatencyPascal;
+                    impl ::metrique::concat::ConstStr for LatencyPascal {
+                        const VAL: &'static str = "Latency";
+                    }
+                    struct LatencySnake;
+                    impl ::metrique::concat::ConstStr for LatencySnake {
+                        const VAL: &'static str = "latency";
+                    }
+                    ::metrique::concat::const_str_value::<
+                        <NS as ::metrique::NameStyle>::Inflect<
+                            LatencyPreserve,
+                            LatencyPascal,
+                            LatencySnake,
+                            LatencyKebab,
+                        >,
+                    >()
+                },
+                &__metrique_self.latency,
+            );
+        }
+        fn sample_group(
+            &self,
+        ) -> impl ::std::iter::Iterator<
+            Item = (::std::borrow::Cow<'static, str>, ::std::borrow::Cow<'static, str>),
+        > {
+            let __metrique_self = self;
+            ::std::iter::empty()
+        }
+        fn descriptors(&self) -> ::metrique::writer::core::Descriptors<'_> {
+            ::metrique::writer::core::Descriptors::available(
+                ::std::iter::once(
+                    ::metrique::writer::core::DescriptorRef::from_static(
+                        RequestMetricsEntry::__metrique_descriptor_run_0(),
+                        <NS as ::metrique::NameStyle>::DESCRIPTOR_STYLE_INDEX,
+                    ),
+                ),
+            )
+        }
+    }
+};
+impl metrique::CloseValue for RequestMetrics {
+    type Closed = RequestMetricsEntry;
+    fn close(self) -> Self::Closed {
+        macro_rules! __metrique_self_expr {
+            () => {
+                self
+            };
+        }
+        #[allow(deprecated)]
+        RequestMetricsEntry {
+            operation: metrique::CloseValue::close(__metrique_self_expr!().operation),
+            latency: metrique::CloseValue::close(__metrique_self_expr!().latency),
+        }
+    }
+}
+impl metrique::CloseValue for RequestMetricsEntry {
+    type Closed = RequestMetricsEntry;
+    fn close(self) -> Self::Closed {
+        self
+    }
+}
+#[doc = concat!(
+    "Metrics guard returned from [`", "RequestMetrics",
+    "::append_on_drop`], closes the entry and appends the metrics to a sink when dropped."
+)]
+type RequestMetricsGuard<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDrop<
+    RequestMetrics,
+    Q,
+>;
+#[doc = concat!(
+    "Metrics handle returned from [`", "RequestMetricsGuard",
+    "::handle`], similar to an `Arc<", "RequestMetricsGuard", ">`."
+)]
+type RequestMetricsHandle<Q = ::metrique::DefaultSink> = ::metrique::AppendAndCloseOnDropHandle<
+    RequestMetrics,
+    Q,
+>;
+impl RequestMetrics {
+    ///Creates an AppendAndCloseOnDrop that will be automatically appended to `sink` on drop.
+    fn append_on_drop<
+        Q: ::metrique::writer::EntrySink<::metrique::RootEntry<RequestMetricsEntry>>
+            + Send + Sync + 'static,
+    >(self, sink: Q) -> RequestMetricsGuard<Q> {
+        ::metrique::append_and_close(self, sink)
+    }
+}
