@@ -231,7 +231,7 @@ The array fallback is bracketed, so one `JSON.parse` recovers it.
 _\* NOTE: OTel supports object properties as
 [Complex Attributes](https://opentelemetry.io/blog/2025/complex-attribute-types/),
 but
-[opentelemetry-sdk](https://docs.rs/opentelemetry_sdk/0.32.1/opentelemetry_sdk/)
+[opentelemetry-sdk](https://docs.rs/opentelemetry_sdk/latest/opentelemetry_sdk/)
 has not been updated to reflect that yet._
 
 ## Naming
