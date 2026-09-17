@@ -465,10 +465,14 @@ release:
 
 Identical under EMF and JSON. A `SmallVec` spill at N=64 would have shown up and
 did not, which is the evidence that `ObjectRef::wrap_slice` is a cast rather
-than a collect.
+than a collect. These are pinned by `metrique/tests/object_values_alloc.rs`,
+which arms a thread-local counting allocator around the render step only.
 
-The boxed path adds 3 allocations per `values` call that exceeds
-`VALUES_INLINE_CAPACITY` (prototype uses 8, but could be adjusted).
+The boxed path adds one allocation per `values` call that exceeds
+`VALUES_INLINE_CAPACITY` (8): the receiver re-wraps each element into a
+`SmallVec` and that one buffer spills to the heap. Only the receiver's buffer
+spills, because #390 made the sending side a lazy `&dyn DynValue` iterator
+rather than buffering.
 
 ---
 
