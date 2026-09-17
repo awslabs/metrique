@@ -1897,7 +1897,6 @@ dependencies = [
 name = "metrique-util"
 version = "0.1.7"
 dependencies = [
- "Inflector",
  "arc-swap",
  "assert2",
  "aws-smithy-runtime-api",

@@ -48,23 +48,8 @@ impl<'a> EntryWriter<'a> for CountingWriter {
     fn config(&mut self, _config: &'a dyn EntryConfig) {}
 }
 
-fn populated_pool(entries: usize, collide: bool) -> MetricsPool {
-    let pool = MetricsPool::new();
-    let base = pool.handle();
-    for index in 0..entries {
-        let handle = if collide {
-            base.clone()
-        } else {
-            base.with_prefix([PREFIXES[index]])
-        };
-        handle.append(ChildMetrics {
-            count: index as u64,
-            operation: "PutObject",
-        });
-    }
-    pool
-}
-
+/// Append hot path: close + type-erase each child and push into the pool.
+/// Compare against `append_baseline` to isolate the pool machinery.
 #[divan::bench(args = SIZES)]
 fn append_unique(bencher: Bencher, entries: usize) {
     bencher
@@ -88,6 +73,48 @@ fn append_unique(bencher: Bencher, entries: usize) {
         });
 }
 
+/// Append-side floor: close each child and push into a plain `Vec<Box<dyn Any>>`,
+/// with no pool machinery. Approximate floor only (a `BufferedEntry` carries more
+/// than a bare box).
+#[divan::bench(args = SIZES)]
+fn append_baseline(bencher: Bencher, entries: usize) {
+    type ErasedChild = Box<dyn std::any::Any + Send + Sync>;
+    bencher
+        .counter(entries)
+        .with_inputs(Vec::<ErasedChild>::new)
+        .bench_values(|mut buf| {
+            for index in 0..entries {
+                let closed = ChildMetrics {
+                    count: black_box(index as u64),
+                    operation: black_box("PutObject"),
+                }
+                .close();
+                buf.push(Box::new(closed));
+            }
+            black_box(buf);
+        });
+}
+
+fn populated_pool(entries: usize, collide: bool) -> MetricsPool {
+    let pool = MetricsPool::new();
+    let base = pool.handle();
+    for index in 0..entries {
+        let handle = if collide {
+            base.clone()
+        } else {
+            base.with_prefix([PREFIXES[index]])
+        };
+        handle.append(ChildMetrics {
+            count: index as u64,
+            operation: "PutObject",
+        });
+    }
+    pool
+}
+
+/// Write path, no name collisions (distinct prefixes): close the pool and write
+/// its buffered entries. Append cost is excluded (`populated_pool` runs in setup).
+/// Compare against `direct_write_baseline` to isolate write-side overhead.
 #[divan::bench(args = SIZES)]
 fn close_and_write_unique(bencher: Bencher, entries: usize) {
     bencher
@@ -101,6 +128,10 @@ fn close_and_write_unique(bencher: Bencher, entries: usize) {
         });
 }
 
+/// Write path with colliding field names (all children share the empty prefix).
+/// Exercises collision resolution: the last child wins and the earlier ones are
+/// dropped wholesale. Subtract `close_and_write_unique` to isolate the
+/// collision-handling cost.
 #[divan::bench(args = SIZES)]
 fn close_and_write_collisions(bencher: Bencher, entries: usize) {
     bencher
@@ -114,6 +145,8 @@ fn close_and_write_collisions(bencher: Bencher, entries: usize) {
         });
 }
 
+/// Write-side floor: write closed children directly, bypassing the pool. Same
+/// observable output as `close_and_write_*`, so it's the write-overhead reference.
 #[divan::bench(args = SIZES)]
 fn direct_write_baseline(bencher: Bencher, entries: usize) {
     bencher

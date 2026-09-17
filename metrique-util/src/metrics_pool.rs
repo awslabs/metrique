@@ -1,24 +1,123 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Collects independently-created metrics into a parent metric entry.
+//! Collects metrics from decoupled producers and flattens them into one parent entry.
 //!
-//! [`MetricsPool`] is intended to be a `#[metrics(flatten)]` field. A
-//! [`MetricsPoolHandle`] can be passed explicitly or installed while a future
-//! is polled. Code without direct access to the parent can then use
-//! [`MetricsPool::current`] to contribute metrics.
+//! A pool lets code that cannot name the parent metric type—such as middleware,
+//! SDK interceptors, or libraries—contribute child metrics. To include a pool in
+//! an entry, annotate its containing field with `#[metrics(flatten)]`; that
+//! annotation tells `#[metrics]` to emit the pool's fields in the parent entry.
+//! Producers append child metrics through a [`MetricsPoolHandle`].
+//!
+//! ```no_run
+//! use metrique::unit_of_work::metrics;
+//! use metrique_util::MetricsPool;
+//!
+//! #[metrics(rename_all = "PascalCase")]
+//! struct RequestMetrics {
+//!     operation: &'static str,
+//!     #[metrics(flatten)]
+//!     pool: MetricsPool,
+//! }
+//!
+//! #[metrics(rename_all = "PascalCase")]
+//! struct AttemptMetrics {
+//!     retry_count: u32,
+//! }
+//!
+//! # fn example(sink: impl metrique::writer::EntrySink<metrique::RootEntry<RequestMetricsEntry>> + Send + Sync + 'static) {
+//! let request = RequestMetrics { operation: "PutObject", pool: MetricsPool::new() }
+//!     .append_on_drop(sink);
+//!
+//! // A producer can keep this handle without depending on `RequestMetrics`.
+//! request.pool.handle().with_prefix(["sdk", "s3"])
+//!     .append(AttemptMetrics { retry_count: 2 });
+//!
+//! // Dropping `request` emits `Operation` and `SdkS3RetryCount`.
+//! # }
+//! ```
+//!
+//! # Scoped access
+//!
+//! Pass a handle explicitly, or use [`with_metrics_pool`] to make one available
+//! through [`MetricsPool::current`] while a future is polled. This scope is tied
+//! to future polls, not to a thread or logical request:
+//!
+//! - Spawned tasks start without the scope. Wrap their future with
+//!   [`propagate_current`] at the spawn site, or capture a handle and move it into
+//!   detached work explicitly.
+//! - `spawn_blocking` closures and threads cannot use a future wrapper; capture a
+//!   handle before spawning and move it into the closure.
+//! - Blocking inside a scoped poll can expose the pool to unrelated work running
+//!   on that thread, corrupting attribution. Pass handles explicitly instead.
+//!
+//! `MetricsPool::current` returns `None` both when no pool is installed and when
+//! work was detached from a scope. Producers should use a standalone sink in
+//! that case rather than discard the metric.
+//!
+//! # Naming and prefixes
+//!
+//! [`MetricsPoolHandle::with_prefix`] follows the parent name style: the same
+//! prefix becomes `SdkS3RetryCount` in `PascalCase` and `sdk_s3_retry_count` in
+//! `snake_case`. Use [`MetricsPoolHandle::with_exact_prefix`] for literal
+//! prefixes such as `sdk.request.`.
+//!
+//! # Parent lifetime
+//!
+//! Closing the parent closes the pool and drains the children collected so far.
+//! Appends after that point are discarded with a rate-limited warning, so child
+//! producers and append-on-drop guards must finish before the parent guard drops.
+//!
+//! # Capacity and overflow
+//!
+//! A pool retains at most 128 child entries by default. Each append consumes one
+//! slot regardless of how many fields the child writes. When the pool is full,
+//! appending never waits for free capacity: the oldest child is evicted and a
+//! rate-limited warning is emitted. Use [`MetricsPool::builder`] to configure
+//! the capacity and [`MetricsPool::overflow_count`] or
+//! [`MetricsPoolHandle::overflow_count`] to observe evictions.
+//!
+//! # Entry metadata and sampling
+//!
+//! Pooled children contribute fields but do not replace parent entry metadata by
+//! default: child timestamps and [`EntryConfig`] calls are suppressed. A producer
+//! can deliberately forward them through
+//! [`MetricsPoolHandle::forward_entry_metadata`], but a second timestamp or
+//! incompatible configuration can invalidate the parent record. Child sample
+//! groups are always ignored and cannot change the parent's sampling policy.
+//!
+//! # Collision policy
+//!
+//! Collisions are compared using fully inflected field names among children in
+//! the same pool. If two children collide, the later child wins and the earlier
+//! child is dropped in full, preventing fields from separate attempts from being
+//! combined into a record that never existed. If one child writes a name more
+//! than once, only its final write is emitted.
+//!
+//! Collision handling writes children more than once. A closed child must emit
+//! the same multiset of field names on every write. Values and field order may
+//! change, but interior mutability must not change which names are present or how
+//! often a name is written. Entries generated by `#[metrics]` satisfy this unless
+//! they flatten a custom entry that violates the requirement. Debug builds assert
+//! when a child changes its field names between passes.
+//!
+//! The pool cannot detect collisions with ordinary parent fields or other
+//! flattened components. Give producers distinct prefixes from one another and
+//! from the parent entry. Collision detection also replays child entries, so use
+//! a pool at integration boundaries where the parent cannot name child types;
+//! prefer statically typed flattened fields otherwise.
 
 use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use std::borrow::Cow;
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
-use inflector::Inflector;
 use metrique::writer::rate_limit::rate_limited;
 use metrique::writer::sink::FlushWait;
 use metrique::writer::{
@@ -30,6 +129,9 @@ use metrique::{
     concat::{EmptyConstStr, const_str_value},
 };
 use metrique_core::CloseEntry;
+use metrique_core::case_convert::CaseStyle;
+
+const DEFAULT_METRICS_POOL_CAPACITY: usize = 128;
 
 thread_local! {
     static CURRENT_POOL: RefCell<Vec<MetricsPoolHandle>> = const { RefCell::new(Vec::new()) };
@@ -67,31 +169,29 @@ impl RuntimeStyle {
         }
     }
 
-    fn prefix_segment(self, segment: &str) -> String {
+    /// The [`CaseStyle`] the `#[metrics]` macro uses for this name style, so a
+    /// runtime prefix inflects exactly like a compile-time field name.
+    fn case_style(self) -> CaseStyle {
         match self {
-            Self::Identity => {
-                let mut prefix = segment.to_string();
-                if !prefix.ends_with('_') && !prefix.ends_with('-') {
-                    prefix.push('_');
-                }
-                prefix
-            }
-            Self::PascalCase => segment.to_pascal_case(),
-            Self::SnakeCase => {
-                let mut prefix = segment.to_snake_case();
-                if !prefix.ends_with('_') {
-                    prefix.push('_');
-                }
-                prefix
-            }
-            Self::KebabCase => {
-                let mut prefix = segment.to_kebab_case();
-                if !prefix.ends_with('-') {
-                    prefix.push('-');
-                }
-                prefix
-            }
+            Self::Identity => CaseStyle::Preserve,
+            Self::PascalCase => CaseStyle::Pascal,
+            Self::SnakeCase => CaseStyle::Snake,
+            Self::KebabCase => CaseStyle::Kebab,
         }
+    }
+
+    fn prefix_segment(self, segment: &str) -> String {
+        // `apply_prefix` appends the trailing `_`/`-` for the delimited styles and
+        // leaves the delimiter-free ones alone.
+        let mut prefix = self.case_style().apply_prefix(segment);
+        // `Preserve` adds no delimiter, because a preserved *field* prefix is taken
+        // verbatim. A pool segment is a path component, not a literal
+        // (`with_exact_prefix` is the literal form), so it still needs a separator:
+        // `["sdk", "s3"]` must not become `sdks3`.
+        if matches!(self, Self::Identity) && !prefix.ends_with('_') && !prefix.ends_with('-') {
+            prefix.push('_');
+        }
+        prefix
     }
 }
 
@@ -169,44 +269,168 @@ impl PrefixSet {
 }
 
 struct MetricsPoolInner {
-    entries: Mutex<Option<Vec<BufferedEntry>>>,
+    entries: Mutex<Option<VecDeque<BufferedEntry>>>,
+    capacity: usize,
+    overflow_count: AtomicU64,
 }
 
 impl MetricsPoolInner {
-    fn new() -> Self {
+    fn new(capacity: usize) -> Self {
         Self {
-            entries: Mutex::new(Some(Vec::new())),
+            entries: Mutex::new(Some(VecDeque::new())),
+            capacity,
+            overflow_count: AtomicU64::new(0),
         }
     }
 
     fn push(&self, entry: BufferedEntry) {
-        if let Some(entries) = self.entries.lock().unwrap().as_mut() {
-            entries.push(entry);
+        enum PushOutcome {
+            Appended,
+            AppendedWithEviction {
+                _oldest: BufferedEntry,
+                overflow_count: u64,
+            },
+            Closed {
+                _rejected: BufferedEntry,
+            },
+        }
+
+        let outcome = {
+            let mut state = self.entries.lock().unwrap();
+            match state.as_mut() {
+                Some(entries) => {
+                    let oldest = if entries.len() >= self.capacity {
+                        entries.pop_front()
+                    } else {
+                        None
+                    };
+                    entries.push_back(entry);
+                    match oldest {
+                        Some(oldest) => PushOutcome::AppendedWithEviction {
+                            _oldest: oldest,
+                            overflow_count: self.overflow_count.fetch_add(1, Ordering::Relaxed) + 1,
+                        },
+                        None => PushOutcome::Appended,
+                    }
+                }
+                None => PushOutcome::Closed { _rejected: entry },
+            }
+        };
+
+        // Drop discarded children after unlocking: a child's destructor may
+        // append to this pool and would deadlock trying to reacquire the mutex.
+        match outcome {
+            PushOutcome::Appended => {}
+            PushOutcome::AppendedWithEviction { overflow_count, .. } => {
+                rate_limited!(
+                    Duration::from_secs(1),
+                    tracing::warn!(
+                        capacity = self.capacity,
+                        overflow_count,
+                        "MetricsPool is full; dropped the oldest child entry"
+                    )
+                );
+            }
+            PushOutcome::Closed { .. } => {
+                rate_limited!(
+                    Duration::from_secs(60),
+                    tracing::warn!(
+                        "MetricsPool dropped an entry appended after close; parent closed before producers finished"
+                    )
+                );
+            }
         }
     }
 
-    fn take(&self) -> Vec<BufferedEntry> {
+    fn take(&self) -> VecDeque<BufferedEntry> {
         self.entries.lock().unwrap().take().unwrap_or_default()
+    }
+
+    fn overflow_count(&self) -> u64 {
+        self.overflow_count.load(Ordering::Relaxed)
     }
 }
 
-/// A metric field that collects child metrics and flattens them into its parent.
+/// Configures a [`MetricsPool`].
+#[derive(Clone, Copy, Debug)]
+pub struct MetricsPoolBuilder {
+    capacity: usize,
+}
+
+impl MetricsPoolBuilder {
+    /// Create a builder with the default capacity of 128 child entries.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the maximum number of child entries retained by the pool.
+    ///
+    /// Each append consumes one slot regardless of how many fields that child
+    /// writes. Once the pool is full, appending a child evicts the oldest child.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `capacity` is zero.
+    pub fn capacity(mut self, capacity: usize) -> Self {
+        assert!(
+            capacity > 0,
+            "MetricsPool capacity must be greater than zero"
+        );
+        self.capacity = capacity;
+        self
+    }
+
+    /// Build a metrics pool with this configuration.
+    pub fn build(self) -> MetricsPool {
+        MetricsPool {
+            inner: Arc::new(MetricsPoolInner::new(self.capacity)),
+        }
+    }
+}
+
+impl Default for MetricsPoolBuilder {
+    fn default() -> Self {
+        Self {
+            capacity: DEFAULT_METRICS_POOL_CAPACITY,
+        }
+    }
+}
+
+/// The request-owned collection point for pooled child metrics.
 ///
-/// When child metrics produce the same fully-inflected field name, the last
-/// appended value is retained and a warning is emitted at most once per minute.
+/// Store one pool in the parent metric entry under `#[metrics(flatten)]`, then
+/// distribute [`MetricsPoolHandle`]s to producers. A default pool retains the
+/// latest 128 child entries. Closing the parent consumes the pool and emits the
+/// children collected before that close; later appends are discarded.
 ///
-/// Closing the pool takes the entries available at that point. Handles may
-/// outlive the pool, but entries appended through them after close are discarded.
+/// See the [`metrics_pool`](crate::metrics_pool) module guide for scoped access,
+/// naming, metadata, lifetime, and collision policies.
 pub struct MetricsPool {
     inner: Arc<MetricsPoolInner>,
 }
 
 impl MetricsPool {
-    /// Create an empty metrics pool.
+    /// The maximum number of child entries retained by a default pool.
+    pub const DEFAULT_CAPACITY: usize = DEFAULT_METRICS_POOL_CAPACITY;
+
+    /// Create an empty metrics pool with capacity for 128 child entries.
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(MetricsPoolInner::new()),
-        }
+        Self::builder().build()
+    }
+
+    /// Create a builder for configuring a metrics pool.
+    pub fn builder() -> MetricsPoolBuilder {
+        MetricsPoolBuilder::new()
+    }
+
+    /// Return the maximum number of child entries this pool retains.
+    pub fn capacity(&self) -> usize {
+        self.inner.capacity
+    }
+
+    /// Return the number of oldest child entries evicted due to capacity.
+    pub fn overflow_count(&self) -> u64 {
+        self.inner.overflow_count()
     }
 
     /// Return a cloneable handle to this pool.
@@ -214,6 +438,7 @@ impl MetricsPool {
         MetricsPoolHandle {
             inner: Arc::clone(&self.inner),
             prefixes: PrefixSet::empty(),
+            forward_entry_metadata: false,
         }
     }
 
@@ -223,6 +448,11 @@ impl MetricsPool {
     }
 
     /// Return the pool installed for the current future poll, if any.
+    ///
+    /// The scope does not cross a task spawn, blocking-task spawn, or thread
+    /// boundary. `None` therefore means either that no pool is installed or that
+    /// this work was detached from one. Pass a handle into detached work, and use
+    /// a standalone sink when no pool is available.
     pub fn current() -> Option<MetricsPoolHandle> {
         CURRENT_POOL.with(|current| current.borrow().last().cloned())
     }
@@ -242,10 +472,12 @@ impl Debug for MetricsPool {
             .lock()
             .unwrap()
             .as_ref()
-            .map_or(0, Vec::len);
+            .map_or(0, VecDeque::len);
 
         f.debug_struct("MetricsPool")
             .field("entry_count", &entry_count)
+            .field("capacity", &self.inner.capacity)
+            .field("overflow_count", &self.inner.overflow_count())
             .finish()
     }
 }
@@ -265,21 +497,33 @@ impl CloseValue for MetricsPool {
 pub struct MetricsPoolHandle {
     inner: Arc<MetricsPoolInner>,
     prefixes: PrefixSet,
+    forward_entry_metadata: bool,
 }
 
 impl Debug for MetricsPoolHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MetricsPoolHandle")
             .field("identity_prefix", &self.prefixes.identity)
+            .field("forward_entry_metadata", &self.forward_entry_metadata)
             .finish()
     }
 }
 
 impl MetricsPoolHandle {
-    /// Return a handle with an additional inflected prefix path.
+    /// Return the number of oldest child entries this pool has evicted due to
+    /// capacity.
     ///
-    /// Prefix segments are static because each distinct, fully inflected path
-    /// is interned for use by entry descriptors.
+    /// The count remains available through a retained handle after the parent
+    /// has closed.
+    pub fn overflow_count(&self) -> u64 {
+        self.inner.overflow_count()
+    }
+
+    /// Return a handle with an additional prefix path, inflected using the
+    /// parent entry's name style.
+    ///
+    /// Segments must be static because the fully inflected path is interned for
+    /// entry descriptors.
     pub fn with_prefix<I>(&self, segments: I) -> Self
     where
         I: IntoIterator<Item = &'static str>,
@@ -287,16 +531,33 @@ impl MetricsPoolHandle {
         Self {
             inner: Arc::clone(&self.inner),
             prefixes: self.prefixes.with_segments(segments),
+            forward_entry_metadata: self.forward_entry_metadata,
         }
     }
 
-    /// Return a handle with an additional literal, non-inflected prefix.
+    /// Return a handle with an additional literal prefix.
     ///
     /// Use this for punctuation-delimited names such as `sdk.request.`.
     pub fn with_exact_prefix(&self, prefix: &'static str) -> Self {
         Self {
             inner: Arc::clone(&self.inner),
             prefixes: self.prefixes.with_exact_prefix(prefix),
+            forward_entry_metadata: self.forward_entry_metadata,
+        }
+    }
+
+    /// Return a handle that forwards child timestamps and [`EntryConfig`] to the
+    /// parent entry.
+    ///
+    /// Pool handles suppress this metadata by default because a child timestamp
+    /// or configuration can conflict with the parent's and invalidate the entire
+    /// record. Use this only when the child is intended to control entry-level
+    /// metadata. Child sample groups remain suppressed.
+    pub fn forward_entry_metadata(&self) -> Self {
+        Self {
+            inner: Arc::clone(&self.inner),
+            prefixes: self.prefixes,
+            forward_entry_metadata: true,
         }
     }
 
@@ -308,7 +569,7 @@ impl MetricsPoolHandle {
         }
     }
 
-    /// Close and append `metric` immediately.
+    /// Close `metric` and append it to the pool.
     pub fn append<E>(&self, metric: E)
     where
         E: CloseEntry + Send + Sync + 'static,
@@ -323,7 +584,7 @@ impl MetricsPoolHandle {
         self.push_closed(metric.close());
     }
 
-    /// Return an append-on-drop guard targeting this pool.
+    /// Return a guard that closes and appends `metric` when dropped.
     pub fn append_on_drop<E>(&self, metric: E) -> AppendAndCloseOnDrop<E, Self>
     where
         E: CloseEntry + Send + Sync + 'static,
@@ -363,7 +624,11 @@ impl MetricsPoolHandle {
             + Sync
             + 'static,
     {
-        self.inner.push(BufferedEntry::new(metric, self.prefixes));
+        self.inner.push(BufferedEntry::new(
+            metric,
+            self.prefixes,
+            self.forward_entry_metadata,
+        ));
     }
 }
 
@@ -403,7 +668,9 @@ impl Drop for ScopeGuard {
     }
 }
 
-/// Future wrapper returned by [`MetricsPool::scope`] and [`MetricsPoolHandle::scope`].
+/// A future that installs a metrics pool for each poll.
+///
+/// Returned by [`MetricsPool::scope`] and [`MetricsPoolHandle::scope`].
 #[must_use = "futures do nothing unless polled"]
 pub struct MetricsPoolScope<F> {
     pool: MetricsPoolHandle,
@@ -425,31 +692,83 @@ impl<F: Future> Future for MetricsPoolScope<F> {
 /// Closed representation of [`MetricsPool`].
 #[doc(hidden)]
 pub struct MetricsPoolEntry {
-    entries: Vec<BufferedEntry>,
+    entries: VecDeque<BufferedEntry>,
 }
 
 impl<NS: NameStyle> InflectableEntry<NS> for MetricsPoolEntry {
+    /// Emit the pooled children, dropping those superseded by a later child.
+    ///
+    /// [`MetricsPoolEntry::scan_fields`] determines which children collide; this
+    /// pass simply skips them. A surviving child is forwarded straight to `writer`,
+    /// unless that child repeats a field name, in which case it alone is routed
+    /// through a [`LastWinsEntryWriter`].
+    ///
+    /// Each surviving child is written twice (once to scan, once to emit) and a
+    /// repeating child a third time, to count its names. A child must write the
+    /// same multiset of field names every pass, which children generated by
+    /// `#[metrics]` do. Values and field order may differ, but interior mutability
+    /// must not change name presence or repetition counts. Debug builds assert
+    /// this invariant; release builds rely on it. Side effects in a child's
+    /// `write` run once per pass.
     fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
         let scan = self.scan_fields::<NS>();
-        if !scan.collisions.is_empty() {
+        if !scan.field_collisions.is_empty() {
             rate_limited!(
                 Duration::from_secs(60),
                 tracing::warn!(
-                    fields = ?scan.collisions,
-                    "MetricsPool overwrote duplicate fields; later entries win"
+                    fields = ?scan.field_collisions,
+                    "MetricsPool dropped child entries whose field names collided with a kept child's"
                 )
             );
         }
 
-        let mut writer = OverwriteEntryWriter {
-            inner: writer,
-            winners: &scan.winners,
-            next_occurrence: 0,
-        };
-        for entry in &self.entries {
-            entry.write::<NS>(&mut writer);
+        for (index, entry) in self.entries.iter().enumerate() {
+            if scan.losers.contains(&index) {
+                #[cfg(debug_assertions)]
+                {
+                    let mut actual = RepeatCount::default();
+                    entry.write::<NS>(&mut actual);
+                    debug_assert_stable_fields(index, &scan.child_fields[index], &actual.counts);
+                }
+                continue;
+            }
+
+            // This child writes each name once, so every field can go straight
+            // through. Children that repeat a name do not affect this one.
+            if !scan.repeating_children.contains(&index) {
+                #[cfg(debug_assertions)]
+                {
+                    let mut checked = StableFieldsWriter::new(writer);
+                    entry.write::<NS>(&mut checked);
+                    debug_assert_stable_fields(index, &scan.child_fields[index], checked.counts());
+                }
+                #[cfg(not(debug_assertions))]
+                entry.write::<NS>(writer);
+                continue;
+            }
+
+            // Keeping the *last* write of a repeated name needs lookahead: whether
+            // another write of that name is still coming. `scan` records which
+            // children repeat a name but not how often, so count this child's names
+            // here, paying for a map only where one is needed.
+            let mut counts = RepeatCount::default();
+            entry.write::<NS>(&mut counts);
+            #[cfg(debug_assertions)]
+            debug_assert_stable_fields(index, &scan.child_fields[index], &counts.counts);
+
+            let mut last_wins = LastWinsEntryWriter {
+                inner: writer,
+                remaining: counts.counts,
+            };
+            #[cfg(debug_assertions)]
+            {
+                let mut checked = StableFieldsWriter::new(&mut last_wins);
+                entry.write::<NS>(&mut checked);
+                debug_assert_stable_fields(index, &scan.child_fields[index], checked.counts());
+            }
+            #[cfg(not(debug_assertions))]
+            entry.write::<NS>(&mut last_wins);
         }
-        debug_assert_eq!(writer.next_occurrence, scan.next_occurrence);
     }
 
     // Contributed entries must not implicitly influence the parent sampling policy.
@@ -460,7 +779,13 @@ impl<NS: NameStyle> InflectableEntry<NS> for MetricsPoolEntry {
     }
 
     fn descriptors(&self) -> Descriptors<'_> {
-        if !self.scan_fields::<NS>().collisions.is_empty() {
+        // Descriptors are a promise about the fields this entry will emit. Any pool
+        // state that makes `write` emit fewer fields than the children describe (a
+        // dropped child, or a repeated name emitted once) breaks that promise, so
+        // decline to describe rather than have a descriptor-aware sink pre-register
+        // a field that never arrives.
+        let scan = self.scan_fields::<NS>();
+        if !scan.field_collisions.is_empty() || !scan.repeating_children.is_empty() {
             return Descriptors::Unavailable;
         }
 
@@ -473,12 +798,19 @@ impl<NS: NameStyle> InflectableEntry<NS> for MetricsPoolEntry {
 }
 
 impl MetricsPoolEntry {
+    /// Count every child's field names, then reconcile them into a plan of which
+    /// children survive.
     fn scan_fields<NS: NameStyle>(&self) -> FieldScan {
-        let mut scan = FieldScan::default();
-        for entry in &self.entries {
-            entry.write::<NS>(&mut scan);
-        }
-        scan
+        let children = self
+            .entries
+            .iter()
+            .map(|entry| {
+                let mut counts = RepeatCount::default();
+                entry.write::<NS>(&mut counts);
+                counts.counts
+            })
+            .collect::<Vec<_>>();
+        FieldScan::reconcile(children)
     }
 }
 
@@ -492,48 +824,190 @@ fn namespace_prefix<NS: NameStyle>() -> &'static str {
     }
 }
 
+/// Which children must be dropped because another kept child claimed one of their
+/// field names.
+///
+/// Collisions are resolved per-child rather than per-field: a child that shares a
+/// fully-qualified field name with a kept child is a "loser" and is dropped in its
+/// entirety. This prevents "frankenentries" where fields from different children
+/// are interleaved into a single emitted entry.
+///
+/// Survivors are picked by walking children from last to first, keeping a child
+/// only if none of its names are already claimed. Walking backwards keeps the
+/// familiar "later child wins" outcome for a colliding pair while avoiding a
+/// forward pass's failure mode, where a child is dropped by a successor that is
+/// itself dropped later, deleting fields no surviving child re-emits.
 #[derive(Default)]
 struct FieldScan {
-    winners: HashMap<String, usize>,
-    collisions: BTreeSet<String>,
-    next_occurrence: usize,
+    /// The scan-pass field-name counts used to verify later passes in debug builds.
+    #[cfg(debug_assertions)]
+    child_fields: Vec<HashMap<String, usize>>,
+    /// Fully-qualified names that a dropped child shared with a kept one. Reported
+    /// in the collision warning; `losers` is what the emit pass acts on.
+    field_collisions: BTreeSet<String>,
+    /// Indices of children that were superseded and must be dropped wholesale.
+    losers: BTreeSet<usize>,
+    /// Indices of children that wrote the same field name more than once. These
+    /// are the only children that need a [`LastWinsEntryWriter`] on the emit pass.
+    repeating_children: BTreeSet<usize>,
 }
 
-impl<'a> EntryWriter<'a> for FieldScan {
+impl FieldScan {
+    /// Decide which children survive, given each child's field-name counts in
+    /// child order.
+    fn reconcile(children: Vec<HashMap<String, usize>>) -> Self {
+        let mut scan = Self::default();
+        let mut claimed: HashSet<&str> = HashSet::new();
+
+        for (index, names) in children.iter().enumerate().rev() {
+            let collisions: Vec<&String> = names
+                .keys()
+                .filter(|name| claimed.contains(name.as_str()))
+                .collect();
+
+            if !collisions.is_empty() {
+                scan.losers.insert(index);
+                scan.field_collisions
+                    .extend(collisions.into_iter().cloned());
+                // A dropped child claims nothing, so an earlier child writing only
+                // its fields still survives.
+                continue;
+            }
+
+            // One child writing the same name twice is not a cross-child
+            // collision; the emit pass keeps that child's last write.
+            if names.values().any(|&count| count > 1) {
+                scan.repeating_children.insert(index);
+            }
+            claimed.extend(names.keys().map(String::as_str));
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            scan.child_fields = children;
+        }
+        scan
+    }
+}
+
+/// Records the field names one child writes, and how many times, instead of
+/// emitting them.
+///
+/// Used both to reconcile cross-child collisions and to find the final write of a
+/// repeated name, which is the one [`LastWinsEntryWriter`] emits.
+#[derive(Default)]
+struct RepeatCount {
+    counts: HashMap<String, usize>,
+}
+
+impl<'a> EntryWriter<'a> for RepeatCount {
     fn timestamp(&mut self, _timestamp: SystemTime) {}
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, _value: &(impl Value + ?Sized)) {
-        let name = name.into().into_owned();
-        if self
-            .winners
-            .insert(name.clone(), self.next_occurrence)
-            .is_some()
-        {
-            self.collisions.insert(name);
-        }
-        self.next_occurrence += 1;
+        *self.counts.entry(name.into().into_owned()).or_default() += 1;
     }
 
     fn config(&mut self, _config: &'a dyn EntryConfig) {}
 }
 
-struct OverwriteEntryWriter<'a, W> {
-    inner: &'a mut W,
-    winners: &'a HashMap<String, usize>,
-    next_occurrence: usize,
+#[cfg(debug_assertions)]
+fn debug_assert_stable_fields(
+    index: usize,
+    expected: &HashMap<String, usize>,
+    actual: &HashMap<String, usize>,
+) {
+    debug_assert_eq!(
+        actual, expected,
+        "MetricsPool child changed its field names between write passes (child index {index}); pooled entries must emit the same field names the same number of times on every write"
+    );
 }
 
-impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for OverwriteEntryWriter<'_, W> {
+/// Forwards one child write while recording its field-name multiset for a
+/// debug-only stability check.
+#[cfg(debug_assertions)]
+struct StableFieldsWriter<'w, W> {
+    inner: &'w mut W,
+    counts: HashMap<String, usize>,
+}
+
+#[cfg(debug_assertions)]
+impl<'w, W> StableFieldsWriter<'w, W> {
+    fn new(inner: &'w mut W) -> Self {
+        Self {
+            inner,
+            counts: HashMap::new(),
+        }
+    }
+
+    fn counts(&self) -> &HashMap<String, usize> {
+        &self.counts
+    }
+}
+
+#[cfg(debug_assertions)]
+impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for StableFieldsWriter<'_, W> {
     fn timestamp(&mut self, timestamp: SystemTime) {
         self.inner.timestamp(timestamp);
     }
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
         let name = name.into();
-        let occurrence = self.next_occurrence;
-        self.next_occurrence += 1;
+        *self.counts.entry(name.as_ref().to_owned()).or_default() += 1;
+        self.inner.value(name, value);
+    }
 
-        if self.winners.get(name.as_ref()) == Some(&occurrence) {
+    fn config(&mut self, config: &'a dyn EntryConfig) {
+        self.inner.config(config);
+    }
+}
+
+/// Emits only the last write of each field name for the child it wraps.
+///
+/// Cross-child collisions are handled by dropping whole children, so among the
+/// children that survive each fully-qualified name has exactly one writer. This
+/// writer therefore only has to resolve names a single child repeats, and needs
+/// no knowledge of the other children.
+///
+/// `remaining` starts as that child's field-name counts and is decremented as the
+/// child is replayed; a name is forwarded on the write that brings its count to
+/// zero, which is its final write. Exactly one write of a name can ever be
+/// forwarded: the EMF formatter rejects an entire entry containing a duplicate
+/// field, so emitting a name twice would discard the whole metric record.
+struct LastWinsEntryWriter<'w, W> {
+    inner: &'w mut W,
+    remaining: HashMap<String, usize>,
+}
+
+impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for LastWinsEntryWriter<'_, W> {
+    fn timestamp(&mut self, timestamp: SystemTime) {
+        self.inner.timestamp(timestamp);
+    }
+
+    fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
+        let name = name.into();
+        let mut uncounted = false;
+        let emit = match self.remaining.get_mut(name.as_ref()) {
+            Some(remaining) => {
+                // Forward the final write, skip the ones it supersedes, and skip
+                // anything past the count so a name is never emitted twice.
+                let last = *remaining == 1;
+                *remaining = remaining.saturating_sub(1);
+                last
+            }
+            // Only reachable if the child's output changed since it was counted a
+            // moment ago. Forward this write and record the name so that a later
+            // one cannot duplicate it.
+            None => {
+                uncounted = true;
+                true
+            }
+        };
+
+        if uncounted {
+            self.remaining.insert(name.as_ref().to_owned(), 0);
+        }
+
+        if emit {
             self.inner.value(name, value);
         }
     }
@@ -545,11 +1019,12 @@ impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for OverwriteEntryWriter<'_, W> {
 
 struct BufferedEntry {
     prefixes: PrefixSet,
+    forward_entry_metadata: bool,
     entry: StyledEntries,
 }
 
 impl BufferedEntry {
-    fn new<M>(metric: M, prefixes: PrefixSet) -> Self
+    fn new<M>(metric: M, prefixes: PrefixSet, forward_entry_metadata: bool) -> Self
     where
         M: InflectableEntry<Identity>
             + InflectableEntry<PascalCase>
@@ -562,6 +1037,7 @@ impl BufferedEntry {
         let metric = Arc::new(metric);
         Self {
             prefixes,
+            forward_entry_metadata,
             entry: StyledEntries {
                 identity: BoxEntry::new(RuntimeInflectedEntry::new(
                     Arc::clone(&metric),
@@ -585,16 +1061,12 @@ impl BufferedEntry {
         let prefix = self.prefix::<NS>(style);
         let entry = self.entry.for_style(style);
 
-        if prefix.is_empty() {
-            entry.write(writer);
-            return;
-        }
-
-        let mut prefixed = PrefixedEntryWriter {
+        let mut pooled = PooledEntryWriter {
             inner: writer,
             prefix,
+            forward_entry_metadata: self.forward_entry_metadata,
         };
-        entry.write(&mut prefixed);
+        entry.write(&mut pooled);
     }
 
     fn descriptors<NS: NameStyle>(&self) -> Descriptors<'_> {
@@ -675,18 +1147,28 @@ where
     }
 }
 
-struct PrefixedEntryWriter<'a, W> {
+/// Suppresses child entry metadata unless explicitly enabled and prepends the
+/// producer's prefix to each field name.
+struct PooledEntryWriter<'a, W> {
     inner: &'a mut W,
     prefix: &'static str,
+    forward_entry_metadata: bool,
 }
 
-impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for PrefixedEntryWriter<'_, W> {
+impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for PooledEntryWriter<'_, W> {
     fn timestamp(&mut self, timestamp: std::time::SystemTime) {
-        self.inner.timestamp(timestamp);
+        if self.forward_entry_metadata {
+            self.inner.timestamp(timestamp);
+        }
     }
 
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
         let name = name.into();
+        if self.prefix.is_empty() {
+            self.inner.value(name, value);
+            return;
+        }
+
         let mut prefixed = String::with_capacity(self.prefix.len() + name.len());
         prefixed.push_str(self.prefix);
         prefixed.push_str(name.as_ref());
@@ -694,11 +1176,53 @@ impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for PrefixedEntryWriter<'_, W> {
     }
 
     fn config(&mut self, config: &'a dyn EntryConfig) {
-        self.inner.config(config);
+        if self.forward_entry_metadata {
+            self.inner.config(config);
+        }
     }
 }
 
-/// Install `pool` while `future` is being polled.
+/// Capture the current metrics pool and propagate it while `future` is polled.
+///
+/// Capture happens synchronously when this function is called, before an
+/// executor can detach the returned future. When a pool is captured, it is
+/// installed for every poll using [`MetricsPoolHandle::scope`]. If no pool is
+/// current at capture time, the input future is polled without adding a scope.
+///
+/// This wrapper is executor-independent, but it must be applied at a spawn site
+/// controlled by the caller; it cannot affect tasks spawned internally by a
+/// third-party library.
+///
+/// ```no_run
+/// use metrique_util::{MetricsPool, propagate_current};
+///
+/// # async fn example() {
+/// # let pool = MetricsPool::new();
+/// pool.handle()
+///     .scope(async {
+///         tokio::spawn(propagate_current(async {
+///             let pool = MetricsPool::current().expect("pool was propagated");
+///             // Detached work can append through `pool` here.
+///             # drop(pool);
+///         }))
+///         .await
+///         .unwrap();
+///     })
+///     .await;
+/// # }
+/// ```
+#[must_use = "futures do nothing unless polled"]
+pub fn propagate_current<F: Future>(future: F) -> impl Future<Output = F::Output> {
+    let pool = MetricsPool::current();
+    async move {
+        match pool {
+            Some(pool) => pool.scope(future).await,
+            None => future.await,
+        }
+    }
+}
+
+/// Run `future` with `pool` available through [`MetricsPool::current`].
 pub fn with_metrics_pool<F>(pool: MetricsPoolHandle, future: F) -> MetricsPoolScope<F> {
     pool.scope(future)
 }
