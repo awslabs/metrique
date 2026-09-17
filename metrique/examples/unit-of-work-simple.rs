@@ -8,6 +8,9 @@
 //!
 //! See `./unit-of-work-fanout.rs` if you want to write to a single metric entry from multiple
 //! child tasks in the background.
+//!
+//! See `./unit-of-work-background-task.rs` if your unit of work is a periodic background task
+//! rather than a request.
 
 use core::{default::Default, time::Duration};
 use std::time::SystemTime;
