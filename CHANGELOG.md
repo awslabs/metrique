@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(metrique-util)* `MetricsPool` (feature: `metrics-pool`), used as the type of a `#[metrics(flatten)]` field to collect metrics from producers that cannot name the parent metrics type — middleware, libraries, and SDK interceptors — and flattens them into the parent's single emitted entry. Producers append through a cloneable `MetricsPoolHandle`, either passed explicitly like any other sink or discovered with `MetricsPool::current()` inside a `with_metrics_pool` scope. Pools retain the latest 128 child entries by default, with configurable capacity, oldest-child eviction, overflow counting, and rate-limited warnings. Child timestamps and `EntryConfig` are suppressed by default; producers can explicitly opt in with `MetricsPoolHandle::forward_entry_metadata()`. Because a scope follows one future's polls, spawned work does not inherit it: wrap the spawned future with `propagate_current` or capture a handle at the spawn site to contribute from detached work. See [`docs/metrics-pool-rfc.md`](docs/metrics-pool-rfc.md) ([#358](https://github.com/awslabs/metrique/pull/358))
+
+  ```rust
+  #[metrics(rename_all = "PascalCase")]
+  struct RequestMetrics {
+      operation: &'static str,
+      #[metrics(flatten)]
+      pool: MetricsPool,
+  }
+
+  // A producer that cannot name `RequestMetrics` contributes to the same entry:
+  pool_handle.with_prefix(["sdk", "s3"]).append(AttemptMetrics { retry_count: 2 });
+  ```
+
 - *(metrique-macro)* `#[metrics(closeable_entry)]` gives the generated closed entry type an identity `CloseValue` impl, so an already-closed entry can be used as a closing field of another `#[metrics]` struct without `#[metrics(no_close)]`. Opt-in, because adding the impl is a breaking change; intended to become the default in a future major version ([#382](https://github.com/awslabs/metrique/issues/382))
 
 ### Fixed
