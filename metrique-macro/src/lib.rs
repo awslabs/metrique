@@ -1644,7 +1644,7 @@ impl MetricsField {
         let inner = if named {
             if docs {
                 quote! {
-                    #[doc = "Closed metric field generated from the input field of the same name."]
+                    #[doc = "Closed metric field generated from the input field of the same name. Shown as `pub` for this documentation example only; a normal macro invocation generates a private field."]
                     pub #ident: #base_type
                 }
             } else {
@@ -1653,7 +1653,7 @@ impl MetricsField {
         } else {
             if docs {
                 quote! {
-                    #[doc = "Closed metric field generated from the input field at the same position."]
+                    #[doc = "Closed metric field generated from the input field at the same position. Shown as `pub` for this documentation example only; a normal macro invocation generates a private field."]
                     pub #base_type
                 }
             } else {

@@ -6,6 +6,9 @@
 use crate::{Counter, timers::Timer, unit::Millisecond, unit_of_work::metrics};
 
 /// Representative input passed to the `metrics` macro.
+///
+/// This struct is exactly as written by the caller; the macro does not modify it.
+/// It is shown here only so the generated types below can be compared against it.
 #[metrics(__docs, rename_all = "PascalCase")]
 pub struct RequestMetrics {
     /// Number of requests handled.
