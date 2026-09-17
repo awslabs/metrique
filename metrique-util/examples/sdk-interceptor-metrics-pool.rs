@@ -128,6 +128,8 @@ struct PooledSdkInvocationMetrics {
 struct StandaloneSdkInvocationMetrics {
     #[metrics(timestamp)]
     timestamp: SystemTime,
+    /// Records that current-pool discovery selected the standalone fallback.
+    metrics_pool_fallback: bool,
     #[metrics(flatten)]
     invocation: PooledSdkInvocationMetrics,
 }
@@ -147,7 +149,8 @@ struct StandaloneSdkAttemptMetrics {
 
 #[derive(Debug, Clone)]
 enum PoolSelection {
-    Current,
+    CurrentOrStandalone,
+    RequireCurrent,
     Explicit(MetricsPoolHandle),
 }
 
@@ -170,12 +173,21 @@ impl SdkMetricsInterceptorBuilder {
         Self {
             service_name,
             qualifier: None,
-            pool: PoolSelection::Current,
+            pool: PoolSelection::CurrentOrStandalone,
         }
     }
 
     fn qualifier(mut self, qualifier: &'static str) -> Self {
         self.qualifier = Some(qualifier);
+        self
+    }
+
+    /// Require current-pool discovery to succeed.
+    ///
+    /// A missing pool triggers a debug assertion during development. Release
+    /// builds warn and retain the standalone fallback so telemetry is not lost.
+    fn require_current_pool(mut self) -> Self {
+        self.pool = PoolSelection::RequireCurrent;
         self
     }
 
@@ -198,9 +210,34 @@ impl SdkMetricsInterceptor {
         SdkMetricsInterceptorBuilder::new(service_name)
     }
 
+    /// `None` means no pool is reachable: either the application does not pool,
+    /// or this interceptor is running detached from the request's scope, which a
+    /// spawned task loses unless the spawn site captured a handle first. Callers
+    /// cannot tell those apart, so `emit_invocation` falls back to a standalone
+    /// entry rather than dropping the metric. The two paths are not
+    /// interchangeable: the standalone entry carries its own timestamp and EMF
+    /// configuration, which a pooled child must not.
     fn selected_pool(&self) -> Option<MetricsPoolHandle> {
         match &self.pool {
-            PoolSelection::Current => MetricsPool::current(),
+            PoolSelection::CurrentOrStandalone => MetricsPool::current(),
+            PoolSelection::RequireCurrent => {
+                let pool = MetricsPool::current();
+                if pool.is_none() {
+                    debug_assert!(
+                        false,
+                        "required current MetricsPool is unavailable; execution may have crossed a task spawn boundary"
+                    );
+                    metrique::writer::rate_limit::rate_limited!(
+                        Duration::from_secs(60),
+                        tracing::warn!(
+                            service = self.service_name,
+                            qualifier = self.qualifier.unwrap_or("None"),
+                            "required current MetricsPool is unavailable; using standalone metrics fallback"
+                        )
+                    );
+                }
+                pool
+            }
             PoolSelection::Explicit(pool) => Some(pool.clone()),
         }
     }
@@ -225,6 +262,7 @@ fn emit_invocation(
         drop(append_and_close(
             StandaloneSdkInvocationMetrics {
                 timestamp,
+                metrics_pool_fallback: true,
                 invocation,
             },
             ServiceMetrics::sink(),
@@ -364,6 +402,12 @@ async fn main() {
     let _interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
         .qualifier("Logging")
         .build();
+    // Services that expect every invocation to be request-scoped can make a
+    // missing current pool loud in development and observable in production.
+    let _strict_interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
+        .qualifier("Logging")
+        .require_current_pool()
+        .build();
     // A per-call interceptor can instead receive the pool explicitly.
     let _per_call_interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
         .qualifier("Logging")
@@ -443,6 +487,50 @@ mod tests {
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].values["Operation"], "PutLogEvents");
         assert_eq!(entries[0].metrics["RetryCount"], 3);
+        assert_eq!(entries[0].metrics["MetricsPoolFallback"], 1);
+    }
+
+    #[test]
+    fn default_current_selection_allows_a_missing_pool() {
+        let interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs").build();
+        assert!(interceptor.selected_pool().is_none());
+    }
+
+    #[test]
+    fn required_current_pool_detects_a_missing_scope() {
+        let interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
+            .require_current_pool()
+            .build();
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| interceptor.selected_pool()));
+
+        if cfg!(debug_assertions) {
+            assert!(
+                result.is_err(),
+                "debug builds must assert on a missing pool"
+            );
+        } else {
+            assert!(
+                result
+                    .expect("release builds must retain fallback")
+                    .is_none(),
+                "release fallback must report that no pool was selected"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn required_current_pool_accepts_an_installed_scope() {
+        let pool = MetricsPool::new();
+        let interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
+            .require_current_pool()
+            .build();
+
+        pool.handle()
+            .scope(async move {
+                assert!(interceptor.selected_pool().is_some());
+            })
+            .await;
     }
 
     #[test]
