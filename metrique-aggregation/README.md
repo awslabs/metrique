@@ -23,6 +23,7 @@ This crate includes several complete examples:
 - `embedded` - Distributed query with [`Aggregate<T>`]
 - `sink_level` - Queue processor with [`WorkerSink`] and [`KeyedAggregator`]
 - `split` - [`TeeSink`] pattern showing aggregation + raw events
+- `rolling_threshold` - Approximate tail sampling without retaining full entries
 - `histogram` - Histogram usage patterns and strategies
 
 Run examples with: `cargo run --example <name>`
@@ -259,6 +260,19 @@ This gives you:
 - **Precise aggregated metrics**: Exact counts and distributions
 - **Raw event samples**: Individual events for tracing and debugging
 
+## Tail Selection
+
+Use [`TopNSink`] when each flush window must retain exactly the highest-scoring `N` entries. It
+stores up to `N` full entries until the window is flushed.
+
+Use [`RollingThresholdSink`] when fixed selector memory is more important than an exact count. It
+learns an approximate top-`N` score cutoff from one flush window and applies that cutoff to the
+next, forwarding matching entries immediately. The first window emits no raw entries, and sudden
+distribution changes can temporarily select too many or too few.
+
+Both selectors can be placed on the raw branch of a [`TeeSink`] while the other branch aggregates
+every entry.
+
 See the `split` example for a complete working implementation.
 
 ## Keeping the Worst N Raw Events
@@ -405,6 +419,7 @@ See the `histogram` example for more usage patterns.
 [`KeyedAggregator`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/aggregator/struct.KeyedAggregator.html
 [`TeeSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.TeeSink.html
 [`TopNSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.TopNSink.html
+[`RollingThresholdSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.RollingThresholdSink.html
 [`NonAggregatedSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.NonAggregatedSink.html
 [`Merge`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.Merge.html
 [`MergeRef`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.MergeRef.html

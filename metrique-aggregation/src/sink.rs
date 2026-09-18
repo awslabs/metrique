@@ -9,10 +9,12 @@ use metrique_writer::EntrySink;
 use crate::traits::{AggregateSink, AggregateSinkRef, AggregateStrategy, FlushableSink, RootSink};
 
 pub mod mutex;
+mod rolling_threshold;
 mod top_n;
 pub mod worker;
 
 pub use mutex::MutexSink;
+pub use rolling_threshold::RollingThresholdSink;
 pub use top_n::TopNSink;
 pub use worker::WorkerSink;
 
