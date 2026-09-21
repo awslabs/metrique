@@ -10,7 +10,6 @@ readme = "README.md"
 
 [dependencies]
 itoa = { workspace = true }
-dtoa = { workspace = true }
 rand = { workspace = true }
 metrique-writer-core = { workspace = true, features = ["serde"] }
 metrique-writer = { workspace = true, features = ["background-queue", "tracing-subscriber-03", "metrics-rs-024"] }

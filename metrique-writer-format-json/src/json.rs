@@ -8,6 +8,9 @@ use std::time::SystemTime;
 use metrique_writer::sample::DefaultRng;
 use metrique_writer_core::entry::EntryConfig;
 use metrique_writer_core::format::Format;
+use metrique_writer_core::json_encode::{
+    push_json_string, push_observation, push_observation_comma,
+};
 use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_core::stream::IoStreamError;
 use metrique_writer_core::value::{MetricFlags, Observation, Value, ValueWriter};
@@ -337,80 +340,6 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
     fn error(self, error: ValidationError) {
         self.error.extend_mut(error.for_field(self.name));
     }
-}
-
-/// Push a comma followed by an observation (for array items after the first).
-fn push_observation_comma(buf: &mut String, obs: Observation, multiplicity: Option<u64>) {
-    buf.push(',');
-    push_observation(buf, obs, multiplicity);
-}
-
-/// Push a scalar observation value into the buffer.
-fn push_observation(buf: &mut String, obs: Observation, multiplicity: Option<u64>) {
-    match obs {
-        Observation::Unsigned(v) => {
-            buf.push_str(itoa::Buffer::new().format(v));
-        }
-        Observation::Floating(v) => {
-            push_float(buf, v);
-        }
-        Observation::Repeated { total, occurrences } => {
-            let mult = multiplicity.unwrap_or(1);
-            buf.push_str("{\"total\":");
-            push_float(buf, total);
-            buf.push_str(",\"count\":");
-            buf.push_str(itoa::Buffer::new().format(occurrences.saturating_mul(mult)));
-            buf.push('}');
-        }
-        _ => {
-            buf.push_str("null");
-        }
-    }
-}
-
-/// Push a float value, clamping infinities and writing null for NaN.
-fn push_float(buf: &mut String, v: f64) {
-    let v = v.clamp(-f64::MAX, f64::MAX);
-    if v.is_nan() {
-        buf.push_str("null");
-    } else {
-        // We use `dtoa` over `ryu` because `dtoa` always emits decimal notation
-        // (no scientific notation), which is easier to script against and more portable
-        // across downstream metric consumers.
-        let mut buffer = dtoa::Buffer::new();
-        let s = buffer.format_finite(v);
-        // Strip trailing ".0" for cleaner integer-like output
-        buf.push_str(s.strip_suffix(".0").unwrap_or(s));
-    }
-}
-
-/// Push a JSON-escaped string with surrounding quotes into the buffer.
-fn push_json_string(buf: &mut String, s: &str) {
-    buf.push('"');
-    let bytes = s.as_bytes();
-    let mut start = 0;
-    for (i, &b) in bytes.iter().enumerate() {
-        let escape = match b {
-            b'"' => "\\\"",
-            b'\\' => "\\\\",
-            b'\n' => "\\n",
-            b'\r' => "\\r",
-            b'\t' => "\\t",
-            0x00..=0x1f => {
-                buf.push_str(&s[start..i]);
-                start = i + 1;
-                use std::fmt::Write;
-                let _ = write!(buf, "\\u{:04x}", b);
-                continue;
-            }
-            _ => continue,
-        };
-        buf.push_str(&s[start..i]);
-        buf.push_str(escape);
-        start = i + 1;
-    }
-    buf.push_str(&s[start..]);
-    buf.push('"');
 }
 
 /// A wrapper around [`Json`] that supports sampling. Datapoints are emitted with
