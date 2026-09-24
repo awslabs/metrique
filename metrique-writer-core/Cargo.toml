@@ -14,6 +14,8 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(metrique_require_explicit_
 [dependencies]
 smallvec = { workspace = true, features = ["union", "const_generics", "const_new"] }
 itertools = { workspace = true, default-features = false }
+itoa = { workspace = true }
+dtoa = { workspace = true }
 serde = { workspace = true, optional = true }
 derive-where = { workspace = true }
 tracing = { workspace = true, optional = true }

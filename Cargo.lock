@@ -1973,7 +1973,9 @@ version = "0.1.21"
 dependencies = [
  "assert-json-diff",
  "derive-where",
+ "dtoa",
  "itertools",
+ "itoa",
  "metrique",
  "metrique-writer",
  "metrique-writer-core",
@@ -2018,7 +2020,6 @@ dependencies = [
 name = "metrique-writer-format-json"
 version = "0.1.8"
 dependencies = [
- "dtoa",
  "itoa",
  "metrique-writer",
  "metrique-writer-core",

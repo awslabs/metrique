@@ -26,6 +26,12 @@ pub mod descriptor;
 pub mod entry;
 pub mod format;
 pub mod global;
+
+/// Canonical JSON scalar encoders shared between core's object string-fallback and the
+/// `metrique-writer-format-json` native renderer. Public only so the format crate can call
+/// into it; hidden from rustdoc but semver-relevant (see the module docs).
+#[doc(hidden)]
+pub mod json_encode;
 pub mod quantize;
 pub mod sample;
 pub mod sink;
