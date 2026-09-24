@@ -154,6 +154,11 @@ fn start_periodic_metrics() {
 }
 ```
 
+For the fuller pattern — one entry per tick with its own timestamp, duration
+and fault count, and a loop whose lifetime is tied to the sink's attach handle
+the way the `metrique-util` reporters are — see the
+[unit-of-work-background-task example].
+
 With periodic metrics it's important to consider emission time bias: for
 example, if you are running a metric that records queue lengths on a tokio
 task, this metric won't be reported if the runtime is stuck. Consider ways
@@ -202,4 +207,5 @@ to drill into individual records when debugging.
 [sampling]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
 [sink_level example]: https://github.com/awslabs/metrique/blob/main/metrique-aggregation/examples/sink_level.rs
 [tee]: https://docs.rs/metrique/latest/metrique/_guide/sampling/
+[unit-of-work-background-task example]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-background-task.rs
 [unit-of-work-simple]: https://github.com/awslabs/metrique/blob/main/metrique/examples/unit-of-work-simple.rs

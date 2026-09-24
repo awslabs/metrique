@@ -86,7 +86,11 @@ trait DynValueWriter {
 
     fn error(&mut self, error: ValidationError);
 
-    fn values_str(&mut self, values: &[&str]);
+    /// Forward a list of values across the dyn boundary without collapsing each element to
+    /// text. Each element is re-wrapped as a [`DynValue`], so it keeps its
+    /// [`string()`](DynValueWriter::string)/[`metric()`](DynValueWriter::metric) identity and
+    /// formats with native array support (e.g. EMF) emit the correct element type.
+    fn values_dyn(&mut self, values: &mut dyn Iterator<Item = &dyn DynValue>);
 }
 
 impl<E: Entry + Send + 'static> DynEntry for E {
@@ -137,9 +141,24 @@ impl<'a> EntryWriter<'a> for EntryWriterFromDyn<'a, '_> {
 struct ValueToDyn<'a, V: ?Sized>(&'a V);
 struct ValueFromDyn<'a>(&'a dyn DynValue);
 
-impl<V: Value + ?Sized> DynValue for ValueToDyn<'_, V> {
+// Blanket bridge: every `Value` is usable as an object-safe `DynValue`. This lets
+// `ValueWriterFromDyn::values` coerce `&V` straight to `&dyn DynValue` with no intermediate
+// buffer. `DynValue` is a private trait, so this doesn't widen the public API.
+impl<V: Value + ?Sized> DynValue for V {
     fn write(&self, writer: &mut dyn DynValueWriter) {
-        self.0.write(ValueWriterFromDyn(writer));
+        Value::write(self, ValueWriterFromDyn(writer));
+    }
+}
+
+// Adapts a `?Sized` value (e.g. `str`) into a `Sized` type that can be coerced to
+// `&dyn DynValue` for the scalar-field bridge, where a `?Sized` value can't be unsize-coerced
+// to a trait object directly.
+impl<V: Value + ?Sized> Value for ValueToDyn<'_, V> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = V::SHAPE;
+    const UNIT: crate::Unit = V::UNIT;
+
+    fn write(&self, writer: impl ValueWriter) {
+        <V as Value>::write(self.0, writer)
     }
 }
 
@@ -148,10 +167,14 @@ impl Value for ValueFromDyn<'_> {
     const UNIT: crate::Unit = crate::Unit::None;
 
     fn write(&self, writer: impl ValueWriter) {
-        self.0.write(&mut ValueWriterToDyn(Some(writer)));
+        DynValue::write(self.0, &mut ValueWriterToDyn(Some(writer)));
     }
 }
 
+// Holds the real `ValueWriter` in an `Option` because `ValueWriter`'s methods consume `self`
+// by value, but the object-safe `DynValueWriter` takes `&mut self`. Exactly one method is
+// invoked per writer (the `Value`/`DynValue` write contract), so the `take().unwrap()` in each
+// method cannot fail; a second call would panic.
 struct ValueWriterToDyn<W>(Option<W>);
 struct ValueWriterFromDyn<'a>(&'a mut dyn DynValueWriter);
 
@@ -179,8 +202,13 @@ impl<W: ValueWriter> DynValueWriter for ValueWriterToDyn<W> {
         self.0.take().unwrap().error(error)
     }
 
-    fn values_str(&mut self, values: &[&str]) {
-        self.0.take().unwrap().values(values.iter())
+    fn values_dyn(&mut self, values: &mut dyn Iterator<Item = &dyn DynValue>) {
+        // Re-wrap each `&dyn DynValue` as a `Value` so the inner writer sees the elements
+        // intact. `ValueWriter::values` takes references, so the wrappers must be materialized
+        // here (one buffer, inline up to VALUES_INLINE_CAPACITY, heap only on spill).
+        let wrapped: SmallVec<[ValueFromDyn<'_>; VALUES_INLINE_CAPACITY]> =
+            values.map(ValueFromDyn).collect();
+        self.0.take().unwrap().values(wrapped.iter())
     }
 }
 
@@ -215,17 +243,11 @@ impl ValueWriter for ValueWriterFromDyn<'_> {
     }
 
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        let strs: SmallVec<[String; VALUES_INLINE_CAPACITY]> = values
-            .into_iter()
-            .filter_map(|v| {
-                let mut s = String::new();
-                v.write(crate::value::StringCapture(&mut s));
-                if s.is_empty() { None } else { Some(s) }
-            })
-            .collect();
-        let refs: SmallVec<[&str; VALUES_INLINE_CAPACITY]> =
-            strs.iter().map(|s| s.as_str()).collect();
-        self.0.values_str(&refs)
+        // Every `Value` is a `DynValue` (blanket impl), so each element coerces straight to
+        // `&dyn DynValue` and is forwarded across the boundary intact — no buffer, no
+        // stringification. The receiver materializes the elements it needs.
+        let mut iter = values.into_iter().map(|v| v as &dyn DynValue);
+        self.0.values_dyn(&mut iter)
     }
 }
 
@@ -284,5 +306,108 @@ mod tests {
                 ),
             ]
         );
+    }
+
+    /// An [`EntryWriter`] that records each list element with its native shape (metric vs
+    /// string), so a test can tell whether the dyn bridge preserved element types.
+    #[derive(Default)]
+    struct ListRecorder(Vec<(String, Vec<String>)>);
+
+    impl<'a> EntryWriter<'a> for ListRecorder {
+        fn timestamp(&mut self, _timestamp: SystemTime) {}
+
+        fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
+            let mut elements = Vec::new();
+            value.write(ListValueWriter(&mut elements));
+            self.0.push((name.into().into_owned(), elements));
+        }
+
+        fn config(&mut self, _config: &'a dyn EntryConfig) {}
+    }
+
+    struct ListValueWriter<'a>(&'a mut Vec<String>);
+
+    impl ValueWriter for ListValueWriter<'_> {
+        fn string(self, value: &str) {
+            self.0.push(format!("string:{value}"));
+        }
+
+        fn metric<'a>(
+            self,
+            distribution: impl IntoIterator<Item = Observation>,
+            unit: Unit,
+            dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+            _flags: MetricFlags<'_>,
+        ) {
+            // Record unit and dimensions too: a regression that dropped per-element
+            // unit/dimensions on the way across the bridge must fail this test, not pass it.
+            self.0.push(format!(
+                "metric:{:?} unit={unit:?} dims={:?}",
+                distribution.into_iter().collect::<Vec<_>>(),
+                dimensions.into_iter().collect::<Vec<_>>(),
+            ));
+        }
+
+        fn error(self, error: ValidationError) {
+            panic!("{error}");
+        }
+
+        fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+            for value in values {
+                value.write(ListValueWriter(self.0));
+            }
+        }
+    }
+
+    // Regression test for #349: list elements must cross the dyn (boxing) bridge without being
+    // stringified. A `Vec<u64>` must reach the sink as metric observations, not as strings.
+    #[test]
+    fn boxed_list_elements_retain_shape() {
+        struct ListEntry;
+        impl Entry for ListEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("Ints", &vec![1u64, 2, 3]);
+                writer.value("Strs", &vec!["a".to_string(), "b".to_string()]);
+                // Elements carrying a unit and per-element dimensions, to prove those
+                // survive the bridge rather than being flattened away.
+                writer.value("Times", &vec![Duration::from_millis(5)]);
+                writer.value(
+                    "Dimmed",
+                    &vec![7u64.with_dimensions([("Region", "us")]) as WithDimensions<_, 1>],
+                );
+            }
+        }
+
+        // Unboxed and boxed must produce identical element-level output.
+        let mut unboxed = ListRecorder::default();
+        Entry::write(&ListEntry, &mut unboxed);
+
+        let mut boxed = ListRecorder::default();
+        <BoxEntry as Entry>::write(&ListEntry.boxed(), &mut boxed);
+
+        let expected = vec![
+            (
+                "Ints".to_string(),
+                vec![
+                    "metric:[Unsigned(1)] unit=None dims=[]".to_string(),
+                    "metric:[Unsigned(2)] unit=None dims=[]".to_string(),
+                    "metric:[Unsigned(3)] unit=None dims=[]".to_string(),
+                ],
+            ),
+            (
+                "Strs".to_string(),
+                vec!["string:a".to_string(), "string:b".to_string()],
+            ),
+            (
+                "Times".to_string(),
+                vec!["metric:[Floating(5.0)] unit=Milliseconds dims=[]".to_string()],
+            ),
+            (
+                "Dimmed".to_string(),
+                vec!["metric:[Unsigned(7)] unit=None dims=[(\"Region\", \"us\")]".to_string()],
+            ),
+        ];
+        assert_eq!(unboxed.0, expected);
+        assert_eq!(boxed.0, expected);
     }
 }
