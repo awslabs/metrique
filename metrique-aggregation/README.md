@@ -23,6 +23,7 @@ This crate includes several complete examples:
 - `embedded` - Distributed query with [`Aggregate<T>`]
 - `sink_level` - Queue processor with [`WorkerSink`] and [`KeyedAggregator`]
 - `split` - [`TeeSink`] pattern showing aggregation + raw events
+- `rolling_threshold` - Approximate tail sampling without retaining full entries
 - `histogram` - Histogram usage patterns and strategies
 
 Run examples with: `cargo run --example <name>`
@@ -259,7 +260,79 @@ This gives you:
 - **Precise aggregated metrics**: Exact counts and distributions
 - **Raw event samples**: Individual events for tracing and debugging
 
+## Tail Selection
+
+Use [`TopNSink`] when each flush window must retain exactly the highest-scoring `N` entries. It
+stores up to `N` full entries until the window is flushed.
+
+Use [`RollingThresholdSink`] when fixed selector memory is more important than an exact count. It
+learns an approximate top-`N` score cutoff from one flush window and applies that cutoff to the
+next, forwarding matching entries immediately. The first window emits no raw entries, and sudden
+distribution changes can temporarily select too many or too few.
+
+Both selectors can be placed on the raw branch of a [`TeeSink`] while the other branch aggregates
+every entry.
+
 See the `split` example for a complete working implementation.
+
+## Keeping the Worst N Raw Events
+
+Use [`TopNSink`] when you want exact aggregates while retaining only the highest-scoring raw
+events. `TopNSink` keeps a bounded min-heap and emits its retained entries whenever it is flushed.
+When it is wrapped in a [`WorkerSink`], each flush interval is a separate selection window.
+
+```rust,no_run
+use metrique_aggregation::sink::{TopNSink, TeeSink, WorkerSink, non_aggregate};
+
+# use metrique::ServiceMetrics;
+# use metrique::unit_of_work::metrics;
+# use metrique::writer::GlobalEntrySink;
+# use metrique_aggregation::{aggregate, aggregator::KeyedAggregator};
+# use metrique_aggregation::histogram::Histogram;
+# use std::time::Duration;
+# #[aggregate(ref)]
+# #[metrics]
+# struct Request {
+#     #[aggregate(key)]
+#     operation: String,
+#     #[aggregate(ignore)]
+#     request_id: String,
+#     #[aggregate(strategy = Histogram<Duration>)]
+#     latency: Duration,
+# }
+# impl RequestEntry {
+#     fn latency(&self) -> Duration {
+#         #[allow(deprecated)]
+#         self.latency
+#     }
+# }
+# fn main() {
+let aggregated = KeyedAggregator::<Request>::new(ServiceMetrics::sink());
+let worst_requests = TopNSink::new(
+    100,
+    RequestEntry::latency,
+    non_aggregate(ServiceMetrics::sink()),
+);
+
+// Every request is aggregated. The 100 highest-latency raw requests
+// received between flushes are emitted to the second sink.
+let sink = WorkerSink::new(
+    TeeSink::new(aggregated, worst_requests),
+    Duration::from_secs(60),
+);
+# drop(sink);
+# }
+```
+
+Higher scores are considered worse. The score can also be a tuple, such as
+`(entry.is_error(), entry.latency())`, to prioritize errors before latency. Scores must implement
+`Ord`; floating-point scores can be wrapped in a type such as `ordered_float::OrderedFloat`. Define
+scoring methods on the generated entry type instead of accessing its fields at the call site, since
+generated entry fields are not part of the stable public API.
+
+The selection is exact for a fixed `N` and uses `O(N)` memory. Selecting an exact percentage
+requires retaining more information because the number of entries in the window is not known until
+the window ends.
 
 # Histograms
 
@@ -345,6 +418,8 @@ See the `histogram` example for more usage patterns.
 [`RootSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.RootSink.html
 [`KeyedAggregator`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/aggregator/struct.KeyedAggregator.html
 [`TeeSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.TeeSink.html
+[`TopNSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.TopNSink.html
+[`RollingThresholdSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.RollingThresholdSink.html
 [`NonAggregatedSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.NonAggregatedSink.html
 [`Merge`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.Merge.html
 [`MergeRef`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.MergeRef.html
