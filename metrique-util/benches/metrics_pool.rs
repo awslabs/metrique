@@ -98,11 +98,11 @@ fn append_baseline(bencher: Bencher, entries: usize) {
 fn populated_pool(entries: usize, collide: bool) -> MetricsPool {
     let pool = MetricsPool::new();
     let base = pool.handle();
-    for index in 0..entries {
+    for (index, prefix) in PREFIXES.iter().take(entries).enumerate() {
         let handle = if collide {
             base.clone()
         } else {
-            base.with_prefix([PREFIXES[index]])
+            base.with_prefix([*prefix])
         };
         handle.append(ChildMetrics {
             count: index as u64,

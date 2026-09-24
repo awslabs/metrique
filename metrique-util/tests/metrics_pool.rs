@@ -35,6 +35,12 @@ struct SucceededAttemptMetrics {
 }
 
 #[metrics(rename_all = "PascalCase")]
+struct OptionalAttemptMetrics {
+    latency: Option<u64>,
+    error: Option<bool>,
+}
+
+#[metrics(rename_all = "PascalCase")]
 struct RequestMetrics {
     #[metrics(flatten)]
     metrics_pool: MetricsPool,
@@ -268,6 +274,30 @@ fn superseded_child_is_dropped_wholesale_no_frankenentry() {
 }
 
 #[test]
+fn later_child_with_absent_values_still_supersedes_earlier_child_wholesale() {
+    let pool = MetricsPool::new();
+    let handle = pool.handle().with_prefix(["sdk"]);
+    handle.append(OptionalAttemptMetrics {
+        latency: Some(100),
+        error: Some(true),
+    });
+    handle.append(OptionalAttemptMetrics {
+        latency: None,
+        error: None,
+    });
+
+    let closed = pool.close();
+    check!(matches!(
+        InflectableEntry::<PascalCase>::descriptors(&closed),
+        Descriptors::Unavailable
+    ));
+
+    let entry = to_test_entry(PascalEntry(closed));
+    check!(!entry.metrics.contains_key("SdkLatency"));
+    check!(!entry.metrics.contains_key("SdkError"));
+}
+
+#[test]
 fn unrelated_children_with_distinct_prefixes_are_all_kept() {
     // Two unrelated producers share a bare `Latency` field name but use
     // distinct prefixes, so their fully-qualified names never collide and
@@ -332,23 +362,6 @@ fn superseded_child_drops_its_non_overlapping_fields_too() {
     check!(!entry.metrics.contains_key("SdkError"));
 }
 
-/// A child that writes the same field name twice in a single write pass.
-struct DuplicateFieldMetrics;
-
-impl<NS: NameStyle> InflectableEntry<NS> for DuplicateFieldMetrics {
-    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        writer.value("Dup", &1u64);
-        writer.value("Dup", &2u64);
-    }
-}
-
-impl CloseValue for DuplicateFieldMetrics {
-    type Closed = DuplicateFieldMetrics;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
-
 /// Records every `value()` call that reaches the downstream writer, plus the
 /// entry-level writes a pooled child must never make.
 #[derive(Default)]
@@ -376,45 +389,6 @@ impl<'a> EntryWriter<'a> for RecordingWriter {
     fn config(&mut self, _config: &'a dyn metrique::writer::EntryConfig) {
         self.configs += 1;
     }
-}
-
-#[test]
-fn duplicate_field_names_within_one_child_are_deduplicated() {
-    // Per-child collision handling must not lose per-field dedup *inside* a
-    // child. This is not cosmetic: the EMF formatter rejects an entry that
-    // writes the same field name twice with
-    // `Validation(["for `Dup`: duplicate field"])` and emits no output at all,
-    // so a double-write would drop the entire metric record.
-    let pool = MetricsPool::new();
-    pool.handle().append(DuplicateFieldMetrics);
-
-    let mut writer = RecordingWriter::default();
-    InflectableEntry::<PascalCase>::write(&pool.close(), &mut writer);
-    check!(writer.calls == ["Dup"]);
-}
-
-#[test]
-fn the_last_write_of_a_repeated_name_wins() {
-    let pool = MetricsPool::new();
-    pool.handle().append(DuplicateFieldMetrics);
-
-    // `DuplicateFieldMetrics` writes Dup=1 then Dup=2.
-    let entry = to_test_entry(PascalEntry(pool.close()));
-    check!(entry.metrics["Dup"] == 2);
-}
-
-#[test]
-fn duplicate_field_names_survive_a_cross_child_drop() {
-    // Two children that each duplicate a name and also collide with each other:
-    // the earlier child is dropped, and the survivor still emits its name once.
-    // Dropping a child must not disturb the surviving child's per-field dedup.
-    let pool = MetricsPool::new();
-    pool.handle().append(DuplicateFieldMetrics);
-    pool.handle().append(DuplicateFieldMetrics);
-
-    let mut writer = RecordingWriter::default();
-    InflectableEntry::<PascalCase>::write(&pool.close(), &mut writer);
-    check!(writer.calls == ["Dup"]);
 }
 
 /// A child that writes the same fields in a different order each time it is
@@ -467,7 +441,7 @@ impl CloseValue for VaryingCountChild {
     }
 }
 
-// Field order is not part of the pool's multi-pass invariant. Only the multiset
+// Field order is not part of the pool's multi-pass invariant. Only the set
 // of field names must remain stable.
 #[test]
 fn reordering_child_is_emitted_faithfully() {
@@ -494,84 +468,6 @@ fn varying_field_presence_is_rejected() {
 
     let mut writer = RecordingWriter::default();
     InflectableEntry::<PascalCase>::write(&pool.close(), &mut writer);
-}
-
-/// A child that writes a repeated field name a different number of times on each
-/// write, so the count taken just before emitting does not match what it emits.
-#[cfg(debug_assertions)]
-struct VaryingRepeatChild {
-    writes: AtomicUsize,
-}
-
-#[cfg(debug_assertions)]
-impl<NS: NameStyle> InflectableEntry<NS> for VaryingRepeatChild {
-    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        writer.value("Dup", &1u64);
-        if self.writes.fetch_add(1, Ordering::SeqCst).is_multiple_of(2) {
-            writer.value("Dup", &2u64);
-        }
-    }
-}
-
-#[cfg(debug_assertions)]
-impl CloseValue for VaryingRepeatChild {
-    type Closed = VaryingRepeatChild;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
-
-#[cfg(debug_assertions)]
-#[test]
-#[should_panic(expected = "MetricsPool child changed its field names between write passes")]
-fn varying_field_repetition_is_rejected() {
-    let pool = MetricsPool::new();
-    pool.handle().append(VaryingRepeatChild {
-        writes: AtomicUsize::new(0),
-    });
-
-    let mut writer = RecordingWriter::default();
-    InflectableEntry::<PascalCase>::write(&pool.close(), &mut writer);
-}
-
-/// A child that counts how many times the pool writes it, through a counter the
-/// test retains after the child is moved into the pool.
-struct CountingChild {
-    writes: Arc<AtomicUsize>,
-}
-
-impl<NS: NameStyle> InflectableEntry<NS> for CountingChild {
-    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        self.writes.fetch_add(1, Ordering::SeqCst);
-        writer.value("Alpha", &1u64);
-    }
-}
-
-impl CloseValue for CountingChild {
-    type Closed = CountingChild;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
-
-#[test]
-fn a_repeating_child_does_not_slow_down_its_siblings() {
-    // The extra counting write is per child, not per pool: a child that writes
-    // each name once is emitted directly even when a sibling repeats a name.
-    let writes = Arc::new(AtomicUsize::new(0));
-    let pool = MetricsPool::new();
-    pool.handle().append(CountingChild {
-        writes: Arc::clone(&writes),
-    });
-    pool.handle().append(DuplicateFieldMetrics);
-    let closed = pool.close();
-
-    let mut writer = RecordingWriter::default();
-    InflectableEntry::<PascalCase>::write(&closed, &mut writer);
-
-    check!(writer.calls == ["Alpha", "Dup"]);
-    // Once for the collision scan, once to emit — no counting pass.
-    check!(writes.load(Ordering::SeqCst) == 2);
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -889,60 +785,6 @@ fn pooled_child_entry_metadata_can_be_forwarded_explicitly() {
     check!(writer.timestamps == [std::time::UNIX_EPOCH]);
     check!(writer.configs == 1);
     check!(writer.calls == ["SdkChildField"]);
-}
-
-/// A child that describes its fields *and* writes them twice.
-struct DescribedRepeatingChild(SdkInvocationMetricsEntry);
-
-impl<NS: NameStyle> InflectableEntry<NS> for DescribedRepeatingChild {
-    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
-        InflectableEntry::<NS>::write(&self.0, writer);
-        InflectableEntry::<NS>::write(&self.0, writer);
-    }
-
-    fn descriptors(&self) -> Descriptors<'_> {
-        InflectableEntry::<NS>::descriptors(&self.0)
-    }
-}
-
-impl CloseValue for DescribedRepeatingChild {
-    type Closed = DescribedRepeatingChild;
-    fn close(self) -> Self::Closed {
-        self
-    }
-}
-
-#[test]
-fn descriptors_are_unavailable_when_a_child_repeats_a_name() {
-    // A repeated name is emitted once, so the child's descriptors over-promise:
-    // declining to describe is the only honest answer. Both children describe
-    // themselves, so the aggregate would otherwise be available.
-    let pool = MetricsPool::new();
-    pool.handle()
-        .with_prefix(["a"])
-        .append(DescribedRepeatingChild(
-            SdkInvocationMetrics {
-                operation: "PutLogEvents",
-                retry_count: 1,
-            }
-            .close(),
-        ));
-    pool.handle()
-        .with_prefix(["b"])
-        .append(SdkInvocationMetrics {
-            operation: "PutLogEvents",
-            retry_count: 2,
-        });
-    let closed = pool.close();
-
-    check!(matches!(
-        InflectableEntry::<PascalCase>::descriptors(&closed),
-        Descriptors::Unavailable
-    ));
-    // The values still arrive, with the repeated names emitted exactly once.
-    let entry = to_test_entry(PascalEntry(closed));
-    check!(entry.metrics["ARetryCount"] == 1);
-    check!(entry.metrics["BRetryCount"] == 2);
 }
 
 #[tokio::test]

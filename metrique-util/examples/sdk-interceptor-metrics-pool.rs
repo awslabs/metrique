@@ -8,6 +8,9 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant, SystemTime};
 
+use aws_sdk_cloudwatchlogs::Client as CloudWatchLogsClient;
+use aws_sdk_cloudwatchlogs::config::{BehaviorVersion, Credentials, Region};
+use aws_smithy_http_client::test_util::infallible_client_fn;
 use aws_smithy_runtime_api::box_error::BoxError;
 use aws_smithy_runtime_api::client::interceptors::Intercept;
 use aws_smithy_runtime_api::client::interceptors::context::{
@@ -16,11 +19,12 @@ use aws_smithy_runtime_api::client::interceptors::context::{
 };
 use aws_smithy_runtime_api::client::orchestrator::Metadata;
 use aws_smithy_runtime_api::client::runtime_components::RuntimeComponents;
+use aws_smithy_types::body::SdkBody;
 use aws_smithy_types::config_bag::{ConfigBag, Storable, StoreReplace};
 use metrique::unit::Microsecond;
 use metrique::unit_of_work::metrics;
-use metrique::writer::GlobalEntrySink;
-use metrique::writer::sink::VecEntrySink;
+use metrique::writer::sink::{DevNullSink, VecEntrySink};
+use metrique::writer::{AttachGlobalEntrySink, GlobalEntrySink};
 use metrique::{ServiceMetrics, append_and_close};
 use metrique_util::{MetricsPool, MetricsPoolHandle, with_metrics_pool};
 
@@ -249,6 +253,23 @@ impl fmt::Display for SdkMetricsInterceptor {
     }
 }
 
+fn fake_cloudwatch_logs_client(interceptor: SdkMetricsInterceptor) -> CloudWatchLogsClient {
+    let http_client = infallible_client_fn(|_request| {
+        http::Response::builder()
+            .status(200)
+            .body(SdkBody::from(r#"{"logGroups":[]}"#))
+            .unwrap()
+    });
+    let config = aws_sdk_cloudwatchlogs::Config::builder()
+        .behavior_version(BehaviorVersion::latest())
+        .region(Region::new("us-east-1"))
+        .credentials_provider(Credentials::new("test", "test", None, None, "example"))
+        .http_client(http_client)
+        .interceptor(interceptor)
+        .build();
+    CloudWatchLogsClient::from_conf(config)
+}
+
 fn emit_invocation(
     pool: Option<&MetricsPoolHandle>,
     timestamp: SystemTime,
@@ -391,6 +412,10 @@ struct RequestMetrics {
 
 #[tokio::main]
 async fn main() {
+    // Standalone attempt metrics use the application's global sink. This
+    // example focuses on the request-pooled invocation summary, so discard the
+    // standalone records while the real SDK call still drives their emission.
+    let _global_sink = ServiceMetrics::attach((DevNullSink::new(), ()));
     let sink = VecEntrySink::default();
     let request_metrics = RequestMetrics {
         operation: "ExampleOperation",
@@ -398,10 +423,15 @@ async fn main() {
     }
     .append_on_drop(sink);
 
-    // The builder defaults to current-pool discovery with global fallback.
-    let _interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
+    // The builder defaults to current-pool discovery with global fallback. The
+    // real CloudWatch Logs client below uses an in-memory HTTP transport, so
+    // `.send()` drives the full SDK interceptor lifecycle without making a
+    // network request.
+    let interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
         .qualifier("Logging")
         .build();
+    let client = fake_cloudwatch_logs_client(interceptor);
+
     // Services that expect every invocation to be request-scoped can make a
     // missing current pool loud in development and observable in production.
     let _strict_interceptor = SdkMetricsInterceptor::builder("CloudWatchLogs")
@@ -414,10 +444,13 @@ async fn main() {
         .metrics_pool(request_metrics.metrics_pool.handle())
         .build();
 
-    // In a service, the SDK client's `.send().await` runs inside this future.
     let pool = request_metrics.metrics_pool.handle();
     let request_metrics = with_metrics_pool(pool, async move {
-        // client.put_log_events().send().await?;
+        client
+            .describe_log_groups()
+            .send()
+            .await
+            .expect("fake HTTP transport returns a valid response");
         request_metrics
     })
     .await;
@@ -451,29 +484,40 @@ mod tests {
         }
     }
 
-    #[test]
-    fn invocation_uses_the_captured_pool() {
+    #[tokio::test]
+    async fn real_sdk_call_emits_interceptor_data_into_the_captured_pool() {
+        let attempt_sink = test_entry_sink();
+        let _guard = ServiceMetrics::set_test_sink(attempt_sink.sink);
         let request = RequestMetrics {
             operation: "Request",
             metrics_pool: MetricsPool::new(),
         };
-        let pool = request
-            .metrics_pool
-            .handle()
-            .with_prefix(["sdk", "cloudwatch_logs", "logging"]);
-
-        emit_invocation(
-            Some(&pool),
-            SystemTime::now(),
-            invocation("PutLogEvents", 2),
+        let pool = request.metrics_pool.handle();
+        let client = fake_cloudwatch_logs_client(
+            SdkMetricsInterceptor::builder("CloudWatchLogs")
+                .qualifier("Logging")
+                .build(),
         );
+
+        let request = with_metrics_pool(pool, async move {
+            client.describe_log_groups().send().await.unwrap();
+            request
+        })
+        .await;
 
         let request = test_metric(request);
         assert_eq!(
-            request.values["SdkCloudwatchLogsLoggingOperation"],
-            "PutLogEvents"
+            request.values["SdkCloudWatchLogsLoggingOperation"],
+            "DescribeLogGroups"
         );
-        assert_eq!(request.metrics["SdkCloudwatchLogsLoggingRetryCount"], 2);
+        assert_eq!(request.values["SdkCloudWatchLogsLoggingStatusCode"], "200");
+        assert_eq!(request.metrics["SdkCloudWatchLogsLoggingSuccess"], 1);
+        assert_eq!(request.metrics["SdkCloudWatchLogsLoggingRetryCount"], 0);
+
+        let attempts = attempt_sink.inspector.entries();
+        assert_eq!(attempts.len(), 1);
+        assert_eq!(attempts[0].values["Operation"], "DescribeLogGroups");
+        assert_eq!(attempts[0].metrics["Success"], 1);
     }
 
     #[test]

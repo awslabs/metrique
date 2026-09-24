@@ -61,6 +61,7 @@ metrics-util_020 = { package = "metrics-util", version = "0.20" }
 ordered-float = "5.1.0"
 papaya = "0.2"
 pin-project = "1"
+pin-project-lite = "0.2"
 prettyplease = "0.3"
 proc-macro2 = "1.0"
 quote = "1.0"

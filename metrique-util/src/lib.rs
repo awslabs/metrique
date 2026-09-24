@@ -25,14 +25,25 @@ pub use metrics_pool::{
 #[doc(hidden)]
 pub use metrics_pool::MetricsPoolEntry;
 
-#[cfg(any(feature = "tokio-metrics-bridge", feature = "sysinfo-bridge"))]
+#[cfg(any(
+    feature = "metrics-pool",
+    feature = "tokio-metrics-bridge",
+    feature = "sysinfo-bridge"
+))]
 mod dynamic_inflection;
 
-/// Metric field naming style shared by the bridge integrations
-/// (`tokio-metrics-bridge`, `sysinfo-bridge`).
+/// Metric field naming style shared by the runtime-inflected integrations
+/// (`metrics-pool`, `tokio-metrics-bridge`, `sysinfo-bridge`).
+///
+/// These integrations choose the field-name inflection at runtime rather than
+/// at compile time, so they share this style enum.
 ///
 /// This is a re-export of [`metrique_core::DynamicNameStyle`].
-#[cfg(any(feature = "tokio-metrics-bridge", feature = "sysinfo-bridge"))]
+#[cfg(any(
+    feature = "metrics-pool",
+    feature = "tokio-metrics-bridge",
+    feature = "sysinfo-bridge"
+))]
 pub use metrique_core::DynamicNameStyle as MetricNameStyle;
 
 #[cfg(feature = "tokio-metrics-bridge")]
