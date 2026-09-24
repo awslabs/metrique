@@ -14,6 +14,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tokio_unstable)', 'cfg(shu
 [features]
 default = []
 state = ["dep:arc-swap"]
+metrics-pool = ["dep:metrique", "dep:pin-project-lite", "dep:tracing"]
 tokio-metrics-bridge = [
     "state",
     "dep:metrique",
@@ -42,18 +43,29 @@ sysinfo = { version = "0.38.4", optional = true, default-features = false, featu
 ] }
 tracing = { workspace = true, optional = true }
 metrique-writer-core = { workspace = true, optional = true }
+pin-project-lite = { workspace = true, optional = true }
 crossbeam-queue = { workspace = true, optional = true }
 shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert2 = { workspace = true }
+aws-sdk-cloudwatchlogs = { version = "1", default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+aws-smithy-http-client = { version = "1", features = ["test-util"] }
+aws-smithy-runtime-api = { version = "1", features = ["client"] }
+aws-smithy-types = "1"
+http = "1"
+divan = "0.1"
 metrique = { workspace = true, features = ["emf", "test-util", "service-metrics"] }
 metrique-writer = { workspace = true, features = ["test-util"] }
 metrique-writer-core = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 rstest = { workspace = true }
-metrique-util = { path = ".", features = ["state", "pending-sink", "sysinfo-bridge", "tokio-metrics-bridge"] }
+metrique-util = { path = ".", features = ["metrics-pool", "state", "pending-sink", "sysinfo-bridge", "tokio-metrics-bridge"] }
 tracing-subscriber = { workspace = true }
+
+[[example]]
+name = "sdk-interceptor-metrics-pool"
+required-features = ["metrics-pool"]
 
 [[example]]
 name = "global-state"
@@ -87,6 +99,11 @@ doc-scrape-examples = false
 name = "sysinfo-folded-static"
 required-features = ["sysinfo-bridge"]
 doc-scrape-examples = false
+
+[[bench]]
+name = "metrics_pool"
+harness = false
+required-features = ["metrics-pool"]
 
 [package.metadata.docs.rs]
 all-features = true

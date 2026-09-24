@@ -106,6 +106,7 @@ mod tests {
         check!(t.metrics[expected_plain] == 7);
     }
 
+    #[cfg(feature = "tokio-metrics-bridge")]
     #[metrics]
     struct WithRuntimeMetrics {
         #[metrics(flatten, prefix = "rt_")]
@@ -113,6 +114,7 @@ mod tests {
         request_count: u64,
     }
 
+    #[cfg(feature = "tokio-metrics-bridge")]
     #[rstest]
     #[case::identity(
         DynamicNameStyle::Identity,
