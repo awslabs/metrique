@@ -35,7 +35,7 @@ use metrique_writer_core::value::MetricFlags;
 ///
 /// sink.append(MyEntry { some_ints: [1, 2, 3].into_iter().collect() });
 /// ```
-*/
+ */
 /// will write `"some_ints": [1, 2, 3]` in EMF format. Not all formats support individual observation resolution and may
 /// choose to instead report their sum.
 ///
