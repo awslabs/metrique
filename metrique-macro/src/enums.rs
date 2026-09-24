@@ -85,8 +85,10 @@ impl MetricsVariant {
                 }
             }
             Some(VariantData::Struct(fields)) => {
-                let field_defs: Vec<_> =
-                    fields.iter().filter_map(|f| f.entry_field(true)).collect();
+                let field_defs: Vec<_> = fields
+                    .iter()
+                    .filter_map(|f| f.entry_field(true, false))
+                    .collect();
                 quote::quote_spanned! { ident_span=>
                     #[deprecated(note = "these fields will become private in a future release. To introspect an entry, use `metrique::writer::test_util::test_entry`")]
                     #[doc(hidden)]
