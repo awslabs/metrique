@@ -8,9 +8,7 @@ use std::time::SystemTime;
 use metrique_writer::sample::DefaultRng;
 use metrique_writer_core::entry::EntryConfig;
 use metrique_writer_core::format::Format;
-use metrique_writer_core::json_encode::{
-    push_json_string, push_observation, push_observation_comma,
-};
+use metrique_writer_core::json_encode::{push_json_string, push_observation};
 use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_core::stream::IoStreamError;
 use metrique_writer_core::value::{MetricFlags, Observation, Value, ValueWriter};
@@ -225,8 +223,10 @@ struct JsonValueWriter<'b, 'c> {
 struct JsonArrayElementWriter<'a>(&'a mut String);
 
 impl ValueWriter for JsonArrayElementWriter<'_> {
+    // These writers render into `String` buffers, where `fmt::Write` is infallible, so the
+    // `fmt::Result` returned by the shared encoders is discarded.
     fn string(self, value: &str) {
-        push_json_string(self.0, value);
+        let _ = push_json_string(self.0, value);
     }
 
     fn metric<'a>(
@@ -240,15 +240,17 @@ impl ValueWriter for JsonArrayElementWriter<'_> {
         let mut iter = distribution.into_iter();
         let Some(first) = iter.next() else { return };
         match iter.next() {
-            None => push_observation(buf, first, None),
+            None => {
+                let _ = push_observation(buf, first, None);
+            }
             Some(second) => {
                 buf.push('[');
-                push_observation(buf, first, None);
+                let _ = push_observation(buf, first, None);
                 buf.push(',');
-                push_observation(buf, second, None);
+                let _ = push_observation(buf, second, None);
                 for obs in iter {
                     buf.push(',');
-                    push_observation(buf, obs, None);
+                    let _ = push_observation(buf, obs, None);
                 }
                 buf.push(']');
             }
@@ -267,15 +269,15 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
     fn string(self, value: &str) {
         let buf = self.properties_buf;
         buf.push(',');
-        push_json_string(buf, self.name);
+        let _ = push_json_string(buf, self.name);
         buf.push(':');
-        push_json_string(buf, value);
+        let _ = push_json_string(buf, value);
     }
 
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
         let buf = self.properties_buf;
         buf.push(',');
-        push_json_string(buf, self.name);
+        let _ = push_json_string(buf, self.name);
         buf.push_str(":[");
         let mut wrote_any = false;
         for value in values {
@@ -313,25 +315,27 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
 
         // Write ,"MetricName":{
         buf.push(',');
-        push_json_string(buf, self.name);
+        let _ = push_json_string(buf, self.name);
         buf.push_str(":{");
 
         if let Some(second) = obs.next() {
             buf.push_str("\"values\":[");
-            push_observation(buf, first, self.multiplicity);
-            push_observation_comma(buf, second, self.multiplicity);
+            let _ = push_observation(buf, first, self.multiplicity);
+            buf.push(',');
+            let _ = push_observation(buf, second, self.multiplicity);
             for ob in obs {
-                push_observation_comma(buf, ob, self.multiplicity);
+                buf.push(',');
+                let _ = push_observation(buf, ob, self.multiplicity);
             }
             buf.push(']');
         } else {
             buf.push_str("\"value\":");
-            push_observation(buf, first, self.multiplicity);
+            let _ = push_observation(buf, first, self.multiplicity);
         }
 
         if unit != Unit::None {
             buf.push_str(",\"unit\":");
-            push_json_string(buf, unit.name());
+            let _ = push_json_string(buf, unit.name());
         }
 
         buf.push('}');

@@ -24,6 +24,7 @@ shuttle = { workspace = true, optional = true }
 
 [dev-dependencies]
 assert-json-diff = { workspace = true }
+proptest = { workspace = true }
 metrique = { workspace = true, features = [] }
 metrique-writer = { workspace = true, features = ["tracing-subscriber-03", "test-util"] }
 metrique-writer-core = { path = ".", features = ["test-util"] }

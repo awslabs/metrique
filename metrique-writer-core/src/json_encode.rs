@@ -11,59 +11,57 @@
 //! encoders.
 //!
 //! The shared implementation is not a promise of byte-identical output across every path. Two
-//! deliberate carve-outs (see the object-values plan, pt001):
+//! deliberate carve-outs (see `docs/object-values-rfc.md`):
 //! - A [`Observation::Repeated`]'s `count` depends on the `multiplicity` passed by the caller.
 //!   The native renderer passes the entry's sampling multiplicity; the object string-fallback
-//!   has none and passes `None`, so a sampled observation can differ in `count`.
+//!   (added in a later change) has none and passes `None`, so a sampled observation can differ
+//!   in `count`.
 //! - The pre-existing scalar-array `StringCapture` path in [`crate::value`] is a separate regime
 //!   and is unchanged; it does not route through these functions.
 //!
-//! `#[doc(hidden)]`: this module is hidden from rustdoc, but its items are still part of
-//! `metrique-writer-core`'s public API for semver purposes (`metrique-writer-format-json` calls
-//! into it). A signature change here is a breaking change to `metrique-writer-core`.
+//! Stability: these functions are public API — `metrique-writer-format-json` depends on them —
+//! so their signatures are covered by `metrique-writer-core`'s semver guarantee. They are
+//! generic over [`std::fmt::Write`] and return [`std::fmt::Result`], so a caller may render into
+//! any text sink and observe write failures rather than have them silently swallowed. Writing
+//! into a [`String`] is infallible, so callers with a `String` buffer can discard the result.
 
-use std::fmt::Write;
+use std::fmt::{self, Write};
 
 use crate::value::Observation;
-
-/// Push a comma followed by an observation (for array items after the first).
-pub fn push_observation_comma(buf: &mut String, obs: Observation, multiplicity: Option<u64>) {
-    buf.push(',');
-    push_observation(buf, obs, multiplicity);
-}
 
 /// Push a scalar observation value into the buffer.
 ///
 /// `multiplicity` scales a [`Observation::Repeated`]'s occurrence count for sampling; pass `None`
 /// (equivalent to `1`) outside a sampling context, such as the object string fallback.
-pub fn push_observation(buf: &mut String, obs: Observation, multiplicity: Option<u64>) {
+pub fn push_observation<W: Write + ?Sized>(
+    buf: &mut W,
+    obs: Observation,
+    multiplicity: Option<u64>,
+) -> fmt::Result {
     // This match is intentionally exhaustive with no wildcard: `Observation` is
     // `#[non_exhaustive]` but defined in this crate, so a wildcard would be
     // `unreachable_patterns` (a hard error under `-D warnings`). Adding a variant is meant to
     // break this build rather than silently render `null`.
     match obs {
-        Observation::Unsigned(v) => {
-            buf.push_str(itoa::Buffer::new().format(v));
-        }
-        Observation::Floating(v) => {
-            push_float(buf, v);
-        }
+        Observation::Unsigned(v) => buf.write_str(itoa::Buffer::new().format(v)),
+        Observation::Floating(v) => push_float(buf, v),
         Observation::Repeated { total, occurrences } => {
             let mult = multiplicity.unwrap_or(1);
-            buf.push_str("{\"total\":");
-            push_float(buf, total);
-            buf.push_str(",\"count\":");
-            buf.push_str(itoa::Buffer::new().format(occurrences.saturating_mul(mult)));
-            buf.push('}');
+            buf.write_str("{\"total\":")?;
+            push_float(buf, total)?;
+            buf.write_str(",\"count\":")?;
+            buf.write_str(itoa::Buffer::new().format(occurrences.saturating_mul(mult)))?;
+            buf.write_char('}')
         }
     }
 }
 
 /// Push a float value, clamping infinities to ±`f64::MAX` and writing `null` for NaN.
-pub(crate) fn push_float(buf: &mut String, v: f64) {
-    let v = v.clamp(-f64::MAX, f64::MAX);
+pub(crate) fn push_float<W: Write + ?Sized>(buf: &mut W, v: f64) -> fmt::Result {
+    // `f64::MIN == -f64::MAX`; spell it as `f64::MIN` so the bound is obviously in range.
+    let v = v.clamp(f64::MIN, f64::MAX);
     if v.is_nan() {
-        buf.push_str("null");
+        buf.write_str("null")
     } else {
         // We use `dtoa` over `ryu` because `dtoa` emits decimal notation for typical
         // magnitudes, which is easier to script against and more portable across downstream
@@ -72,13 +70,13 @@ pub(crate) fn push_float(buf: &mut String, v: f64) {
         let mut buffer = dtoa::Buffer::new();
         let s = buffer.format_finite(v);
         // Strip trailing ".0" for cleaner integer-like output
-        buf.push_str(s.strip_suffix(".0").unwrap_or(s));
+        buf.write_str(s.strip_suffix(".0").unwrap_or(s))
     }
 }
 
 /// Push a JSON-escaped string with surrounding quotes into the buffer.
-pub fn push_json_string(buf: &mut String, s: &str) {
-    buf.push('"');
+pub fn push_json_string<W: Write + ?Sized>(buf: &mut W, s: &str) -> fmt::Result {
+    buf.write_char('"')?;
     let bytes = s.as_bytes();
     let mut start = 0;
     for (i, &b) in bytes.iter().enumerate() {
@@ -89,28 +87,36 @@ pub fn push_json_string(buf: &mut String, s: &str) {
             b'\r' => "\\r",
             b'\t' => "\\t",
             0x00..=0x1f => {
-                buf.push_str(&s[start..i]);
+                buf.write_str(&s[start..i])?;
                 start = i + 1;
-                let _ = write!(buf, "\\u{:04x}", b);
+                write!(buf, "\\u{:04x}", b)?;
                 continue;
             }
             _ => continue,
         };
-        buf.push_str(&s[start..i]);
-        buf.push_str(escape);
+        buf.write_str(&s[start..i])?;
+        buf.write_str(escape)?;
         start = i + 1;
     }
-    buf.push_str(&s[start..]);
-    buf.push('"');
+    buf.write_str(&s[start..])?;
+    buf.write_char('"')
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::strategy::Strategy as _;
 
     fn obs(o: Observation, multiplicity: Option<u64>) -> String {
         let mut buf = String::new();
-        push_observation(&mut buf, o, multiplicity);
+        // Writing into a `String` is infallible.
+        let _ = push_observation(&mut buf, o, multiplicity);
+        buf
+    }
+
+    fn js(s: &str) -> String {
+        let mut buf = String::new();
+        let _ = push_json_string(&mut buf, s);
         buf
     }
 
@@ -203,19 +209,11 @@ mod tests {
 
     #[test]
     fn strings_escape_control_and_special_characters() {
-        let mut buf = String::new();
-        push_json_string(&mut buf, "tab\tnl\nq\"bs\\end");
-        assert_eq!(buf, "\"tab\\tnl\\nq\\\"bs\\\\end\"");
-
+        assert_eq!(js("tab\tnl\nq\"bs\\end"), "\"tab\\tnl\\nq\\\"bs\\\\end\"");
         // A control char below 0x20 with no short escape uses \u00xx.
-        let mut ctrl = String::new();
-        push_json_string(&mut ctrl, "\u{1}");
-        assert_eq!(ctrl, "\"\\u0001\"");
-
+        assert_eq!(js("\u{1}"), "\"\\u0001\"");
         // Carriage return has a short escape (the `\r` arm).
-        let mut cr = String::new();
-        push_json_string(&mut cr, "a\rb");
-        assert_eq!(cr, "\"a\\rb\"");
+        assert_eq!(js("a\rb"), "\"a\\rb\"");
     }
 
     #[test]
@@ -223,8 +221,49 @@ mod tests {
         // `push_json_string` slices the &str by byte index; this is sound only because no UTF-8
         // continuation byte matches an escape arm. Pin it with escapes on both sides of a
         // multibyte character (α is two bytes; 😀 is four).
-        let mut buf = String::new();
-        push_json_string(&mut buf, "α\t😀\"β");
-        assert_eq!(buf, "\"α\\t😀\\\"β\"");
+        assert_eq!(js("α\t😀\"β"), "\"α\\t😀\\\"β\"");
+    }
+
+    #[test]
+    fn write_failure_propagates_rather_than_truncating_silently() {
+        // A fallible sink that errors mid-write must surface the error. This is why the encoders
+        // return `fmt::Result` rather than swallowing writes.
+        struct FailAfter(usize);
+        impl fmt::Write for FailAfter {
+            fn write_str(&mut self, s: &str) -> fmt::Result {
+                if self.0 == 0 {
+                    return Err(fmt::Error);
+                }
+                self.0 -= 1;
+                let _ = s;
+                Ok(())
+            }
+        }
+        // The opening quote consumes the only successful write; the next write fails.
+        assert!(push_json_string(&mut FailAfter(1), "abc").is_err());
+        assert!(push_observation(&mut FailAfter(0), Observation::Unsigned(1), None).is_err());
+    }
+
+    proptest::proptest! {
+        // For any input string, the escaped output must be valid JSON that round-trips back to
+        // the original. Build the string from `any::<char>()` rather than `any::<String>()`:
+        // the latter's default strategy is the regex `\PC*`, which excludes control characters
+        // and so never exercises the escape arms. `any::<char>()`'s special-case set includes
+        // NUL, tab, CR, LF, quote, and backslash, hitting every branch.
+        #[test]
+        fn push_json_string_always_produces_round_trippable_json(
+            s in proptest::collection::vec(proptest::prelude::any::<char>(), 0..64)
+                .prop_map(|cs| cs.into_iter().collect::<String>())
+        ) {
+            let mut buf = String::new();
+            let _ = push_json_string(&mut buf, &s);
+            match serde_json::from_str::<String>(&buf) {
+                Ok(decoded) => proptest::prop_assert_eq!(decoded, s),
+                Err(e) => proptest::prop_assert!(
+                    false,
+                    "escaped output was not valid JSON: {e} (output: {buf:?})"
+                ),
+            }
+        }
     }
 }
