@@ -2021,6 +2021,7 @@ dependencies = [
 name = "metrique-writer-format-json"
 version = "0.1.8"
 dependencies = [
+ "dtoa",
  "itoa",
  "metrique-writer",
  "metrique-writer-core",
