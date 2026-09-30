@@ -26,6 +26,11 @@ pub mod descriptor;
 pub mod entry;
 pub mod format;
 pub mod global;
+
+/// Shared JSON scalar encoders used by core's object string-fallback and the
+/// `metrique-writer-format-json` native renderer. Public API in practice — see the module docs
+/// for the stability contract.
+pub mod json_encode;
 pub mod quantize;
 pub mod sample;
 pub mod sink;
