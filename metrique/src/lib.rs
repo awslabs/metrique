@@ -7,6 +7,9 @@
 // not bumping the MSRV for collapsible_if
 #![allow(clippy::collapsible_if)]
 
+#[cfg(doc)]
+extern crate self as metrique;
+
 pub mod emf;
 pub mod flex;
 pub mod instrument;
@@ -177,6 +180,9 @@ pub mod test_util {
 pub mod unit_of_work {
     pub use metrique_macro::metrics;
 }
+
+#[cfg(doc)]
+pub mod example_generated;
 
 /// Default sink type for metrics.
 ///

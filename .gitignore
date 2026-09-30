@@ -8,3 +8,5 @@ fuzz/artifacts
 fuzz/corpus
 .claude
 CLAUDE.md
+# proptest failure-seed regression files (regenerated locally)
+proptest-regressions/
