@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.32](https://github.com/awslabs/metrique/compare/metrique-v0.1.31...metrique-v0.1.32) - 2026-10-01
+
 ### Added
 
 - *(metrique-util)* `MetricsPool` (feature: `metrics-pool`), used as the type of a `#[metrics(flatten)]` field to collect metrics from producers that cannot name the parent metrics type — middleware, libraries, and SDK interceptors — and flattens them into the parent's single emitted entry. Producers append through a cloneable `MetricsPoolHandle`, either passed explicitly like any other sink or discovered with `MetricsPool::current()` inside a `with_metrics_pool` scope. Pools retain the latest 128 child entries by default, with configurable capacity, oldest-child eviction, overflow counting, and rate-limited warnings. Child timestamps and `EntryConfig` are suppressed by default; producers can explicitly opt in with `MetricsPoolHandle::forward_entry_metadata()`. Because a scope follows one future's polls, spawned work does not inherit it: wrap the spawned future with `propagate_current` or capture a handle at the spawn site to contribute from detached work. See [`docs/metrics-pool-rfc.md`](docs/metrics-pool-rfc.md) ([#397](https://github.com/awslabs/metrique/pull/397))
@@ -23,11 +25,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pool_handle.with_prefix(["sdk", "s3"]).append(AttemptMetrics { retry_count: 2 });
   ```
 
-- *(metrique-macro)* `#[metrics(closeable_entry)]` gives the generated closed entry type an identity `CloseValue` impl, so an already-closed entry can be used as a closing field of another `#[metrics]` struct without `#[metrics(no_close)]`. Opt-in, because adding the impl is a breaking change; intended to become the default in a future major version ([#382](https://github.com/awslabs/metrique/issues/382))
+- *(metrique-macro)* `#[metrics(closeable_entry)]` gives the generated closed entry type an identity `CloseValue` impl, so an already-closed entry can be used as a closing field of another `#[metrics]` struct without `#[metrics(no_close)]`. Opt-in, because adding the impl is a breaking change; intended to become the default in a future major version ([#382](https://github.com/awslabs/metrique/issues/382), [#383](https://github.com/awslabs/metrique/pull/383))
+
+- *(metrique-util)* add TaskTiming field for per-request task metrics ([#316](https://github.com/awslabs/metrique/pull/316))
 
 ### Fixed
 
-- *(metrique-writer-core)* boxed entries (the global-sink / `BoxEntrySink` path) now forward list elements with their real type instead of stringifying them. A `Vec<u64>` field emits `[1,2,3]` through a boxed sink, matching the unboxed path, rather than `["1","2","3"]`; descriptor-aware sinks now receive the elements. ([#349](https://github.com/awslabs/metrique/issues/349))
+- *(metrique-macro)* reject unknown #[aggregate(...)] flags instead of silently accepting typos ([#389](https://github.com/awslabs/metrique/pull/389))
+- *(metrique-writer-core)* boxed entries (the global-sink / `BoxEntrySink` path) now forward list elements with their real type instead of stringifying them. A `Vec<u64>` field emits `[1,2,3]` through a boxed sink, matching the unboxed path, rather than `["1","2","3"]`; descriptor-aware sinks now receive the elements. ([#349](https://github.com/awslabs/metrique/issues/349), [#390](https://github.com/awslabs/metrique/pull/390))
+- *(metrique-aggregation)* `MutexSink` now implements `FlushableSink`. A `KeyedAggregator` behind a `MutexSink` previously had no flush path, so it accumulated entries and never emitted them. ([#380](https://github.com/awslabs/metrique/pull/380))
+
+### Other
+
+- expose generated metrics types example ([#393](https://github.com/awslabs/metrique/pull/393))
+- add periodic background task metrics example ([#395](https://github.com/awslabs/metrique/pull/395))
+- Warn when append-on-drop guards are unused ([#375](https://github.com/awslabs/metrique/pull/375))
+- Additional test coverage for rename_all renaming ([#381](https://github.com/awslabs/metrique/pull/381))
+- *(deps)* bump syn to 3.0.2 ([#344](https://github.com/awslabs/metrique/pull/344))
+- Improve subfield_owned diagnostics with a marker type ([#369](https://github.com/awslabs/metrique/pull/369))
+- Strongly own case conversion code ([#385](https://github.com/awslabs/metrique/pull/385))
+- *(writer-core)* share JSON scalar encoder ([#398](https://github.com/awslabs/metrique/pull/398))
 
 ## [0.1.31](https://github.com/awslabs/metrique/compare/metrique-v0.1.30...metrique-v0.1.31) - 2026-08-24
 
@@ -49,10 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Other
 
 - Preserve exact prefixes on enum tag names ([#370](https://github.com/awslabs/metrique/pull/370))
-
-### Fixed
-
-- *(metrique-aggregation)* `MutexSink` now implements `FlushableSink`. A `KeyedAggregator` behind a `MutexSink` previously had no flush path, so it accumulated entries and never emitted them.
 
 ## [0.1.30](https://github.com/awslabs/metrique/compare/metrique-v0.1.29...metrique-v0.1.30) - 2026-08-12
 
