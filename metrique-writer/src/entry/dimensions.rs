@@ -163,6 +163,12 @@ impl<E: Entry, const N: usize> Entry for WithGlobalDimensions<E, N> {
         })
     }
 
+    fn sample_group(
+        &self,
+    ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
+        self.entry.sample_group()
+    }
+
     fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
         self.entry.descriptors()
     }

@@ -373,6 +373,10 @@ impl<E: Entry, const N: usize> Entry for WithDimensions<E, N> {
         self.value.write(&mut self.entry_writer_wrapper(writer))
     }
 
+    fn sample_group(&self) -> impl Iterator<Item = crate::entry::SampleGroupElement> {
+        self.value.sample_group()
+    }
+
     fn descriptors(&self) -> crate::Descriptors<'_> {
         self.value.descriptors()
     }
