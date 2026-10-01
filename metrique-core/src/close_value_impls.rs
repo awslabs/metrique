@@ -326,6 +326,16 @@ impl<NS: crate::NameStyle, T: InflectableEntry<NS>, const N: usize> InflectableE
     fn write<'a>(&'a self, writer: &mut impl metrique_writer_core::EntryWriter<'a>) {
         <T as InflectableEntry<NS>>::write(self, &mut self.entry_writer_wrapper(writer))
     }
+
+    fn sample_group(
+        &self,
+    ) -> impl Iterator<Item = metrique_writer_core::entry::SampleGroupElement> {
+        <T as InflectableEntry<NS>>::sample_group(self)
+    }
+
+    fn descriptors(&self) -> metrique_writer_core::Descriptors<'_> {
+        <T as InflectableEntry<NS>>::descriptors(self)
+    }
 }
 
 #[cfg(test)]
