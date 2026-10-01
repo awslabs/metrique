@@ -21,19 +21,19 @@ members = [
 
 [workspace.dependencies]
 # Internal subcrates
-metrique = { version = "0.1", path = "metrique", default-features = false }
-metrique-aggregation = { version = "0.1", path = "metrique-aggregation" }
-metrique-core = { version = "0.1", path = "metrique-core" }
-metrique-macro = { version = "0.1", path = "metrique-macro" }
-metrique-metricsrs = { version = "0.1", path = "metrique-metricsrs" }
-metrique-service-metrics = { version = "0.1", path = "metrique-service-metrics" }
-metrique-timesource = { version = "0.1", path = "metrique-timesource" }
-metrique-util = { version = "0.1", path = "metrique-util" }
-metrique-writer = { version = "0.1", path = "metrique-writer", default-features = false }
-metrique-writer-core = { version = "0.1", path = "metrique-writer-core", default-features = false }
-metrique-writer-format-emf = { version = "0.1", path = "metrique-writer-format-emf" }
-metrique-writer-format-json = { version = "0.1", path = "metrique-writer-format-json" }
-metrique-writer-macro = { version = "0.1", path = "metrique-writer-macro" }
+metrique = { version = "0.1.32", path = "metrique", default-features = false }
+metrique-aggregation = { version = "0.1.18", path = "metrique-aggregation" }
+metrique-core = { version = "0.1.23", path = "metrique-core" }
+metrique-macro = { version = "0.1.23", path = "metrique-macro" }
+metrique-metricsrs = { version = "0.1.25", path = "metrique-metricsrs" }
+metrique-service-metrics = { version = "0.1.23", path = "metrique-service-metrics" }
+metrique-timesource = { version = "0.1.10", path = "metrique-timesource" }
+metrique-util = { version = "0.1.8", path = "metrique-util" }
+metrique-writer = { version = "0.1.28", path = "metrique-writer", default-features = false }
+metrique-writer-core = { version = "0.1.22", path = "metrique-writer-core", default-features = false }
+metrique-writer-format-emf = { version = "0.1.25", path = "metrique-writer-format-emf" }
+metrique-writer-format-json = { version = "0.1.8", path = "metrique-writer-format-json" }
+metrique-writer-macro = { version = "0.1.11", path = "metrique-writer-macro" }
 
 # External dependencies
 ahash = "0.8.6"
