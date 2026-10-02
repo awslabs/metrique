@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
+
+### Fixed
+
+- Internal `metrique-*` dependencies now require the version they were released with instead of `0.1`. `metrique-macro` 0.1.23 and `metrique-writer-macro` 0.1.11 use `metrique_core::case_convert`, added in `metrique-core` 0.1.23, but accepted `metrique-core` 0.1.22, so lockfiles that updated the macro crates without `metrique-core` failed to compile with ``unresolved import `metrique_core::case_convert` ``. If you hit this on 0.1.32, run `cargo update -p metrique-core` ([#404](https://github.com/awslabs/metrique/pull/404))
+
 ## [0.1.32](https://github.com/awslabs/metrique/compare/metrique-v0.1.31...metrique-v0.1.32) - 2026-10-01
 
 ### Added
