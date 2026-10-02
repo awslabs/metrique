@@ -13,8 +13,8 @@ metrique-writer = { workspace = true, features = ["background-queue", "tracing-s
 
 [dev-dependencies]
 
-metrique = { workspace = true, features = ["service-metrics"] }
-metrique-writer-format-emf = { workspace = true }
+metrique = { path = "../metrique", default-features = false, features = ["service-metrics"] }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 
 tracing-appender = { workspace = true }
 

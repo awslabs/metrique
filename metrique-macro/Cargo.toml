@@ -21,8 +21,8 @@ metrique-core = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 prettyplease = { workspace = true }
-metrique = { workspace = true, features = ["test-util"] }
-metrique-aggregation = { workspace = true }
+metrique = { path = "../metrique", default-features = false, features = ["test-util"] }
+metrique-aggregation = { path = "../metrique-aggregation" }
 assert2 = { workspace = true }
 
 [package.metadata.docs.rs]
