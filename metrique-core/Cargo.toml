@@ -13,8 +13,8 @@ metrique-writer-core = { workspace = true, features = ["serde"] }
 itertools = { workspace = true }
 
 [dev-dependencies]
-metrique = { workspace = true, features = ["service-metrics"] }
-metrique-writer = { workspace = true, features = ["background-queue", "tracing-subscriber-03", "metrics-rs-024"] }
+metrique = { path = "../metrique", default-features = false, features = ["service-metrics"] }
+metrique-writer = { path = "../metrique-writer", default-features = false, features = ["background-queue", "tracing-subscriber-03", "metrics-rs-024"] }
 
 [package.metadata.docs.rs]
 all-features = true

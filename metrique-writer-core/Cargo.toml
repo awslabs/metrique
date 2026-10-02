@@ -25,11 +25,11 @@ shuttle = { workspace = true, optional = true }
 [dev-dependencies]
 assert-json-diff = { workspace = true }
 proptest = { workspace = true }
-metrique = { workspace = true, features = [] }
-metrique-writer = { workspace = true, features = ["tracing-subscriber-03", "test-util"] }
+metrique = { path = "../metrique", default-features = false, features = [] }
+metrique-writer = { path = "../metrique-writer", default-features = false, features = ["tracing-subscriber-03", "test-util"] }
 metrique-writer-core = { path = ".", features = ["test-util"] }
 tracing-appender = { workspace = true }
-metrique-writer-format-emf = { workspace = true }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 serde_json = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

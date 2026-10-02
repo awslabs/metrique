@@ -38,7 +38,7 @@ tracing-appender = { workspace = true, optional = true }
 
 [dev-dependencies]
 tracing-appender = { workspace = true }
-metrique = { workspace = true, features = ["service-metrics"] }
+metrique = { path = "../metrique", default-features = false, features = ["service-metrics"] }
 metrique-timesource = { workspace = true, features = [
     "custom-timesource",
     "tokio",
@@ -46,7 +46,7 @@ metrique-timesource = { workspace = true, features = [
 ] }
 metrique-writer = { workspace = true, features = ["test-util"] }
 metrique-writer-core = { workspace = true, features = ["private-test-util"] }
-metrique-writer-format-emf = { workspace = true }
+metrique-writer-format-emf = { path = "../metrique-writer-format-emf" }
 metrique-metricsrs = { path = ".", features = ["metrics-rs-024", "test-util"] }
 tokio = { workspace = true, features = ["macros", "test-util"] }
 rand = { workspace = true }
