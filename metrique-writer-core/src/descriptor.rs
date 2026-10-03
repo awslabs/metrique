@@ -444,6 +444,13 @@ pub enum FieldShape<'a> {
     },
     /// A list/sequence.
     List(ShapeRef<'a>),
+    /// A nested object with statically-named members, written via
+    /// [`ValueWriter::object`](crate::value::ValueWriter::object).
+    ///
+    /// A leaf shape: a recursive object type (e.g. one holding a `Vec` of itself) has no
+    /// finite structural descriptor, so its members are not described here. An array of
+    /// objects is reported as `List(Object)` and an optional object as `Optional(Object)`.
+    Object,
     /// Shape not statically known.
     Opaque,
 }

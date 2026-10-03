@@ -10,12 +10,14 @@ mod dimensions;
 mod flags;
 mod force;
 mod formatter;
+mod object;
 mod primitive;
 mod quantized;
 
 pub use dimensions::{WithDimension, WithDimensions, WithVecDimensions};
 pub use force::{FlagConstructor, ForceFlag, ForceFlagEntryWriter};
 pub use formatter::{FormattedValue, Lifted, NotLifted, ToString, ValueFormatter};
+pub use object::{AsObject, ObjectValue, write_object_as_string};
 pub use quantized::{Quantized, QuantizingValueWriter, quantize_observation};
 use std::{borrow::Cow, fmt::Write, sync::Arc};
 
@@ -129,6 +131,14 @@ pub trait ValueWriter: Sized {
     /// documents this method and defaults it to [`write_values_as_string`].
     #[cfg(metrique_require_explicit_impls)]
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>);
+
+    /// Write a nested object value. Formats with structured values (e.g. JSON, EMF) can override
+    /// this to emit a native nested object; the default serializes to a JSON string so the field
+    /// is never dropped. A wrapper writer must forward this to the writer it wraps, or the inner
+    /// format's native object support is bypassed.
+    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+        write_object_as_string(self, object)
+    }
 }
 
 // Inline capacity for the buffer a wrapper `ValueWriter` needs when forwarding `values`:
@@ -141,7 +151,12 @@ pub const VALUES_INLINE_CAPACITY: usize = 8;
 
 /// The fallback [`ValueWriter::values`] behaviour: comma-join each element's string representation
 /// into a single [`ValueWriter::string`] call, skipping elements that write nothing (e.g. `None`).
-/// An empty list still calls `string("")`.
+///
+/// The result is bracketed into a JSON array (`[..]`, or `[]` when empty) when the element shape is
+/// [`FieldShape::Object`](crate::descriptor::FieldShape::Object), since each object element is
+/// itself a JSON document and the bare comma-joined form would not be a JSON value. For every
+/// other element shape the output is the bare comma-joined string, and an empty list calls
+/// `string("")`.
 ///
 /// This is lossy: per-element metric attributes (units, dimensions, flags) are dropped, and formats
 /// with native array support never see the individual elements. Writers that wrap another
@@ -162,7 +177,17 @@ pub fn write_values_as_string<'a, V: Value + 'a>(
             buf.truncate(before);
         }
     }
-    writer.string(&buf);
+    // Bracket object arrays so the joined `{..},{..}` becomes a valid JSON array. Only `ObjectRef`
+    // reports `Object`, so scalar lists keep their bare form.
+    if V::SHAPE == crate::descriptor::FieldShape::Object {
+        let mut bracketed = String::with_capacity(buf.len() + 2);
+        bracketed.push('[');
+        bracketed.push_str(&buf);
+        bracketed.push(']');
+        writer.string(&bracketed);
+    } else {
+        writer.string(&buf);
+    }
 }
 
 /// Adapter that captures a [`Value`]'s string representation into a buffer.
