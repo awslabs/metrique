@@ -114,6 +114,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::fmt::Debug;
+use std::mem::ManuallyDrop;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
@@ -599,7 +600,7 @@ impl MetricsPoolHandle {
     pub fn scope<F>(&self, future: F) -> MetricsPoolScope<F> {
         MetricsPoolScope {
             pool: self.clone(),
-            future,
+            future: ManuallyDrop::new(future),
         }
     }
 
@@ -709,8 +710,28 @@ pin_project_lite::pin_project! {
     #[must_use = "futures do nothing unless polled"]
     pub struct MetricsPoolScope<F> {
         pool: MetricsPoolHandle,
+        // `ManuallyDrop` so the generated field drop glue leaves `future`
+        // alone; `PinnedDrop` drops it explicitly while the pool is installed,
+        // so the future's destructors can observe the pool as current.
         #[pin]
-        future: F,
+        future: ManuallyDrop<F>,
+    }
+
+    impl<F> PinnedDrop for MetricsPoolScope<F> {
+        fn drop(this: Pin<&mut Self>) {
+            let this = this.project();
+            // Install the pool while `future` is dropped so a cancelled future
+            // can record into it (e.g. cancellation metrics).
+            let _scope = ScopeGuard::install(this.pool.clone());
+            // SAFETY: `future` is structurally pinned and held in
+            // `ManuallyDrop`, so this is its only drop and the generated field
+            // drop glue skips it. The value is never moved, upholding the pin
+            // guarantee.
+            unsafe {
+                let future: Pin<&mut F> = this.future.map_unchecked_mut(|f| &mut **f);
+                std::ptr::drop_in_place(future.get_unchecked_mut());
+            }
+        }
     }
 }
 
@@ -720,7 +741,10 @@ impl<F: Future> Future for MetricsPoolScope<F> {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let _scope = ScopeGuard::install(this.pool.clone());
-        this.future.poll(cx)
+        // SAFETY: `future` is structurally pinned; projecting through
+        // `ManuallyDrop` does not move it.
+        let future: Pin<&mut F> = unsafe { this.future.map_unchecked_mut(|f| &mut **f) };
+        future.poll(cx)
     }
 }
 
