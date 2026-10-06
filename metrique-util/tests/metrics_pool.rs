@@ -898,6 +898,43 @@ async fn propagate_current_without_a_pool_polls_the_future_unchanged() {
     check!(value == 42);
 }
 
+// Records whether the pool was installed at the moment this future was dropped.
+struct ObserveOnDrop;
+
+impl Future for ObserveOnDrop {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+        Poll::Pending
+    }
+}
+
+impl Drop for ObserveOnDrop {
+    fn drop(&mut self) {
+        if let Some(pool) = MetricsPool::current() {
+            pool.append(ExactFields(&[("DroppedUnderPool", 1)]));
+        }
+    }
+}
+
+#[tokio::test]
+async fn propagate_current_drops_with_pool_installed_before_first_poll() {
+    let pool = MetricsPool::new();
+
+    pool.handle()
+        .scope(async {
+            // The wrapper is created under the pool, then dropped without ever
+            // being polled. Eager construction of the scope means the wrapped
+            // future's destructor still observes the pool as current.
+            let propagated = propagate_current(ObserveOnDrop);
+            drop(propagated);
+        })
+        .await;
+
+    let entry = to_test_entry(PascalEntry(pool.close()));
+    check!(entry.metrics["DroppedUnderPool"] == 1);
+}
+
 #[test]
 fn appends_after_parent_close_are_discarded() {
     let pool = MetricsPool::new();
@@ -913,10 +950,9 @@ fn appends_after_parent_close_are_discarded() {
     check!(handle.overflow_count() == 0);
 }
 
-
 #[metrics]
 struct CancellationMetrics {
-    cancelled: u64
+    cancelled: u64,
 }
 
 #[metrics(rename_all = "snake_case")]
@@ -927,7 +963,7 @@ struct CancellationRequestMetrics {
 }
 
 struct RequestFuture {
-    completed: bool
+    completed: bool,
 }
 
 impl Future for RequestFuture {
@@ -947,7 +983,7 @@ impl Drop for RequestFuture {
     fn drop(&mut self) {
         if !self.completed {
             if let Some(pool) = MetricsPool::current() {
-                pool.append(CancellationMetrics {cancelled: 1});
+                pool.append(CancellationMetrics { cancelled: 1 });
             }
         }
     }
