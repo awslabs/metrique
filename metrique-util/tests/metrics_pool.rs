@@ -12,7 +12,9 @@ use metrique::writer::core::Descriptors;
 use metrique::writer::test_util::{test_entry_sink, test_metric, to_test_entry};
 use metrique::writer::{Entry, EntryWriter};
 use metrique::{CloseValue, InflectableEntry, NameStyle, PascalCase};
-use metrique_util::{MetricsPool, MetricsPoolHandle, propagate_current, with_metrics_pool};
+use metrique_util::{
+    MetricsPool, MetricsPoolHandle, propagate_current, with_metrics_pool, with_metrics_pool_from_fn,
+};
 
 #[metrics]
 #[derive(Default)]
@@ -1057,4 +1059,232 @@ async fn cancellation_is_recorded_in_the_request_pool() {
         !outer_entry.metrics.contains_key("cancelled"),
         "cancellation must not be attributed to the enclosing pool",
     );
+}
+
+#[test]
+fn scope_with_installs_the_pool_during_the_closure() {
+    let request = RequestMetrics {
+        metrics_pool: MetricsPool::new(),
+        request_count: 0,
+    };
+    let handle = request.metrics_pool.handle();
+
+    check!(MetricsPool::current().is_none());
+
+    handle.scope_with(|| {
+        MetricsPool::current()
+            .expect("pool is installed inside scope_with")
+            .with_prefix(["sdk", "cloudwatch_logs"])
+            .append(SdkInvocationMetrics {
+                operation: "PutLogEvents",
+                retry_count: 2,
+            });
+    });
+
+    // The scope ends when the closure returns.
+    check!(MetricsPool::current().is_none());
+
+    let entry = test_metric(request);
+    check!(entry.values["SdkCloudwatchLogsOperation"] == "PutLogEvents");
+    check!(entry.metrics["SdkCloudwatchLogsRetryCount"] == 2);
+}
+
+#[test]
+fn scope_with_returns_the_closure_result() {
+    let pool = MetricsPool::new();
+    let value = pool.handle().scope_with(|| 42);
+    check!(value == 42);
+}
+
+#[test]
+fn with_metrics_pool_from_fn_installs_the_pool_during_the_closure() {
+    let request = RequestMetrics {
+        metrics_pool: MetricsPool::new(),
+        request_count: 0,
+    };
+    let handle = request.metrics_pool.handle();
+
+    let value = with_metrics_pool_from_fn(handle, || {
+        MetricsPool::current()
+            .expect("pool is installed inside with_metrics_pool_from_fn")
+            .with_prefix(["sdk", "cloudwatch_logs"])
+            .append(SdkInvocationMetrics {
+                operation: "PutLogEvents",
+                retry_count: 2,
+            });
+        "done"
+    });
+
+    check!(value == "done");
+    check!(MetricsPool::current().is_none());
+
+    let entry = test_metric(request);
+    check!(entry.values["SdkCloudwatchLogsOperation"] == "PutLogEvents");
+    check!(entry.metrics["SdkCloudwatchLogsRetryCount"] == 2);
+}
+
+// Append a uniquely-named marker through whichever pool is currently installed.
+// Each pool flattens into its own parent entry, so the marker reveals which
+// pool `scope_with` had installed at that point.
+fn append_marker(operation: &'static str) {
+    MetricsPool::current()
+        .expect("a pool is installed")
+        .append(SdkInvocationMetrics {
+            operation,
+            retry_count: 0,
+        });
+}
+
+#[test]
+fn nested_scope_with_the_same_handle_both_target_that_pool() {
+    let request = RequestMetrics {
+        metrics_pool: MetricsPool::new(),
+        request_count: 0,
+    };
+    let handle = request.metrics_pool.handle();
+
+    handle.scope_with(|| {
+        append_marker("Outer");
+        // Re-entering the same pool is a no-op in terms of which pool is
+        // current: both the outer and inner appends land in the one pool.
+        handle.scope_with(|| {
+            append_marker("Inner");
+        });
+        append_marker("AfterInner");
+    });
+
+    check!(MetricsPool::current().is_none());
+
+    let entry = test_metric(request);
+    // The pool keeps every append; `operation` collides, so only the last
+    // marker's value survives. All three nonetheless targeted this one pool.
+    check!(entry.values["Operation"] == "AfterInner");
+}
+
+#[test]
+fn nested_scope_with_different_handles_target_their_own_pools() {
+    let sink = test_entry_sink();
+
+    let outer = CancellationRequestMetrics {
+        request_id: "outer",
+        pool: MetricsPool::new(),
+    }
+    .append_on_drop(sink.sink.clone());
+    let inner = CancellationRequestMetrics {
+        request_id: "inner",
+        pool: MetricsPool::new(),
+    }
+    .append_on_drop(sink.sink.clone());
+
+    let outer_handle = outer.pool.handle();
+    let inner_handle = inner.pool.handle();
+
+    outer_handle.scope_with(|| {
+        append_marker("Outer");
+        inner_handle.scope_with(|| {
+            append_marker("Inner");
+        });
+        // The outer pool is restored when the inner scope returns.
+        append_marker("AfterInner");
+    });
+
+    check!(MetricsPool::current().is_none());
+
+    drop(inner);
+    drop(outer);
+
+    let entries = sink.inspector.entries();
+    let outer_entry = entries
+        .iter()
+        .find(|entry| entry.values["request_id"] == "outer")
+        .expect("outer entry exists");
+    let inner_entry = entries
+        .iter()
+        .find(|entry| entry.values["request_id"] == "inner")
+        .expect("inner entry exists");
+
+    // The inner marker lands only in the inner pool.
+    check!(inner_entry.values["operation"] == "Inner");
+    // The outer pool keeps both of its markers; `operation` collides, so the
+    // later `AfterInner` wins, proving the outer pool was restored.
+    check!(outer_entry.values["operation"] == "AfterInner");
+}
+
+#[tokio::test]
+async fn sync_scope_with_nested_inside_an_async_scope() {
+    let request = RequestMetrics {
+        metrics_pool: MetricsPool::new(),
+        request_count: 0,
+    };
+    let handle = request.metrics_pool.handle();
+
+    let request = with_metrics_pool(handle, async {
+        // The async scope installs the pool across this poll; a synchronous
+        // `scope_with` on the same handle nests cleanly inside it.
+        append_marker("FromAsyncScope");
+        MetricsPool::current()
+            .expect("async scope installed the pool")
+            .append(SdkInvocationMetrics {
+                operation: "FromSyncScope",
+                retry_count: 7,
+            });
+        request
+    })
+    .await;
+
+    check!(MetricsPool::current().is_none());
+
+    let entry = test_metric(request);
+    check!(entry.values["Operation"] == "FromSyncScope");
+    check!(entry.metrics["RetryCount"] == 7);
+}
+
+#[tokio::test]
+async fn async_scope_nested_inside_a_sync_scope() {
+    let sink = test_entry_sink();
+
+    let outer = CancellationRequestMetrics {
+        request_id: "outer",
+        pool: MetricsPool::new(),
+    }
+    .append_on_drop(sink.sink.clone());
+    let inner = CancellationRequestMetrics {
+        request_id: "inner",
+        pool: MetricsPool::new(),
+    }
+    .append_on_drop(sink.sink.clone());
+
+    let outer_handle = outer.pool.handle();
+    let inner_handle = inner.pool.handle();
+
+    // A synchronous scope builds and awaits an async scope on a different pool.
+    // `scope_with` returns the future; awaiting it installs the inner pool per
+    // poll, while the outer sync scope has already ended.
+    let future = outer_handle.scope_with(|| {
+        append_marker("Outer");
+        with_metrics_pool(inner_handle, async {
+            append_marker("Inner");
+        })
+    });
+
+    // The sync scope has ended, so no pool is current while we await.
+    check!(MetricsPool::current().is_none());
+    future.await;
+    check!(MetricsPool::current().is_none());
+
+    drop(inner);
+    drop(outer);
+
+    let entries = sink.inspector.entries();
+    let outer_entry = entries
+        .iter()
+        .find(|entry| entry.values["request_id"] == "outer")
+        .expect("outer entry exists");
+    let inner_entry = entries
+        .iter()
+        .find(|entry| entry.values["request_id"] == "inner")
+        .expect("inner entry exists");
+
+    check!(outer_entry.values["operation"] == "Outer");
+    check!(inner_entry.values["operation"] == "Inner");
 }

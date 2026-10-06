@@ -56,6 +56,11 @@
 //! work was detached from a scope. Producers should use a standalone sink in
 //! that case rather than discard the metric.
 //!
+//! To run synchronous code under a pool, use [`MetricsPoolHandle::scope_with`]
+//! (or the free-function [`with_metrics_pool_from_fn`]), which installs the pool
+//! only for the duration of a closure. This suits code that must build something
+//! under the pool without holding a scope across an `.await`.
+//!
 //! # Cancellation and future destruction
 //!
 //! [`MetricsPoolScope`] installs its pool while polling the wrapped future and
@@ -633,6 +638,39 @@ impl MetricsPoolHandle {
             future,
             drop_scope: None,
         }
+    }
+
+    /// Install this pool as [`MetricsPool::current`] while `f` runs, then
+    /// restore the previously current pool and return `f`'s result.
+    ///
+    /// The scope covers only the synchronous execution of `f` on the current
+    /// thread. Unlike [`MetricsPoolHandle::scope`], which installs the pool
+    /// across every poll of a future, this installs the pool for one
+    /// synchronous call. Scopes nest: the pool that was current when
+    /// `scope_with` was called is restored when `f` returns.
+    ///
+    /// Use this to run synchronous code under the pool without holding a scope
+    /// across an `.await`:
+    ///
+    /// ```
+    /// # use metrique_util::{MetricsPool, MetricsPoolHandle};
+    /// # fn example(pool: &MetricsPoolHandle) {
+    /// let result = pool.scope_with(|| {
+    ///     // This closure, and anything it calls synchronously, observes the
+    ///     // pool through `MetricsPool::current`.
+    ///     assert!(MetricsPool::current().is_some());
+    ///     42
+    /// });
+    /// # let _ = result;
+    /// # }
+    /// ```
+    ///
+    /// If `f` returns a future, only the construction of that future runs under
+    /// the pool; polling it does not. Wrap the future with
+    /// [`MetricsPoolHandle::scope`] if its polls must also observe the pool.
+    pub fn scope_with<R>(&self, f: impl FnOnce() -> R) -> R {
+        let _scope = ScopeGuard::install(self.clone());
+        f()
     }
 
     /// Close `metric` and append it to the pool.
@@ -1213,4 +1251,14 @@ pub fn propagate_current<F: Future>(future: F) -> impl Future<Output = F::Output
 /// is polled and while it is dropped.
 pub fn with_metrics_pool<F>(pool: MetricsPoolHandle, future: F) -> MetricsPoolScope<F> {
     pool.scope(future)
+}
+
+/// Run `f` with `pool` available through [`MetricsPool::current`], then restore
+/// the previously current pool and return `f`'s result.
+///
+/// This is the free-function form of [`MetricsPoolHandle::scope_with`]. The
+/// scope covers only the synchronous execution of `f`; see that method for the
+/// details and caveats.
+pub fn with_metrics_pool_from_fn<R>(pool: MetricsPoolHandle, f: impl FnOnce() -> R) -> R {
+    pool.scope_with(f)
 }
