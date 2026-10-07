@@ -17,7 +17,7 @@ pub mod metrics_pool;
 #[doc(inline)]
 pub use metrics_pool::{
     MetricsPool, MetricsPoolBuilder, MetricsPoolHandle, MetricsPoolScope, propagate_current,
-    with_metrics_pool,
+    with_metrics_pool, with_metrics_pool_from_fn,
 };
 // Named by `<MetricsPool as CloseValue>::Closed`, so it must be nameable from
 // downstream crates even though it is not part of the documented surface.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(metrique-util)* `MetricsPoolHandle::scope_with` and the free-function `with_metrics_pool_from_fn` install a pool as `MetricsPool::current()` for the duration of a synchronous closure, then restore the previously current pool and return the closure's result. This complements `with_metrics_pool`/`MetricsPoolHandle::scope`, which install the pool across a future's polls, for code that must run under the pool without holding a scope across an `.await`.
+
+  ```rust
+  let result = pool_handle.scope_with(|| do_work());
+  ```
+
+
 ## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
 
 ### Fixed

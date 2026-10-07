@@ -40,8 +40,9 @@
 //! # Scoped access
 //!
 //! Pass a handle explicitly, or use [`with_metrics_pool`] to make one available
-//! through [`MetricsPool::current`] while a future is polled. This scope is tied
-//! to future polls, not to a thread or logical request:
+//! through [`MetricsPool::current`] while a future is polled and while that
+//! future is dropped. This scope is tied to future polls and destruction of the
+//! wrapped future, not to a thread or logical request:
 //!
 //! - Spawned tasks start without the scope. Wrap their future with
 //!   [`propagate_current`] at the spawn site, or capture a handle and move it into
@@ -54,6 +55,34 @@
 //! `MetricsPool::current` returns `None` both when no pool is installed and when
 //! work was detached from a scope. Producers should use a standalone sink in
 //! that case rather than discard the metric.
+//!
+//! To run synchronous code under a pool, use [`MetricsPoolHandle::scope_with`]
+//! (or the free-function [`with_metrics_pool_from_fn`]), which installs the pool
+//! only for the duration of a closure. This suits code that must build something
+//! under the pool without holding a scope across an `.await`.
+//!
+//! # Cancellation and future destruction
+//!
+//! [`MetricsPoolScope`] installs its pool while polling the wrapped future and
+//! while dropping the wrapped future value. It does not leave the pool installed
+//! while the future is suspended.
+//!
+//! When an owned wrapped future is cancelled by being dropped, destructors and
+//! cancellation guards stored in that future can use [`MetricsPool::current`] to
+//! contribute to the same pool. Nested scopes temporarily restore the cancelled
+//! future's pool during destruction and then restore the enclosing pool.
+//!
+//! This guarantee applies to the future value passed to the scope. Pass the
+//! future by ownership when its own destruction must run under the pool. If the
+//! wrapped value is `&mut F`, `Pin<&mut F>`, or another non-owning proxy,
+//! dropping the scope drops only that value; destruction of the underlying
+//! future may occur later without the pool installed.
+//!
+//! Metrics appended by cancellation cleanup after the parent closes are
+//! discarded and trigger a rate-limited warn log.
+//!
+//! As with other `Drop`-based cleanup, destruction does not run if the scope is
+//! leaked or its destructor is deliberately suppressed.
 //!
 //! # Naming and prefixes
 //!
@@ -473,7 +502,7 @@ impl MetricsPool {
         }
     }
 
-    /// Install this pool while `future` is being polled.
+    /// Install this pool while `future` is being polled and while it is dropped.
     pub fn scope<F>(&self, future: F) -> MetricsPoolScope<F> {
         self.handle().scope(future)
     }
@@ -484,8 +513,15 @@ impl MetricsPool {
     /// boundary. `None` therefore means either that no pool is installed or that
     /// this work was detached from one. Pass a handle into detached work, and use
     /// a standalone sink when no pool is available.
+    ///
+    /// Also returns `None` once the `CURRENT_POOL` thread-local has been
+    /// destroyed during thread-local teardown, which can happen if a destructor
+    /// (such as a `PinnedDrop`) runs late enough in teardown.
     pub fn current() -> Option<MetricsPoolHandle> {
-        CURRENT_POOL.with(|current| current.borrow().last().cloned())
+        CURRENT_POOL
+            .try_with(|current| current.borrow().last().cloned())
+            .ok()
+            .flatten()
     }
 }
 
@@ -595,12 +631,46 @@ impl MetricsPoolHandle {
         }
     }
 
-    /// Install this pool while `future` is being polled.
+    /// Install this pool while `future` is being polled and while it is dropped.
     pub fn scope<F>(&self, future: F) -> MetricsPoolScope<F> {
         MetricsPoolScope {
             pool: self.clone(),
             future,
+            drop_scope: None,
         }
+    }
+
+    /// Install this pool as [`MetricsPool::current`] while `f` runs, then
+    /// restore the previously current pool and return `f`'s result.
+    ///
+    /// The scope covers only the synchronous execution of `f` on the current
+    /// thread. Unlike [`MetricsPoolHandle::scope`], which installs the pool
+    /// across every poll of a future, this installs the pool for one
+    /// synchronous call. Scopes nest: the pool that was current when
+    /// `scope_with` was called is restored when `f` returns.
+    ///
+    /// Use this to run synchronous code under the pool without holding a scope
+    /// across an `.await`:
+    ///
+    /// ```
+    /// # use metrique_util::{MetricsPool, MetricsPoolHandle};
+    /// # fn example(pool: &MetricsPoolHandle) {
+    /// let result = pool.scope_with(|| {
+    ///     // This closure, and anything it calls synchronously, observes the
+    ///     // pool through `MetricsPool::current`.
+    ///     assert!(MetricsPool::current().is_some());
+    ///     42
+    /// });
+    /// # let _ = result;
+    /// # }
+    /// ```
+    ///
+    /// If `f` returns a future, only the construction of that future runs under
+    /// the pool; polling it does not. Wrap the future with
+    /// [`MetricsPoolHandle::scope`] if its polls must also observe the pool.
+    pub fn scope_with<R>(&self, f: impl FnOnce() -> R) -> R {
+        let _scope = ScopeGuard::install(self.clone());
+        f()
     }
 
     /// Close `metric` and append it to the pool.
@@ -685,25 +755,35 @@ where
     }
 }
 
-struct ScopeGuard;
+struct ScopeGuard {
+    // True only if we pushed onto `CURRENT_POOL`. During thread-local teardown
+    // `try_with` can fail, in which case there is nothing to pop on drop.
+    installed: bool,
+}
 
 impl ScopeGuard {
     fn install(pool: MetricsPoolHandle) -> Self {
-        CURRENT_POOL.with(|current| current.borrow_mut().push(pool));
-        Self
+        let installed = CURRENT_POOL
+            .try_with(|current| current.borrow_mut().push(pool))
+            .is_ok();
+        Self { installed }
     }
 }
 
 impl Drop for ScopeGuard {
     fn drop(&mut self) {
-        CURRENT_POOL.with(|current| {
+        if !self.installed {
+            return;
+        }
+        let _ = CURRENT_POOL.try_with(|current| {
             current.borrow_mut().pop();
         });
     }
 }
 
 pin_project_lite::pin_project! {
-    /// A future that installs a metrics pool for each poll.
+    /// A future that installs a metrics pool while it is polled and while the
+    /// wrapped future is dropped.
     ///
     /// Returned by [`MetricsPool::scope`] and [`MetricsPoolHandle::scope`].
     #[must_use = "futures do nothing unless polled"]
@@ -711,6 +791,22 @@ pin_project_lite::pin_project! {
         pool: MetricsPoolHandle,
         #[pin]
         future: F,
+        // Set during `PinnedDrop` so the pool stays installed while the field
+        // drop glue drops `future`. Declared after `future` so it is dropped
+        // after it: pin-project-lite runs `PinnedDrop::drop` first, then drops
+        // fields top-to-bottom, so this guard outlives `future`'s destruction
+        // and lets the future's destructors observe the pool as current.
+        drop_scope: Option<ScopeGuard>,
+    }
+
+    impl<F> PinnedDrop for MetricsPoolScope<F> {
+        fn drop(this: Pin<&mut Self>) {
+            let this = this.project();
+            // Install the pool so a cancelled future can record into it (e.g.
+            // cancellation metrics). The guard lives in a field dropped after
+            // `future`, keeping the pool installed throughout its destruction.
+            *this.drop_scope = Some(ScopeGuard::install(this.pool.clone()));
+        }
     }
 }
 
@@ -1072,12 +1168,49 @@ impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for PooledEntryWriter<'_, W> {
     }
 }
 
-/// Capture the current metrics pool and propagate it while `future` is polled.
+pin_project_lite::pin_project! {
+    /// The future returned by [`propagate_current`].
+    ///
+    /// Either variant is constructed eagerly inside `propagate_current`, so the
+    /// captured pool's scope is already installed on the wrapped future before it
+    /// is first polled. Cancellation before the first poll therefore drops the
+    /// future with the correct metrics pool installed.
+    #[project = PropagatedFutureProj]
+    enum PropagatedFuture<F> {
+        Scoped {
+            #[pin]
+            future: MetricsPoolScope<F>,
+        },
+        Unscoped {
+            #[pin]
+            future: F,
+        },
+    }
+}
+
+impl<F: Future> Future for PropagatedFuture<F> {
+    type Output = F::Output;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match self.project() {
+            PropagatedFutureProj::Scoped { future } => future.poll(cx),
+            PropagatedFutureProj::Unscoped { future } => future.poll(cx),
+        }
+    }
+}
+
+/// Capture the current metrics pool and propagate it while `future` is polled
+/// and while it is dropped.
 ///
 /// Capture happens synchronously when this function is called, before an
 /// executor can detach the returned future. When a pool is captured, it is
-/// installed for every poll using [`MetricsPoolHandle::scope`]. If no pool is
-/// current at capture time, the input future is polled without adding a scope.
+/// installed for every poll and for the wrapped future's destruction using
+/// [`MetricsPoolHandle::scope`]. If no pool is current at capture time, the
+/// input future is polled without adding a scope.
+///
+/// The wrapped [`MetricsPoolScope`] is constructed eagerly, so even if the
+/// returned future is dropped before its first poll, the captured pool is
+/// installed while `future` is dropped.
 ///
 /// This wrapper is executor-independent, but it must be applied at a spawn site
 /// controlled by the caller; it cannot affect tasks spawned internally by a
@@ -1103,16 +1236,29 @@ impl<'a, W: EntryWriter<'a>> EntryWriter<'a> for PooledEntryWriter<'_, W> {
 /// ```
 #[must_use = "futures do nothing unless polled"]
 pub fn propagate_current<F: Future>(future: F) -> impl Future<Output = F::Output> {
-    let pool = MetricsPool::current();
-    async move {
-        match pool {
-            Some(pool) => pool.scope(future).await,
-            None => future.await,
-        }
+    match MetricsPool::current() {
+        // Constructed now, before the returned future can be spawned, so a
+        // cancellation before the first poll still drops `future` with the pool
+        // installed.
+        Some(pool) => PropagatedFuture::Scoped {
+            future: pool.scope(future),
+        },
+        None => PropagatedFuture::Unscoped { future },
     }
 }
 
-/// Run `future` with `pool` available through [`MetricsPool::current`].
+/// Run `future` with `pool` available through [`MetricsPool::current`] while it
+/// is polled and while it is dropped.
 pub fn with_metrics_pool<F>(pool: MetricsPoolHandle, future: F) -> MetricsPoolScope<F> {
     pool.scope(future)
+}
+
+/// Run `f` with `pool` available through [`MetricsPool::current`], then restore
+/// the previously current pool and return `f`'s result.
+///
+/// This is the free-function form of [`MetricsPoolHandle::scope_with`]. The
+/// scope covers only the synchronous execution of `f`; see that method for the
+/// details and caveats.
+pub fn with_metrics_pool_from_fn<R>(pool: MetricsPoolHandle, f: impl FnOnce() -> R) -> R {
+    pool.scope_with(f)
 }
