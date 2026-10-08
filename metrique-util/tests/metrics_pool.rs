@@ -1,13 +1,15 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::task::{Context, Poll, Waker};
 
 use assert2::check;
 use metrique::unit_of_work::metrics;
 use metrique::writer::core::Descriptors;
-use metrique::writer::test_util::{test_metric, to_test_entry};
+use metrique::writer::test_util::{test_entry_sink, test_metric, to_test_entry};
 use metrique::writer::{Entry, EntryWriter};
 use metrique::{CloseValue, InflectableEntry, NameStyle, PascalCase};
 use metrique_util::{MetricsPool, MetricsPoolHandle, propagate_current, with_metrics_pool};
@@ -896,6 +898,43 @@ async fn propagate_current_without_a_pool_polls_the_future_unchanged() {
     check!(value == 42);
 }
 
+// Records whether the pool was installed at the moment this future was dropped.
+struct ObserveOnDrop;
+
+impl Future for ObserveOnDrop {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+        Poll::Pending
+    }
+}
+
+impl Drop for ObserveOnDrop {
+    fn drop(&mut self) {
+        if let Some(pool) = MetricsPool::current() {
+            pool.append(ExactFields(&[("DroppedUnderPool", 1)]));
+        }
+    }
+}
+
+#[tokio::test]
+async fn propagate_current_drops_with_pool_installed_before_first_poll() {
+    let pool = MetricsPool::new();
+
+    pool.handle()
+        .scope(async {
+            // The wrapper is created under the pool, then dropped without ever
+            // being polled. Eager construction of the scope means the wrapped
+            // future's destructor still observes the pool as current.
+            let propagated = propagate_current(ObserveOnDrop);
+            drop(propagated);
+        })
+        .await;
+
+    let entry = to_test_entry(PascalEntry(pool.close()));
+    check!(entry.metrics["DroppedUnderPool"] == 1);
+}
+
 #[test]
 fn appends_after_parent_close_are_discarded() {
     let pool = MetricsPool::new();
@@ -909,4 +948,113 @@ fn appends_after_parent_close_are_discarded() {
     check!(entry.metrics["BeforeClose"] == 1);
     check!(!entry.metrics.contains_key("AfterClose"));
     check!(handle.overflow_count() == 0);
+}
+
+#[metrics]
+struct CancellationMetrics {
+    cancelled: u64,
+}
+
+#[metrics(rename_all = "snake_case")]
+struct CancellationRequestMetrics {
+    request_id: &'static str,
+    #[metrics(flatten)]
+    pool: MetricsPool,
+}
+
+struct RequestFuture {
+    completed: bool,
+}
+
+impl Future for RequestFuture {
+    type Output = ();
+
+    fn poll(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<()> {
+        assert!(
+            MetricsPool::current().is_some(),
+            "a pool should be installed during polling"
+        );
+
+        Poll::Pending
+    }
+}
+
+impl Drop for RequestFuture {
+    fn drop(&mut self) {
+        if !self.completed {
+            if let Some(pool) = MetricsPool::current() {
+                pool.append(CancellationMetrics { cancelled: 1 });
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn cancellation_is_recorded_in_the_request_pool() {
+    let sink = test_entry_sink();
+
+    let outer = CancellationRequestMetrics {
+        request_id: "outer",
+        pool: MetricsPool::new(),
+    }
+    .append_on_drop(sink.sink.clone());
+
+    let outer_handle = outer.pool.handle();
+
+    with_metrics_pool(outer_handle, async {
+        let inner = CancellationRequestMetrics {
+            request_id: "inner",
+            pool: MetricsPool::new(),
+        }
+        .append_on_drop(sink.sink.clone());
+
+        let inner_handle = inner.pool.handle();
+
+        let mut future = Box::pin(with_metrics_pool(
+            inner_handle,
+            RequestFuture { completed: false },
+        ));
+
+        let waker = Waker::noop();
+        let mut cx = Context::from_waker(waker);
+
+        // Installs the inner pool for this poll, then restores
+        // the enclosing pool when the poll returns Pending.
+        assert!(future.as_mut().poll(&mut cx).is_pending());
+
+        // Simulate cancellation after poll has returned.
+        // The inner metrics entry is still open.
+        drop(future);
+
+        // Close and emit the inner entry.
+        drop(inner);
+    })
+    .await;
+
+    // Close and emit the enclosing entry.
+    drop(outer);
+
+    let entries = sink.inspector.entries();
+    assert_eq!(entries.len(), 2);
+
+    let inner_entry = entries
+        .iter()
+        .find(|entry| entry.values["request_id"] == "inner")
+        .expect("inner request entry should exist");
+
+    let outer_entry = entries
+        .iter()
+        .find(|entry| entry.values["request_id"] == "outer")
+        .expect("outer request entry should exist");
+
+    assert!(
+        inner_entry.metrics.contains_key("cancelled"),
+        "cancellation should be recorded in the inner request's pool",
+    );
+    assert_eq!(inner_entry.metrics["cancelled"], 1);
+
+    assert!(
+        !outer_entry.metrics.contains_key("cancelled"),
+        "cancellation must not be attributed to the enclosing pool",
+    );
 }
