@@ -6,7 +6,9 @@ use std::{any::Any, borrow::Cow, time::SystemTime};
 use smallvec::SmallVec;
 
 use crate::{
-    Descriptors, Entry, EntryWriter, Observation, Unit, ValidationError, Value, ValueWriter,
+    Descriptors, Entry, EntryWriter, ObjectValue, Observation, Unit, ValidationError, Value,
+    ValueWriter,
+    descriptor::FieldShape,
     value::{MetricFlags, VALUES_INLINE_CAPACITY},
 };
 
@@ -73,6 +75,10 @@ trait DynValue {
     fn write(&self, writer: &mut dyn DynValueWriter);
 }
 
+trait DynObjectValue {
+    fn write_object<'a>(&'a self, writer: &mut dyn DynEntryWriter<'a>);
+}
+
 trait DynValueWriter {
     fn string(&mut self, value: &str);
 
@@ -90,7 +96,20 @@ trait DynValueWriter {
     /// text. Each element is re-wrapped as a [`DynValue`], so it keeps its
     /// [`string()`](DynValueWriter::string)/[`metric()`](DynValueWriter::metric) identity and
     /// formats with native array support (e.g. EMF) emit the correct element type.
-    fn values_dyn(&mut self, values: &mut dyn Iterator<Item = &dyn DynValue>);
+    ///
+    /// `elem_shape` carries the element's [`Value::SHAPE`], which the dyn boundary otherwise
+    /// erases, so `write_values_as_string` can still decide whether to bracket the array (needed
+    /// for object elements).
+    fn values_dyn(
+        &mut self,
+        values: &mut dyn Iterator<Item = &dyn DynValue>,
+        elem_shape: FieldShape<'static>,
+    );
+
+    /// Forward a single nested object across the dyn boundary, preserving its native
+    /// [`object()`](ValueWriter::object) identity so a format with native object support emits a
+    /// real nested object rather than the JSON-string fallback.
+    fn object(&mut self, object: &dyn DynObjectValue);
 }
 
 impl<E: Entry + Send + 'static> DynEntry for E {
@@ -139,7 +158,12 @@ impl<'a> EntryWriter<'a> for EntryWriterFromDyn<'a, '_> {
 }
 
 struct ValueToDyn<'a, V: ?Sized>(&'a V);
+
+// Re-wraps a `&dyn DynValue` element back into a `Value` for the receiving writer, restoring the
+// `SHAPE` the dyn boundary erased so `write_values_as_string` still brackets object arrays. The
+// two carriers differ only in `SHAPE`: `Opaque` vs `Object`.
 struct ValueFromDyn<'a>(&'a dyn DynValue);
+struct ObjectRefFromDyn<'a>(&'a dyn DynValue);
 
 // Blanket bridge: every `Value` is usable as an object-safe `DynValue`. This lets
 // `ValueWriterFromDyn::values` coerce `&V` straight to `&dyn DynValue` with no intermediate
@@ -168,6 +192,33 @@ impl Value for ValueFromDyn<'_> {
 
     fn write(&self, writer: impl ValueWriter) {
         DynValue::write(self.0, &mut ValueWriterToDyn(Some(writer)));
+    }
+}
+
+impl Value for ObjectRefFromDyn<'_> {
+    const SHAPE: crate::descriptor::FieldShape<'static> = crate::descriptor::FieldShape::Object;
+    const UNIT: crate::Unit = crate::Unit::None;
+
+    fn write(&self, writer: impl ValueWriter) {
+        DynValue::write(self.0, &mut ValueWriterToDyn(Some(writer)));
+    }
+}
+
+// The bridge impls go on the adapters, not on `O`: a blanket `impl<O: ObjectValue> DynObjectValue
+// for O` would make the `&ObjectValueToDyn(obj)` coercion below fail (the blanket's `Self` would
+// be the adapter, which is not itself `ObjectValue`).
+struct ObjectValueToDyn<'o, O: ?Sized>(&'o O);
+struct ObjectValueFromDyn<'o>(&'o dyn DynObjectValue);
+
+impl<O: ObjectValue + ?Sized> DynObjectValue for ObjectValueToDyn<'_, O> {
+    fn write_object<'a>(&'a self, writer: &mut dyn DynEntryWriter<'a>) {
+        self.0.write_object(&mut EntryWriterFromDyn(writer));
+    }
+}
+
+impl ObjectValue for ObjectValueFromDyn<'_> {
+    fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+        self.0.write_object(&mut EntryWriterToDyn(writer));
     }
 }
 
@@ -202,13 +253,36 @@ impl<W: ValueWriter> DynValueWriter for ValueWriterToDyn<W> {
         self.0.take().unwrap().error(error)
     }
 
-    fn values_dyn(&mut self, values: &mut dyn Iterator<Item = &dyn DynValue>) {
-        // Re-wrap each `&dyn DynValue` as a `Value` so the inner writer sees the elements
-        // intact. `ValueWriter::values` takes references, so the wrappers must be materialized
-        // here (one buffer, inline up to VALUES_INLINE_CAPACITY, heap only on spill).
-        let wrapped: SmallVec<[ValueFromDyn<'_>; VALUES_INLINE_CAPACITY]> =
-            values.map(ValueFromDyn).collect();
-        self.0.take().unwrap().values(wrapped.iter())
+    fn values_dyn(
+        &mut self,
+        values: &mut dyn Iterator<Item = &dyn DynValue>,
+        elem_shape: FieldShape<'static>,
+    ) {
+        // Wrap each element back into a `Value` whose `SHAPE` is the one `elem_shape` restores, so
+        // the receiving writer's `write_values_as_string` brackets object arrays. The match is
+        // deliberately exhaustive: a newly added shape must be handled here rather than silently
+        // taking the opaque path.
+        let writer = self.0.take().unwrap();
+        match elem_shape {
+            FieldShape::Object => {
+                let wrapped: SmallVec<[ObjectRefFromDyn; VALUES_INLINE_CAPACITY]> =
+                    values.map(ObjectRefFromDyn).collect();
+                writer.values(wrapped.iter())
+            }
+            FieldShape::Known(_)
+            | FieldShape::Optional(_)
+            | FieldShape::Flex { .. }
+            | FieldShape::List(_)
+            | FieldShape::Opaque => {
+                let wrapped: SmallVec<[ValueFromDyn; VALUES_INLINE_CAPACITY]> =
+                    values.map(ValueFromDyn).collect();
+                writer.values(wrapped.iter())
+            }
+        }
+    }
+
+    fn object(&mut self, object: &dyn DynObjectValue) {
+        self.0.take().unwrap().object(&ObjectValueFromDyn(object))
     }
 }
 
@@ -245,9 +319,13 @@ impl ValueWriter for ValueWriterFromDyn<'_> {
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
         // Every `Value` is a `DynValue` (blanket impl), so each element coerces straight to
         // `&dyn DynValue` and is forwarded across the boundary intact — no buffer, no
-        // stringification. The receiver materializes the elements it needs.
+        // stringification.
         let mut iter = values.into_iter().map(|v| v as &dyn DynValue);
-        self.0.values_dyn(&mut iter)
+        self.0.values_dyn(&mut iter, V::SHAPE)
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+        self.0.object(&ObjectValueToDyn(object))
     }
 }
 
@@ -405,6 +483,110 @@ mod tests {
             (
                 "Dimmed".to_string(),
                 vec!["metric:[Unsigned(7)] unit=None dims=[(\"Region\", \"us\")]".to_string()],
+            ),
+        ];
+        assert_eq!(unboxed.0, expected);
+        assert_eq!(boxed.0, expected);
+    }
+
+    struct TestEndpoint {
+        host: &'static str,
+        port: u64,
+    }
+
+    impl ObjectValue for TestEndpoint {
+        fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.value("Host", &self.host);
+            writer.value("Port", &self.port);
+        }
+    }
+
+    /// A `Value` that renders as a nested object, mirroring the internal `ObjectRef`. Reports
+    /// `SHAPE = Object` so an array of these brackets in the string fallback.
+    struct ObjField<O>(O);
+
+    impl<O: ObjectValue> Value for ObjField<O> {
+        const SHAPE: FieldShape<'static> = FieldShape::Object;
+        const UNIT: Unit = Unit::None;
+
+        fn write(&self, writer: impl ValueWriter) {
+            writer.object(&self.0)
+        }
+    }
+
+    /// Records each field's fallback string (default `object`/`values`), so a test can compare
+    /// the boxed and unboxed paths byte-for-byte.
+    #[derive(Default)]
+    struct FieldStringRecorder(Vec<(String, String)>);
+
+    impl<'a> EntryWriter<'a> for FieldStringRecorder {
+        fn timestamp(&mut self, _timestamp: SystemTime) {}
+
+        fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
+            let mut captured = None;
+            value.write(FieldCapture(&mut captured));
+            self.0
+                .push((name.into().into_owned(), captured.unwrap_or_default()));
+        }
+
+        fn config(&mut self, _config: &'a dyn EntryConfig) {}
+    }
+
+    struct FieldCapture<'a>(&'a mut Option<String>);
+
+    impl ValueWriter for FieldCapture<'_> {
+        fn string(self, value: &str) {
+            *self.0 = Some(value.to_owned());
+        }
+
+        fn metric<'a>(
+            self,
+            _distribution: impl IntoIterator<Item = Observation>,
+            _unit: Unit,
+            _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+            _flags: MetricFlags<'_>,
+        ) {
+            unreachable!("objects never reach metric()")
+        }
+
+        fn error(self, error: ValidationError) {
+            panic!("{error}");
+        }
+        // `object` and `values` use the defaults: the JSON-string fallback and the shape-aware
+        // bracketing in `write_values_as_string`.
+    }
+
+    // A single object and an array of objects must cross the dyn (boxing) bridge and produce
+    // identical bytes to the unboxed path. The array case guards the element-shape threading:
+    // if `Value::SHAPE` were lost across the boundary, the boxed array would render unbracketed
+    // (`{..},{..}`) and this test would fail.
+    #[test]
+    fn boxed_objects_round_trip_identically() {
+        struct ObjEntry;
+        impl Entry for ObjEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("Inner", &ObjField(TestEndpoint { host: "h", port: 1 }));
+                writer.value(
+                    "List",
+                    &vec![
+                        ObjField(TestEndpoint { host: "a", port: 1 }),
+                        ObjField(TestEndpoint { host: "b", port: 2 }),
+                    ],
+                );
+            }
+        }
+
+        let mut unboxed = FieldStringRecorder::default();
+        Entry::write(&ObjEntry, &mut unboxed);
+
+        let mut boxed = FieldStringRecorder::default();
+        <BoxEntry as Entry>::write(&ObjEntry.boxed(), &mut boxed);
+
+        let expected = vec![
+            ("Inner".to_string(), r#"{"Host":"h","Port":1}"#.to_string()),
+            (
+                "List".to_string(),
+                r#"[{"Host":"a","Port":1},{"Host":"b","Port":2}]"#.to_string(),
             ),
         ];
         assert_eq!(unboxed.0, expected);

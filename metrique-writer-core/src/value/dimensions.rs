@@ -350,6 +350,10 @@ impl<W: ValueWriter> ValueWriter for Wrapper<'_, W> {
             .collect();
         self.value.values(wrapped.iter())
     }
+
+    fn object<O: crate::ObjectValue + ?Sized>(self, object: &O) {
+        self.value.object(object)
+    }
 }
 
 impl<V: Value, const N: usize> Value for WithDimensions<V, N> {
