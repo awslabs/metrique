@@ -539,6 +539,10 @@ where
                 self.invalid("can't apply a unit to a string value");
             }
 
+            fn object<O: crate::ObjectValue + ?Sized>(self, _object: &O) {
+                self.invalid("can't apply a unit to an object value");
+            }
+
             fn metric<'a>(
                 self,
                 distribution: impl IntoIterator<Item = Observation>,

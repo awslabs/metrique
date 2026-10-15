@@ -158,6 +158,10 @@ impl<W: ValueWriter> ValueWriter for QuantizingValueWriter<W> {
             .collect();
         self.inner.values(wrapped.iter())
     }
+
+    fn object<O: crate::ObjectValue + ?Sized>(self, object: &O) {
+        self.inner.object(object)
+    }
 }
 
 /// Pairs a value with a quantizer so that lists can be forwarded element by element.

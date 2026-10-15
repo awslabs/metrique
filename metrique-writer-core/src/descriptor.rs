@@ -444,8 +444,33 @@ pub enum FieldShape<'a> {
     },
     /// A list/sequence.
     List(ShapeRef<'a>),
+    /// A nested object with statically-named members, written via
+    /// [`ValueWriter::object`](crate::value::ValueWriter::object).
+    ///
+    /// A leaf shape: a recursive object type (e.g. one holding a `Vec` of itself) has no
+    /// finite structural descriptor, so its members are not described here. An array of
+    /// objects is reported as `List(Object)` and an optional object as `Optional(Object)`.
+    Object,
     /// Shape not statically known.
     Opaque,
+}
+
+impl FieldShape<'_> {
+    /// `true` if, after peeling `Optional` and `List` wrappers, the leaf is
+    /// [`Object`](FieldShape::Object). The string fallback uses this to decide whether an array of
+    /// this element shape renders as a bracketed JSON array.
+    pub(crate) fn peels_to_object(&self) -> bool {
+        let mut shape = self;
+        loop {
+            match shape {
+                FieldShape::Object => return true,
+                FieldShape::Optional(inner) | FieldShape::List(inner) => shape = inner.get(),
+                FieldShape::Known(_) | FieldShape::Flex { .. } | FieldShape::Opaque => {
+                    return false;
+                }
+            }
+        }
+    }
 }
 
 /// Known scalar shapes.

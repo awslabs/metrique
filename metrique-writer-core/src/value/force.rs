@@ -150,6 +150,10 @@ impl<T: Value, FLAGS: FlagConstructor> Value for ForceFlag<T, FLAGS> {
                 self.0.error(error)
             }
 
+            fn object<O: crate::ObjectValue + ?Sized>(self, object: &O) {
+                self.0.object(object)
+            }
+
             fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
                 // Wrap each element so `metric()` calls still merge the flag.
                 let wrapped: SmallVec<[ForceFlag<&'a V, FLAGS>; VALUES_INLINE_CAPACITY]> =
