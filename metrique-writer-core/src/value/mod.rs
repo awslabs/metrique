@@ -152,7 +152,8 @@ pub const VALUES_INLINE_CAPACITY: usize = 8;
 /// The fallback [`ValueWriter::values`] behaviour: comma-join each element's string representation
 /// into a single [`ValueWriter::string`] call, skipping elements that write nothing (e.g. `None`).
 ///
-/// The result is bracketed into a JSON array (`[..]`, or `[]` when empty) when the element shape is
+/// The result is bracketed into a JSON array (`[..]`, or `[]` when empty) when the element shape
+/// peels (through any `Optional`/`List` wrappers) to
 /// [`FieldShape::Object`](crate::descriptor::FieldShape::Object), since each object element is
 /// itself a JSON document and the bare comma-joined form would not be a JSON value. For every
 /// other element shape the output is the bare comma-joined string, and an empty list calls
@@ -177,9 +178,9 @@ pub fn write_values_as_string<'a, V: Value + 'a>(
             buf.truncate(before);
         }
     }
-    // Bracket object arrays so the joined `{..},{..}` becomes a valid JSON array. Only `ObjectRef`
-    // reports `Object`, so scalar lists keep their bare form.
-    if V::SHAPE == crate::descriptor::FieldShape::Object {
+    // Bracket object arrays so the joined `{..},{..}` becomes a valid JSON array. Scalar lists
+    // (no `Object` under their `Optional`/`List` wrappers) keep their bare form.
+    if V::SHAPE.peels_to_object() {
         let mut bracketed = String::with_capacity(buf.len() + 2);
         bracketed.push('[');
         bracketed.push_str(&buf);

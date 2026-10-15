@@ -259,25 +259,18 @@ impl<W: ValueWriter> DynValueWriter for ValueWriterToDyn<W> {
         elem_shape: FieldShape<'static>,
     ) {
         // Wrap each element back into a `Value` whose `SHAPE` is the one `elem_shape` restores, so
-        // the receiving writer's `write_values_as_string` brackets object arrays. The match is
-        // deliberately exhaustive: a newly added shape must be handled here rather than silently
-        // taking the opaque path.
+        // the receiving writer's `write_values_as_string` brackets object arrays. `ObjectRefFromDyn`
+        // reports `Object`; the bracket decision only needs object-or-not, so any shape peeling to
+        // an object leaf takes it.
         let writer = self.0.take().unwrap();
-        match elem_shape {
-            FieldShape::Object => {
-                let wrapped: SmallVec<[ObjectRefFromDyn; VALUES_INLINE_CAPACITY]> =
-                    values.map(ObjectRefFromDyn).collect();
-                writer.values(wrapped.iter())
-            }
-            FieldShape::Known(_)
-            | FieldShape::Optional(_)
-            | FieldShape::Flex { .. }
-            | FieldShape::List(_)
-            | FieldShape::Opaque => {
-                let wrapped: SmallVec<[ValueFromDyn; VALUES_INLINE_CAPACITY]> =
-                    values.map(ValueFromDyn).collect();
-                writer.values(wrapped.iter())
-            }
+        if elem_shape.peels_to_object() {
+            let wrapped: SmallVec<[ObjectRefFromDyn; VALUES_INLINE_CAPACITY]> =
+                values.map(ObjectRefFromDyn).collect();
+            writer.values(wrapped.iter())
+        } else {
+            let wrapped: SmallVec<[ValueFromDyn; VALUES_INLINE_CAPACITY]> =
+                values.map(ValueFromDyn).collect();
+            writer.values(wrapped.iter())
         }
     }
 
@@ -589,6 +582,35 @@ mod tests {
                 r#"[{"Host":"a","Port":1},{"Host":"b","Port":2}]"#.to_string(),
             ),
         ];
+        assert_eq!(unboxed.0, expected);
+        assert_eq!(boxed.0, expected);
+    }
+
+    // A `Vec<Option<_>>` object array (element shape `Optional(Object)`) must still bracket after
+    // crossing the boxed boundary, which erases the element shape. Guards the `peels_to_object`
+    // routing in `values_dyn`: without it the boxed array would render as a bare object.
+    #[test]
+    fn boxed_optional_object_array_brackets() {
+        struct OptEntry;
+        impl Entry for OptEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value(
+                    "OptList",
+                    &vec![Some(ObjField(TestEndpoint { host: "h", port: 1 })), None],
+                );
+            }
+        }
+
+        let mut unboxed = FieldStringRecorder::default();
+        Entry::write(&OptEntry, &mut unboxed);
+
+        let mut boxed = FieldStringRecorder::default();
+        <BoxEntry as Entry>::write(&OptEntry.boxed(), &mut boxed);
+
+        let expected = vec![(
+            "OptList".to_string(),
+            r#"[{"Host":"h","Port":1}]"#.to_string(),
+        )];
         assert_eq!(unboxed.0, expected);
         assert_eq!(boxed.0, expected);
     }

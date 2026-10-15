@@ -31,6 +31,9 @@ use super::{NotLifted, Observation, Value, ValueFormatter, ValueWriter};
 /// stays a compile error unless it opts into object rendering. Carries no `Vec`/`Option` impls
 /// (those are [`AsObject`] formatter impls) and forwards only through `&O`/`Box<O>`/`Arc<O>` — see
 /// the module docs for why.
+///
+/// The `#[metrics]` derive generates this impl. Implement it by hand only for a type you do not
+/// own that neither derives it nor can be wrapped in a newtype.
 pub trait ObjectValue {
     /// Emit this object's members into the given writer.
     fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>);
@@ -486,6 +489,39 @@ mod tests {
     #[test]
     fn object_ref_reports_object_shape() {
         assert_eq!(<ObjectRef<Endpoint> as Value>::SHAPE, FieldShape::Object);
+    }
+
+    // An array whose element shape peels through `Optional`/`List` to an object leaf still
+    // brackets, so the output is a single JSON value.
+    #[test]
+    fn optional_object_array_fallback_is_bracketed() {
+        let values = [Some(ObjectRef(Endpoint { host: "h", port: 1 })), None];
+        assert_eq!(
+            fallback_values_string(&values),
+            r#"[{"Host":"h","Port":1}]"#
+        );
+    }
+
+    #[test]
+    fn all_none_optional_object_array_renders_empty_array() {
+        let values: [Option<ObjectRef<Endpoint>>; 2] = [None, None];
+        assert_eq!(fallback_values_string(&values), "[]");
+        assert_eq!(
+            fallback_values_string(&[] as &[Option<ObjectRef<Endpoint>>]),
+            "[]"
+        );
+    }
+
+    #[test]
+    fn nested_object_list_fallback_is_bracketed() {
+        // Element shape `List(Object)` peels to an object leaf: an array of object arrays.
+        let inner_a = [ObjectRef(Endpoint { host: "a", port: 1 })];
+        let empty: [ObjectRef<Endpoint>; 0] = [];
+        let values = [&inner_a[..], &empty[..]];
+        assert_eq!(
+            fallback_values_string(&values),
+            r#"[[{"Host":"a","Port":1}],[]]"#
+        );
     }
 
     // A `Phase { children: Vec<Phase> }` tree exercises the `values()` → `object()` recursion
