@@ -52,6 +52,9 @@ impl EntryIoStream for Arc<Mutex<TestStream>> {
     fn next(&mut self, entry: &impl Entry) -> Result<(), IoStreamError> {
         let fuel = self.lock().unwrap().fuel.clone();
         if let Some(fuel) = fuel {
+            // `fetch_update` is deprecated in favor of `try_update` (Rust 1.99), which isn't
+            // stable at our MSRV. Switch once the MSRV allows it.
+            #[allow(deprecated)]
             while let Ok(0) = fuel.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |x| {
                 Some(x.saturating_sub(1))
             }) {}

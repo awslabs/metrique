@@ -1,6 +1,6 @@
 [package]
 name = "metrique-macro"
-version = "0.1.22"
+version = "0.1.24"
 edition = "2024"
 rust-version = "1.91" # See .github/workflows/ci.yml
 license = "Apache-2.0"
@@ -21,8 +21,8 @@ metrique-core = { workspace = true }
 [dev-dependencies]
 insta = { workspace = true }
 prettyplease = { workspace = true }
-metrique = { workspace = true, features = ["test-util"] }
-metrique-aggregation = { workspace = true }
+metrique = { path = "../metrique", default-features = false, features = ["test-util"] }
+metrique-aggregation = { path = "../metrique-aggregation" }
 assert2 = { workspace = true }
 
 [package.metadata.docs.rs]

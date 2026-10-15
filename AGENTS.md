@@ -53,6 +53,11 @@ deterministic concurrency tests behind an optional `_shuttle` feature and
 - If you touch any of the five files above, run `./scripts/test-shuttle.sh`
   in addition to the normal test suite.
 
+## Internal Dependencies
+- Normal and build dependencies on workspace crates must use the full current version (`"0.1.24"`, not `"0.1"`) so downstream lockfiles can't pair a crate with an older sibling.
+- Dev-dependencies on workspace crates must be path-only, e.g. `metrique = { path = "../metrique", default-features = false }`, unless the crate already depends on that sibling as a normal dependency (directly or transitively). Otherwise `cargo publish` fails resolving a version that isn't published yet.
+- Path-only entries don't inherit from `[workspace.dependencies]`; carry over any `default-features` or `features` the workspace entry sets.
+
 ## Finishing Up
 When instructed to "finish up", follow this process:
 1. Run `cargo +nightly fmt --all` to format all code

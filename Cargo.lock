@@ -997,7 +997,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1741,7 +1741,7 @@ dependencies = [
 
 [[package]]
 name = "metrique"
-version = "0.1.31"
+version = "0.1.33"
 dependencies = [
  "anyhow",
  "assert2",
@@ -1776,7 +1776,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-aggregation"
-version = "0.1.17"
+version = "0.1.19"
 dependencies = [
  "aggregate-dep",
  "assert2",
@@ -1807,7 +1807,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-core"
-version = "0.1.22"
+version = "0.1.24"
 dependencies = [
  "itertools",
  "metrique",
@@ -1817,7 +1817,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-macro"
-version = "0.1.22"
+version = "0.1.24"
 dependencies = [
  "assert2",
  "darling",
@@ -1833,7 +1833,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-metricsrs"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "derive-where",
  "futures",
@@ -1857,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-otel"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "divan",
  "metrique",
@@ -1877,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-service-metrics"
-version = "0.1.23"
+version = "0.1.24"
 dependencies = [
  "metrique",
  "metrique-writer",
@@ -1895,16 +1895,23 @@ dependencies = [
 
 [[package]]
 name = "metrique-util"
-version = "0.1.7"
+version = "0.1.9"
 dependencies = [
  "arc-swap",
  "assert2",
+ "aws-sdk-cloudwatchlogs",
+ "aws-smithy-http-client",
+ "aws-smithy-runtime-api",
+ "aws-smithy-types",
  "crossbeam-queue",
+ "divan",
+ "http 1.5.0",
  "metrique",
  "metrique-core",
  "metrique-util",
  "metrique-writer",
  "metrique-writer-core",
+ "pin-project-lite",
  "rstest",
  "shuttle",
  "sysinfo",
@@ -1916,7 +1923,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer"
-version = "0.1.27"
+version = "0.1.29"
 dependencies = [
  "ahash",
  "assert-json-diff",
@@ -1950,7 +1957,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-cloudwatch"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "aws-sdk-cloudwatchlogs",
  "aws-smithy-http-client",
@@ -1969,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-core"
-version = "0.1.21"
+version = "0.1.22"
 dependencies = [
  "assert-json-diff",
  "derive-where",
@@ -1993,7 +2000,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-emf"
-version = "0.1.24"
+version = "0.1.26"
 dependencies = [
  "assert-json-diff",
  "assert_approx_eq",
@@ -2019,7 +2026,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-format-json"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "dtoa",
  "itoa",
@@ -2032,7 +2039,7 @@ dependencies = [
 
 [[package]]
 name = "metrique-writer-macro"
-version = "0.1.10"
+version = "0.1.12"
 dependencies = [
  "darling",
  "insta",
@@ -2790,7 +2797,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2915,7 +2922,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b55fb86dfd3a2f5f76ea78310a88f96c4ea21a3031f8d212443d56123fd0521"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3236,7 +3243,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3889,7 +3896,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -66,6 +66,9 @@ pub struct CounterGuard<'a>(&'a AtomicU64);
 
 impl Drop for CounterGuard<'_> {
     fn drop(&mut self) {
+        // `fetch_update` is deprecated in favor of `try_update` (Rust 1.99), which isn't
+        // stable at our MSRV. Switch once the MSRV allows it.
+        #[allow(deprecated)]
         self.0
             .fetch_update(
                 std::sync::atomic::Ordering::Relaxed,
@@ -107,6 +110,9 @@ pub struct OwnedCounterGuard {
 
 impl Drop for OwnedCounterGuard {
     fn drop(&mut self) {
+        // `fetch_update` is deprecated in favor of `try_update` (Rust 1.99), which isn't
+        // stable at our MSRV. Switch once the MSRV allows it.
+        #[allow(deprecated)]
         self.counter
             .0
             .fetch_update(
