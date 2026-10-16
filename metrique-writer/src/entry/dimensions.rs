@@ -4,7 +4,7 @@
 use crate::CowStr;
 use metrique_writer_core::{
     Entry, EntryConfig, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
-    ValueWriter, value::VALUES_INLINE_CAPACITY,
+    ValueWriter, value::ObjectValue, value::VALUES_INLINE_CAPACITY,
 };
 use smallvec::SmallVec;
 use std::{
@@ -230,6 +230,13 @@ impl<V: Value> Value for ValueWrapper<'_, V> {
                     .collect();
                 self.writer.values(wrapped.iter())
             }
+
+            fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+                // Objects are not metrics, so global dimensions do not apply inside them. Forward
+                // straight through so the inner writer's native object rendering is preserved
+                // instead of falling back to a JSON string.
+                self.writer.object(object)
+            }
         }
 
         self.value.write(ValueWriterWrapper {
@@ -248,7 +255,7 @@ mod test {
 
     use metrique_writer_core::{
         Entry, EntryConfig, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
-        ValueWriter,
+        ValueWriter, descriptor::FieldShape, value::ObjectValue,
     };
     use smallvec::SmallVec;
     use std::{borrow::Cow, time::SystemTime};
@@ -309,6 +316,7 @@ mod test {
     enum Event {
         String(String),
         ValuesStart,
+        Object,
         Metric {
             value: u64,
             dimensions: Vec<(String, String)>,
@@ -360,6 +368,12 @@ mod test {
                 value.write(Recorder(self.0));
             }
         }
+
+        // Distinguishes a forwarded `object()` call from the default `write_object_as_string`
+        // fallback (which would arrive as `Event::String`).
+        fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+            self.0.push(Event::Object);
+        }
     }
 
     struct RecordingEntryWriter(Vec<Event>);
@@ -400,6 +414,43 @@ mod test {
                 },
             ],
         );
+    }
+
+    #[test]
+    fn forwards_object_with_global_dimensions_natively() {
+        // An object field forwarded through the global-dimensions wrapper must reach the inner
+        // writer via `object()`, not degrade to `string()` through the default fallback. Objects
+        // are not metrics, so no global dimensions are applied inside.
+        struct Obj;
+        impl ObjectValue for Obj {
+            fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("K", &1u64);
+            }
+        }
+        struct ObjValue;
+        impl Value for ObjValue {
+            const SHAPE: FieldShape<'static> = FieldShape::Object;
+            const UNIT: Unit = Unit::None;
+
+            fn write(&self, writer: impl ValueWriter) {
+                writer.object(&Obj);
+            }
+        }
+        struct ObjEntry;
+        impl Entry for ObjEntry {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("obj", &ObjValue);
+            }
+        }
+
+        let mut global_dimensions: SmallVec<[(CowStr, CowStr); 1]> = SmallVec::new();
+        global_dimensions.push(("az".into(), "us-east-1a".into()));
+        let entry = WithGlobalDimensions::new(ObjEntry, global_dimensions, HashSet::new());
+
+        let mut writer = RecordingEntryWriter(Vec::new());
+        entry.write(&mut writer);
+
+        assert_eq!(writer.0, [Event::Object]);
     }
 
     #[test]

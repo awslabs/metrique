@@ -10,7 +10,9 @@ use metrique_writer_core::entry::EntryConfig;
 use metrique_writer_core::format::Format;
 use metrique_writer_core::sample::SampledFormat;
 use metrique_writer_core::stream::IoStreamError;
-use metrique_writer_core::value::{MetricFlags, Observation, Value, ValueWriter};
+use metrique_writer_core::value::{
+    MetricFlags, ObjectValue, Observation, Value, ValueWriter, write_json_object,
+};
 use metrique_writer_core::{Entry, EntryWriter, Unit, ValidationError, ValidationErrorBuilder};
 use rand::rngs::ThreadRng;
 use rand::{Rng, RngCore};
@@ -43,6 +45,16 @@ const MAX_BUF_RETAIN: usize = 1024 * 1024;
 /// Single observations are emitted as `"value": X`, multiple observations as
 /// `"values": [...]`. Repeated observations (e.g. from histogram buckets) are
 /// emitted as `{"total": f64, "count": u64}`.
+///
+/// ## Object-valued fields
+///
+/// A field that opts into object rendering (`#[metrics(format = AsObject)]`) is emitted in
+/// `properties` as a native nested JSON object, and a list of such objects as a native JSON array
+/// — not as a JSON-encoded string. Objects are not metrics: per-member units, dimensions, and
+/// flags are ignored, and a member's observation count is not scaled by the sampling multiplicity
+/// (unlike a top-level metric). A member whose value writes nothing (e.g. a `None` or an empty
+/// distribution) is omitted rather than emitted as `null`. Consumers that assume `properties`
+/// values are always strings should account for object and array values.
 ///
 /// ```
 /// use metrique_writer_format_json::Json;
@@ -258,6 +270,14 @@ impl ValueWriter for JsonArrayElementWriter<'_> {
         // Arrays don't nest here: a list inside an element becomes one joined element.
         metrique_writer_core::value::write_values_as_string(self, values)
     }
+
+    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+        // An object inside an array renders as a raw `{...}` element. Its own members — including
+        // nested objects and object arrays — recurse natively through core's encoder. (A bare
+        // array nested directly as an array element, not inside an object, still joins via
+        // `values()` above; `AsObject` cannot produce that `Vec<Vec<_>>` shape.)
+        write_json_object(self.0, object);
+    }
 }
 
 impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
@@ -336,6 +356,15 @@ impl<'b, 'c> ValueWriter for JsonValueWriter<'b, 'c> {
 
     fn error(self, error: ValidationError) {
         self.error.extend_mut(error.for_field(self.name));
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+        // Objects are not metrics: render into the properties section as a raw nested object.
+        let buf = self.properties_buf;
+        buf.push(',');
+        push_json_string(buf, self.name);
+        buf.push(':');
+        write_json_object(buf, object);
     }
 }
 
@@ -986,5 +1015,329 @@ mod tests {
             json["properties"]["Data"],
             serde_json::json!([[1, 2, 3], [4, 5]])
         );
+    }
+
+    mod objects {
+        use super::*;
+        use metrique_writer_core::BoxEntry;
+        use metrique_writer_core::descriptor::{FieldShape, KnownShape};
+        use rstest::rstest;
+
+        /// A `Value` that renders a single `ObjectValue` through `object()`. It calls the native
+        /// path directly rather than going through the `AsObject` formatter; `AsObject`'s own
+        /// `O`/`Vec`/`Option`/`Option<Vec>` dispatch is format-agnostic and covered by core's
+        /// `as_object_render_matrix`. Here we exercise how the JSON format *renders* an object and
+        /// an object array, with hand-written fixtures (no derive needed).
+        struct DirectObject<O>(O);
+
+        impl<O: ObjectValue> Value for DirectObject<O> {
+            const SHAPE: FieldShape<'static> = FieldShape::Object;
+            const UNIT: Unit = Unit::None;
+
+            fn write(&self, writer: impl ValueWriter) {
+                writer.object(&self.0);
+            }
+        }
+
+        /// An entry with a fixed timestamp and a single field, so output is deterministic.
+        struct Field<V>(&'static str, V);
+
+        impl<V: Value + Send + 'static> Entry for Field<V> {
+            fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.timestamp(SystemTime::UNIX_EPOCH);
+                writer.value(self.0, &self.1);
+            }
+        }
+
+        fn render_bytes(entry: &impl Entry) -> String {
+            let mut output = Vec::new();
+            Json::new().format(entry, &mut output).unwrap();
+            String::from_utf8(output).unwrap()
+        }
+
+        /// Format the entry via both the unboxed and the boxed (dyn) path, assert the two are
+        /// byte-identical, and return the parsed JSON. The boxed path exercises the
+        /// `DynValueWriter::object` / `values_dyn` element-shape bridge, which is the part most
+        /// likely to diverge from the direct path, so every object test gets parity for free.
+        fn render_checked<E: Entry + Send + 'static>(make: impl Fn() -> E) -> serde_json::Value {
+            let unboxed = render_bytes(&make());
+            let boxed = render_bytes(&BoxEntry::new(make()));
+            assert_eq!(
+                unboxed, boxed,
+                "boxed and unboxed output differ:\n  unboxed: {unboxed}\n  boxed:   {boxed}"
+            );
+            serde_json::from_str(&unboxed)
+                .unwrap_or_else(|e| panic!("output was not valid JSON: {e}\noutput: {unboxed}"))
+        }
+
+        #[derive(Clone, Copy)]
+        struct Endpoint {
+            host: &'static str,
+            port: u64,
+        }
+
+        impl ObjectValue for Endpoint {
+            fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("Host", &self.host);
+                writer.value("Port", &self.port);
+            }
+        }
+
+        fn ep() -> Endpoint {
+            Endpoint {
+                host: "example.com",
+                port: 443,
+            }
+        }
+
+        /// An object field lands natively in `properties` (not as an escaped JSON string), and an
+        /// object-only entry produces no `metrics` section — objects are not metrics.
+        #[test]
+        fn single_object_renders_natively() {
+            let json = render_checked(|| Field("Endpoint", DirectObject(ep())));
+            assert_eq!(
+                json["properties"]["Endpoint"],
+                serde_json::json!({"Host": "example.com", "Port": 443})
+            );
+            assert!(json.get("metrics").is_none());
+        }
+
+        #[test]
+        fn array_of_objects_renders_as_json_array() {
+            let json = render_checked(|| {
+                Field(
+                    "Endpoints",
+                    vec![
+                        DirectObject(Endpoint { host: "a", port: 1 }),
+                        DirectObject(Endpoint { host: "b", port: 2 }),
+                    ],
+                )
+            });
+            assert_eq!(
+                json["properties"]["Endpoints"],
+                serde_json::json!([{"Host": "a", "Port": 1}, {"Host": "b", "Port": 2}])
+            );
+        }
+
+        /// Length 9 crosses `VALUES_INLINE_CAPACITY` (8): the boxed receiver's buffer spills, but
+        /// output must stay identical to the unboxed path.
+        #[test]
+        fn array_crossing_inline_capacity_matches_boxed() {
+            let json = render_checked(|| {
+                Field(
+                    "E",
+                    (0..9u64)
+                        .map(|port| DirectObject(Endpoint { host: "h", port }))
+                        .collect::<Vec<_>>(),
+                )
+            });
+            assert_eq!(json["properties"]["E"].as_array().unwrap().len(), 9);
+        }
+
+        #[test]
+        fn empty_object_array_renders_empty_array() {
+            let json = render_checked(|| Field("E", Vec::<DirectObject<Endpoint>>::new()));
+            assert_eq!(json["properties"]["E"], serde_json::json!([]));
+        }
+
+        #[test]
+        fn all_empty_object_renders_empty_braces() {
+            struct Empty;
+            impl ObjectValue for Empty {
+                fn write_object<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+            }
+            // Key present with an empty object, distinct from an omitted field.
+            let json = render_checked(|| Field("Obj", DirectObject(Empty)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({}));
+        }
+
+        #[derive(Clone, Copy)]
+        struct Members {
+            a: Option<u64>,
+            b: Option<u64>,
+            c: Option<u64>,
+        }
+
+        impl ObjectValue for Members {
+            fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("A", &self.a);
+                writer.value("B", &self.b);
+                writer.value("C", &self.c);
+            }
+        }
+
+        /// A `None` member in first / middle / last / only position is omitted with no dangling
+        /// `"Key":` and no stray comma — the member rollback in core's object encoder.
+        #[rstest]
+        #[case::first_absent(Members { a: None, b: Some(2), c: Some(3) }, serde_json::json!({"B": 2, "C": 3}))]
+        #[case::middle_absent(Members { a: Some(1), b: None, c: Some(3) }, serde_json::json!({"A": 1, "C": 3}))]
+        #[case::last_absent(Members { a: Some(1), b: Some(2), c: None }, serde_json::json!({"A": 1, "B": 2}))]
+        #[case::all_absent(Members { a: None, b: None, c: None }, serde_json::json!({}))]
+        fn none_members_are_omitted(#[case] members: Members, #[case] expected: serde_json::Value) {
+            let json = render_checked(move || Field("Obj", DirectObject(members)));
+            assert_eq!(json["properties"]["Obj"], expected);
+        }
+
+        #[derive(Clone)]
+        struct Phase {
+            name: &'static str,
+            children: Vec<Phase>,
+        }
+
+        impl ObjectValue for Phase {
+            fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("Name", &self.name);
+                writer.value(
+                    "Children",
+                    &self.children.iter().map(DirectObject).collect::<Vec<_>>(),
+                );
+            }
+        }
+
+        /// A recursive object/array tree nests natively to full depth: one `JSON.parse` recovers
+        /// it, and boxed output matches unboxed.
+        #[test]
+        fn nested_object_tree_renders_natively_to_full_depth() {
+            let tree = || Phase {
+                name: "root",
+                children: vec![
+                    Phase {
+                        name: "a",
+                        children: vec![],
+                    },
+                    Phase {
+                        name: "b",
+                        children: vec![Phase {
+                            name: "b1",
+                            children: vec![],
+                        }],
+                    },
+                ],
+            };
+            let json = render_checked(move || Field("Root", DirectObject(tree())));
+            assert_eq!(
+                json["properties"]["Root"],
+                serde_json::json!({
+                    "Name": "root",
+                    "Children": [
+                        {"Name": "a", "Children": []},
+                        {"Name": "b", "Children": [{"Name": "b1", "Children": []}]}
+                    ]
+                })
+            );
+        }
+
+        /// String members inside an object are JSON-escaped by the shared core encoder, so native
+        /// object output round-trips through `JSON.parse` unchanged.
+        #[test]
+        fn object_member_strings_are_escaped() {
+            struct Weird;
+            impl ObjectValue for Weird {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Msg", &"a\"b\nc");
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Weird)));
+            assert_eq!(json["properties"]["Obj"]["Msg"], "a\"b\nc");
+        }
+
+        /// An object field surrounded by a scalar property and a metric: it lands in `properties`
+        /// without disturbing the leading-comma stripping of either section.
+        #[test]
+        fn object_renders_alongside_other_fields() {
+            struct E;
+            impl Entry for E {
+                fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.timestamp(SystemTime::UNIX_EPOCH);
+                    writer.value("Before", &"x");
+                    writer.value("Obj", &DirectObject(ep()));
+                    writer.value("After", &10u64);
+                }
+            }
+            let json = render_checked(|| E);
+            assert_eq!(json["properties"]["Before"], "x");
+            assert_eq!(
+                json["properties"]["Obj"],
+                serde_json::json!({"Host": "example.com", "Port": 443})
+            );
+            assert_eq!(json["metrics"]["After"]["value"], 10);
+        }
+
+        /// A member whose distribution is empty writes nothing, so the member is omitted (not
+        /// `"Gone":null`) via the same rollback that handles `None`.
+        #[test]
+        fn empty_distribution_member_is_omitted() {
+            struct EmptyDist;
+            impl Value for EmptyDist {
+                const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::U64);
+                const UNIT: Unit = Unit::None;
+
+                fn write(&self, writer: impl ValueWriter) {
+                    writer.metric(std::iter::empty(), Unit::None, [], MetricFlags::empty());
+                }
+            }
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Keep", &1u64);
+                    writer.value("Gone", &EmptyDist);
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({"Keep": 1}));
+        }
+
+        /// Design decision pinned: objects are not metrics, so a member that reports a
+        /// `ValidationError` is omitted and the entry still formats `Ok` — matching the string
+        /// fallback, which has no error channel. (At the top level the same error fails the entry.)
+        #[test]
+        fn member_validation_error_is_dropped_not_surfaced() {
+            struct Failing;
+            impl Value for Failing {
+                const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::U64);
+                const UNIT: Unit = Unit::None;
+
+                fn write(&self, writer: impl ValueWriter) {
+                    writer.error(ValidationError::invalid("boom"));
+                }
+            }
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Ok", &1u64);
+                    writer.value("Bad", &Failing);
+                }
+            }
+            // `render_checked` would panic if `format` returned `Err`.
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({"Ok": 1}));
+        }
+
+        /// Under sampling a top-level `Repeated` scales its `count` by the multiplicity, but an
+        /// object member is never scaled (object members pass `multiplicity = None`).
+        #[test]
+        fn sampled_object_member_count_is_not_scaled() {
+            struct Latency;
+            impl ObjectValue for Latency {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value(
+                        "Count",
+                        &Observation::Repeated {
+                            total: 150.0,
+                            occurrences: 3,
+                        },
+                    );
+                }
+            }
+            let mut format =
+                Json::new().with_sampling_and_rng(rand_chacha::ChaChaRng::seed_from_u64(0));
+            let mut output = Vec::new();
+            format
+                .format_with_sample_rate(&Field("Obj", DirectObject(Latency)), &mut output, 0.1)
+                .unwrap();
+            let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+            // Unscaled: 3, not ~30 as a top-level Repeated would be at rate 0.1.
+            assert_eq!(json["properties"]["Obj"]["Count"]["count"], 3);
+        }
     }
 }

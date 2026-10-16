@@ -7,7 +7,7 @@
 //! same [`EntryWriter`] an entry uses so any `#[metrics]` type nests. [`AsObject`] is the
 //! [`ValueFormatter`] a field opts into with `#[metrics(format = AsObject)]`. Objects are not
 //! metrics: timestamp, config, and per-member unit/dimension/flag metadata are ignored. A format
-//! renders an object natively (JSON/EMF/LocalFormat, added later) or via the
+//! renders an object natively (JSON today; EMF/LocalFormat/OTel landing incrementally) or via the
 //! [`ValueWriter::object`] default [`write_object_as_string`], which serializes to a JSON string
 //! so the field is never dropped.
 //!
@@ -155,8 +155,11 @@ pub fn write_object_as_string<O: ObjectValue + ?Sized>(writer: impl ValueWriter,
 }
 
 /// Render an object body as a JSON `{...}` into `buf`, sharing the canonical scalar encoders in
-/// [`crate::json_encode`] so a member renders identically here and in the native JSON format.
-fn write_json_object<O: ObjectValue + ?Sized>(buf: &mut String, object: &O) {
+/// [`crate::json_encode`] so a member renders identically here and in a native JSON renderer.
+///
+/// The body half of [`write_object_as_string`], exposed for formats that embed the object raw
+/// rather than as a JSON string (e.g. `metrique-writer-format-json`).
+pub fn write_json_object<O: ObjectValue + ?Sized>(buf: &mut String, object: &O) {
     buf.push('{');
     let mut member_writer = JsonCaptureEntryWriter {
         buf,
