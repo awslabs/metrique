@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(metrique-writer-format-json)* Object-valued fields now render as native nested JSON objects — and arrays of objects as JSON arrays — in the `properties` section, instead of falling back to a JSON-encoded string. The whole object subtree is native JSON, so one `JSON.parse` recovers it rather than a string that needs a second parse. A `None` object member is omitted (no `"Key":null`), an all-empty object renders `{}`, and an empty object array renders `[]`. The boxed (dynamic sink) path matches the unboxed path byte-for-byte. Objects are not metrics: per-member units/dimensions/flags are ignored, and object members are not scaled by the sampling multiplicity (a top-level metric still is), so a `Repeated` member keeps its raw count under sampling.
+
 ## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
 
 ### Fixed
