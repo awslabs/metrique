@@ -1241,6 +1241,20 @@ mod tests {
             assert_eq!(json["properties"]["Obj"]["Msg"], "a\"b\nc");
         }
 
+        /// Objects are not metrics: a member carrying a dimension renders as its bare value with
+        /// the dimension dropped, the same way top-level JSON ignores dimensions.
+        #[test]
+        fn object_member_dimensions_are_dropped() {
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Count", &WithDimension::new(10u64, "Region", "us-east-1"));
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({"Count": 10}));
+        }
+
         /// An object field surrounded by a scalar property and a metric: it lands in `properties`
         /// without disturbing the leading-comma stripping of either section.
         #[test]

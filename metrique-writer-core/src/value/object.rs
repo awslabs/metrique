@@ -7,9 +7,9 @@
 //! same [`EntryWriter`] an entry uses so any `#[metrics]` type nests. [`AsObject`] is the
 //! [`ValueFormatter`] a field opts into with `#[metrics(format = AsObject)]`. Objects are not
 //! metrics: timestamp, config, and per-member unit/dimension/flag metadata are ignored. A format
-//! renders an object natively (JSON today; EMF/LocalFormat/OTel landing incrementally) or via the
-//! [`ValueWriter::object`] default [`write_object_as_string`], which serializes to a JSON string
-//! so the field is never dropped.
+//! renders an object natively (JSON today; native EMF, LocalFormat, and OTel support is planned,
+//! see <https://github.com/awslabs/metrique/issues/355>) or via the [`ValueWriter::object`] default
+//! [`write_object_as_string`], which serializes to a JSON string so the field is never dropped.
 //!
 //! The wrapper matrix is split for coherence: `Vec<O>`/`Option<O>`/`Option<Vec<O>>` are
 //! [`AsObject`] formatter impls, while `&O`/`Box<O>`/`Arc<O>` forward on [`ObjectValue`] (`Box`
