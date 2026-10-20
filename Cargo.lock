@@ -2032,8 +2032,10 @@ dependencies = [
  "itoa",
  "metrique-writer",
  "metrique-writer-core",
+ "proptest",
  "rand 0.9.5",
  "rand_chacha 0.9.0",
+ "rstest",
  "serde_json",
 ]
 

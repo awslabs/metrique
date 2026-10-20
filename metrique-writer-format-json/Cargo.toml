@@ -18,7 +18,9 @@ metrique-writer = { workspace = true, features = ["background-queue", "tracing-s
 [dev-dependencies]
 metrique-writer-core = { workspace = true, features = ["private-test-util"] }
 metrique-writer = { workspace = true, features = ["test-util"] }
+proptest = { workspace = true }
 rand_chacha = { workspace = true }
+rstest = { workspace = true }
 serde_json = { workspace = true }
 
 [package.metadata.docs.rs]

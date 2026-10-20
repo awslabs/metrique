@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- *(metrique-writer-format-json)* Render a value written through `ValueWriter::object` as a native nested JSON object (and a list of them as a JSON array) in `properties`, instead of a JSON-encoded string. This is plumbing for object-valued fields and is not yet reachable through `#[metrics]`: the derive macro does not emit object fields, so the only way to produce one today is to call `ValueWriter::object` directly against `metrique-writer-core`. For such callers the object subtree is native JSON (recoverable in one `JSON.parse`); a `None` or otherwise-empty member is omitted (no `"Key":null`); an all-empty object renders `{}` and an empty array `[]`; objects are not metrics (per-member units/dimensions/flags are ignored and members are not scaled by the sampling multiplicity); and boxed output matches unboxed byte-for-byte.
+
+  Before (string fallback) vs. after (native), for the same object field:
+
+  ```json
+  { "properties": { "Endpoint": "{\"Host\":\"example.com\",\"Port\":443}" } }
+  { "properties": { "Endpoint": { "Host": "example.com", "Port": 443 } } }
+  ```
+
 ## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
 
 ### Fixed

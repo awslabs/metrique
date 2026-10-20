@@ -17,7 +17,7 @@ mod quantized;
 pub use dimensions::{WithDimension, WithDimensions, WithVecDimensions};
 pub use force::{FlagConstructor, ForceFlag, ForceFlagEntryWriter};
 pub use formatter::{FormattedValue, Lifted, NotLifted, ToString, ValueFormatter};
-pub use object::{AsObject, ObjectValue, write_object_as_string};
+pub use object::{AsObject, ObjectValue, write_json_object, write_object_as_string};
 pub use quantized::{Quantized, QuantizingValueWriter, quantize_observation};
 use std::{borrow::Cow, fmt::Write, sync::Arc};
 
