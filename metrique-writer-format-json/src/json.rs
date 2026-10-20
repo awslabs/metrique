@@ -1353,5 +1353,134 @@ mod tests {
             // Unscaled: 3, not ~30 as a top-level Repeated would be at rate 0.1.
             assert_eq!(json["properties"]["Obj"]["Count"]["count"], 3);
         }
+
+        /// An arbitrary nested object tree renders through the JSON format to the same structure
+        /// `serde_json` produces for the equivalent `Value`. Exercises member rollback, native
+        /// object/array recursion, and string escaping over random trees.
+        ///
+        /// Three generator constraints keep the comparison exact (a follow-up, tracked in #355,
+        /// can relax them once the `AsObject` opt-in exists):
+        /// - Scalars are `u64`/`String` only. Our float encoding (NaN/inf clamping, `.0`
+        ///   stripping, `dtoa`) deliberately differs from serde and is covered in `json_encode`.
+        /// - Object keys are unique (`k0..kn`): duplicate keys are ambiguous and collapse under
+        ///   `serde_json::Value` object equality.
+        /// - Every member writes something, so there is no `None`/empty-member omission to model.
+        ///
+        /// `serde_json::Value` object equality is order-independent, so member order is not pinned.
+        mod proptest_vs_serde {
+            use super::*;
+            use proptest::prelude::*;
+
+            #[derive(Debug, Clone)]
+            enum Node {
+                Str(String),
+                U64(u64),
+                Obj(Vec<(String, Node)>),
+                Arr(Vec<Node>),
+            }
+
+            /// Renders a `Node` through the native `object()`/`values()` path.
+            struct NodeValue<'a>(&'a Node);
+
+            impl Value for NodeValue<'_> {
+                // Native rendering never reads SHAPE; any value compiles.
+                const SHAPE: FieldShape<'static> = FieldShape::Object;
+                const UNIT: Unit = Unit::None;
+
+                fn write(&self, writer: impl ValueWriter) {
+                    match self.0 {
+                        Node::Str(s) => writer.string(s),
+                        Node::U64(n) => writer.metric(
+                            [Observation::Unsigned(*n)],
+                            Unit::None,
+                            [],
+                            MetricFlags::empty(),
+                        ),
+                        Node::Obj(members) => writer.object(&ObjNode(members)),
+                        Node::Arr(items) => {
+                            let wrapped: Vec<NodeValue> = items.iter().map(NodeValue).collect();
+                            writer.values(wrapped.iter());
+                        }
+                    }
+                }
+            }
+
+            struct ObjNode<'a>(&'a [(String, Node)]);
+
+            impl ObjectValue for ObjNode<'_> {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    for (name, value) in self.0 {
+                        writer.value(name.as_str(), &NodeValue(value));
+                    }
+                }
+            }
+
+            /// Entry owning a root object tree (always a `Node::Obj`).
+            struct TreeEntry(Node);
+
+            impl Entry for TreeEntry {
+                fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.timestamp(SystemTime::UNIX_EPOCH);
+                    writer.value("Root", &NodeValue(&self.0));
+                }
+            }
+
+            fn to_serde(node: &Node) -> serde_json::Value {
+                match node {
+                    Node::Str(s) => serde_json::Value::String(s.clone()),
+                    Node::U64(n) => serde_json::Value::Number((*n).into()),
+                    Node::Obj(members) => serde_json::Value::Object(
+                        members
+                            .iter()
+                            .map(|(k, v)| (k.clone(), to_serde(v)))
+                            .collect(),
+                    ),
+                    Node::Arr(items) => {
+                        serde_json::Value::Array(items.iter().map(to_serde).collect())
+                    }
+                }
+            }
+
+            fn keyed(values: Vec<Node>) -> Node {
+                Node::Obj(
+                    values
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, v)| (format!("k{i}"), v))
+                        .collect(),
+                )
+            }
+
+            fn node_strategy() -> impl Strategy<Value = Node> {
+                let leaf = prop_oneof![
+                    any::<String>().prop_map(Node::Str),
+                    any::<u64>().prop_map(Node::U64),
+                ];
+                // depth 4, up to 48 total nodes, up to 6 children per collection.
+                leaf.prop_recursive(4, 48, 6, |inner| {
+                    prop_oneof![
+                        prop::collection::vec(inner.clone(), 0..6).prop_map(keyed),
+                        prop::collection::vec(inner, 0..6).prop_map(Node::Arr),
+                    ]
+                })
+            }
+
+            fn root_strategy() -> impl Strategy<Value = Node> {
+                prop::collection::vec(node_strategy(), 0..6).prop_map(keyed)
+            }
+
+            proptest! {
+                #[test]
+                fn object_tree_renders_like_serde(root in root_strategy()) {
+                    let mut output = Vec::new();
+                    Json::new().format(&TreeEntry(root.clone()), &mut output).unwrap();
+                    let rendered: serde_json::Value = serde_json::from_slice(&output)
+                        .unwrap_or_else(|e| {
+                            panic!("invalid JSON: {e}\n{}", String::from_utf8_lossy(&output))
+                        });
+                    prop_assert_eq!(&rendered["properties"]["Root"], &to_serde(&root));
+                }
+            }
+        }
     }
 }
