@@ -1255,6 +1255,124 @@ mod tests {
             assert_eq!(json["properties"]["Obj"], serde_json::json!({"Count": 10}));
         }
 
+        /// A member carrying a unit renders as its bare value, unit dropped — unlike a top-level
+        /// metric, which emits a `"unit"` field.
+        #[test]
+        fn object_member_units_are_dropped() {
+            struct Latency;
+            impl Value for Latency {
+                const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::U64);
+                const UNIT: Unit = Unit::None;
+
+                fn write(&self, writer: impl ValueWriter) {
+                    writer.metric(
+                        [Observation::Unsigned(5)],
+                        Unit::Second(metrique_writer_core::unit::NegativeScale::Milli),
+                        [],
+                        MetricFlags::empty(),
+                    );
+                }
+            }
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Latency", &Latency);
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({"Latency": 5}));
+        }
+
+        /// A member carrying a metric flag renders as its bare value, flag ignored.
+        #[test]
+        fn object_member_flags_are_dropped() {
+            #[derive(Debug)]
+            struct TestOptions;
+            impl MetricOptions for TestOptions {}
+            struct Ctor;
+            impl FlagConstructor for Ctor {
+                fn construct() -> MetricFlags<'static> {
+                    MetricFlags::upcast(&TestOptions)
+                }
+            }
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Count", &ForceFlag::<_, Ctor>::from(7u64));
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({"Count": 7}));
+        }
+
+        /// A member with multiple observations renders as a JSON array of the values.
+        #[test]
+        fn object_member_multi_observation_renders_as_array() {
+            struct Dist;
+            impl Value for Dist {
+                const SHAPE: FieldShape<'static> = FieldShape::Known(KnownShape::U64);
+                const UNIT: Unit = Unit::None;
+
+                fn write(&self, writer: impl ValueWriter) {
+                    writer.metric(
+                        [1u64, 2, 3].map(Observation::Unsigned),
+                        Unit::None,
+                        [],
+                        MetricFlags::empty(),
+                    );
+                }
+            }
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Samples", &Dist);
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(
+                json["properties"]["Obj"],
+                serde_json::json!({"Samples": [1, 2, 3]})
+            );
+        }
+
+        /// NaN renders as `null` and infinities clamp to ±`f64::MAX`. A NaN member is the one case
+        /// where the member is present with `null` rather than omitted: unlike `None` or an empty
+        /// distribution, `null` is actually written, so member rollback does not fire.
+        #[test]
+        fn object_member_non_finite_floats_follow_json_policy() {
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Nan", &f64::NAN);
+                    writer.value("Inf", &f64::INFINITY);
+                    writer.value("NegInf", &f64::NEG_INFINITY);
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            let obj = &json["properties"]["Obj"];
+            assert!(
+                obj.get("Nan").is_some() && obj["Nan"].is_null(),
+                "NaN member is present as null, not omitted"
+            );
+            assert!(obj["Inf"].as_f64().unwrap() > 1e300);
+            assert!(obj["NegInf"].as_f64().unwrap() < -1e300);
+        }
+
+        /// An empty-string member is present (`""`), distinct from a `None` member, which is
+        /// omitted entirely.
+        #[test]
+        fn object_empty_string_member_is_present_but_none_is_omitted() {
+            struct Obj;
+            impl ObjectValue for Obj {
+                fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                    writer.value("Empty", &"");
+                    writer.value("Missing", &None::<u64>);
+                }
+            }
+            let json = render_checked(|| Field("Obj", DirectObject(Obj)));
+            assert_eq!(json["properties"]["Obj"], serde_json::json!({"Empty": ""}));
+        }
+
         /// An object field surrounded by a scalar property and a metric: it lands in `properties`
         /// without disturbing the leading-comma stripping of either section.
         #[test]
