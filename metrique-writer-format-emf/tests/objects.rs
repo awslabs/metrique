@@ -1,9 +1,9 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Native object/object-array rendering in EMF. Object members use EMF's own scalar conventions
-//! (shared with array elements), so a `Repeated` member renders as its mean and a NaN member is
-//! omitted — both differ from the JSON format on purpose.
+//! Native object/object-array rendering in EMF. Objects are not metrics, so the object body
+//! renders as plain JSON (the same core encoder the JSON format uses), not EMF's metric
+//! conventions: a `Repeated` member is `{"total":…,"count":…}` and a NaN member is `null`.
 
 use std::borrow::Cow;
 use std::time::{Duration, SystemTime};
