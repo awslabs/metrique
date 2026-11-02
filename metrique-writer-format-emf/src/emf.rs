@@ -1666,6 +1666,32 @@ impl ValueWriter<'_, '_> {
             }
         }
     }
+
+    /// Like [`Self::validate_string`], but an object cannot satisfy a declared dimension: a
+    /// CloudWatch dimension value must be a string, so an object in that slot would break metric
+    /// extraction.
+    fn validate_object(&mut self) {
+        match self.entry.validation_map.entry_ref(&self.name) {
+            EntryRef::Occupied(occupied_entry) => match occupied_entry.get().kind {
+                LineKind::Metric { .. } | LineKind::String => {
+                    self.entry.error.extend_mut(
+                        ValidationError::invalid("duplicate field").for_field(&self.name),
+                    );
+                }
+                LineKind::UnfoundDimension => {
+                    self.entry.error.extend_mut(
+                        ValidationError::invalid("can't use object in dimension field")
+                            .for_field(&self.name),
+                    );
+                }
+            },
+            EntryRef::Vacant(vacant_entry) => {
+                vacant_entry.insert(LineData {
+                    kind: LineKind::String,
+                });
+            }
+        }
+    }
 }
 
 /// Adapter for writing individual elements inside a JSON array in EMF output.
@@ -1721,6 +1747,11 @@ impl metrique_writer_core::ValueWriter for EmfArrayElementWriter<'_> {
         // EMF arrays don't nest: a list inside an element becomes one joined element.
         metrique_writer_core::value::write_values_as_string(self, values)
     }
+
+    fn object<O: metrique_writer_core::ObjectValue + ?Sized>(self, object: &O) {
+        // An object nested inside an array renders as a raw `{...}` element.
+        write_emf_object(self.0, object);
+    }
 }
 
 /// Write a single observation value into an EMF buffer.
@@ -1746,6 +1777,21 @@ fn write_emf_observation(buf: &mut PrefixedStringBuf, obs: Observation) {
         }
         _ => {}
     }
+}
+
+/// Render an object body as native JSON `{...}` into an EMF buffer, using the same core encoder as
+/// the JSON format ([`write_json_object`](metrique_writer_core::value::write_json_object)).
+///
+/// Objects are not metrics, so members render with plain-JSON scalar semantics — a `Repeated`
+/// observation as `{"total":…,"count":…}`, a NaN as `null` — identical to the JSON format rather
+/// than EMF's metric conventions (`write_emf_observation`'s mean and NaN-drop). The object body is
+/// in EMF's properties section and is never a CloudWatch metric, so the metric encoding does not
+/// apply inside it.
+fn write_emf_object<O: metrique_writer_core::ObjectValue + ?Sized>(
+    buf: &mut PrefixedStringBuf,
+    object: &O,
+) {
+    metrique_writer_core::value::write_json_object(buf, object);
 }
 
 impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
@@ -1784,6 +1830,21 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
 
         if !self.entry.validations.skip_validate_unique {
             self.validate_string();
+        }
+    }
+
+    fn object<O: metrique_writer_core::ObjectValue + ?Sized>(mut self, object: &O) {
+        // Objects are not metrics: render into the properties section as a raw nested object.
+        // `validate_object` duplicate-checks this field's own top-level name and rejects it as a
+        // dimension value; member names inside the object are not checked.
+        let buf = &mut self.entry.state.string_fields_buf;
+        buf.push(',').json_string(&self.name).push(':');
+        write_emf_object(buf, object);
+
+        // Matches `metric()`'s guard: skip the dimension/duplicate check under
+        // `AllowUnroutableEntries`, which intentionally does not enforce dimensions.
+        if !self.entry.validations.skip_validate_unique && !self.entry.is_allow_unroutable_entries {
+            self.validate_object();
         }
     }
 

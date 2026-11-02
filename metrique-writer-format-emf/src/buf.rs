@@ -79,6 +79,26 @@ impl crate::json_string::JsonString for PrefixedStringBuf {
     }
 }
 
+impl std::fmt::Write for PrefixedStringBuf {
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.buf.push_str(s);
+        Ok(())
+    }
+}
+
+// Lets core's `write_json_object` render a nested object body straight into this buffer. Rollback
+// goes through the length-guarded `truncate`, so the prefix can never be removed; the object body
+// is always appended well past it.
+impl metrique_writer_core::value::RewindBuf for PrefixedStringBuf {
+    fn len(&self) -> usize {
+        self.buf.len()
+    }
+
+    fn truncate(&mut self, len: usize) {
+        PrefixedStringBuf::truncate(self, len);
+    }
+}
+
 impl AsRef<[u8]> for PrefixedStringBuf {
     fn as_ref(&self) -> &[u8] {
         self.buf.as_bytes()

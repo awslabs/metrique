@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   { "properties": { "Endpoint": { "Host": "example.com", "Port": 443 } } }
   ```
 
+- *(metrique-writer-format-emf)* Render a value written through `ValueWriter::object` as a native nested object (and a list of them as an array) in the EMF properties section, instead of a JSON-encoded string. Like the JSON format, this is plumbing for object-valued fields with no `#[metrics]` opt-in yet, so it is only reachable by calling `ValueWriter::object` directly. Because objects are not metrics, the object body renders as plain JSON — byte-identical to the JSON format, via the shared core encoder — rather than EMF's metric conventions: a `Repeated` member is `{"total":…,"count":…}` (not a mean), a NaN member is `null` (not dropped), and an infinite member clamps to `±f64::MAX`. The object field lands in the properties section and is never declared as a CloudWatch metric; a `None`/empty member is omitted; an all-empty object renders `{}` and an empty array `[]`; an object field named like a declared dimension is rejected ("can't use object in dimension field"); and boxed output matches unboxed byte-for-byte.
+
+### Changed
+
+- *(metrique-writer-core)* `write_json_object` is now generic over a new `RewindBuf` trait (append plus `len`/`truncate`, the operations member rollback needs) rather than taking `&mut String`, so a format can render an object body directly into its own buffer type instead of going through a raw `&mut String`. `String` implements `RewindBuf`, so existing callers are unaffected.
+
 ## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
 
 ### Fixed

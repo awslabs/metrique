@@ -7,8 +7,8 @@
 //! same [`EntryWriter`] an entry uses so any `#[metrics]` type nests. [`AsObject`] is the
 //! [`ValueFormatter`] a field opts into with `#[metrics(format = AsObject)]`. Objects are not
 //! metrics: timestamp, config, and per-member unit/dimension/flag metadata are ignored. A format
-//! renders an object natively (JSON today; native EMF, LocalFormat, and OTel support is planned,
-//! see <https://github.com/awslabs/metrique/issues/355>) or via the [`ValueWriter::object`] default
+//! renders an object natively (JSON and EMF; native LocalFormat and OTel support is planned, see
+//! <https://github.com/awslabs/metrique/issues/355>) or via the [`ValueWriter::object`] default
 //! [`write_object_as_string`], which serializes to a JSON string so the field is never dropped.
 //!
 //! The wrapper matrix is split for coherence: `Vec<O>`/`Option<O>`/`Option<Vec<O>>` are
@@ -16,6 +16,7 @@
 //! and `&` are `#[fundamental]`, so the equivalent `AsObject` impls would not be coherent). The
 //! scalar and `Vec` impls stay disjoint only because no `Vec<_>` is [`ObjectValue`].
 
+use std::fmt;
 use std::sync::Arc;
 
 use crate::descriptor::{FieldShape, ShapeRef};
@@ -154,28 +155,70 @@ pub fn write_object_as_string<O: ObjectValue + ?Sized>(writer: impl ValueWriter,
     writer.string(&buf);
 }
 
+/// A text buffer that can report its length and roll back to a prior length, which is what
+/// [`write_json_object`] needs to undo a member that writes nothing. [`String`] implements it; a
+/// format with its own buffer type (such as `metrique-writer-format-emf`'s `PrefixedStringBuf`)
+/// can implement it too, so the object body is written straight into that buffer with no
+/// intermediate `String`. The [`fmt::Write`] supertrait lets the shared [`crate::json_encode`]
+/// scalar encoders write into it.
+pub trait RewindBuf: fmt::Write {
+    /// The buffer's current length, in bytes.
+    fn len(&self) -> usize;
+
+    /// Whether the buffer is empty.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Truncate back to `len` bytes, where `len` is a value previously returned by
+    /// [`len`](RewindBuf::len) on this buffer.
+    fn truncate(&mut self, len: usize);
+
+    /// Append a single character. Writing to an in-memory buffer is infallible, so this discards
+    /// the [`fmt::Write`] result.
+    fn push(&mut self, c: char) {
+        let _ = self.write_char(c);
+    }
+}
+
+impl RewindBuf for String {
+    fn len(&self) -> usize {
+        String::len(self)
+    }
+
+    fn truncate(&mut self, len: usize) {
+        String::truncate(self, len);
+    }
+
+    fn push(&mut self, c: char) {
+        String::push(self, c);
+    }
+}
+
 /// Render an object body as a JSON `{...}` into `buf`, sharing the canonical scalar encoders in
 /// [`crate::json_encode`] so a member renders identically here and in a native JSON renderer.
 ///
 /// The body half of [`write_object_as_string`], exposed for formats that embed the object raw
-/// rather than as a JSON string (e.g. `metrique-writer-format-json`).
-pub fn write_json_object<O: ObjectValue + ?Sized>(buf: &mut String, object: &O) {
+/// rather than as a JSON string. It is generic over [`RewindBuf`] so a format can write directly
+/// into its own buffer: `metrique-writer-format-json` passes a `String`, and
+/// `metrique-writer-format-emf` passes its `PrefixedStringBuf`.
+pub fn write_json_object<W: RewindBuf, O: ObjectValue + ?Sized>(buf: &mut W, object: &O) {
     buf.push('{');
     let mut member_writer = JsonCaptureEntryWriter {
         buf,
         wrote_member: false,
     };
     object.write_object(&mut member_writer);
-    buf.push('}');
+    member_writer.buf.push('}');
 }
 
-/// Builds `"name":<value>` members into a JSON string buffer.
-struct JsonCaptureEntryWriter<'a> {
-    buf: &'a mut String,
+/// Builds `"name":<value>` members into a rewindable buffer.
+struct JsonCaptureEntryWriter<'a, W> {
+    buf: &'a mut W,
     wrote_member: bool,
 }
 
-impl<'a> EntryWriter<'a> for JsonCaptureEntryWriter<'_> {
+impl<'a, W: RewindBuf> EntryWriter<'a> for JsonCaptureEntryWriter<'_, W> {
     fn timestamp(&mut self, _timestamp: std::time::SystemTime) {}
 
     fn value(&mut self, name: impl Into<std::borrow::Cow<'a, str>>, value: &(impl Value + ?Sized)) {
@@ -201,9 +244,9 @@ impl<'a> EntryWriter<'a> for JsonCaptureEntryWriter<'_> {
 
 /// Renders a member value as bare JSON (metric metadata discarded). Nested objects and arrays
 /// recurse natively, not via `string()`, so they are not double-escaped.
-struct JsonCaptureValueWriter<'a>(&'a mut String);
+struct JsonCaptureValueWriter<'a, W>(&'a mut W);
 
-impl ValueWriter for JsonCaptureValueWriter<'_> {
+impl<W: RewindBuf> ValueWriter for JsonCaptureValueWriter<'_, W> {
     fn string(self, value: &str) {
         let _ = push_json_string(self.0, value);
     }
