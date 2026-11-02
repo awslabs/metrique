@@ -457,9 +457,10 @@ pub enum FieldShape<'a> {
 
 impl FieldShape<'_> {
     /// `true` if, after peeling `Optional` and `List` wrappers, the leaf is
-    /// [`Object`](FieldShape::Object). The string fallback uses this to decide whether an array of
-    /// this element shape renders as a bracketed JSON array.
-    pub(crate) fn peels_to_object(&self) -> bool {
+    /// [`Object`](FieldShape::Object). Used to decide whether an array of this element shape
+    /// renders as an object array — the string fallback brackets it into a JSON array, and a
+    /// format with structured values (e.g. `LocalFormat`) renders it natively.
+    pub fn peels_to_object(&self) -> bool {
         let mut shape = self;
         loop {
             match shape {
