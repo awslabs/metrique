@@ -180,7 +180,7 @@ pub fn write_values_as_string<'a, V: Value + 'a>(
     }
     // Bracket object arrays so the joined `{..},{..}` becomes a valid JSON array. Scalar lists
     // (no `Object` under their `Optional`/`List` wrappers) keep their bare form.
-    if V::SHAPE.peels_to_object() {
+    if matches!(V::SHAPE.leaf_shape(), crate::descriptor::FieldShape::Object) {
         let mut bracketed = String::with_capacity(buf.len() + 2);
         bracketed.push('[');
         bracketed.push_str(&buf);

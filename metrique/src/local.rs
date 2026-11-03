@@ -58,7 +58,8 @@ use std::{borrow::Cow, io, time::SystemTime};
 
 use metrique_writer_core::{
     Distribution, Entry, EntryWriter, MetricFlags, ObjectValue, Observation, Unit, ValidationError,
-    Value, ValueWriter, format::Format, stream::IoStreamError, value::write_json_object,
+    Value, ValueWriter, descriptor::FieldShape, format::Format, stream::IoStreamError,
+    value::write_json_object,
 };
 
 /// The output style for [`LocalFormat`].
@@ -346,11 +347,11 @@ impl ValueWriter for FieldValueWriter<'_> {
     }
 
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        // An object array renders as a native JSON array. `FieldShape::peels_to_object` is the
-        // same rule core uses for its string fallback, so a field renders the same whether it
-        // arrives directly or re-wrapped through the boxed-entry bridge. Every other element shape
-        // keeps the joined-string behaviour (scalar lists are unchanged).
-        if V::SHAPE.peels_to_object() {
+        // An object array renders as a native JSON array. Peeling to the leaf shape is the same
+        // rule core uses for its string fallback, so a field renders the same whether it arrives
+        // directly or re-wrapped through the boxed-entry bridge. Every other element shape keeps
+        // the joined-string behaviour (scalar lists are unchanged).
+        if matches!(V::SHAPE.leaf_shape(), FieldShape::Object) {
             let mut array = Vec::new();
             for value in values {
                 let mut element = None;
@@ -1199,16 +1200,31 @@ mod tests {
         assert!(out.contains(expected), "output was: {out}");
     }
 
-    /// The shapes `AsObject` produces must classify as object arrays through
-    /// `FieldShape::peels_to_object` (the rule `values()` routes on); scalar shapes must not.
+    /// The shapes `AsObject` produces must peel to an `Object` leaf (the rule `values()` routes
+    /// on via `FieldShape::leaf_shape`); scalar shapes must not.
     #[test]
-    fn as_object_shapes_peel_to_object() {
+    fn as_object_shapes_have_object_leaf() {
         type Obj = FormattedValue<'static, Endpoint, AsObject, NotLifted>;
         type ObjList = FormattedValue<'static, Vec<Endpoint>, AsObject, NotLifted>;
-        assert!(<Obj as Value>::SHAPE.peels_to_object()); // Object
-        assert!(<Option<Obj> as Value>::SHAPE.peels_to_object()); // Optional(Object)
-        assert!(<ObjList as Value>::SHAPE.peels_to_object()); // List(Object)
-        assert!(!<u32 as Value>::SHAPE.peels_to_object()); // Known scalar
-        assert!(!<Option<u32> as Value>::SHAPE.peels_to_object()); // Optional(Known)
+        assert!(matches!(
+            <Obj as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        ));
+        assert!(matches!(
+            <Option<Obj> as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // Optional(Object)
+        assert!(matches!(
+            <ObjList as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // List(Object)
+        assert!(!matches!(
+            <u32 as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // Known scalar
+        assert!(!matches!(
+            <Option<u32> as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // Optional(Known)
     }
 }

@@ -455,20 +455,17 @@ pub enum FieldShape<'a> {
     Opaque,
 }
 
-impl FieldShape<'_> {
-    /// `true` if, after peeling `Optional` and `List` wrappers, the leaf is
-    /// [`Object`](FieldShape::Object). Used to decide whether an array of this element shape
-    /// renders as an object array — the string fallback brackets it into a JSON array, and a
-    /// format with structured values (e.g. `LocalFormat`) renders it natively.
-    pub fn peels_to_object(&self) -> bool {
+impl<'a> FieldShape<'a> {
+    /// The leaf shape reached by peeling `Optional` and `List` wrappers; returns `self` when there
+    /// are none. Callers decide what the leaf means — e.g. an array whose leaf is
+    /// [`Object`](FieldShape::Object) is an object array (the string fallback brackets it into a
+    /// JSON array, and a format with structured values like `LocalFormat` renders it natively).
+    pub fn leaf_shape(&self) -> &FieldShape<'a> {
         let mut shape = self;
         loop {
             match shape {
-                FieldShape::Object => return true,
                 FieldShape::Optional(inner) | FieldShape::List(inner) => shape = inner.get(),
-                FieldShape::Known(_) | FieldShape::Flex { .. } | FieldShape::Opaque => {
-                    return false;
-                }
+                _ => return shape,
             }
         }
     }
