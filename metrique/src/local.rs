@@ -27,9 +27,11 @@
 //! 3. It calls `entry.write(&mut writer)`, which triggers the entry to call back into
 //!    the writer's methods: `timestamp()`, `value(name, value)`, and `config()`.
 //! 4. For each `value()` call, the writer creates a [`ValueWriter`] — a one-shot handler
-//!    for a single metric value. The value then calls one of three methods on it:
+//!    for a single metric value. The value then calls one of these methods on it:
 //!    - `string()` for string properties (dimensions, operation names)
 //!    - `metric()` for numeric observations with units and dimensions
+//!    - `values()` for a list (scalar lists comma-join; object lists become a JSON array)
+//!    - `object()` for a nested object rendered as JSON
 //!    - `error()` for validation errors
 //! 5. After the entry has written all its fields, the format serializes the collected
 //!    data to the output.
@@ -55,8 +57,9 @@
 use std::{borrow::Cow, io, time::SystemTime};
 
 use metrique_writer_core::{
-    Distribution, Entry, EntryWriter, MetricFlags, Observation, Unit, ValidationError, Value,
-    ValueWriter, format::Format, stream::IoStreamError,
+    Distribution, Entry, EntryWriter, MetricFlags, ObjectValue, Observation, Unit, ValidationError,
+    Value, ValueWriter, descriptor::FieldShape, format::Format, stream::IoStreamError,
+    value::write_json_object,
 };
 
 /// The output style for [`LocalFormat`].
@@ -222,7 +225,8 @@ impl Format for LocalFormat {
 //
 // The collector implements `EntryWriter` to gather all fields from an entry.
 // For each field, it creates a `FieldValueWriter` (implementing `ValueWriter`)
-// that captures whether the field is a string property or a numeric metric.
+// that captures whether the field is a string property, a numeric metric, or a
+// nested JSON object.
 
 /// Collected representation of a single entry's data.
 #[derive(Default)]
@@ -237,7 +241,8 @@ struct Field {
     data: FieldData,
 }
 
-/// The data for a field — either a string property or a numeric metric.
+/// The data for a field — a string property, a numeric metric, or a nested JSON
+/// object (used only for object and object-array fields).
 enum FieldData {
     String(String),
     Metric {
@@ -246,6 +251,7 @@ enum FieldData {
         dimensions: Vec<(String, String)>,
         is_distribution: bool,
     },
+    Json(serde_json::Value),
 }
 
 /// An observation with an associated weight for percentile computation.
@@ -263,8 +269,8 @@ impl<'a> EntryWriter<'a> for Collector {
     }
 
     // For each field, we create a `FieldValueWriter` that will capture the value.
-    // The entry calls `value.write(writer)` which dispatches to either `string()`,
-    // `metric()`, or `error()` on our writer.
+    // The entry calls `value.write(writer)` which dispatches to `string()`,
+    // `metric()`, `values()`, `object()`, or `error()` on our writer.
     fn value(&mut self, name: impl Into<Cow<'a, str>>, value: &(impl Value + ?Sized)) {
         let name = name.into().into_owned();
         let mut data = None;
@@ -341,8 +347,44 @@ impl ValueWriter for FieldValueWriter<'_> {
     }
 
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        // The local format renders a list as the joined string of its elements.
-        metrique_writer::value::write_values_as_string(self, values)
+        // An object array renders as a native JSON array. Peeling to the leaf shape is the same
+        // rule core uses for its string fallback, so a field renders the same whether it arrives
+        // directly or re-wrapped through the boxed-entry bridge. Every other element shape keeps
+        // the joined-string behaviour (scalar lists are unchanged).
+        if matches!(V::SHAPE.leaf_shape(), FieldShape::Object) {
+            let mut array = Vec::new();
+            for value in values {
+                let mut element = None;
+                value.write(FieldValueWriter(&mut element));
+                match element {
+                    Some(FieldData::Json(json)) => array.push(json),
+                    // An object-shaped element normally writes `Json`; keep a stringy element
+                    // (notably an `error()` `ERROR: …`) visible rather than dropping it.
+                    Some(FieldData::String(s)) => array.push(serde_json::Value::String(s)),
+                    // A metric has no array-element form, and an element that writes nothing
+                    // (e.g. an `Option::None`) produced no data — both omit.
+                    Some(FieldData::Metric { .. }) | None => {}
+                }
+            }
+            *self.0 = Some(FieldData::Json(serde_json::Value::Array(array)));
+        } else {
+            metrique_writer::value::write_values_as_string(self, values)
+        }
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+        // Objects are not metrics: capture the child's members as a nested JSON value. Member keys
+        // are normalized into sorted order now (via `sort_json_value`) rather than per-renderer, so
+        // every output style is deterministic regardless of serde_json's `preserve_order` feature —
+        // only the JSON renderer re-sorts top-level fields, so capturing unsorted would leave pretty
+        // and markdown in declaration order under `preserve_order`. Float formatting follows
+        // serde_json here rather than the raw `write_json_object` body.
+        let mut buf = String::new();
+        write_json_object(&mut buf, object);
+        // `write_json_object` always emits valid JSON, so the parse fails only for objects nested
+        // past serde_json's recursion limit; fall back to the raw text so the field is never lost.
+        let json = serde_json::from_str(&buf).unwrap_or(serde_json::Value::String(buf));
+        *self.0 = Some(FieldData::Json(sort_json_value(json)));
     }
 }
 
@@ -533,6 +575,9 @@ fn write_pretty(
                     }
                 }
             }
+            FieldData::Json(json) => {
+                writeln!(output, "  {}: {json}", field.name)?;
+            }
         }
     }
     Ok(())
@@ -601,6 +646,9 @@ fn write_json(
                     );
                 }
             }
+            FieldData::Json(json) => {
+                map.insert(field.name.clone(), json.clone());
+            }
         }
     }
 
@@ -615,8 +663,9 @@ fn write_json(
     Ok(())
 }
 
-/// Recursively sort all object keys to ensure deterministic output regardless of
-/// whether serde_json's `preserve_order` feature is enabled.
+/// Recursively sort all object keys to ensure deterministic output regardless of whether
+/// serde_json's `preserve_order` feature is enabled. Arrays are walked so objects nested inside
+/// them (e.g. object-array fields) are sorted too.
 fn sort_json_keys(
     map: serde_json::Map<String, serde_json::Value>,
 ) -> serde_json::Map<String, serde_json::Value> {
@@ -624,13 +673,19 @@ fn sort_json_keys(
     entries.sort_by(|(a, _), (b, _)| a.cmp(b));
     entries
         .into_iter()
-        .map(|(k, v)| match v {
-            serde_json::Value::Object(inner) => {
-                (k, serde_json::Value::Object(sort_json_keys(inner)))
-            }
-            other => (k, other),
-        })
+        .map(|(k, v)| (k, sort_json_value(v)))
         .collect()
+}
+
+/// Recursively sort object keys within a single JSON value, descending into arrays.
+fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(inner) => serde_json::Value::Object(sort_json_keys(inner)),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(sort_json_value).collect())
+        }
+        other => other,
+    }
 }
 
 // ── Markdown table output ──────────────────────────────────────────────
@@ -677,6 +732,9 @@ fn write_markdown_table(
                         total_count(observations).to_string(),
                     ));
                 }
+            }
+            FieldData::Json(json) => {
+                rows.push((field.name.clone(), json.to_string()));
             }
         }
     }
@@ -882,5 +940,291 @@ mod tests {
                 MetricFlags::upcast(&Distribution),
             );
         }
+    }
+
+    // ── Object-valued field rendering ──────────────────────────────────
+
+    use metrique_writer_core::BoxEntry;
+    use metrique_writer_core::value::{AsObject, FormattedValue, NotLifted};
+    use rstest::rstest;
+
+    /// A hand-written [`ObjectValue`] standing in for a derived `#[metrics]` child. Members are
+    /// declared `zone`, `host`, `port` — deliberately not alphabetical — so a test can observe that
+    /// the reparse normalizes them into sorted key order.
+    #[derive(Clone, Copy)]
+    struct Endpoint {
+        zone: &'static str,
+        host: &'static str,
+        port: u32,
+    }
+    impl ObjectValue for Endpoint {
+        fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.value("zone", self.zone);
+            writer.value("host", self.host);
+            writer.value("port", &self.port);
+        }
+    }
+
+    /// An [`ObjectValue`] with no members — renders as `{}`.
+    #[derive(Clone, Copy)]
+    struct EmptyObject;
+    impl ObjectValue for EmptyObject {
+        fn write_object<'a>(&'a self, _writer: &mut impl EntryWriter<'a>) {}
+    }
+
+    /// A recursive [`ObjectValue`]: a named node holding an object-array of child nodes, exercising
+    /// native nesting through `object()` and `values()`.
+    #[derive(Clone)]
+    struct Phase {
+        name: &'static str,
+        children: Vec<Phase>,
+    }
+    impl ObjectValue for Phase {
+        fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.value("name", self.name);
+            writer.value(
+                "children",
+                &FormattedValue::<Vec<Phase>, AsObject, NotLifted>::new(&self.children),
+            );
+        }
+    }
+
+    // Owned entries (`Send + 'static`) so the boxed-vs-unboxed parity check can wrap them. Each
+    // field is wired through the real `AsObject` formatter, the same path the derive generates.
+    struct ObjEntry(Endpoint);
+    impl Entry for ObjEntry {
+        fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+            w.value(
+                "endpoint",
+                &FormattedValue::<Endpoint, AsObject, NotLifted>::new(&self.0),
+            );
+        }
+    }
+
+    struct ObjEmptyEntry(EmptyObject);
+    impl Entry for ObjEmptyEntry {
+        fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+            w.value(
+                "empty",
+                &FormattedValue::<EmptyObject, AsObject, NotLifted>::new(&self.0),
+            );
+        }
+    }
+
+    struct ObjVecEntry(Vec<Endpoint>);
+    impl Entry for ObjVecEntry {
+        fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+            w.value(
+                "endpoints",
+                &FormattedValue::<Vec<Endpoint>, AsObject, NotLifted>::new(&self.0),
+            );
+        }
+    }
+
+    struct ObjOptEntry(Option<Endpoint>);
+    impl Entry for ObjOptEntry {
+        fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+            w.value(
+                "endpoint",
+                &FormattedValue::<Option<Endpoint>, AsObject, NotLifted>::new(&self.0),
+            );
+        }
+    }
+
+    struct TreeEntry(Phase);
+    impl Entry for TreeEntry {
+        fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+            w.value(
+                "root",
+                &FormattedValue::<Phase, AsObject, NotLifted>::new(&self.0),
+            );
+        }
+    }
+
+    /// A [`Value`] rendering a scalar slice through `values()` — the unchanged join path.
+    struct ScalarArrayField<'a>(&'a [u32]);
+    impl Value for ScalarArrayField<'_> {
+        fn write(&self, writer: impl ValueWriter) {
+            writer.values(self.0.iter());
+        }
+    }
+
+    struct ScalarVecEntry(Vec<u32>);
+    impl Entry for ScalarVecEntry {
+        fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+            w.value("nums", &ScalarArrayField(&self.0));
+        }
+    }
+
+    fn render<E: Entry>(style: OutputStyle, entry: &E) -> String {
+        let mut format = LocalFormat::new(style);
+        let mut buf = Vec::new();
+        format.format(entry, &mut buf).unwrap();
+        String::from_utf8(buf).unwrap()
+    }
+
+    /// Render the entry built by `make` via both the direct and the boxed (dyn) path, assert the
+    /// two are byte-identical — the boxed path is the common one (`DefaultSink` is a `BoxEntrySink`)
+    /// and re-wraps object-array element shapes, so it is where rendering is most likely to diverge
+    /// — and return the shared output.
+    fn render_checked<E: Entry + Send + 'static>(
+        style: OutputStyle,
+        make: impl Fn() -> E,
+    ) -> String {
+        let direct = render(style, &make());
+        let boxed = render(style, &BoxEntry::new(make()));
+        assert_eq!(
+            direct, boxed,
+            "boxed and direct output differ:\n  direct: {direct}\n  boxed:  {boxed}"
+        );
+        direct
+    }
+
+    fn endpoint() -> Endpoint {
+        Endpoint {
+            zone: "us",
+            host: "api",
+            port: 8080,
+        }
+    }
+
+    /// A single object renders as a nested JSON object in every renderer, with members in sorted
+    /// key order (declaration order is `zone,host,port`; sorted is `host,port,zone`).
+    #[rstest]
+    #[case::pretty(OutputStyle::Pretty)]
+    #[case::markdown(OutputStyle::MarkdownTable)]
+    #[case::json(OutputStyle::compact_json())]
+    fn object_renders_natively_in_every_renderer(#[case] style: OutputStyle) {
+        let out = render_checked(style, || ObjEntry(endpoint()));
+        assert!(
+            out.contains(r#"{"host":"api","port":8080,"zone":"us"}"#),
+            "output was: {out}"
+        );
+    }
+
+    /// An array of objects renders as a single JSON array (not double-bracketed, not a joined
+    /// string), element order preserved, each element's keys sorted.
+    #[rstest]
+    #[case::pretty(OutputStyle::Pretty)]
+    #[case::markdown(OutputStyle::MarkdownTable)]
+    #[case::json(OutputStyle::compact_json())]
+    fn object_array_renders_as_json_array(#[case] style: OutputStyle) {
+        let out = render_checked(style, || {
+            ObjVecEntry(vec![
+                Endpoint {
+                    zone: "us",
+                    host: "a",
+                    port: 1,
+                },
+                Endpoint {
+                    zone: "eu",
+                    host: "b",
+                    port: 2,
+                },
+            ])
+        });
+        assert!(
+            out.contains(
+                r#"[{"host":"a","port":1,"zone":"us"},{"host":"b","port":2,"zone":"eu"}]"#
+            ),
+            "output was: {out}"
+        );
+    }
+
+    #[test]
+    fn empty_object_array_renders_as_empty_brackets() {
+        let out = render_checked(OutputStyle::compact_json(), || ObjVecEntry(vec![]));
+        let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(parsed["endpoints"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn none_object_field_is_omitted() {
+        let out = render_checked(OutputStyle::compact_json(), || ObjOptEntry(None));
+        let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert!(parsed.get("endpoint").is_none(), "output was: {out}");
+    }
+
+    #[test]
+    fn some_object_field_is_rendered() {
+        let out = render_checked(OutputStyle::compact_json(), || {
+            ObjOptEntry(Some(endpoint()))
+        });
+        let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(
+            parsed["endpoint"],
+            serde_json::json!({"host": "api", "port": 8080, "zone": "us"})
+        );
+    }
+
+    #[test]
+    fn empty_object_renders_as_empty_map_not_dropped() {
+        let out = render_checked(OutputStyle::compact_json(), || ObjEmptyEntry(EmptyObject));
+        let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(parsed["empty"], serde_json::json!({}));
+    }
+
+    #[test]
+    fn nested_object_tree_renders_recursively() {
+        let tree = Phase {
+            name: "root",
+            children: vec![
+                Phase {
+                    name: "a",
+                    children: vec![],
+                },
+                Phase {
+                    name: "b",
+                    children: vec![Phase {
+                        name: "b1",
+                        children: vec![],
+                    }],
+                },
+            ],
+        };
+        let out = render_checked(OutputStyle::compact_json(), move || TreeEntry(tree.clone()));
+        let parsed: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+        assert_eq!(parsed["root"]["name"], "root");
+        assert_eq!(parsed["root"]["children"][0]["name"], "a");
+        assert_eq!(parsed["root"]["children"][1]["children"][0]["name"], "b1");
+    }
+
+    /// Scalar arrays must keep the pre-existing comma-joined rendering in every renderer. The
+    /// expected strings are exact value renderings so a regression to `[1,2,3]` would fail.
+    #[rstest]
+    #[case(OutputStyle::Pretty, "  nums: 1,2,3\n")]
+    #[case(OutputStyle::compact_json(), r#""nums":"1,2,3""#)]
+    #[case(OutputStyle::MarkdownTable, "| nums | 1,2,3 |")]
+    fn scalar_array_join_is_unchanged(#[case] style: OutputStyle, #[case] expected: &str) {
+        let out = render_checked(style, || ScalarVecEntry(vec![1, 2, 3]));
+        assert!(out.contains(expected), "output was: {out}");
+    }
+
+    /// The shapes `AsObject` produces must peel to an `Object` leaf (the rule `values()` routes
+    /// on via `FieldShape::leaf_shape`); scalar shapes must not.
+    #[test]
+    fn as_object_shapes_have_object_leaf() {
+        type Obj = FormattedValue<'static, Endpoint, AsObject, NotLifted>;
+        type ObjList = FormattedValue<'static, Vec<Endpoint>, AsObject, NotLifted>;
+        assert!(matches!(
+            <Obj as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        ));
+        assert!(matches!(
+            <Option<Obj> as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // Optional(Object)
+        assert!(matches!(
+            <ObjList as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // List(Object)
+        assert!(!matches!(
+            <u32 as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // Known scalar
+        assert!(!matches!(
+            <Option<u32> as Value>::SHAPE.leaf_shape(),
+            FieldShape::Object
+        )); // Optional(Known)
     }
 }

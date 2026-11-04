@@ -263,7 +263,7 @@ impl<W: ValueWriter> DynValueWriter for ValueWriterToDyn<W> {
         // reports `Object`; the bracket decision only needs object-or-not, so any shape peeling to
         // an object leaf takes it.
         let writer = self.0.take().unwrap();
-        if elem_shape.peels_to_object() {
+        if matches!(elem_shape.leaf_shape(), FieldShape::Object) {
             let wrapped: SmallVec<[ObjectRefFromDyn; VALUES_INLINE_CAPACITY]> =
                 values.map(ObjectRefFromDyn).collect();
             writer.values(wrapped.iter())
@@ -587,7 +587,7 @@ mod tests {
     }
 
     // A `Vec<Option<_>>` object array (element shape `Optional(Object)`) must still bracket after
-    // crossing the boxed boundary, which erases the element shape. Guards the `peels_to_object`
+    // crossing the boxed boundary, which erases the element shape. Guards the `leaf_shape`
     // routing in `values_dyn`: without it the boxed array would render as a bare object.
     #[test]
     fn boxed_optional_object_array_brackets() {
