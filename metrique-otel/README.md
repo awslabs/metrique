@@ -81,6 +81,14 @@ translator maps to a histogram instrument. Non-OTel sinks ignore the flags.
 - Every non-metric `String` field on the entry becomes an attribute on all
   metrics in that same entry, even ones declared before it (records are buffered
   until the entry finishes). This is how dimensions ride along.
+- Object-valued fields (`ValueWriter::object`, and lists of objects) are not
+  attached as attributes: every OTel metric attribute is part of the timeseries
+  identity, so a per-entry object would make each distinct value a new
+  timeseries. The sink reports them as a validation error, which it currently
+  discards, so they are dropped. Lists of scalars still become one comma-joined
+  attribute. Objects in a list are detected as its elements are written, so an
+  empty list whose elements do not declare an object shape has nothing to detect
+  and attaches as an empty attribute.
 - `#[metrics(unit = ...)]` maps to the UCUM string OTel expects (`ms`, `By`, `%`,
   `1` for dimensionless). The unit is fixed when the instrument is first created;
   later differing units on the same name are ignored.

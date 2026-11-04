@@ -99,6 +99,7 @@ use histogram::Config;
 use metrique_core::CloseValue;
 use metrique_writer::value::write_values_as_string;
 use metrique_writer::{Distribution, MetricFlags, MetricValue, Observation, Value, ValueWriter};
+use metrique_writer_core::value::ObjectValue;
 use ordered_float::OrderedFloat;
 use smallvec::SmallVec;
 use std::{borrow::Borrow, marker::PhantomData};
@@ -202,6 +203,10 @@ impl<T, S: AggregationStrategy> Histogram<T, S> {
             fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
                 write_values_as_string(self, values)
             }
+
+            fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+                self.invalid("can't record an object in a histogram")
+            }
         }
 
         let capturer = Capturer(&mut self.strategy);
@@ -288,6 +293,10 @@ impl<T, S: SharedAggregationStrategy> SharedHistogram<T, S> {
             // Only `metric()` observations feed the histogram, so lists record nothing.
             fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
                 write_values_as_string(self, values)
+            }
+
+            fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+                self.invalid("can't record an object in a histogram")
             }
         }
 

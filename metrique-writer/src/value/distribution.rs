@@ -13,7 +13,7 @@ use metrique_writer_core::{
     unit::{self, UnitTag},
 };
 
-use metrique_writer_core::value::MetricFlags;
+use metrique_writer_core::value::{MetricFlags, ObjectValue};
 
 /// Collects a distribution of [`Value`]s that will be recorded individually under a single name.
 ///
@@ -161,6 +161,10 @@ impl<F: FnMut(Observation) -> Result<(), ValidationError>> ValueWriter for &'_ m
     fn values<'a, V: Value + 'a>(self, _values: impl IntoIterator<Item = &'a V>) {
         // Reported directly: the joined-string fallback would blame strings instead.
         self.invalid("can't collect a list into a distribution")
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+        self.invalid("can't construct a distribution of objects")
     }
 }
 
@@ -573,5 +577,78 @@ mod tests {
 
         assert_eq!(mean_main.total(), 10.0);
         assert_eq!(mean_main.occurrences(), 1);
+    }
+
+    struct Empty;
+    impl ObjectValue for Empty {
+        fn write_object<'a>(&'a self, _writer: &mut impl metrique_writer_core::EntryWriter<'a>) {}
+    }
+
+    /// A metric value that writes an object instead of an observation.
+    struct DirectObject;
+    impl Value for DirectObject {
+        const SHAPE: crate::FieldShape<'static> = crate::FieldShape::Object;
+        const UNIT: Unit = Unit::None;
+
+        fn write(&self, writer: impl ValueWriter) {
+            writer.object(&Empty);
+        }
+    }
+    impl MetricValue for DirectObject {
+        type Unit = unit::None;
+    }
+
+    /// An object reaching the distribution collector is reported as an object, not via the
+    /// string fallback (which would blame strings), and records nothing.
+    #[test]
+    fn mean_rejects_object_values() {
+        let mut mean = Mean::<unit::None>::default();
+        let err = mean
+            .record_value(&DirectObject)
+            .expect_err("an object must not be accepted into a distribution");
+        assert!(
+            err.to_string().contains("distribution of objects"),
+            "unexpected error: {err}"
+        );
+        assert_eq!(mean.occurrences(), 0);
+    }
+
+    /// A `Distribution` whose element writes an object reports the "distribution of objects"
+    /// error to the outer writer's `error()` and writes no metric.
+    #[test]
+    fn distribution_reports_object_element_error() {
+        struct Writer<'a>(&'a mut Option<String>);
+        impl ValueWriter for Writer<'_> {
+            fn string(self, value: &str) {
+                panic!("shouldn't have written {value}");
+            }
+
+            fn metric<'a>(
+                self,
+                _distribution: impl IntoIterator<Item = Observation>,
+                _unit: Unit,
+                _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+                _flags: MetricFlags<'_>,
+            ) {
+                panic!("shouldn't have written a metric");
+            }
+
+            fn error(self, error: ValidationError) {
+                *self.0 = Some(error.to_string());
+            }
+
+            fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+                panic!("shouldn't have forwarded the object");
+            }
+        }
+
+        let distribution = Distribution::<DirectObject, 1>::from_iter([DirectObject]);
+        let mut error = None;
+        distribution.write(Writer(&mut error));
+        let error = error.expect("the object element must be reported via error()");
+        assert!(
+            error.contains("can't construct a distribution of objects"),
+            "unexpected error: {error}"
+        );
     }
 }

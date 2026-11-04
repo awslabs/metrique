@@ -120,6 +120,12 @@ impl ValueWriter for &'_ mut TestStream {
         // This test stream only accepts single unsigned observations.
         unreachable!()
     }
+
+    fn object<O: crate::ObjectValue + ?Sized>(self, _object: &O) {
+        // Only `TestEntry`'s `value` field reaches this writer, and it is a `u64`, which writes
+        // through `metric()`. An object here means a test wrote an entry this stream doesn't model.
+        unreachable!()
+    }
 }
 
 pub struct TestEntry(pub u64);
@@ -236,6 +242,10 @@ impl ValueWriter for DummyValueWriter<'_> {
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
         // Everything here is recorded as a string anyway.
         crate::value::write_values_as_string(self, values)
+    }
+
+    fn object<O: crate::ObjectValue + ?Sized>(self, object: &O) {
+        crate::value::write_object_as_string(self, object)
     }
 }
 

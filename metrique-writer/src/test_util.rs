@@ -326,6 +326,11 @@ impl ValueWriter for TestValueWriter<'_> {
         // Lists surface as a joined `TestValue::Property`.
         metrique_writer_core::value::write_values_as_string(self, values)
     }
+
+    fn object<O: metrique_writer_core::value::ObjectValue + ?Sized>(self, object: &O) {
+        // Objects surface as their JSON-string `TestValue::Property`.
+        metrique_writer_core::value::write_object_as_string(self, object)
+    }
 }
 
 /// Converts an [`Entry`] into a `TestEntry` that can be introspected

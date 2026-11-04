@@ -31,6 +31,7 @@ opentelemetry-otlp = { version = "0.32", features = [
     "metrics",
 ] }
 papaya = { workspace = true }
+smallvec = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
@@ -42,6 +43,7 @@ metrique-writer-format-emf = { workspace = true }
 opentelemetry_sdk = { version = "0.32", features = ["testing"] }
 tracing-subscriber = { workspace = true }
 divan = "0.1"
+rstest = { workspace = true }
 
 [[bench]]
 name = "otel_append"

@@ -139,3 +139,49 @@ fn value_string_user_derives_after_metrics_preserved() {
     let closed = metrique::CloseValue::close(p);
     assert_eq!(format!("{:?}", closed), "Low");
 }
+
+/// A plain (non-`#[metrics]`) type with hand-written `ObjectValue` and `CloseValue` impls,
+/// opted into object rendering on a `#[metrics]` field with `format = AsObject`. The test
+/// writer renders objects as their JSON string.
+#[test]
+fn as_object_field_renders_through_test_writer() {
+    use metrique::writer::EntryWriter;
+    use metrique_writer_core::value::{AsObject, ObjectValue};
+
+    struct Endpoint {
+        host: &'static str,
+        port: u64,
+    }
+
+    impl ObjectValue for Endpoint {
+        fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.value("Host", self.host);
+            writer.value("Port", &self.port);
+        }
+    }
+
+    impl CloseValue for Endpoint {
+        type Closed = Self;
+
+        fn close(self) -> Self {
+            self
+        }
+    }
+
+    #[metrics]
+    struct Request {
+        #[metrics(format = AsObject)]
+        endpoint: Endpoint,
+    }
+
+    let entry = test_util::test_metric(Request {
+        endpoint: Endpoint {
+            host: "example.com",
+            port: 443,
+        },
+    });
+    assert_eq!(
+        entry.values["endpoint"],
+        r#"{"Host":"example.com","Port":443}"#
+    );
+}

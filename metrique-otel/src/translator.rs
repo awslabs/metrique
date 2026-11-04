@@ -2,14 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::borrow::Cow;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use metrique_writer_core::{
     EntryConfig, MetricFlags, Observation, Unit, ValidationError,
+    descriptor::FieldShape,
     entry::EntryWriter,
-    value::{Distribution, Value, ValueWriter},
+    value::{
+        Distribution, ObjectValue, VALUES_INLINE_CAPACITY, Value, ValueWriter,
+        write_values_as_string,
+    },
 };
 use opentelemetry::KeyValue;
+use smallvec::SmallVec;
 
 use crate::{
     flags::{InstrumentKind, OtelOptions},
@@ -246,7 +251,152 @@ impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
     }
 
     fn values<'c, V: Value + 'c>(self, values: impl IntoIterator<Item = &'c V>) {
-        // No OTel list instrument, so a list becomes one joined entry attribute.
-        metrique_writer_core::value::write_values_as_string(self, values)
+        // No OTel list instrument, so a list becomes one joined entry attribute. The joined-string
+        // fallback renders elements through its own capture writer, not `object()` below, so each
+        // element is wrapped to record whether it (or a nested list element) wrote an object, and
+        // a list containing one is rejected instead of attached. Detection happens at write time,
+        // so a `Value` that calls `object()` under the `Opaque` shape is caught too. The flag is
+        // also set for a declared object element shape at any list depth, which rejects an empty
+        // object list (otherwise attached as `[]`). An empty list of `Opaque` elements has
+        // nothing to detect and attaches as the constant `""`.
+        let saw_object = Cell::new(false);
+        let elements = detect_objects(values, &saw_object);
+        write_values_as_string(
+            RejectIfObject {
+                writer: self,
+                saw_object: &saw_object,
+            },
+            elements.iter(),
+        )
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+        // Every attribute becomes part of the timeseries identity, and OTel metrics have no
+        // non-identifying metadata to carry an object in, so objects are rejected rather than
+        // attached as attributes.
+        self.invalid("object values are not supported by the OTel sink");
+    }
+}
+
+/// Wraps each list element in [`DetectObject`] sharing `saw_object`, and sets the flag up front when
+/// the element shape is declared `Object` (through any `Optional`/`List` wrappers), so an empty
+/// object list is rejected too.
+fn detect_objects<'v, 'a, V: Value + 'v>(
+    values: impl IntoIterator<Item = &'v V>,
+    saw_object: &'a Cell<bool>,
+) -> SmallVec<[DetectObject<'a, V>; VALUES_INLINE_CAPACITY]>
+where
+    'v: 'a,
+{
+    if matches!(V::SHAPE.leaf_shape(), FieldShape::Object) {
+        saw_object.set(true);
+    }
+    values
+        .into_iter()
+        .map(|value| DetectObject { value, saw_object })
+        .collect()
+}
+
+/// A list element that writes through [`DetectObjectWriter`], so an `object()` call anywhere in
+/// the element sets `saw_object`. `SHAPE` and `UNIT` forward `V`'s, keeping the joined output
+/// identical to an unwrapped element.
+struct DetectObject<'a, V> {
+    value: &'a V,
+    saw_object: &'a Cell<bool>,
+}
+
+impl<V: Value> Value for DetectObject<'_, V> {
+    const SHAPE: FieldShape<'static> = V::SHAPE;
+    const UNIT: Unit = V::UNIT;
+
+    fn write(&self, writer: impl ValueWriter) {
+        self.value.write(DetectObjectWriter {
+            writer,
+            saw_object: self.saw_object,
+        })
+    }
+}
+
+/// Forwards `string`, `metric`, and `error` to `writer`. `values()` re-wraps nested elements with
+/// the same flag (and sets it for a declared object element shape) before forwarding. `object()`
+/// only sets `saw_object`: the list is rejected as a whole, so the object's rendering is never
+/// needed.
+struct DetectObjectWriter<'a, W> {
+    writer: W,
+    saw_object: &'a Cell<bool>,
+}
+
+impl<W: ValueWriter> ValueWriter for DetectObjectWriter<'_, W> {
+    fn string(self, value: &str) {
+        self.writer.string(value)
+    }
+
+    fn metric<'a>(
+        self,
+        distribution: impl IntoIterator<Item = Observation>,
+        unit: Unit,
+        dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        flags: MetricFlags<'_>,
+    ) {
+        self.writer.metric(distribution, unit, dimensions, flags)
+    }
+
+    fn error(self, error: ValidationError) {
+        self.writer.error(error)
+    }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        // Nested list elements share the outer flag, so an object at any depth rejects the list.
+        let elements = detect_objects(values, self.saw_object);
+        self.writer.values(elements.iter())
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+        self.saw_object.set(true);
+    }
+}
+
+/// The final writer for a joined list: attaches the joined string through `writer` unless
+/// `saw_object` is set (an element wrote an object, or the element shape is declared `Object`), in
+/// which case the whole list is rejected via `invalid()`.
+///
+/// The rejection relies on [`write_values_as_string`] writing every element before its single,
+/// final `string()` call, so the flag is complete when `string()` reads it. That helper never
+/// calls the other methods; they forward only to keep the writer well-formed.
+struct RejectIfObject<'a, W> {
+    writer: W,
+    saw_object: &'a Cell<bool>,
+}
+
+impl<W: ValueWriter> ValueWriter for RejectIfObject<'_, W> {
+    fn string(self, value: &str) {
+        if self.saw_object.get() {
+            self.writer
+                .invalid("object lists are not supported by the OTel sink");
+        } else {
+            self.writer.string(value)
+        }
+    }
+
+    fn metric<'a>(
+        self,
+        distribution: impl IntoIterator<Item = Observation>,
+        unit: Unit,
+        dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+        flags: MetricFlags<'_>,
+    ) {
+        self.writer.metric(distribution, unit, dimensions, flags)
+    }
+
+    fn error(self, error: ValidationError) {
+        self.writer.error(error)
+    }
+
+    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
+        self.writer.values(values)
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
+        self.writer.object(object)
     }
 }
