@@ -4,12 +4,15 @@
 //! Rendering a struct field as a nested object rather than a flat scalar.
 //!
 //! [`ObjectValue`] describes a type whose fields render as object members, written through the
-//! same [`EntryWriter`] an entry uses so any `#[metrics]` type nests. [`AsObject`] is the
+//! same [`EntryWriter`] an entry uses, so a `#[metrics]` type can nest once the derive generates
+//! its impl (see [`ObjectValue`]). [`AsObject`] is the
 //! [`ValueFormatter`] a field opts into with `#[metrics(format = AsObject)]`. Objects are not
 //! metrics: timestamp, config, and per-member unit/dimension/flag metadata are ignored. A format
-//! renders an object natively (JSON, EMF, and LocalFormat) or via the [`ValueWriter::object`]
-//! default [`write_object_as_string`], which serializes to a JSON string so the field is never
-//! dropped (e.g. OTel, which has no nested-attribute type).
+//! does one of three things with an object: renders it natively (JSON, EMF, and LocalFormat);
+//! falls back to the [`ValueWriter::object`] default [`write_object_as_string`], which serializes
+//! it to a JSON string so the field is not dropped; or, when its only carrier is wrong for
+//! objects, reports it via [`ValueWriter::error`] (e.g. OTel, where every attribute is part of the
+//! timeseries identity).
 //!
 //! The wrapper matrix is split for coherence: `Vec<O>`/`Option<O>`/`Option<Vec<O>>` are
 //! [`AsObject`] formatter impls, while `&O`/`Box<O>`/`Arc<O>` forward on [`ObjectValue`] (`Box`
@@ -33,8 +36,10 @@ use super::{NotLifted, Observation, Value, ValueFormatter, ValueWriter};
 /// (those are [`AsObject`] formatter impls) and forwards only through `&O`/`Box<O>`/`Arc<O>` — see
 /// the module docs for why.
 ///
-/// The `#[metrics]` derive generates this impl. Implement it by hand only for a type you do not
-/// own that neither derives it nor can be wrapped in a newtype.
+/// The `#[metrics]` derive does not generate this impl yet. Implement it by hand only for a type
+/// that is not `#[metrics]`-generated; a field of that type opts into object rendering with
+/// `format = AsObject`. For a `#[metrics]` type, the derive will generate this impl on its closed
+/// `<Name>Entry` type, and a hand-written impl there will conflict with it.
 pub trait ObjectValue {
     /// Emit this object's members into the given writer.
     fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>);
@@ -59,9 +64,10 @@ impl<O: ObjectValue + ?Sized> ObjectValue for Arc<O> {
 }
 
 /// A [`ValueFormatter`] that renders its value as a nested object by delegating to
-/// [`ObjectValue::write_object`]. Opt in with `#[metrics(format = AsObject)]` (the derive
-/// generates the [`ObjectValue`] impl). Handles `O`, `Option<O>`, `Vec<O>` (a JSON array), and
-/// `Option<Vec<O>>`, plus those behind `&`/`Box`/`Arc`.
+/// [`ObjectValue::write_object`]. Opt in with `#[metrics(format = AsObject)]` on a field whose
+/// type implements [`ObjectValue`] (see its docs for which types to implement it on). Handles
+/// `O`, `Option<O>`, `Vec<O>` (a JSON array), and `Option<Vec<O>>`, plus those behind
+/// `&`/`Box`/`Arc`.
 pub struct AsObject;
 
 // Named so the container `SHAPE` consts below can borrow them.

@@ -756,4 +756,305 @@ mod tests {
         // Cloning is cheap (Arc-backed); proves the value is a usable sink.
         let _cloned = sink.clone();
     }
+
+    mod objects {
+        use metrique_writer_core::BoxEntry;
+        use metrique_writer_core::Unit;
+        use metrique_writer_core::descriptor::FieldShape;
+        use metrique_writer_core::value::{
+            AsObject, FormattedValue, NotLifted, ObjectValue, Quantized, Value, ValueFormatter,
+            ValueWriter, WithDimensions,
+        };
+        use opentelemetry_sdk::metrics::data::{AggregatedMetrics, MetricData};
+        use rstest::rstest;
+
+        use super::*;
+
+        struct Endpoint;
+
+        impl ObjectValue for Endpoint {
+            fn write_object<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+                writer.value("Host", "example.com");
+                writer.value("Port", &443u64);
+            }
+        }
+
+        /// A hand-written `Value` that calls `object()` while keeping the `Opaque` shape, so only
+        /// write-time detection can tell that a list of these holds objects.
+        struct OpaqueObject;
+
+        impl Value for OpaqueObject {
+            const SHAPE: FieldShape<'static> = FieldShape::Opaque;
+            const UNIT: Unit = Unit::None;
+
+            fn write(&self, writer: impl ValueWriter) {
+                writer.object(&Endpoint);
+            }
+        }
+
+        /// An `Opaque` element that writes an empty `AsObject` list, so the declared object shape
+        /// is visible only to the nested `values()` call.
+        struct OpaqueEmptyObjectList;
+
+        impl Value for OpaqueEmptyObjectList {
+            const SHAPE: FieldShape<'static> = FieldShape::Opaque;
+            const UNIT: Unit = Unit::None;
+
+            fn write(&self, writer: impl ValueWriter) {
+                FormattedValue::<Vec<Endpoint>, AsObject, NotLifted>::new(&Vec::new()).write(writer)
+            }
+        }
+
+        /// An `Opaque` element that writes either a string or an object, for lists mixing both.
+        enum TextOrObject {
+            Text,
+            Object,
+        }
+
+        impl Value for TextOrObject {
+            const SHAPE: FieldShape<'static> = FieldShape::Opaque;
+            const UNIT: Unit = Unit::None;
+
+            fn write(&self, writer: impl ValueWriter) {
+                match self {
+                    TextOrObject::Text => writer.string("a"),
+                    TextOrObject::Object => writer.object(&Endpoint),
+                }
+            }
+        }
+
+        /// Owns a `T` and writes it through `FormattedValue<T, AsObject, NotLifted>`, so an
+        /// `AsObject` field can sit inside owning wrappers such as `ForceFlag`.
+        struct OwnedAsObject<T>(T);
+
+        impl<T> Value for OwnedAsObject<T>
+        where
+            AsObject: ValueFormatter<T, NotLifted>,
+        {
+            const SHAPE: FieldShape<'static> = <AsObject as ValueFormatter<T, NotLifted>>::SHAPE;
+            const UNIT: Unit = Unit::None;
+
+            fn write(&self, writer: impl ValueWriter) {
+                FormattedValue::<T, AsObject, NotLifted>::new(&self.0).write(writer)
+            }
+        }
+
+        /// One counter, a string attribute before and after the field under test, and the field.
+        fn write_around_field<'a>(w: &mut impl EntryWriter<'a>, field: &(impl Value + ?Sized)) {
+            let requests: ForceFlag<u64, Counter> = ForceFlag::from(1u64);
+            w.value(Cow::Borrowed("Requests"), &requests);
+            w.value(Cow::Borrowed("Operation"), "GET");
+            w.value(Cow::Borrowed("Field"), field);
+            w.value(Cow::Borrowed("Status"), "200");
+        }
+
+        /// The field under test is any owned `Value`.
+        struct FieldEntry<V>(V);
+
+        impl<V: Value> Entry for FieldEntry<V> {
+            fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+                write_around_field(w, &self.0);
+            }
+        }
+
+        /// The field under test is written as `FormattedValue<T, AsObject, NotLifted>`, the value
+        /// a `format = AsObject` field produces.
+        struct AsObjectEntry<T>(T);
+
+        impl<T> Entry for AsObjectEntry<T>
+        where
+            AsObject: ValueFormatter<T, NotLifted>,
+        {
+            fn write<'a>(&'a self, w: &mut impl EntryWriter<'a>) {
+                write_around_field(w, &FormattedValue::<T, AsObject, NotLifted>::new(&self.0));
+            }
+        }
+
+        /// Append `entry` to a fresh sink and return the sorted attributes on its `Requests`
+        /// data point.
+        fn requests_attributes(entry: impl Entry + Send + 'static) -> Vec<(String, String)> {
+            let exporter = InMemoryMetricExporter::default();
+            let reader = PeriodicReader::builder(exporter.clone()).build();
+            let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
+            let sink = OtelSink::builder()
+                .with_meter_provider(meter_provider.clone())
+                .build();
+
+            sink.append(entry);
+            meter_provider.force_flush().expect("force_flush meter");
+
+            let exported = exporter
+                .get_finished_metrics()
+                .expect("get_finished_metrics");
+            let mut attrs = Vec::new();
+            for m in exported
+                .iter()
+                .flat_map(|rm| rm.scope_metrics())
+                .flat_map(|sm| sm.metrics())
+                .filter(|m| m.name() == "Requests")
+            {
+                if let AggregatedMetrics::U64(MetricData::Sum(sum)) = m.data() {
+                    for dp in sum.data_points() {
+                        for kv in dp.attributes() {
+                            attrs.push((kv.key.to_string(), kv.value.as_str().into_owned()));
+                        }
+                    }
+                }
+            }
+            attrs.sort();
+            attrs
+        }
+
+        /// Attributes for `make()` via both the direct and the boxed (dyn) path, asserted equal.
+        /// The boxed path re-wraps list elements through the dyn bridge, which is where
+        /// element-shape routing is most likely to diverge.
+        fn attributes<E: Entry + Send + 'static>(make: impl Fn() -> E) -> Vec<(String, String)> {
+            let unboxed = requests_attributes(make());
+            let boxed = requests_attributes(BoxEntry::new(make()));
+            assert_eq!(unboxed, boxed, "boxed and unboxed attributes differ");
+            unboxed
+        }
+
+        /// The attributes `write_around_field` leaves when the field attaches nothing.
+        fn without_field() -> Vec<(String, String)> {
+            vec![
+                ("Operation".to_owned(), "GET".to_owned()),
+                ("Status".to_owned(), "200".to_owned()),
+            ]
+        }
+
+        /// Every value shape `AsObject` formats (`O`, `Option<O>`, `Vec<O>`, `Option<Vec<O>>`),
+        /// present and absent, attaches no attribute; the string attributes written before and
+        /// after the field are kept.
+        #[rstest]
+        #[case::object(attributes(|| AsObjectEntry(Endpoint)))]
+        #[case::some_object(attributes(|| AsObjectEntry(Some(Endpoint))))]
+        #[case::none_object(attributes(|| AsObjectEntry(None::<Endpoint>)))]
+        #[case::object_list(attributes(|| AsObjectEntry(vec![Endpoint, Endpoint])))]
+        #[case::empty_object_list(attributes(|| AsObjectEntry(Vec::<Endpoint>::new())))]
+        #[case::some_object_list(attributes(|| AsObjectEntry(Some(vec![Endpoint]))))]
+        #[case::none_object_list(attributes(|| AsObjectEntry(None::<Vec<Endpoint>>)))]
+        fn as_object_fields_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+            assert_eq!(attributes, without_field());
+        }
+
+        /// A `Value` that calls `object()` under the `Opaque` shape attaches no attribute alone,
+        /// in a list, or in a nested list.
+        #[rstest]
+        #[case::object(attributes(|| FieldEntry(OpaqueObject)))]
+        #[case::object_list(attributes(|| FieldEntry(vec![OpaqueObject, OpaqueObject])))]
+        #[case::nested_object_list(attributes(|| FieldEntry(vec![vec![OpaqueObject]])))]
+        #[case::nested_empty_object_list(attributes(|| FieldEntry(vec![OpaqueEmptyObjectList])))]
+        fn opaque_object_fields_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+            assert_eq!(attributes, without_field());
+        }
+
+        /// A list whose element shape is not `Object` but peels to it through `Optional`/`List`
+        /// attaches no attribute, even when no element writes an object.
+        #[rstest]
+        #[case::list_of_none(attributes(|| FieldEntry(vec![None::<OwnedAsObject<Endpoint>>])))]
+        #[case::list_of_empty_lists(attributes(|| FieldEntry(
+            vec![Vec::<OwnedAsObject<Endpoint>>::new()],
+        )))]
+        #[case::empty_list_of_optional(attributes(|| FieldEntry(
+            Vec::<OwnedAsObject<Option<Endpoint>>>::new(),
+        )))]
+        fn peeled_object_lists_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+            assert_eq!(attributes, without_field());
+        }
+
+        /// A list with any element writing an object attaches no attribute, wherever the object
+        /// sits among string elements.
+        #[rstest]
+        #[case::text_then_object(attributes(|| FieldEntry(
+            vec![TextOrObject::Text, TextOrObject::Object],
+        )))]
+        #[case::object_then_text(attributes(|| FieldEntry(
+            vec![TextOrObject::Object, TextOrObject::Text],
+        )))]
+        #[case::nested_text_then_object(attributes(|| FieldEntry(
+            vec![vec![TextOrObject::Text], vec![TextOrObject::Object]],
+        )))]
+        fn mixed_object_lists_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+            assert_eq!(attributes, without_field());
+        }
+
+        /// An `AsObject` field wrapped in `ForceFlag`, `WithDimensions`, or `Quantized` attaches
+        /// no attribute, alone or as a list. The `Opaque` lists are caught only by write-time
+        /// detection through each wrapper's `values()` re-wrap.
+        #[rstest]
+        #[case::force_flag(attributes(|| FieldEntry(
+            ForceFlag::<_, Counter>::from(OwnedAsObject(Endpoint)),
+        )))]
+        #[case::force_flag_list(attributes(|| FieldEntry(
+            ForceFlag::<_, Counter>::from(OwnedAsObject(vec![Endpoint])),
+        )))]
+        #[case::with_dimensions(attributes(|| FieldEntry(
+            WithDimensions::<_, 1>::new(OwnedAsObject(Endpoint), "Region", "us-east-1"),
+        )))]
+        #[case::with_dimensions_list(attributes(|| FieldEntry(
+            WithDimensions::<_, 1>::new(OwnedAsObject(vec![Endpoint]), "Region", "us-east-1"),
+        )))]
+        #[case::quantized(attributes(|| FieldEntry(
+            Quantized::<_>::from(OwnedAsObject(Endpoint)),
+        )))]
+        #[case::quantized_list(attributes(|| FieldEntry(
+            Quantized::<_>::from(OwnedAsObject(vec![Endpoint])),
+        )))]
+        #[case::force_flag_opaque_list(attributes(|| FieldEntry(
+            ForceFlag::<_, Counter>::from(vec![OpaqueObject]),
+        )))]
+        #[case::with_dimensions_opaque_list(attributes(|| FieldEntry(
+            WithDimensions::<_, 1>::new(vec![OpaqueObject], "Region", "us-east-1"),
+        )))]
+        #[case::quantized_opaque_list(attributes(|| FieldEntry(
+            Quantized::<_>::from(vec![OpaqueObject]),
+        )))]
+        fn wrapped_object_fields_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+            assert_eq!(attributes, without_field());
+        }
+
+        /// Scalar lists, including optional, nested, and `None`-holding ones, attach as one
+        /// comma-joined attribute.
+        #[rstest]
+        #[case::u64_list(attributes(|| FieldEntry(vec![1u64, 2])), "1,2")]
+        #[case::str_list(attributes(|| FieldEntry(vec!["a", "b"])), "a,b")]
+        #[case::string_list(attributes(|| FieldEntry(vec!["a".to_owned(), "b".to_owned()])), "a,b")]
+        #[case::f64_list(attributes(|| FieldEntry(vec![1.5f64, 2.0])), "1.5,2")]
+        #[case::optional_list(attributes(|| FieldEntry(Some(vec![1u64, 2]))), "1,2")]
+        #[case::nested_list(attributes(|| FieldEntry(vec![vec![1u64], vec![2, 3]])), "1,2,3")]
+        #[case::list_with_none(attributes(|| FieldEntry(vec![Some(1u64), None, Some(2)])), "1,2")]
+        #[case::empty_list(attributes(|| FieldEntry(Vec::<u64>::new())), "")]
+        #[case::opaque_text_list(attributes(|| FieldEntry(
+            vec![TextOrObject::Text, TextOrObject::Text],
+        )), "a,a")]
+        fn scalar_lists_are_joined_attributes(
+            #[case] attributes: Vec<(String, String)>,
+            #[case] joined: &str,
+        ) {
+            assert_eq!(
+                attributes,
+                vec![
+                    ("Field".to_owned(), joined.to_owned()),
+                    ("Operation".to_owned(), "GET".to_owned()),
+                    ("Status".to_owned(), "200".to_owned()),
+                ]
+            );
+        }
+
+        /// An empty list of `Opaque` elements attaches as `""`, a known limit of write-time
+        /// detection: no element is written, so there is nothing to detect, and the attribute
+        /// value is constant.
+        #[test]
+        fn empty_opaque_list_is_attached_empty() {
+            assert_eq!(
+                attributes(|| FieldEntry(Vec::<OpaqueObject>::new())),
+                vec![
+                    ("Field".to_owned(), String::new()),
+                    ("Operation".to_owned(), "GET".to_owned()),
+                    ("Status".to_owned(), "200".to_owned()),
+                ]
+            );
+        }
+    }
 }

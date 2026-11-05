@@ -690,6 +690,60 @@ mod tests {
     }
 
     #[test]
+    fn fail_if_value_wrote_object() {
+        struct Writer<'a>(&'a mut Option<String>);
+        impl ValueWriter for Writer<'_> {
+            fn string(self, value: &str) {
+                panic!("shouldn't have written {value}");
+            }
+
+            fn metric<'a>(
+                self,
+                _distribution: impl IntoIterator<Item = Observation>,
+                _unit: Unit,
+                _dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
+                _flags: MetricFlags<'_>,
+            ) {
+                panic!("shouldn't have emitted metric");
+            }
+
+            fn error(self, error: ValidationError) {
+                *self.0 = Some(error.to_string());
+            }
+
+            fn object<O: crate::ObjectValue + ?Sized>(self, _object: &O) {
+                panic!("shouldn't have forwarded the object");
+            }
+        }
+
+        struct Empty;
+
+        impl crate::ObjectValue for Empty {
+            fn write_object<'a>(&'a self, _writer: &mut impl crate::EntryWriter<'a>) {}
+        }
+
+        struct ObjectMetric;
+
+        impl MetricValue for ObjectMetric {
+            type Unit = Second;
+        }
+
+        impl Value for ObjectMetric {
+            fn write(&self, writer: impl ValueWriter) {
+                writer.object(&Empty);
+            }
+        }
+
+        let mut error = Option::None;
+        AsMilliseconds::from(ObjectMetric).write(Writer(&mut error));
+        let error = error.expect("the object must be reported via error()");
+        assert!(
+            error.contains("can't apply a unit to an object value"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn converts_observations_and_passes_through_rest() {
         struct Writer;
         impl ValueWriter for Writer {
