@@ -185,7 +185,22 @@ impl InstrumentCache {
             CachedInstrument::UpDownCounter(c) => {
                 for obs in observations {
                     let v = match obs {
-                        Observation::Unsigned(v) => v as i64,
+                        Observation::Unsigned(v) => {
+                            let Ok(value) = i64::try_from(v) else {
+                                rate_limited!(
+                                    Duration::from_secs(60),
+                                    tracing::warn!(
+                                        metric = name,
+                                        kind = ?kind,
+                                        value = v,
+                                        reason = "unsigned value exceeds i64::MAX",
+                                        "metrique-otel: dropping out-of-range observation"
+                                    )
+                                );
+                                continue;
+                            };
+                            value
+                        }
                         Observation::Floating(v) => {
                             if !v.is_finite() {
                                 rate_limited!(
@@ -458,6 +473,133 @@ mod tests {
             !metric_exists(&exporter, "BadUpDown"),
             "NaN UpDownCounter observations should be dropped"
         );
+    }
+
+    fn signed_sum(exporter: &InMemoryMetricExporter, name: &str) -> Option<i64> {
+        let exported = exporter
+            .get_finished_metrics()
+            .expect("get_finished_metrics");
+        for metric in exported
+            .iter()
+            .flat_map(|rm| rm.scope_metrics())
+            .flat_map(|sm| sm.metrics())
+        {
+            if metric.name() == name {
+                let AggregatedMetrics::I64(MetricData::Sum(sum)) = metric.data() else {
+                    panic!("expected signed sum for {name}");
+                };
+                let points: Vec<_> = sum.data_points().collect();
+                assert_eq!(points.len(), 1);
+                return Some(points[0].value());
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn up_down_counter_drops_unsigned_above_i64_max() {
+        let (cache, mp, exporter) = fresh();
+        cache.record(
+            "metrics_test",
+            "Overflow",
+            InstrumentKind::UpDownCounter,
+            [Observation::Unsigned(i64::MAX as u64 + 1)],
+            Unit::Count,
+            &[],
+        );
+        mp.force_flush().expect("force_flush");
+        assert!(
+            !metric_exists(&exporter, "Overflow"),
+            "overflow must not become a negative measurement"
+        );
+    }
+
+    #[test]
+    fn up_down_counter_drops_unsigned_max() {
+        let (cache, mp, exporter) = fresh();
+        cache.record(
+            "metrics_test",
+            "Overflow",
+            InstrumentKind::UpDownCounter,
+            [Observation::Unsigned(u64::MAX)],
+            Unit::Count,
+            &[],
+        );
+        mp.force_flush().expect("force_flush");
+        assert!(
+            !metric_exists(&exporter, "Overflow"),
+            "u64::MAX must not become -1"
+        );
+    }
+
+    #[test]
+    fn up_down_counter_preserves_unsigned_boundary_values() {
+        for value in [0, 1, i64::MAX as u64 - 1, i64::MAX as u64] {
+            let (cache, mp, exporter) = fresh();
+            cache.record(
+                "metrics_test",
+                "Boundary",
+                InstrumentKind::UpDownCounter,
+                [Observation::Unsigned(value)],
+                Unit::Count,
+                &[],
+            );
+            mp.force_flush().expect("force_flush");
+            assert_eq!(
+                signed_sum(&exporter, "Boundary"),
+                Some(i64::try_from(value).unwrap())
+            );
+        }
+    }
+
+    #[test]
+    fn up_down_counter_continues_after_unsigned_overflow() {
+        let (cache, mp, exporter) = fresh();
+        cache.record(
+            "metrics_test",
+            "Mixed",
+            InstrumentKind::UpDownCounter,
+            [
+                Observation::Unsigned(2),
+                Observation::Unsigned(i64::MAX as u64 + 1),
+                Observation::Unsigned(u64::MAX),
+                Observation::Floating(-3.0),
+                Observation::Unsigned(5),
+            ],
+            Unit::Count,
+            &[],
+        );
+        mp.force_flush().expect("force_flush");
+        assert_eq!(signed_sum(&exporter, "Mixed"), Some(4));
+    }
+
+    #[test]
+    fn counter_preserves_full_unsigned_range() {
+        let (cache, mp, exporter) = fresh();
+        cache.record(
+            "metrics_test",
+            "Unsigned",
+            InstrumentKind::Counter,
+            [Observation::Unsigned(u64::MAX)],
+            Unit::Count,
+            &[],
+        );
+        mp.force_flush().expect("force_flush");
+        let exported = exporter
+            .get_finished_metrics()
+            .expect("get_finished_metrics");
+        let metric = exported
+            .iter()
+            .flat_map(|rm| rm.scope_metrics())
+            .flat_map(|sm| sm.metrics())
+            .find(|m| m.name() == "Unsigned")
+            .expect("unsigned Counter metric");
+        let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() else {
+            panic!("expected unsigned sum");
+        };
+        let points: Vec<_> = sum.data_points().collect();
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].value(), u64::MAX);
     }
 
     #[test]
