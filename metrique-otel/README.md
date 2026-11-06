@@ -90,7 +90,8 @@ translator maps to a histogram instrument. Non-OTel sinks ignore the flags.
   avoid pre-summing histogram fields (e.g. don't put a `Sum`-style strategy on
   them).
 - Out-of-range observations (NaN, or negative on a counter) are dropped with a
-  rate-limited `warn`.
+  rate-limited `warn`. Unsigned up-down counter observations above `i64::MAX`
+  are also dropped rather than wrapping to a negative value.
 - A non-histogram field with no `flags(...)` tag is dropped, not given a default
   instrument, so forgetting the tag surfaces as a missing metric rather than a
   silent miscount.
