@@ -11,6 +11,7 @@ use std::time::{Duration, SystemTime};
 use assert_json_diff::assert_json_eq;
 use metrique_writer::value::WithDimension;
 use metrique_writer::{Entry, EntryIoStream, EntryWriter, FormatExt, IoStreamError};
+use metrique_writer_core::config::AllowUnroutableEntries;
 use metrique_writer_core::descriptor::{FieldShape, KnownShape};
 use metrique_writer_core::test_stream::TestSink;
 use metrique_writer_core::unit::NegativeScale;
@@ -466,6 +467,7 @@ impl<A: Value + Send + 'static, B: Value + Send + 'static> Entry for Twice<A, B>
 #[case::after_string(|| "x")]
 #[case::after_metric(|| 5u64)]
 #[case::after_object(|| DirectObject(ep()))]
+#[case::after_array(|| vec![1u64, 2])]
 fn duplicate_object_field_name_is_rejected<V: Value + Send + 'static>(
     #[case] prior: impl Fn() -> V,
 ) {
@@ -478,7 +480,107 @@ fn duplicate_object_field_name_is_rejected<V: Value + Send + 'static>(
 fn object_in_dimension_field_is_rejected() {
     let err = render_err_checked(&["Operation"], || Field("Operation", DirectObject(ep())));
     assert!(
-        err.contains("for `Operation`: can't use object in dimension field"),
+        err.contains("for `Operation`: dimension value must be a string"),
         "{err}"
     );
+}
+
+struct DimensionField<V> {
+    value: V,
+    source: &'static str,
+}
+
+impl<V: Value + Send + 'static> Entry for DimensionField<V> {
+    fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+        const DIMENSIONS: &EntryDimensions =
+            &EntryDimensions::new(Cow::Borrowed(&[Cow::Borrowed(&[Cow::Borrowed(
+                "Operation",
+            )])]));
+        writer.timestamp(SystemTime::UNIX_EPOCH);
+        if self.source == "before" {
+            writer.config(DIMENSIONS);
+        }
+        writer.value("Operation", &self.value);
+        if self.source == "after" {
+            writer.config(DIMENSIONS);
+        }
+    }
+}
+
+/// Arrays and objects must not satisfy dimensions, regardless of declaration order (#422).
+#[rstest]
+#[case::array(|| vec![1u64, 2])]
+#[case::empty_array(Vec::<u64>::new)]
+#[case::object(|| DirectObject(ep()))]
+fn structured_dimension_is_rejected<V: Value + Send + 'static>(
+    #[case] value: impl Fn() -> V,
+    #[values("default", "before", "after")] source: &'static str,
+) {
+    let dimensions = if source == "default" {
+        &["Operation"][..]
+    } else {
+        &[]
+    };
+    let err = render_err_checked(dimensions, || DimensionField {
+        value: value(),
+        source,
+    });
+    assert!(
+        err.contains("for `Operation`") && err.contains("dimension"),
+        "{err}"
+    );
+}
+
+/// Real strings remain valid for default and entry-configured dimensions.
+#[rstest]
+fn string_dimension_remains_valid(#[values("default", "before", "after")] source: &'static str) {
+    let dimensions = if source == "default" {
+        &["Operation"][..]
+    } else {
+        &[]
+    };
+    let make = || DimensionField {
+        value: "GetItem",
+        source,
+    };
+    let unboxed = emit(dimensions, &make()).unwrap();
+    let boxed = emit(dimensions, &make().boxed()).unwrap();
+    assert_eq!(unboxed, boxed);
+    let doc: serde_json::Value = serde_json::from_str(&unboxed).unwrap();
+    assert_eq!(doc["Operation"], "GetItem");
+}
+
+/// The explicit routing-validation opt-out still permits structured dimension values.
+#[rstest]
+#[case::array(|| vec![1u64, 2])]
+#[case::object(|| DirectObject(ep()))]
+fn structured_dimension_can_opt_out_of_routing_validation<V: Value + Send + 'static>(
+    #[case] value: impl Fn() -> V,
+    #[values("default", "before", "after")] source: &'static str,
+) {
+    struct Unroutable<E> {
+        entry: E,
+        config: AllowUnroutableEntries,
+    }
+    impl<E: Entry> Entry for Unroutable<E> {
+        fn write<'a>(&'a self, writer: &mut impl EntryWriter<'a>) {
+            writer.config(&self.config);
+            self.entry.write(writer);
+        }
+    }
+    let dimensions = if source == "default" {
+        &["Operation"][..]
+    } else {
+        &[]
+    };
+    let make = || Unroutable {
+        entry: DimensionField {
+            value: value(),
+            source,
+        },
+        config: AllowUnroutableEntries::default(),
+    };
+    let unboxed = emit(dimensions, &make()).unwrap();
+    let boxed = emit(dimensions, &make().boxed()).unwrap();
+    assert_eq!(unboxed, boxed);
 }
