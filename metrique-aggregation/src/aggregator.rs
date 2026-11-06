@@ -151,16 +151,19 @@ where
 ///
 /// let mut metrics = RequestMetrics {
 ///     request_id: "req-123".to_string(),
-///     api_calls: Aggregate::default(),
+///     api_calls: [ApiCall { latency: Duration::from_millis(45) }]
+///         .into_iter()
+///         .collect(),
 /// };
 ///
-/// metrics.api_calls.insert(ApiCall {
-///     latency: Duration::from_millis(45),
-/// });
-/// metrics.api_calls.insert(ApiCall {
+/// metrics.api_calls.extend([ApiCall {
 ///     latency: Duration::from_millis(67),
-/// });
+/// }]);
 /// ```
+///
+/// [`FromIterator`] and [`Extend`] accept the same owned, unkeyed entries as
+/// [`insert`](Self::insert), closing and merging each entry in order. Collecting
+/// starts from the default accumulator; extending preserves its existing state.
 pub struct Aggregate<T: AggregateStrategy> {
     aggregated: <T::Source as Merge>::Merged,
 }
@@ -234,6 +237,31 @@ where
 {
     fn merge_ref(&mut self, entry: &T::Source) {
         T::Source::merge_ref(&mut self.aggregated, entry);
+    }
+}
+
+impl<T> Extend<T> for Aggregate<T>
+where
+    T: AggregateStrategy<Key = AggregateMustBeUsedOnStructsWithNoKeys>
+        + CloseValue<Closed = T::Source>,
+{
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for entry in iter {
+            self.insert(entry);
+        }
+    }
+}
+
+impl<T> FromIterator<T> for Aggregate<T>
+where
+    T: AggregateStrategy<Key = AggregateMustBeUsedOnStructsWithNoKeys>
+        + CloseValue<Closed = T::Source>,
+    <T::Source as Merge>::Merged: Default,
+{
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let mut aggregate = Self::default();
+        aggregate.extend(iter);
+        aggregate
     }
 }
 
