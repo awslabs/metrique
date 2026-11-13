@@ -44,6 +44,153 @@ pub mod local;
 /// #
 /// let timestamp = Timestamp::now();
 /// ```
+///
+/// # Timing a block of code
+///
+/// To record how long a block of code took, you don't need to manage guards by hand.
+/// Which helper to use depends on where the duration should end up.
+///
+/// ## Considerations when choosing between them:
+///
+/// - **Accumulate vs. overwrite.** A [`Stopwatch`] sums every measurement, so timing in a loop
+///   reports the total. [`Timed::split_time_to`] stores a single `Option<Timer>` and replaces
+///   the previous value, so timing in a loop reports only the last iteration.
+/// - **Borrowing.** [`Stopwatch::time_async`] keeps the stopwatch mutably borrowed until the
+///   future completes. This only matters if your metric is held in an `append_on_drop` guard
+///   *and* the future itself borrows another field of that metric: the guard exposes its fields
+///   through `DerefMut`, so the two borrows conflict and the compiler rejects it. In that case
+///   use [`TimedFutureExt::timed`], which only borrows the field after the future has finished.
+///   Futures that don't use the metric, and metrics held in a plain struct, are unaffected.
+///
+/// ## Sync code with a `Stopwatch`
+///
+/// [`Stopwatch::time`] adds the closure's duration to the stopwatch and returns its result.
+/// Calling it multiple times accumulates.
+/// ```
+/// use metrique::timers::Stopwatch;
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct RequestMetrics {
+///     parse_time: Stopwatch,
+/// }
+///
+/// let mut metrics = RequestMetrics::default();
+/// let parsed = metrics.parse_time.time(|| "42".parse::<u32>());
+/// ```
+///
+/// ## Futures with a `Stopwatch`
+///
+/// [`Stopwatch::time_async`] does the same for a future. If the future is dropped before it
+/// finishes (for example, on a timeout), the time elapsed so far is still recorded.
+/// ```
+/// use metrique::timers::Stopwatch;
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct RequestMetrics {
+///     db_time: Stopwatch,
+/// }
+///
+/// # async fn query_db() -> u32 { 1 }
+/// # async fn example() {
+/// let mut metrics = RequestMetrics::default();
+/// let rows = metrics.db_time.time_async(query_db()).await;
+/// # }
+/// ```
+///
+/// ## Futures with an `Option<Timer>` field
+///
+/// [`TimedFutureExt::timed`] wraps any future and resolves to a [`Timed`], which holds the
+/// output and the measured duration. Timing starts when the future is first polled, and the
+/// duration is frozen when it resolves, so it is not affected by how long the parent metric
+/// stays open afterwards. [`Timed::split_time_to`] stores the duration in the field and hands
+/// back the output.
+/// ```
+/// use metrique::timers::{TimedFutureExt, Timer};
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct RequestMetrics {
+///     fetch_time: Option<Timer>,
+/// }
+///
+/// # async fn fetch() -> u32 { 1 }
+/// # async fn example() {
+/// let mut metrics = RequestMetrics::default();
+/// let value = fetch().timed().await.split_time_to(&mut metrics.fetch_time);
+/// # }
+/// ```
+///
+/// For sync code, [`Timed::blocking`] produces the same [`Timed`] value.
+///
+/// ## One measurement, several fields
+///
+/// [`Timed::into_parts`] returns the output and the raw [`Duration`](std::time::Duration), for
+/// when one interval should be reported in more than one place.
+/// ```
+/// use metrique::timers::{Stopwatch, TimedFutureExt};
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct RequestMetrics {
+///     // this request's latency
+///     fetch_time: Stopwatch,
+///     // a running total across several fetches
+///     total_fetch_time: Stopwatch,
+/// }
+///
+/// # async fn fetch() -> u32 { 1 }
+/// # async fn example() {
+/// let mut metrics = RequestMetrics::default();
+/// let (value, elapsed) = fetch().timed().await.into_parts();
+/// metrics.fetch_time.record(elapsed);
+/// metrics.total_fetch_time.record(elapsed);
+/// # }
+/// ```
+///
+/// ## Recording latency by outcome
+///
+/// When the operation returns a `Result`, [`Timed::split_time_to_result`] puts the duration in
+/// one field on success and another on failure, so error latency doesn't pollute success
+/// latency. [`Timed::split_time_to_if_ok`] and [`Timed::record_to_if_ok`] record only on
+/// success.
+/// ```
+/// use metrique::timers::{TimedFutureExt, Timer};
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct RequestMetrics {
+///     ok_latency: Option<Timer>,
+///     err_latency: Option<Timer>,
+/// }
+///
+/// # async fn call() -> Result<u32, String> { Ok(1) }
+/// # async fn example() {
+/// let mut metrics = RequestMetrics::default();
+/// let result = call()
+///     .timed()
+///     .await
+///     .split_time_to_result(&mut metrics.ok_latency, &mut metrics.err_latency);
+/// # }
+/// ```
+///
+/// [`Stopwatch`]: crate::timers::Stopwatch
+/// [`Stopwatch::time`]: crate::timers::Stopwatch::time
+/// [`Stopwatch::time_async`]: crate::timers::Stopwatch::time_async
+/// [`Timed`]: crate::timers::Timed
+/// [`Timed::blocking`]: crate::timers::Timed::blocking
+/// [`Timed::into_parts`]: crate::timers::Timed::into_parts
+/// [`Timed::split_time_to`]: crate::timers::Timed::split_time_to
+/// [`Timed::split_time_to_result`]: crate::timers::Timed::split_time_to_result
+/// [`Timed::split_time_to_if_ok`]: crate::timers::Timed::split_time_to_if_ok
+/// [`Timed::record_to_if_ok`]: crate::timers::Timed::record_to_if_ok
+/// [`TimedFutureExt::timed`]: crate::timers::TimedFutureExt::timed
 pub mod timers;
 
 /// [`Slot`] lets you split off a section of your metrics to be handled by another task

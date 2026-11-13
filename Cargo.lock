@@ -1759,6 +1759,7 @@ dependencies = [
  "metrique-writer-format-emf",
  "metrique-writer-format-json",
  "metrique-writer-macro",
+ "pin-project-lite",
  "regex-lite",
  "rstest",
  "rustversion",
