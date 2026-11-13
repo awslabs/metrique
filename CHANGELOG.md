@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(metrique-writer-core)* `write_json_object` is now generic over a new `RewindBuf` trait (append plus `len`/`truncate`, the operations member rollback needs) rather than taking `&mut String`, so a format can render an object body directly into its own buffer type instead of going through a raw `&mut String`. `String` implements `RewindBuf`, so existing callers are unaffected.
 
+### Fixed
+
+- *(metrique-aggregation)* `ExponentialAggregationStrategy` and `AtomicExponentialAggregationStrategy` (the defaults for `Histogram` and `SharedHistogram`) now skip NaN observations, as `SortAndMerge` does. A NaN was recorded in the top bucket and emitted as a value of about 1.77e16.
+
 ## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
 
 ### Fixed
