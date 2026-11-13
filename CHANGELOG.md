@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- *(metrique)* Ergonomic timing helpers (#399): `Stopwatch::time(|| ..)`, `Stopwatch::time_async(fut)` and `Stopwatch::record(duration)` add the time a block took to a `Stopwatch` field; `fut.timed().await` (via `TimedFutureExt`) and `Timed::blocking(|| ..)` return a `Timed<T>` whose `split_time_to(&mut Option<Timer>)`, `record_to(&mut Stopwatch)` or `into_parts()` park the frozen duration in a metric field and hand back the output; `Timer::from_duration` builds an already-stopped `Timer`. `timed_with_timesource` / `Timed::blocking_with_timesource` use an explicit `TimeSource`, and `Timed<Result<_, _>>` can route the duration by outcome with `split_time_to_if_ok`, `split_time_to_result` and `record_to_if_ok`.
+
 - *(metrique-writer-format-json)* Render a value written through `ValueWriter::object` as a native nested JSON object (and a list of them as a JSON array) in `properties`, instead of a JSON-encoded string. This is plumbing for object-valued fields and is not yet reachable through `#[metrics]`: the derive macro does not emit object fields, so the only way to produce one today is to call `ValueWriter::object` directly against `metrique-writer-core`. For such callers the object subtree is native JSON (recoverable in one `JSON.parse`); a `None` or otherwise-empty member is omitted (no `"Key":null`); an all-empty object renders `{}` and an empty array `[]`; objects are not metrics (per-member units/dimensions/flags are ignored and members are not scaled by the sampling multiplicity); and boxed output matches unboxed byte-for-byte.
 
   Before (string fallback) vs. after (native), for the same object field:

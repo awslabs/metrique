@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
+    future::Future,
     marker::PhantomData,
-    ops::AddAssign,
+    ops::{AddAssign, DerefMut},
+    pin::Pin,
     sync::{Arc, Mutex},
+    task::{Context, Poll},
     time::{Duration, UNIX_EPOCH},
 };
 
@@ -281,6 +284,25 @@ impl Timer {
         Self {
             start: timesource.instant(),
             duration: None,
+        }
+    }
+
+    /// Creates a timer that is already stopped at exactly `duration`.
+    ///
+    /// Useful when you have measured a duration yourself (or via [`Timed`]) and want to
+    /// record it in a `Timer` field.
+    ///
+    /// # Example
+    /// ```
+    /// # use metrique::timers::Timer;
+    /// # use std::time::Duration;
+    /// let mut timer = Timer::from_duration(Duration::from_millis(5));
+    /// assert_eq!(timer.stop(), Duration::from_millis(5));
+    /// ```
+    pub fn from_duration(duration: Duration) -> Self {
+        Self {
+            start: time_source().instant(),
+            duration: Some(duration),
         }
     }
 
@@ -792,6 +814,58 @@ impl Stopwatch {
         }
     }
 
+    /// Adds an already-measured `duration` to this stopwatch.
+    ///
+    /// # Example
+    /// ```
+    /// # use metrique::timers::Stopwatch;
+    /// # use std::time::Duration;
+    /// let mut stopwatch = Stopwatch::new();
+    /// stopwatch.record(Duration::from_millis(5));
+    /// stopwatch.record(Duration::from_millis(5));
+    /// // stopwatch now contains 10ms
+    /// ```
+    pub fn record(&mut self, duration: Duration) {
+        self.duration += duration;
+    }
+
+    /// Runs `f`, adding the time it took to this stopwatch, and returns its result.
+    ///
+    /// The time is recorded even if `f` panics.
+    ///
+    /// # Example
+    /// ```
+    /// # use metrique::timers::Stopwatch;
+    /// let mut stopwatch = Stopwatch::new();
+    /// let answer = stopwatch.time(|| 40 + 2);
+    /// assert_eq!(answer, 42);
+    /// ```
+    pub fn time<T>(&mut self, f: impl FnOnce() -> T) -> T {
+        let _guard = self.start();
+        f()
+    }
+
+    /// Awaits `fut`, adding the time it took to this stopwatch, and returns its output.
+    ///
+    /// Timing starts when this future is first polled. If the future is dropped before
+    /// completing (e.g. cancelled), the time elapsed so far is still recorded.
+    ///
+    /// For timing a future you don't want to borrow the stopwatch for, see [`TimedFutureExt::timed`].
+    ///
+    /// # Example
+    /// ```
+    /// # use metrique::timers::Stopwatch;
+    /// # async fn do_io() -> u32 { 1 }
+    /// # async fn example() {
+    /// let mut stopwatch = Stopwatch::new();
+    /// let value = stopwatch.time_async(do_io()).await;
+    /// # }
+    /// ```
+    pub async fn time_async<F: Future>(&mut self, fut: F) -> F::Output {
+        let _guard = self.start();
+        fut.await
+    }
+
     /// Clear all loaded duration in the [`Stopwatch`].
     ///
     /// This will result in no metrics being published on drop,
@@ -860,6 +934,233 @@ impl CloseValue for Stopwatch {
     }
 }
 
+/// The output of a completed operation, paired with how long it took.
+///
+/// Produced by [`TimedFutureExt::timed`] and [`Timed::blocking`]. The duration is frozen at the
+/// moment the operation finished, not when the parent metric is closed. Use
+/// [`Timed::split_time_to`] / [`Timed::record_to`] to park the duration in a metric field
+/// and get the operation's output back, or [`Timed::into_parts`] when the same duration should
+/// feed more than one field.
+///
+/// # Examples
+/// ```
+/// use metrique::timers::{Timed, Timer};
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct MyMetric {
+///     expensive_op: Option<Timer>,
+/// }
+///
+/// let mut m = MyMetric::default();
+/// let value = Timed::blocking(|| 40 + 2).split_time_to(&mut m.expensive_op);
+/// assert_eq!(value, 42);
+/// assert!(m.expensive_op.is_some());
+/// ```
+///
+/// Timing a future:
+/// ```
+/// use metrique::timers::{Timer, TimedFutureExt};
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct MyMetric {
+///     expensive_op: Option<Timer>,
+/// }
+///
+/// # async fn do_some_expensive_op() -> u32 { 42 }
+/// # async fn example() {
+/// let mut m = MyMetric::default();
+/// let value = do_some_expensive_op().timed().await.split_time_to(&mut m.expensive_op);
+/// # }
+/// ```
+#[derive(Debug)]
+#[must_use = "the measured duration is lost unless it is recorded with `split_time_to`, `record_to` or `into_parts`"]
+pub struct Timed<T> {
+    result: T,
+    duration: Duration,
+}
+
+impl<T> Timed<T> {
+    /// Runs `f` and returns its result together with the time it took.
+    ///
+    /// This is the synchronous counterpart to [`TimedFutureExt::timed`].
+    pub fn blocking(f: impl FnOnce() -> T) -> Self {
+        let start = time_source().instant();
+        let result = f();
+        Self {
+            result,
+            duration: start.elapsed(),
+        }
+    }
+
+    /// Like [`Timed::blocking`], but measures with an explicit [`TimeSource`].
+    pub fn blocking_with_timesource(time_source: TimeSource, f: impl FnOnce() -> T) -> Self {
+        let start = time_source.instant();
+        let result = f();
+        Self {
+            result,
+            duration: start.elapsed(),
+        }
+    }
+
+    /// The measured duration.
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+
+    /// Borrow the operation's output.
+    pub fn result(&self) -> &T {
+        &self.result
+    }
+
+    /// Return the operation's output alongside the elapsed duration, for when one
+    /// interval feeds more than one metric field.
+    pub fn into_parts(self) -> (T, Duration) {
+        (self.result, self.duration)
+    }
+
+    /// Park the (stopped) duration in an `Option<Timer>` metric field, replacing any previous
+    /// value, and return the operation's output.
+    pub fn split_time_to(self, mut timer_field: impl DerefMut<Target = Option<Timer>>) -> T {
+        timer_field.replace(Timer::from_duration(self.duration));
+        self.result
+    }
+
+    /// Add the duration to a [`Stopwatch`] and return the operation's output.
+    pub fn record_to(self, stopwatch: &mut Stopwatch) -> T {
+        stopwatch.record(self.duration);
+        self.result
+    }
+}
+
+impl<T, E> Timed<Result<T, E>> {
+    /// Park the duration in `field` only if the operation succeeded, and return the `Result`.
+    ///
+    /// On `Err` the field is left untouched.
+    ///
+    /// # Example
+    /// ```
+    /// use metrique::timers::{Timed, Timer};
+    /// let mut ok_latency: Option<Timer> = None;
+    /// let r: Result<u32, ()> = Timed::blocking(|| Ok(1)).split_time_to_if_ok(&mut ok_latency);
+    /// assert!(ok_latency.is_some());
+    /// ```
+    pub fn split_time_to_if_ok(
+        self,
+        mut field: impl DerefMut<Target = Option<Timer>>,
+    ) -> Result<T, E> {
+        if self.result.is_ok() {
+            field.replace(Timer::from_duration(self.duration));
+        }
+        self.result
+    }
+
+    /// Park the duration in `ok_field` if the operation succeeded, or `err_field` if it failed,
+    /// and return the `Result`. The other field is left untouched.
+    ///
+    /// # Example
+    /// ```
+    /// use metrique::timers::{Timed, Timer};
+    /// let mut ok_latency: Option<Timer> = None;
+    /// let mut err_latency: Option<Timer> = None;
+    /// let r: Result<(), &str> = Timed::blocking(|| Err("boom"))
+    ///     .split_time_to_result(&mut ok_latency, &mut err_latency);
+    /// assert!(ok_latency.is_none());
+    /// assert!(err_latency.is_some());
+    /// ```
+    pub fn split_time_to_result(
+        self,
+        mut ok_field: impl DerefMut<Target = Option<Timer>>,
+        mut err_field: impl DerefMut<Target = Option<Timer>>,
+    ) -> Result<T, E> {
+        let timer = Timer::from_duration(self.duration);
+        match self.result {
+            Ok(_) => ok_field.replace(timer),
+            Err(_) => err_field.replace(timer),
+        };
+        self.result
+    }
+
+    /// Add the duration to `stopwatch` only if the operation succeeded, and return the `Result`.
+    pub fn record_to_if_ok(self, stopwatch: &mut Stopwatch) -> Result<T, E> {
+        if self.result.is_ok() {
+            stopwatch.record(self.duration);
+        }
+        self.result
+    }
+}
+
+pin_project_lite::pin_project! {
+    /// Future returned by [`TimedFutureExt::timed`].
+    ///
+    /// Timing starts when the future is first polled.
+    #[must_use = "futures do nothing unless you `.await` or poll them"]
+    pub struct TimedFuture<F> {
+        #[pin]
+        inner: F,
+        time_source: Option<TimeSource>,
+        start: Option<Instant>,
+    }
+}
+
+impl<F: Future> Future for TimedFuture<F> {
+    type Output = Timed<F::Output>;
+
+    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        let this = self.project();
+        let start = this.start.get_or_insert_with(|| match this.time_source {
+            Some(ts) => ts.instant(),
+            None => time_source().instant(),
+        });
+        match this.inner.poll(cx) {
+            Poll::Ready(result) => Poll::Ready(Timed {
+                result,
+                duration: start.elapsed(),
+            }),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+/// Extension trait for timing a future.
+///
+/// Implemented for every [`Future`].
+pub trait TimedFutureExt: Future + Sized {
+    /// Time this future. Timing starts when it is first polled, and the resulting duration is
+    /// frozen when the future resolves. See [`Timed`] for how to record it.
+    fn timed(self) -> TimedFuture<Self> {
+        TimedFuture {
+            inner: self,
+            time_source: None,
+            start: None,
+        }
+    }
+
+    /// Like [`TimedFutureExt::timed`], but measures with an explicit [`TimeSource`] instead of the
+    /// global one. Useful for tests and for code that carries its own clock.
+    ///
+    /// # Example
+    /// ```
+    /// # use metrique::timers::TimedFutureExt;
+    /// # use metrique_timesource::time_source;
+    /// # async fn example() {
+    /// let timed = async { 1 }.timed_with_timesource(time_source()).await;
+    /// # }
+    /// ```
+    fn timed_with_timesource(self, time_source: TimeSource) -> TimedFuture<Self> {
+        TimedFuture {
+            inner: self,
+            time_source: Some(time_source),
+            start: None,
+        }
+    }
+}
+
+impl<F: Future> TimedFutureExt for F {}
+
 #[cfg(test)]
 mod test {
     use std::time::{Duration, UNIX_EPOCH};
@@ -867,7 +1168,7 @@ mod test {
     use metrique_core::CloseValue;
     use metrique_timesource::{TimeSource, set_time_source};
 
-    use crate::timers::{Stopwatch, Timer};
+    use crate::timers::{Stopwatch, Timed, TimedFutureExt, Timer};
 
     #[tokio::test(start_paused = true)]
     async fn timer_stop_is_idempotent() {
@@ -1014,5 +1315,165 @@ mod test {
         // discard the guard's contents but leave loaded time in place
         guard.discard();
         assert_eq!(stopwatch.duration, Some(Duration::from_secs(1)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stopwatch_time_and_record() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut stopwatch = Stopwatch::new();
+        let out = stopwatch.time(|| {
+            std::thread::sleep(Duration::from_millis(1));
+            7
+        });
+        assert_eq!(out, 7);
+        assert!((&stopwatch).close().is_some());
+        stopwatch.clear();
+        stopwatch.record(Duration::from_secs(1));
+        stopwatch.record(Duration::from_secs(2));
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(3)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stopwatch_time_async_accumulates() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut stopwatch = Stopwatch::new();
+        let v = stopwatch
+            .time_async(async {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                5
+            })
+            .await;
+        assert_eq!(v, 5);
+        stopwatch
+            .time_async(tokio::time::sleep(Duration::from_secs(2)))
+            .await;
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(3)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stopwatch_time_async_records_on_cancel() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut stopwatch = Stopwatch::new();
+        let _ = tokio::time::timeout(
+            Duration::from_secs(1),
+            stopwatch.time_async(tokio::time::sleep(Duration::from_secs(10))),
+        )
+        .await;
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(1)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_future_split_time_to_option_timer() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut field: Option<Timer> = None;
+        let v = async {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            "done"
+        }
+        .timed()
+        .await
+        .split_time_to(&mut field);
+        assert_eq!(v, "done");
+        // time passing after the future resolved must not affect the recorded value
+        tokio::time::advance(Duration::from_secs(5)).await;
+        assert_eq!(field.close(), Some(Duration::from_secs(2)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_future_starts_on_first_poll() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        // the sleep is created lazily on first poll, so its deadline is relative to the first poll
+        let fut = async { tokio::time::sleep(Duration::from_secs(1)).await }.timed();
+        tokio::time::advance(Duration::from_secs(10)).await;
+        let (_, d) = fut.await.into_parts();
+        assert_eq!(d, Duration::from_secs(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_record_to_stopwatch() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut stopwatch = Stopwatch::new();
+        for _ in 0..2 {
+            tokio::time::sleep(Duration::from_secs(1))
+                .timed()
+                .await
+                .record_to(&mut stopwatch);
+        }
+        assert_eq!((&stopwatch).close(), Some(Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn timed_blocking_returns_result_and_duration() {
+        let t = Timed::blocking(|| 3);
+        assert_eq!(*t.result(), 3);
+        let (v, _d) = t.into_parts();
+        assert_eq!(v, 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_with_explicit_timesource() {
+        // no global time source set: the explicit one must be used
+        let ts = TimeSource::tokio(UNIX_EPOCH);
+        let t = async { tokio::time::sleep(Duration::from_secs(3)).await }
+            .timed_with_timesource(ts.clone())
+            .await;
+        assert_eq!(t.duration(), Duration::from_secs(3));
+        let t = Timed::blocking_with_timesource(ts, || ());
+        assert_eq!(t.duration(), Duration::ZERO);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_result_routing() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let (mut ok, mut err): (Option<Timer>, Option<Timer>) = (None, None);
+
+        let r = async {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok::<_, &str>(1)
+        }
+        .timed()
+        .await
+        .split_time_to_result(&mut ok, &mut err);
+        assert_eq!(r, Ok(1));
+        assert_eq!(ok.take().close(), Some(Duration::from_secs(1)));
+        assert!(err.is_none());
+
+        let r = async {
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            Err::<u32, _>("boom")
+        }
+        .timed()
+        .await
+        .split_time_to_result(&mut ok, &mut err);
+        assert_eq!(r, Err("boom"));
+        assert!(ok.is_none());
+        assert_eq!(err.close(), Some(Duration::from_secs(2)));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn timed_if_ok_skips_errors() {
+        let _ts = set_time_source(TimeSource::tokio(UNIX_EPOCH));
+        let mut field: Option<Timer> = None;
+        let mut sw = Stopwatch::new();
+
+        let _ = async { Err::<(), _>("x") }
+            .timed()
+            .await
+            .split_time_to_if_ok(&mut field);
+        let _ = async { Err::<(), _>("x") }
+            .timed()
+            .await
+            .record_to_if_ok(&mut sw);
+        assert!(field.is_none());
+        assert_eq!((&sw).close(), None);
+
+        let _ = async {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            Ok::<_, ()>(())
+        }
+        .timed()
+        .await
+        .record_to_if_ok(&mut sw);
+        assert_eq!((&sw).close(), Some(Duration::from_secs(1)));
     }
 }
