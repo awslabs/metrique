@@ -353,7 +353,7 @@ fn scale_down(v: impl Into<f64>) -> f64 {
 
 /// Exponential bucketing strategy using the histogram crate.
 ///
-/// This uses 976 buckets and supports values from 0 to u64::MAX. Values greater than u64::MAX are truncated to u64::MAX.
+/// This uses 976 buckets and supports values from 0 to u64::MAX. Values greater than u64::MAX are truncated to u64::MAX. NaN values are skipped.
 /// Scaling factor for converting floating point values to integers for histogram bucketing.
 /// 2^10 = 1024, providing 3 decimal places of precision.
 ///
@@ -383,13 +383,21 @@ fn default_histogram_config() -> Config {
     Config::new(4, 64).expect("known good")
 }
 
+/// Converts an observed value to the value recorded in the exponential histograms, or `None` for
+/// NaN, which is skipped as in [`SortAndMerge`] (`f64::min` would turn it into `u64::MAX`).
+fn to_bucket_value(value: f64) -> Option<u64> {
+    if value.is_nan() {
+        return None;
+    }
+    // the inner histogram drops data above u64::MAX in our default configuration
+    Some(scale_up(value).min(u64::MAX as f64) as u64)
+}
+
 impl AggregationStrategy for ExponentialAggregationStrategy {
     fn record_many(&mut self, value: f64, count: u64) {
-        // the inner histogram drops data above u64::MAX in our default configuration
-        let value = scale_up(value);
-        self.inner
-            .add(value.min(u64::MAX as f64) as u64, count)
-            .ok();
+        if let Some(value) = to_bucket_value(value) {
+            self.inner.add(value, count).ok();
+        }
     }
 
     fn drain(&mut self) -> Vec<Observation> {
@@ -474,7 +482,7 @@ impl<const N: usize> AggregationStrategy for SortAndMerge<N> {
 
 /// Thread-safe exponential bucketing strategy using atomic counters.
 ///
-/// This uses 976 buckets and supports values from 0 to u64::MAX. Values greater than u64::MAX are truncated to u64::MAX.
+/// This uses 976 buckets and supports values from 0 to u64::MAX. Values greater than u64::MAX are truncated to u64::MAX. NaN values are skipped.
 ///
 /// Like [`ExponentialAggregationStrategy`] but uses atomic operations to allow concurrent
 /// recording from multiple threads.
@@ -499,10 +507,9 @@ impl Default for AtomicExponentialAggregationStrategy {
 
 impl SharedAggregationStrategy for AtomicExponentialAggregationStrategy {
     fn record_many(&self, value: f64, count: u64) {
-        let value = scale_up(value);
-        self.inner
-            .add(value.min(u64::MAX as f64) as u64, count)
-            .ok();
+        if let Some(value) = to_bucket_value(value) {
+            self.inner.add(value, count).ok();
+        }
     }
 
     fn drain(&self) -> Vec<Observation> {
