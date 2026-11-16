@@ -346,6 +346,45 @@ fn test_sort_and_merge_with_nan() {
     );
 }
 
+#[test]
+fn test_exponential_with_nan() {
+    let sink = test_entry_sink();
+
+    #[metrics(rename_all = "PascalCase")]
+    struct Metrics {
+        #[metrics(unit = Millisecond)]
+        latency: Histogram<f64, ExponentialAggregationStrategy>,
+        #[metrics(unit = Millisecond)]
+        shared_latency: SharedHistogram<f64, AtomicExponentialAggregationStrategy>,
+    }
+
+    let mut metrics = Metrics {
+        latency: Histogram::default(),
+        shared_latency: SharedHistogram::default(),
+    };
+
+    metrics.latency.add_value(5.0);
+    metrics.latency.add_value(f64::NAN);
+    metrics.shared_latency.add_value(5.0);
+    metrics.shared_latency.add_value(f64::NAN);
+
+    drop(metrics.append_on_drop(sink.sink));
+
+    let entries = sink.inspector.entries();
+    check!(entries.len() == 1);
+
+    // NaN values should be filtered out, leaving only the bucket of the valid value
+    for name in ["Latency", "SharedLatency"] {
+        let dist = &entries[0].metrics[name].distribution;
+        check!(dist.len() == 1, "{name}: {dist:?}");
+        let metrique_writer::Observation::Repeated { total, occurrences } = dist[0] else {
+            panic!("{name}: expected a Repeated observation, got {dist:?}");
+        };
+        check!(occurrences == 1);
+        check!((total - 5.0).abs() < 5.0 * 0.0625, "{name}: {total}");
+    }
+}
+
 // Test harness for validating histogram accuracy
 
 /// Calculate percentile from a list of values. Percentile should be in the range 0->100
