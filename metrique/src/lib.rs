@@ -61,6 +61,12 @@ pub mod local;
 ///   through `DerefMut`, so the two borrows conflict and the compiler rejects it. In that case
 ///   use [`TimedFutureExt::timed`], which only borrows the field after the future has finished.
 ///   Futures that don't use the metric, and metrics held in a plain struct, are unaffected.
+/// - **Cancellation and panics.** [`Stopwatch::time`] keeps the time elapsed so far if the closure
+///   panics. [`Stopwatch::time_async`] does too, and also if the future is cancelled (dropped).
+///   [`TimedFutureExt::timed`] only produces a duration when the operation finishes, so a
+///   cancelled or panicking operation records nothing. If the measurement must survive either,
+///   use a `Stopwatch`. If the future also needs to borrow other fields of a guard-held metric,
+///   hold a [`Stopwatch::start_owned`] guard across the await instead (see below).
 ///
 /// ## Sync code with a `Stopwatch`
 ///
@@ -127,6 +133,31 @@ pub mod local;
 ///
 /// For sync code, [`Timed::blocking`] produces the same [`Timed`] value.
 ///
+/// ## Surviving cancellation when the future borrows the metric
+///
+/// [`Stopwatch::start_owned`] returns a guard that doesn't borrow the stopwatch. Hold it across
+/// the await: it records when dropped, including when the future is cancelled, and the future is
+/// free to borrow other fields of the metric.
+/// ```
+/// use metrique::timers::Stopwatch;
+/// use metrique::unit_of_work::metrics;
+///
+/// #[metrics]
+/// #[derive(Default)]
+/// struct RequestMetrics {
+///     db_time: Stopwatch,
+///     rows: usize,
+/// }
+///
+/// # async fn query(rows: &mut usize) { *rows += 1; }
+/// # async fn example() {
+/// let mut metrics = RequestMetrics::default();
+/// let _timer = metrics.db_time.start_owned();
+/// query(&mut metrics.rows).await;
+/// // `_timer` records here, or earlier if this future is dropped
+/// # }
+/// ```
+///
 /// ## One measurement, several fields
 ///
 /// [`Timed::into_parts`] returns the output and the raw [`Duration`](std::time::Duration), for
@@ -183,6 +214,7 @@ pub mod local;
 /// [`Stopwatch`]: crate::timers::Stopwatch
 /// [`Stopwatch::time`]: crate::timers::Stopwatch::time
 /// [`Stopwatch::time_async`]: crate::timers::Stopwatch::time_async
+/// [`Stopwatch::start_owned`]: crate::timers::Stopwatch::start_owned
 /// [`Timed`]: crate::timers::Timed
 /// [`Timed::blocking`]: crate::timers::Timed::blocking
 /// [`Timed::into_parts`]: crate::timers::Timed::into_parts

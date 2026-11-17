@@ -850,7 +850,8 @@ impl Stopwatch {
     /// Timing starts when this future is first polled. If the future is dropped before
     /// completing (e.g. cancelled), the time elapsed so far is still recorded.
     ///
-    /// For timing a future you don't want to borrow the stopwatch for, see [`TimedFutureExt::timed`].
+    /// For timing a future you don't want to borrow the stopwatch for, see [`TimedFutureExt::timed`]
+    /// (which does not record if the future is cancelled) or [`Stopwatch::start_owned`].
     ///
     /// # Example
     /// ```
@@ -1128,6 +1129,11 @@ impl<F: Future> Future for TimedFuture<F> {
 pub trait TimedFutureExt: Future + Sized {
     /// Time this future. Timing starts when it is first polled, and the resulting duration is
     /// frozen when the future resolves. See [`Timed`] for how to record it.
+    ///
+    /// A duration is only produced if the future runs to completion. If it is dropped first
+    /// (for example, by a timeout) nothing is recorded. If you need the elapsed time to be
+    /// kept on cancellation, use [`Stopwatch::time_async`], or hold a
+    /// [`Stopwatch::start_owned`] guard across the await.
     fn timed(self) -> TimedFuture<Self> {
         TimedFuture {
             inner: self,
