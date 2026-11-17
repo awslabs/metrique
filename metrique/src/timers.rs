@@ -144,7 +144,7 @@
 //!
 //! ## One measurement, several fields
 //!
-//! [`Timed::into_parts`] returns the output and the raw [`Duration`](std::time::Duration), for
+//! [`Timed::into_parts`] returns the output and the raw [`Duration`], for
 //! when one interval should be reported in more than one place.
 //! ```
 //! use metrique::timers::{Stopwatch, TimedFutureExt};
