@@ -66,8 +66,9 @@ pub mod local;
 ///   panics. [`Stopwatch::time_async`] does too, and also if the future is cancelled (dropped).
 ///   [`TimedFutureExt::timed`] only produces a duration when the operation finishes, so a
 ///   cancelled or panicking operation records nothing. If the measurement must survive either,
-///   use a `Stopwatch`. If the future also needs to borrow other fields of a guard-held metric,
-///   hold a [`Stopwatch::start_owned`] guard across the await instead (see below).
+///   prefer a `Stopwatch` over an `Option<Timer>` filled by [`Timed::split_time_to`]. If the
+///   future also needs to borrow other fields of a guard-held metric, hold a
+///   [`Stopwatch::start_owned`] guard across the await instead (see below).
 ///
 /// ## Sync code with a `Stopwatch`
 ///
