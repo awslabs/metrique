@@ -81,7 +81,7 @@ pub trait Value {
 ///
 /// The same applies to [`object()`](ValueWriter::object): the default serializes the object to a
 /// JSON string and passes it to `string()`, so the inner writer never sees an object. That
-/// bypasses native object rendering, and defeats a sink that rejects objects (e.g. OTel), which
+/// bypasses native object rendering, and defeats a sink that drops objects (e.g. OTel), which
 /// then receives an ordinary string.
 pub trait ValueWriter: Sized {
     /// Write an arbitrary string property to the entry. This may populate entry-wide dimensions in EMF.

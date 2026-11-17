@@ -3,6 +3,7 @@
 
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
+use std::time::Duration;
 
 use metrique_writer_core::{
     EntryConfig, MetricFlags, Observation, Unit, ValidationError,
@@ -17,8 +18,10 @@ use opentelemetry::KeyValue;
 use smallvec::SmallVec;
 
 use crate::{
+    ObjectFieldPolicy, ObjectPolicyInner,
     flags::{InstrumentKind, OtelOptions},
     metrics::InstrumentCache,
+    rate_limit::rate_limited,
 };
 
 /// A pending metric observation captured during `Entry::write`, replayed
@@ -99,35 +102,52 @@ thread_local! {
     static BUFS: RefCell<WriterBufs> = const { RefCell::new(WriterBufs::new()) };
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Counts object fields dropped on this thread, so tests can tell a policy drop apart from a
+    /// discarded `error()`.
+    pub(crate) static OBJECT_FIELD_DROPS: Cell<usize> = const { Cell::new(0) };
+    /// Counts drops on this thread that the policy asked to warn about, independent of the
+    /// process-wide rate limit on the warning itself.
+    pub(crate) static OBJECT_FIELD_WARNS: Cell<usize> = const { Cell::new(0) };
+}
+
 /// Run a single append against the per-thread `WriterBufs` arena. Falls
 /// back to a stack-local arena if the thread-local is unavailable
 /// (re-entrant append from inside `Entry::write`, or thread shutdown).
 pub(crate) fn append_with_pool(
     cache: &InstrumentCache,
     scope: &'static str,
+    object_field_policy: &ObjectFieldPolicy,
     entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     let mut ran = false;
     let _ = BUFS.try_with(|cell| {
         if let Ok(mut bufs) = cell.try_borrow_mut() {
-            run(cache, scope, &mut bufs, entry);
+            run(cache, scope, object_field_policy, &mut bufs, entry);
             ran = true;
         }
     });
     if !ran {
         let mut local = WriterBufs::new();
-        run(cache, scope, &mut local, entry);
+        run(cache, scope, object_field_policy, &mut local, entry);
     }
 }
 
 fn run(
     cache: &InstrumentCache,
     scope: &'static str,
+    object_field_policy: &ObjectFieldPolicy,
     bufs: &mut WriterBufs,
     entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     bufs.reset();
-    let mut writer = OtelEntryWriter { cache, scope, bufs };
+    let mut writer = OtelEntryWriter {
+        cache,
+        scope,
+        bufs,
+        object_field_policy,
+    };
     entry.write(&mut writer);
     writer.finish();
 }
@@ -140,11 +160,14 @@ pub(crate) struct OtelEntryWriter<'a> {
     /// [`OtelSink::append`]: crate::OtelSink
     pub(crate) scope: &'static str,
     bufs: &'a mut WriterBufs,
+    object_field_policy: &'a ObjectFieldPolicy,
 }
 
 impl<'a> OtelEntryWriter<'a> {
     fn finish(self) {
-        let OtelEntryWriter { cache, scope, bufs } = self;
+        let OtelEntryWriter {
+            cache, scope, bufs, ..
+        } = self;
         // Pop metrics in reverse insertion order; OTel doesn't care about
         // record ordering inside an export window, and popping lets us
         // return each slot to the pool without holding a second borrow.
@@ -197,6 +220,31 @@ impl<'a, 'b> EntryWriter<'a> for OtelEntryWriter<'b> {
 pub(crate) struct OtelValueWriter<'a, 'b> {
     pub(crate) parent: &'a mut OtelEntryWriter<'b>,
     pub(crate) name: Cow<'a, str>,
+}
+
+impl OtelValueWriter<'_, '_> {
+    /// Drops an object-valued field under the sink's [`ObjectFieldPolicy`], which documents why
+    /// objects are never attached. The field is never reported through `error()`.
+    fn drop_object_field(self) {
+        #[cfg(test)]
+        OBJECT_FIELD_DROPS.set(OBJECT_FIELD_DROPS.get() + 1);
+        match self.parent.object_field_policy.0 {
+            ObjectPolicyInner::DropField => {}
+            ObjectPolicyInner::DropFieldAndWarn => {
+                #[cfg(test)]
+                OBJECT_FIELD_WARNS.set(OBJECT_FIELD_WARNS.get() + 1);
+                rate_limited!(
+                    Duration::from_secs(60),
+                    tracing::warn!(
+                        field = %self.name,
+                        scope = %self.parent.scope,
+                        "metrique-otel: dropped an object-valued field; OTel metric attributes \
+                         are part of the timeseries identity"
+                    )
+                )
+            }
+        }
+    }
 }
 
 impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
@@ -254,15 +302,15 @@ impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
         // No OTel list instrument, so a list becomes one joined entry attribute. The joined-string
         // fallback renders elements through its own capture writer, not `object()` below, so each
         // element is wrapped to record whether it (or a nested list element) wrote an object, and
-        // a list containing one is rejected instead of attached. Detection happens at write time,
+        // a list containing one is dropped instead of attached. Detection happens at write time,
         // so a `Value` that calls `object()` under the `Opaque` shape is caught too. The flag is
-        // also set for a declared object element shape at any list depth, which rejects an empty
+        // also set for a declared object element shape at any list depth, which drops an empty
         // object list (otherwise attached as `[]`). An empty list of `Opaque` elements has
         // nothing to detect and attaches as the constant `""`.
         let saw_object = Cell::new(false);
         let elements = detect_objects(values, &saw_object);
         write_values_as_string(
-            RejectIfObject {
+            AttachUnlessObject {
                 writer: self,
                 saw_object: &saw_object,
             },
@@ -271,16 +319,13 @@ impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
     }
 
     fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
-        // Every attribute becomes part of the timeseries identity, and OTel metrics have no
-        // non-identifying metadata to carry an object in, so objects are rejected rather than
-        // attached as attributes.
-        self.invalid("object values are not supported by the OTel sink");
+        self.drop_object_field();
     }
 }
 
 /// Wraps each list element in [`DetectObject`] sharing `saw_object`, and sets the flag up front when
 /// the element shape is declared `Object` (through any `Optional`/`List` wrappers), so an empty
-/// object list is rejected too.
+/// object list is dropped too.
 fn detect_objects<'v, 'a, V: Value + 'v>(
     values: impl IntoIterator<Item = &'v V>,
     saw_object: &'a Cell<bool>,
@@ -319,7 +364,7 @@ impl<V: Value> Value for DetectObject<'_, V> {
 
 /// Forwards `string`, `metric`, and `error` to `writer`. `values()` re-wraps nested elements with
 /// the same flag (and sets it for a declared object element shape) before forwarding. `object()`
-/// only sets `saw_object`: the list is rejected as a whole, so the object's rendering is never
+/// only sets `saw_object`: the list is dropped as a whole, so the object's rendering is never
 /// needed.
 struct DetectObjectWriter<'a, W> {
     writer: W,
@@ -346,7 +391,7 @@ impl<W: ValueWriter> ValueWriter for DetectObjectWriter<'_, W> {
     }
 
     fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        // Nested list elements share the outer flag, so an object at any depth rejects the list.
+        // Nested list elements share the outer flag, so an object at any depth drops the list.
         let elements = detect_objects(values, self.saw_object);
         self.writer.values(elements.iter())
     }
@@ -358,21 +403,20 @@ impl<W: ValueWriter> ValueWriter for DetectObjectWriter<'_, W> {
 
 /// The final writer for a joined list: attaches the joined string through `writer` unless
 /// `saw_object` is set (an element wrote an object, or the element shape is declared `Object`), in
-/// which case the whole list is rejected via `invalid()`.
+/// which case the whole list is an object field and goes to the sink's [`ObjectFieldPolicy`].
 ///
-/// The rejection relies on [`write_values_as_string`] writing every element before its single,
-/// final `string()` call, so the flag is complete when `string()` reads it. That helper never
-/// calls the other methods; they forward only to keep the writer well-formed.
-struct RejectIfObject<'a, W> {
-    writer: W,
+/// The check relies on [`write_values_as_string`] writing every element before its single, final
+/// `string()` call, so the flag is complete when `string()` reads it. That helper never calls the
+/// other methods; they forward only to keep the writer well-formed.
+struct AttachUnlessObject<'a, 'b, 'c> {
+    writer: OtelValueWriter<'b, 'c>,
     saw_object: &'a Cell<bool>,
 }
 
-impl<W: ValueWriter> ValueWriter for RejectIfObject<'_, W> {
+impl ValueWriter for AttachUnlessObject<'_, '_, '_> {
     fn string(self, value: &str) {
         if self.saw_object.get() {
-            self.writer
-                .invalid("object lists are not supported by the OTel sink");
+            self.writer.drop_object_field()
         } else {
             self.writer.string(value)
         }

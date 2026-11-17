@@ -84,11 +84,14 @@ translator maps to a histogram instrument. Non-OTel sinks ignore the flags.
 - Object-valued fields (`ValueWriter::object`, and lists of objects) are not
   attached as attributes: every OTel metric attribute is part of the timeseries
   identity, so a per-entry object would make each distinct value a new
-  timeseries. The sink reports them as a validation error, which it currently
-  discards, so they are dropped. Lists of scalars still become one comma-joined
-  attribute. Objects in a list are detected as its elements are written, so an
-  empty list whose elements do not declare an object shape has nothing to detect
-  and attaches as an empty attribute.
+  timeseries. They are dropped and the rest of the entry is recorded; an object
+  field never becomes a validation error. The drop is silent by default;
+  `OtelSinkBuilder::with_object_field_policy(ObjectFieldPolicy::drop_field_and_warn())`
+  adds a `warn` naming the field and scope, rate-limited to one per minute
+  across the process. Lists of scalars still become one comma-joined attribute.
+  Objects in a list are detected as its elements are written, so an empty list
+  whose elements do not declare an object shape has nothing to detect and
+  attaches as an empty attribute.
 - `#[metrics(unit = ...)]` maps to the UCUM string OTel expects (`ms`, `By`, `%`,
   `1` for dimensionless). The unit is fixed when the instrument is first created;
   later differing units on the same name are ignored.

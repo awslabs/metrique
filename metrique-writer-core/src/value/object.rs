@@ -11,8 +11,7 @@
 //! does one of three things with an object: renders it natively (JSON, EMF, and LocalFormat);
 //! falls back to the [`ValueWriter::object`] default [`write_object_as_string`], which serializes
 //! it to a JSON string so the field is not dropped; or, when its only carrier is wrong for
-//! objects, reports it via [`ValueWriter::error`] (e.g. OTel, where every attribute is part of the
-//! timeseries identity).
+//! objects, drops it (e.g. OTel, where every attribute is part of the timeseries identity).
 //!
 //! The wrapper matrix is split for coherence: `Vec<O>`/`Option<O>`/`Option<Vec<O>>` are
 //! [`AsObject`] formatter impls, while `&O`/`Box<O>`/`Arc<O>` forward on [`ObjectValue`] (`Box`

@@ -11,7 +11,7 @@ flat scalar. On formats that support structured values (JSON, EMF), the field is
 written as a native nested object. On formats that do not, the field falls back
 to a JSON-encoded string (matching the existing `values()` precedent). OTel is
 the exception: every OTel attribute is part of the timeseries identity, so the
-OTel sink rejects the field instead of attaching it. A descriptor-time warning
+OTel sink drops the field instead of attaching it. A descriptor-time warning
 fires once at setup to inform the user which fields are being serialized rather
 than rendered natively. This addresses
 [#355](https://github.com/awslabs/metrique/issues/355).
@@ -220,13 +220,13 @@ the sharing. This can be addressed in follow up work.
 
 ## What formats do
 
-| Format        | Object                                         | Array of objects                     |
-| ------------- | ---------------------------------------------- | ------------------------------------ |
-| EMF           | native nested object in the properties section | native array                         |
-| JSON          | native nested object                           | native array                         |
-| `LocalFormat` | native                                         | native                               |
-| OTel*         | not attached; reported via `error()`           | not attached; reported via `error()` |
-| Anything else | JSON-encoded string                            | JSON-encoded array string            |
+| Format        | Object                                         | Array of objects          |
+| ------------- | ---------------------------------------------- | ------------------------- |
+| EMF           | native nested object in the properties section | native array              |
+| JSON          | native nested object                           | native array              |
+| `LocalFormat` | native                                         | native                    |
+| OTel*         | dropped, not attached                          | dropped, not attached     |
+| Anything else | JSON-encoded string                            | JSON-encoded array string |
 
 The default fallback is a string rather than a drop, so on those formats a field
 is never silently lost. The array fallback is bracketed, so one `JSON.parse`
@@ -235,10 +235,16 @@ recovers it.
 OTel is the exception. Every OTel metric attribute is part of the timeseries
 identity, and OTel metrics have no non-identifying metadata (EMF's properties
 have no equivalent), so a JSON-string attribute would make each distinct object
-a new timeseries on every metric in the entry. The OTel sink therefore reports
-an object through `ValueWriter::error()` rather than attaching it. That error is
-currently discarded by the sink, so the OTel case is a known silent drop until
-the sink has an error channel ([#324](https://github.com/awslabs/metrique/issues/324)).
+a new timeseries on every metric in the entry. The OTel sink therefore never
+attaches an object: it drops the field and records the rest of the entry. The
+drop is silent by default, which is the silent loss the
+[no-op default](#valuewriterobject) was rejected for. Here it is a deliberate,
+documented outcome for one sink rather than an accident of a missing impl, and
+`ObjectFieldPolicy::drop_field_and_warn()` on `OtelSinkBuilder` makes it
+visible with a rate-limited warning. The drop does not go through
+`ValueWriter::error()`: JSON and EMF fail the whole entry on any field's
+validation error, and an object field on OTel is expected, not invalid, so it
+must never fail the entry.
 
 _\* NOTE: OTel defines
 [Complex Attributes](https://opentelemetry.io/blog/2025/complex-attribute-types/),
