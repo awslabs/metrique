@@ -4,7 +4,7 @@
 use std::{
     future::Future,
     marker::PhantomData,
-    ops::{AddAssign, DerefMut},
+    ops::AddAssign,
     pin::Pin,
     sync::{Arc, Mutex},
     task::{Context, Poll},
@@ -1024,7 +1024,7 @@ impl<T> Timed<T> {
 
     /// Park the (stopped) duration in an `Option<Timer>` metric field, replacing any previous
     /// value, and return the operation's output.
-    pub fn split_time_to(self, mut timer_field: impl DerefMut<Target = Option<Timer>>) -> T {
+    pub fn split_time_to(self, timer_field: &mut Option<Timer>) -> T {
         timer_field.replace(Timer::from_duration(self.duration));
         self.result
     }
@@ -1048,10 +1048,7 @@ impl<T, E> Timed<Result<T, E>> {
     /// let r: Result<u32, ()> = Timed::blocking(|| Ok(1)).split_time_to_if_ok(&mut ok_latency);
     /// assert!(ok_latency.is_some());
     /// ```
-    pub fn split_time_to_if_ok(
-        self,
-        mut field: impl DerefMut<Target = Option<Timer>>,
-    ) -> Result<T, E> {
+    pub fn split_time_to_if_ok(self, field: &mut Option<Timer>) -> Result<T, E> {
         if self.result.is_ok() {
             field.replace(Timer::from_duration(self.duration));
         }
@@ -1073,8 +1070,8 @@ impl<T, E> Timed<Result<T, E>> {
     /// ```
     pub fn split_time_to_result(
         self,
-        mut ok_field: impl DerefMut<Target = Option<Timer>>,
-        mut err_field: impl DerefMut<Target = Option<Timer>>,
+        ok_field: &mut Option<Timer>,
+        err_field: &mut Option<Timer>,
     ) -> Result<T, E> {
         let timer = Timer::from_duration(self.duration);
         match self.result {
