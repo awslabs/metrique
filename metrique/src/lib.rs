@@ -19,31 +19,6 @@ mod keep_alive;
 #[cfg(feature = "local-format")]
 pub mod local;
 
-/// Provides timing utilities for metrics, including timestamps and duration measurements.
-///
-/// This module contains types for recording timestamps and measuring durations:
-/// - `Timestamp`: Records a point in time, typically when an event occurs
-/// - `TimestampOnClose`: Records the time when a metric record is closed
-/// - `Timer`: Automatically starts timing when created and stops when dropped
-/// - `Stopwatch`: Manually controlled timer that must be explicitly started
-///
-/// # Examples
-///
-/// Using a Timer:
-/// ```
-/// # use metrique::timers::Timer;
-/// #
-/// let mut timer = Timer::start_now();
-/// // Do some work...
-/// let elapsed = timer.stop();
-/// ```
-///
-/// Using a Timestamp:
-/// ```
-/// # use metrique::timers::Timestamp;
-/// #
-/// let timestamp = Timestamp::now();
-/// ```
 pub mod timers;
 
 /// [`Slot`] lets you split off a section of your metrics to be handled by another task
