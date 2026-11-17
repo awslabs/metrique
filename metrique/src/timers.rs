@@ -821,11 +821,11 @@ impl Stopwatch {
     /// # use metrique::timers::Stopwatch;
     /// # use std::time::Duration;
     /// let mut stopwatch = Stopwatch::new();
-    /// stopwatch.record(Duration::from_millis(5));
-    /// stopwatch.record(Duration::from_millis(5));
+    /// stopwatch.add_duration(Duration::from_millis(5));
+    /// stopwatch.add_duration(Duration::from_millis(5));
     /// // stopwatch now contains 10ms
     /// ```
-    pub fn record(&mut self, duration: Duration) {
+    pub fn add_duration(&mut self, duration: Duration) {
         self.duration += duration;
     }
 
@@ -1032,7 +1032,7 @@ impl<T> Timed<T> {
 
     /// Add the duration to a [`Stopwatch`] and return the operation's output.
     pub fn record_to(self, stopwatch: &mut Stopwatch) -> T {
-        stopwatch.record(self.duration);
+        stopwatch.add_duration(self.duration);
         self.result
     }
 }
@@ -1085,7 +1085,7 @@ impl<T, E> Timed<Result<T, E>> {
     /// Add the duration to `stopwatch` only if the operation succeeded, and return the `Result`.
     pub fn record_to_if_ok(self, stopwatch: &mut Stopwatch) -> Result<T, E> {
         if self.result.is_ok() {
-            stopwatch.record(self.duration);
+            stopwatch.add_duration(self.duration);
         }
         self.result
     }
@@ -1331,8 +1331,8 @@ mod test {
         assert_eq!(out, 7);
         assert!((&stopwatch).close().is_some());
         stopwatch.clear();
-        stopwatch.record(Duration::from_secs(1));
-        stopwatch.record(Duration::from_secs(2));
+        stopwatch.add_duration(Duration::from_secs(1));
+        stopwatch.add_duration(Duration::from_secs(2));
         assert_eq!((&stopwatch).close(), Some(Duration::from_secs(3)));
     }
 

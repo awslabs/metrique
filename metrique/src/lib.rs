@@ -181,8 +181,8 @@ pub mod local;
 /// # async fn example() {
 /// let mut metrics = RequestMetrics::default();
 /// let (value, elapsed) = fetch().timed().await.into_parts();
-/// metrics.fetch_time.record(elapsed);
-/// metrics.total_fetch_time.record(elapsed);
+/// metrics.fetch_time.add_duration(elapsed);
+/// metrics.total_fetch_time.add_duration(elapsed);
 /// # }
 /// ```
 ///
