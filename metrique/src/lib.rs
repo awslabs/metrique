@@ -55,12 +55,13 @@ pub mod local;
 /// - **Accumulate vs. overwrite.** A [`Stopwatch`] sums every measurement, so timing in a loop
 ///   reports the total. [`Timed::split_time_to`] stores a single `Option<Timer>` and replaces
 ///   the previous value, so timing in a loop reports only the last iteration.
-/// - **Borrowing.** [`Stopwatch::time_async`] keeps the stopwatch mutably borrowed until the
-///   future completes. This only matters if your metric is held in an `append_on_drop` guard
-///   *and* the future itself borrows another field of that metric: the guard exposes its fields
-///   through `DerefMut`, so the two borrows conflict and the compiler rejects it. In that case
-///   use [`TimedFutureExt::timed`], which only borrows the field after the future has finished.
-///   Futures that don't use the metric, and metrics held in a plain struct, are unaffected.
+/// - **Borrowing.** [`Stopwatch::time`] and [`Stopwatch::time_async`] keep the stopwatch mutably
+///   borrowed while the closure or future runs. This only matters if your metric is held in an
+///   `append_on_drop` guard *and* the closure or future itself uses another field of that metric:
+///   the guard exposes its fields through `DerefMut`, so the two borrows conflict and the compiler
+///   rejects it. For futures, use [`TimedFutureExt::timed`], which only borrows the field after the
+///   future has finished. Closures and futures that don't use the metric, and metrics held in a
+///   plain struct, are unaffected.
 /// - **Cancellation and panics.** [`Stopwatch::time`] keeps the time elapsed so far if the closure
 ///   panics. [`Stopwatch::time_async`] does too, and also if the future is cancelled (dropped).
 ///   [`TimedFutureExt::timed`] only produces a duration when the operation finishes, so a
