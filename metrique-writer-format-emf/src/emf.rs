@@ -1027,6 +1027,8 @@ impl EmfBuilder {
 enum LineKind {
     // this is a string
     String,
+    // this is an array or object property, which cannot be a dimension
+    Structured,
     // this is a metric
     Metric { indexes: bit_set::BitSet<u32> },
     // this is a dimension that needs to be filled
@@ -1242,6 +1244,20 @@ impl<'a> metrique_writer_core::EntryWriter<'a> for EntryWriter<'a> {
                                 LineData {
                                     kind: LineKind::UnfoundDimension | LineKind::String,
                                 } => {}
+                                LineData {
+                                    kind: LineKind::Structured,
+                                } => {
+                                    if !self.validations.skip_validate_unique
+                                        && !self.is_allow_unroutable_entries
+                                    {
+                                        self.error.extend_mut(
+                                            ValidationError::invalid(
+                                                "dimension value must be a string",
+                                            )
+                                            .for_field(dim),
+                                        );
+                                    }
+                                }
                                 LineData {
                                     kind: LineKind::Metric { .. },
                                 } => {
@@ -1645,7 +1661,7 @@ impl ValueWriter<'_, '_> {
             EntryRef::Occupied(mut occupied_entry) => {
                 match occupied_entry.get_mut() {
                     LineData {
-                        kind: LineKind::Metric { .. } | LineKind::String,
+                        kind: LineKind::Metric { .. } | LineKind::String | LineKind::Structured,
                     } => {
                         // duplicate metric
                         self.entry.error.extend_mut(
@@ -1667,27 +1683,27 @@ impl ValueWriter<'_, '_> {
         }
     }
 
-    /// Like [`Self::validate_string`], but an object cannot satisfy a declared dimension: a
-    /// CloudWatch dimension value must be a string, so an object in that slot would break metric
-    /// extraction.
-    fn validate_object(&mut self) {
+    /// Arrays and objects are properties, but cannot satisfy a string-valued dimension.
+    fn validate_structured(&mut self) {
         match self.entry.validation_map.entry_ref(&self.name) {
             EntryRef::Occupied(occupied_entry) => match occupied_entry.get().kind {
-                LineKind::Metric { .. } | LineKind::String => {
+                LineKind::Metric { .. } | LineKind::String | LineKind::Structured => {
                     self.entry.error.extend_mut(
                         ValidationError::invalid("duplicate field").for_field(&self.name),
                     );
                 }
                 LineKind::UnfoundDimension => {
-                    self.entry.error.extend_mut(
-                        ValidationError::invalid("can't use object in dimension field")
-                            .for_field(&self.name),
-                    );
+                    if !self.entry.is_allow_unroutable_entries {
+                        self.entry.error.extend_mut(
+                            ValidationError::invalid("dimension value must be a string")
+                                .for_field(&self.name),
+                        );
+                    }
                 }
             },
             EntryRef::Vacant(vacant_entry) => {
                 vacant_entry.insert(LineData {
-                    kind: LineKind::String,
+                    kind: LineKind::Structured,
                 });
             }
         }
@@ -1829,13 +1845,13 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
         buf.push(']');
 
         if !self.entry.validations.skip_validate_unique {
-            self.validate_string();
+            self.validate_structured();
         }
     }
 
     fn object<O: metrique_writer_core::ObjectValue + ?Sized>(mut self, object: &O) {
         // Objects are not metrics: render into the properties section as a raw nested object.
-        // `validate_object` duplicate-checks this field's own top-level name and rejects it as a
+        // `validate_structured` duplicate-checks this field's own top-level name and rejects it as a
         // dimension value; member names inside the object are not checked.
         let buf = &mut self.entry.state.string_fields_buf;
         buf.push(',').json_string(&self.name).push(':');
@@ -1844,7 +1860,7 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
         // Matches `metric()`'s guard: skip the dimension/duplicate check under
         // `AllowUnroutableEntries`, which intentionally does not enforce dimensions.
         if !self.entry.validations.skip_validate_unique && !self.entry.is_allow_unroutable_entries {
-            self.validate_object();
+            self.validate_structured();
         }
     }
 
@@ -1918,7 +1934,7 @@ impl metrique_writer_core::ValueWriter for ValueWriter<'_, '_> {
                         );
                     }
                 }
-                LineKind::String => {
+                LineKind::String | LineKind::Structured => {
                     self.entry.error.extend_mut(
                         ValidationError::invalid("duplicate field").for_field(&self.name),
                     );
