@@ -25,6 +25,22 @@ where
     }
 }
 
+/// Aggregation strategy that preserves the first value inserted.
+///
+/// An optional value of `None` still counts as the first value. Use
+/// [`MergeOptions<KeepFirst>`] to skip `None` and keep the first present value.
+pub struct KeepFirst;
+
+impl<T> AggregateValue<T> for KeepFirst {
+    type Aggregated = Option<T>;
+
+    fn insert(accum: &mut Self::Aggregated, value: T) {
+        if accum.is_none() {
+            *accum = Some(value);
+        }
+    }
+}
+
 /// Aggregation strategy that preserves the most recently set value
 pub struct KeepLast;
 

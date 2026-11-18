@@ -160,6 +160,7 @@ Individual fields use aggregation strategies that implement [`AggregateValue<T>`
 
 - **[`Sum`]** - Sums values together (use for counts, totals)
 - **[`Histogram<T>`]** - Collects values into a distribution (use for latency, sizes)
+- **[`KeepFirst`]** - Keeps the first value (use for initial state)
 - **[`KeepLast`]** - Keeps the most recent value (use for gauges, current state)
 
 ## Entry-Level Aggregation
@@ -194,7 +195,7 @@ Calls to the same endpoint will be aggregated together, while different endpoint
 
 The aggregation system is built on several traits that work together:
 
-- **[`AggregateValue<T>`]** - Defines how individual field values are merged (Sum, Histogram, KeepLast)
+- **[`AggregateValue<T>`]** - Defines how individual field values are merged (Sum, Histogram, KeepFirst, KeepLast)
 - **[`Merge`]** - Defines how complete entries are merged together by consuming the source
 - **[`MergeRef`]** - Like [`Merge`], but merges by reference (enables [`TeeSink`] to send to multiple destinations)
 - **[`Key`]** - Extracts grouping keys from entries to determine which entries should be merged
@@ -338,6 +339,7 @@ See the `histogram` example for more usage patterns.
 [`AggregateValue<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/traits/trait.AggregateValue.html
 [`Sum`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/value/struct.Sum.html
 [`Histogram<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/histogram/struct.Histogram.html
+[`KeepFirst`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/value/struct.KeepFirst.html
 [`KeepLast`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/value/struct.KeepLast.html
 [`Aggregate<T>`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/aggregator/struct.Aggregate.html
 [`WorkerSink`]: https://docs.rs/metrique-aggregation/latest/metrique_aggregation/sink/struct.WorkerSink.html
