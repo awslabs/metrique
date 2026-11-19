@@ -12,7 +12,7 @@ mod translator;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::rate_limit::rate_limited;
+use crate::rate_limit::{RateLimiter, rate_limited};
 use metrique_writer_core::sink::{AnyEntrySink, FlushWait};
 use opentelemetry_sdk::{Resource, metrics::SdkMeterProvider};
 
@@ -46,8 +46,7 @@ pub struct OtelSink {
     /// `force_flush` directly. `SdkMeterProvider` is internally `Arc`-backed,
     /// so the clone is cheap.
     meter_provider: SdkMeterProvider,
-    /// Carries the instrument cache, the resolved scope name, and the object
-    /// field policy used by every `append` on this sink.
+    /// State shared by every `append` on this sink and its clones.
     inner: Arc<OtelSinkInner>,
 }
 
@@ -55,6 +54,8 @@ pub(crate) struct OtelSinkInner {
     pub(crate) instruments: InstrumentCache,
     pub(crate) scope: &'static str,
     pub(crate) object_field_policy: ObjectFieldPolicy,
+    /// Limits [`ObjectFieldPolicy::drop_field_and_warn`] warnings for this sink and its clones.
+    pub(crate) object_field_warnings: RateLimiter,
 }
 
 /// What an [`OtelSink`] does with an object-valued field: a value written
@@ -63,11 +64,14 @@ pub(crate) struct OtelSinkInner {
 /// [`ObjectFieldPolicy::drop_field_and_warn`] and pass it to
 /// [`OtelSinkBuilder::with_object_field_policy`].
 ///
-/// Every OTel metric attribute is part of the timeseries identity, and OTel
-/// metrics have no non-identifying place to carry per-entry context, so an
-/// object field is never attached as an attribute. It is dropped and the rest
-/// of the entry is recorded; the policy chooses whether the drop is logged. An
-/// object field never becomes a validation error, so it never fails the entry.
+/// The OTel SDK records every distinct set of metric attributes as a separate
+/// timeseries, and has nowhere else to put per-entry context, so an object
+/// field is never attached as an attribute: each distinct object would create
+/// a new timeseries on every metric in the entry. The sink drops the field and
+/// records the rest of the entry; the policy chooses whether the drop is
+/// logged. The sink does not report object fields as validation errors.
+// The private enum keeps the variants out of the public API, so behaviours are added as new
+// constructors without breaking callers.
 #[derive(Clone, Debug, Default)]
 pub struct ObjectFieldPolicy(pub(crate) ObjectPolicyInner);
 
@@ -86,10 +90,10 @@ impl ObjectFieldPolicy {
 
     /// Drop the field and emit a `warn` naming the field and the sink's
     /// instrumentation scope. The warning is rate-limited to one per minute
-    /// across the process, shared by every sink using this policy, so it names
-    /// only the first field dropped in each minute. A field that is dropped
-    /// often, by design, can therefore keep an unexpected one from being
-    /// named; the warning is most useful when no object fields are expected.
+    /// per sink (clones of a sink share the limit), so it names only the first
+    /// field the sink drops in each minute. If a sink drops some object field on
+    /// most entries, other dropped fields on that sink are rarely named, so the
+    /// warning is most useful when no object fields are expected.
     pub const fn drop_field_and_warn() -> Self {
         Self(ObjectPolicyInner::DropFieldAndWarn)
     }
@@ -297,6 +301,7 @@ impl OtelSinkBuilder {
             instruments: InstrumentCache::new(meter_provider.clone()),
             scope,
             object_field_policy: self.object_field_policy,
+            object_field_warnings: RateLimiter::new(Duration::from_secs(60)),
         });
         OtelSink {
             meter_provider,
@@ -335,12 +340,7 @@ impl OtelSinkBuilder {
 
 impl AnyEntrySink for OtelSink {
     fn append_any(&self, entry: impl metrique_writer_core::Entry + Send + 'static) {
-        append_with_pool(
-            &self.inner.instruments,
-            self.inner.scope,
-            &self.inner.object_field_policy,
-            &entry,
-        );
+        append_with_pool(&self.inner, &entry);
     }
 
     fn flush_async(&self) -> FlushWait {
@@ -822,7 +822,6 @@ mod tests {
         use rstest::rstest;
 
         use super::*;
-        use crate::translator::{OBJECT_FIELD_DROPS, OBJECT_FIELD_WARNS};
 
         struct Endpoint;
 
@@ -833,8 +832,7 @@ mod tests {
             }
         }
 
-        /// A hand-written `Value` that calls `object()` while keeping the `Opaque` shape, so only
-        /// write-time detection can tell that a list of these holds objects.
+        /// A hand-written `Value` that calls `object()` while keeping the `Opaque` shape.
         struct OpaqueObject;
 
         impl Value for OpaqueObject {
@@ -846,34 +844,16 @@ mod tests {
             }
         }
 
-        /// An `Opaque` element that writes an empty `AsObject` list, so the declared object shape
-        /// is visible only to the nested `values()` call.
-        struct OpaqueEmptyObjectList;
+        /// A value declared as `Object` whose `write` panics, so a test fails if the sink writes
+        /// the elements of a list of these.
+        struct NeverWritten;
 
-        impl Value for OpaqueEmptyObjectList {
-            const SHAPE: FieldShape<'static> = FieldShape::Opaque;
+        impl Value for NeverWritten {
+            const SHAPE: FieldShape<'static> = FieldShape::Object;
             const UNIT: Unit = Unit::None;
 
-            fn write(&self, writer: impl ValueWriter) {
-                FormattedValue::<Vec<Endpoint>, AsObject, NotLifted>::new(&Vec::new()).write(writer)
-            }
-        }
-
-        /// An `Opaque` element that writes either a string or an object, for lists mixing both.
-        enum TextOrObject {
-            Text,
-            Object,
-        }
-
-        impl Value for TextOrObject {
-            const SHAPE: FieldShape<'static> = FieldShape::Opaque;
-            const UNIT: Unit = Unit::None;
-
-            fn write(&self, writer: impl ValueWriter) {
-                match self {
-                    TextOrObject::Text => writer.string("a"),
-                    TextOrObject::Object => writer.object(&Endpoint),
-                }
+            fn write(&self, _writer: impl ValueWriter) {
+                panic!("the sink wrote an element of a declared object list");
             }
         }
 
@@ -924,13 +904,13 @@ mod tests {
             }
         }
 
-        /// Run `append` against a fresh sink and return the sorted attributes of every `Requests`
-        /// data point, sorted by attribute set. `policy` is passed to the builder when given;
-        /// otherwise the builder's default applies.
+        /// Run `append` against a fresh sink and return every `Requests` data point as its sorted
+        /// attributes and its sum, sorted by attribute set. `policy` is passed to the builder when
+        /// given; otherwise the builder's default applies.
         fn requests_data_points(
             policy: Option<ObjectFieldPolicy>,
             append: impl FnOnce(&OtelSink),
-        ) -> Vec<Vec<(String, String)>> {
+        ) -> Vec<(Vec<(String, String)>, u64)> {
             let exporter = InMemoryMetricExporter::default();
             let reader = PeriodicReader::builder(exporter.clone()).build();
             let meter_provider = SdkMeterProvider::builder().with_reader(reader).build();
@@ -960,7 +940,7 @@ mod tests {
                             .map(|kv| (kv.key.to_string(), kv.value.as_str().into_owned()))
                             .collect();
                         attrs.sort();
-                        points.push(attrs);
+                        points.push((attrs, dp.value()));
                     }
                 }
             }
@@ -968,32 +948,85 @@ mod tests {
             points
         }
 
-        /// Append `entry` to a fresh sink built with the default policy and return the sorted
-        /// attributes on its single `Requests` data point, with the number of object fields the
-        /// sink dropped.
+        /// The message `ObjectFieldPolicy::drop_field_and_warn` logs for a dropped field.
+        const DROP_WARNING: &str = "dropped an object-valued field";
+
+        /// Run `f` with a subscriber that captures this thread's log output, and return its
+        /// result with the captured text. The subscriber is installed for this thread only, so
+        /// parallel tests don't see each other's events.
+        fn captured_log<T>(f: impl FnOnce() -> T) -> (T, String) {
+            #[derive(Clone, Default)]
+            struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+            impl std::io::Write for Captured {
+                fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                    self.0.lock().expect("capture lock").extend_from_slice(buf);
+                    Ok(buf.len())
+                }
+
+                fn flush(&mut self) -> std::io::Result<()> {
+                    Ok(())
+                }
+            }
+
+            let captured = Captured::default();
+            let subscriber = tracing_subscriber::fmt()
+                .with_writer({
+                    let captured = captured.clone();
+                    move || captured.clone()
+                })
+                .with_ansi(false)
+                .finish();
+            let result = tracing::subscriber::with_default(subscriber, f);
+            let log = String::from_utf8(captured.0.lock().expect("capture lock").clone())
+                .expect("utf-8 log");
+            (result, log)
+        }
+
+        /// The number of drop warnings in `log`.
+        fn drop_warnings(log: &str) -> usize {
+            log.lines()
+                .filter(|line| line.contains(DROP_WARNING))
+                .count()
+        }
+
+        /// The single line of `log` that holds the drop warning.
+        fn drop_warning_line(log: &str) -> &str {
+            let mut lines = log.lines().filter(|line| line.contains(DROP_WARNING));
+            let line = lines
+                .next()
+                .unwrap_or_else(|| panic!("no drop warning in: {log}"));
+            assert!(
+                lines.next().is_none(),
+                "more than one drop warning in: {log}"
+            );
+            line
+        }
+
+        /// Append `entry` to a fresh sink built with `drop_field_and_warn()` and return the sorted
+        /// attributes on its single `Requests` data point, with the number of drop warnings it
+        /// logged. The sink is fresh, so its warning limiter is too, and the first dropped field
+        /// always warns.
         fn requests_attributes(
             entry: impl Entry + Send + 'static,
         ) -> (Vec<(String, String)>, usize) {
-            let (drops_before, warns_before) = (OBJECT_FIELD_DROPS.get(), OBJECT_FIELD_WARNS.get());
-            let mut points = requests_data_points(None, |sink| sink.append(entry));
-            let drops = OBJECT_FIELD_DROPS.get() - drops_before;
-            assert_eq!(
-                OBJECT_FIELD_WARNS.get(),
-                warns_before,
-                "the default policy asked to warn about a dropped field"
-            );
+            let (mut points, log) = captured_log(|| {
+                requests_data_points(Some(ObjectFieldPolicy::drop_field_and_warn()), |sink| {
+                    sink.append(entry)
+                })
+            });
             assert_eq!(
                 points.len(),
                 1,
                 "expected one `Requests` data point, got {points:?}"
             );
-            (points.remove(0), drops)
+            (points.remove(0).0, drop_warnings(&log))
         }
 
-        /// Attributes and per-path object field drops for `make()` via both the direct and the
-        /// boxed (dyn) path, asserted equal. The boxed path re-wraps list elements through the
-        /// dyn bridge, which is where element-shape routing is most likely to diverge.
-        fn attributes_and_drops<E: Entry + Send + 'static>(
+        /// Attributes and drop warnings for `make()` via both the direct and the boxed (dyn)
+        /// path, asserted equal. The boxed path re-wraps list elements through the dyn bridge,
+        /// which is where element-shape routing is most likely to diverge.
+        fn attributes_and_warnings<E: Entry + Send + 'static>(
             make: impl Fn() -> E,
         ) -> (Vec<(String, String)>, usize) {
             let unboxed = requests_attributes(make());
@@ -1003,25 +1036,26 @@ mod tests {
         }
 
         /// Attributes for a field that carries no object data: the object field policy must not
-        /// be reached.
+        /// be reached, so no drop warning is logged.
         fn attributes<E: Entry + Send + 'static>(make: impl Fn() -> E) -> Vec<(String, String)> {
-            let (attrs, drops) = attributes_and_drops(make);
+            let (attrs, warnings) = attributes_and_warnings(make);
             assert_eq!(
-                drops, 0,
+                warnings, 0,
                 "a field without object data reached the object field policy"
             );
             attrs
         }
 
-        /// Attributes for an object field: the sink must drop it through the object field policy
-        /// exactly once, rather than discarding it some other way (such as through `error()`).
+        /// Attributes for an object field: the sink must drop it through the object field policy,
+        /// which logs a drop warning, rather than discarding it some other way (such as through
+        /// `error()`, which logs nothing).
         fn dropped_object_field<E: Entry + Send + 'static>(
             make: impl Fn() -> E,
         ) -> Vec<(String, String)> {
-            let (attrs, drops) = attributes_and_drops(make);
+            let (attrs, warnings) = attributes_and_warnings(make);
             assert_eq!(
-                drops, 1,
-                "expected the object field policy to drop exactly one field"
+                warnings, 1,
+                "expected the object field policy to drop the field"
             );
             attrs
         }
@@ -1050,19 +1084,17 @@ mod tests {
             assert_eq!(attributes, without_field());
         }
 
-        /// A `Value` that calls `object()` under the `Opaque` shape attaches no attribute alone,
-        /// in a list, or in a nested list.
-        #[rstest]
-        #[case::object(dropped_object_field(|| FieldEntry(OpaqueObject)))]
-        #[case::object_list(dropped_object_field(|| FieldEntry(vec![OpaqueObject, OpaqueObject])))]
-        #[case::nested_object_list(dropped_object_field(|| FieldEntry(vec![vec![OpaqueObject]])))]
-        #[case::nested_empty_object_list(dropped_object_field(|| FieldEntry(vec![OpaqueEmptyObjectList])))]
-        fn opaque_object_fields_are_not_attached(#[case] attributes: Vec<(String, String)>) {
-            assert_eq!(attributes, without_field());
+        /// A `Value` that calls `object()` under the `Opaque` shape attaches no attribute.
+        #[test]
+        fn opaque_object_field_is_not_attached() {
+            assert_eq!(
+                dropped_object_field(|| FieldEntry(OpaqueObject)),
+                without_field()
+            );
         }
 
-        /// A list whose element shape is not `Object` but peels to it through `Optional`/`List`
-        /// attaches no attribute, even when no element writes an object.
+        /// A list whose element shape is not `Object` but contains `Object` inside
+        /// `Optional`/`List` attaches no attribute, even when no element writes an object.
         #[rstest]
         #[case::list_of_none(dropped_object_field(|| FieldEntry(vec![None::<OwnedAsObject<Endpoint>>])))]
         #[case::list_of_empty_lists(dropped_object_field(|| FieldEntry(
@@ -1071,29 +1103,23 @@ mod tests {
         #[case::empty_list_of_optional(dropped_object_field(|| FieldEntry(
             Vec::<OwnedAsObject<Option<Endpoint>>>::new(),
         )))]
-        fn peeled_object_lists_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+        fn nested_object_shape_lists_are_not_attached(#[case] attributes: Vec<(String, String)>) {
             assert_eq!(attributes, without_field());
         }
 
-        /// A list with any element writing an object attaches no attribute, wherever the object
-        /// sits among string elements.
+        /// A list declared as holding objects is dropped without writing its elements.
         #[rstest]
-        #[case::text_then_object(dropped_object_field(|| FieldEntry(
-            vec![TextOrObject::Text, TextOrObject::Object],
-        )))]
-        #[case::object_then_text(dropped_object_field(|| FieldEntry(
-            vec![TextOrObject::Object, TextOrObject::Text],
-        )))]
-        #[case::nested_text_then_object(dropped_object_field(|| FieldEntry(
-            vec![vec![TextOrObject::Text], vec![TextOrObject::Object]],
-        )))]
-        fn mixed_object_lists_are_not_attached(#[case] attributes: Vec<(String, String)>) {
+        #[case::list(dropped_object_field(|| FieldEntry(vec![NeverWritten, NeverWritten])))]
+        #[case::optional_list(dropped_object_field(|| FieldEntry(Some(vec![NeverWritten]))))]
+        fn declared_object_list_elements_are_not_written(
+            #[case] attributes: Vec<(String, String)>,
+        ) {
             assert_eq!(attributes, without_field());
         }
 
         /// An `AsObject` field wrapped in `ForceFlag`, `WithDimensions`, or `Quantized` attaches
-        /// no attribute, alone or as a list. The `Opaque` lists are caught only by write-time
-        /// detection through each wrapper's `values()` re-wrap.
+        /// no attribute, alone or as a list. The `*_elements` cases wrap each element of the list
+        /// instead, so the list is dropped only if the wrapper keeps the element's `Object` shape.
         #[rstest]
         #[case::force_flag(dropped_object_field(|| FieldEntry(
             ForceFlag::<_, Counter>::from(OwnedAsObject(Endpoint)),
@@ -1113,14 +1139,17 @@ mod tests {
         #[case::quantized_list(dropped_object_field(|| FieldEntry(
             Quantized::<_>::from(OwnedAsObject(vec![Endpoint])),
         )))]
-        #[case::force_flag_opaque_list(dropped_object_field(|| FieldEntry(
-            ForceFlag::<_, Counter>::from(vec![OpaqueObject]),
+        #[case::force_flag_elements(dropped_object_field(|| FieldEntry(
+            vec![ForceFlag::<_, Counter>::from(OwnedAsObject(Endpoint))],
         )))]
-        #[case::with_dimensions_opaque_list(dropped_object_field(|| FieldEntry(
-            WithDimensions::<_, 1>::new(vec![OpaqueObject], "Region", "us-east-1"),
+        #[case::with_dimensions_elements(dropped_object_field(|| FieldEntry(
+            vec![WithDimensions::<_, 1>::new(OwnedAsObject(Endpoint), "Region", "us-east-1")],
         )))]
-        #[case::quantized_opaque_list(dropped_object_field(|| FieldEntry(
-            Quantized::<_>::from(vec![OpaqueObject]),
+        #[case::quantized_elements(dropped_object_field(|| FieldEntry(
+            vec![Quantized::<_>::from(OwnedAsObject(Endpoint))],
+        )))]
+        #[case::box_elements(dropped_object_field(|| FieldEntry(
+            vec![Box::new(OwnedAsObject(Endpoint))],
         )))]
         fn wrapped_object_fields_are_not_attached(#[case] attributes: Vec<(String, String)>) {
             assert_eq!(attributes, without_field());
@@ -1137,9 +1166,6 @@ mod tests {
         #[case::nested_list(attributes(|| FieldEntry(vec![vec![1u64], vec![2, 3]])), "1,2,3")]
         #[case::list_with_none(attributes(|| FieldEntry(vec![Some(1u64), None, Some(2)])), "1,2")]
         #[case::empty_list(attributes(|| FieldEntry(Vec::<u64>::new())), "")]
-        #[case::opaque_text_list(attributes(|| FieldEntry(
-            vec![TextOrObject::Text, TextOrObject::Text],
-        )), "a,a")]
         fn scalar_lists_are_joined_attributes(
             #[case] attributes: Vec<(String, String)>,
             #[case] joined: &str,
@@ -1154,82 +1180,90 @@ mod tests {
             );
         }
 
-        /// An empty list of `Opaque` elements attaches as `""`, a known limit of write-time
-        /// detection: no element is written, so there is nothing to detect, and the attribute
-        /// value is constant.
-        #[test]
-        fn empty_opaque_list_is_attached_empty() {
-            assert_eq!(
-                attributes(|| FieldEntry(Vec::<OpaqueObject>::new())),
-                vec![
-                    ("Field".to_owned(), String::new()),
-                    ("Operation".to_owned(), "GET".to_owned()),
-                    ("Status".to_owned(), "200".to_owned()),
-                ]
+        #[rstest]
+        #[case::policy_default(ObjectFieldPolicy::default())]
+        #[case::drop_field(ObjectFieldPolicy::drop_field())]
+        #[case::builder_default(OtelSinkBuilder::default().object_field_policy)]
+        fn builder_defaults_to_drop_field(#[case] policy: ObjectFieldPolicy) {
+            assert!(
+                matches!(policy.0, ObjectPolicyInner::DropField),
+                "{policy:?}"
             );
         }
 
-        #[test]
-        fn builder_defaults_to_drop_field() {
-            for policy in [
-                ObjectFieldPolicy::default(),
-                ObjectFieldPolicy::drop_field(),
-                OtelSinkBuilder::default().object_field_policy,
-            ] {
-                assert!(
-                    matches!(policy.0, ObjectPolicyInner::DropField),
-                    "{policy:?}"
-                );
-            }
-        }
-
         /// `drop_field_and_warn` records the entry without the object field and emits a warning
-        /// naming the field and the sink's scope. The warning is rate-limited per call site
-        /// across the process, and `cargo test` runs these tests in one process, so this must
-        /// stay the only test that builds a sink with `drop_field_and_warn`.
+        /// naming the field and the sink's scope.
         #[test]
         fn drop_field_and_warn_keeps_the_entry_and_warns() {
-            #[derive(Clone, Default)]
-            struct Captured(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-
-            impl std::io::Write for Captured {
-                fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                    self.0.lock().expect("capture lock").extend_from_slice(buf);
-                    Ok(buf.len())
-                }
-
-                fn flush(&mut self) -> std::io::Result<()> {
-                    Ok(())
-                }
-            }
-
-            let captured = Captured::default();
-            let subscriber = tracing_subscriber::fmt()
-                .with_writer({
-                    let captured = captured.clone();
-                    move || captured.clone()
-                })
-                .with_ansi(false)
-                .finish();
-
-            let warns_before = OBJECT_FIELD_WARNS.get();
-            let points = tracing::subscriber::with_default(subscriber, || {
+            let (points, log) = captured_log(|| {
                 requests_data_points(Some(ObjectFieldPolicy::drop_field_and_warn()), |sink| {
                     sink.append(FieldEntry(OpaqueObject))
                 })
             });
-            assert_eq!(OBJECT_FIELD_WARNS.get() - warns_before, 1);
 
-            assert_eq!(points, vec![without_field()]);
-            let log = String::from_utf8(captured.0.lock().expect("capture lock").clone())
-                .expect("utf-8 log");
+            assert_eq!(points, vec![(without_field(), 1)]);
+            let warning = drop_warning_line(&log);
             assert!(
-                log.contains("WARN")
-                    && log.contains("dropped an object-valued field")
-                    && log.contains("field=Field")
-                    && log.contains("scope=metrique-otel"),
-                "expected a warning naming the field and scope, got: {log}"
+                warning.contains("WARN")
+                    && warning.contains("field=Field")
+                    && warning.contains("scope=metrique-otel"),
+                "expected a WARN naming the field and scope, got: {warning}"
             );
+        }
+
+        /// The default policy, whether left implicit or set with `drop_field()`, drops object
+        /// fields without logging.
+        #[rstest]
+        #[case::builder_default(None)]
+        #[case::drop_field(Some(ObjectFieldPolicy::drop_field()))]
+        fn drop_field_is_silent(#[case] policy: Option<ObjectFieldPolicy>) {
+            let (points, log) = captured_log(|| {
+                requests_data_points(policy, |sink| {
+                    sink.append(FieldEntry(OpaqueObject));
+                    sink.append(AsObjectEntry(vec![Endpoint]));
+                })
+            });
+
+            assert_eq!(points, vec![(without_field(), 2)]);
+            assert!(
+                !log.contains(DROP_WARNING),
+                "expected no warning, got: {log}"
+            );
+        }
+
+        /// One sink warns at most once per interval and its clones share that limit; a separately
+        /// built sink has its own limit.
+        #[test]
+        fn drop_warnings_are_limited_per_sink() {
+            let (points, log) = captured_log(|| {
+                requests_data_points(Some(ObjectFieldPolicy::drop_field_and_warn()), |sink| {
+                    let clone = sink.clone();
+                    sink.append(FieldEntry(OpaqueObject));
+                    clone.append(FieldEntry(OpaqueObject));
+                    OtelSink::builder()
+                        .with_object_field_policy(ObjectFieldPolicy::drop_field_and_warn())
+                        .build()
+                        .append(FieldEntry(OpaqueObject));
+                })
+            });
+
+            assert_eq!(points, vec![(without_field(), 2)]);
+            assert_eq!(drop_warnings(&log), 2, "got: {log}");
+        }
+
+        /// The warning names the sink's configured scope.
+        #[test]
+        fn drop_warning_names_a_custom_scope() {
+            let ((), log) = captured_log(|| {
+                OtelSink::builder()
+                    .with_scope("custom-scope")
+                    .with_object_field_policy(ObjectFieldPolicy::drop_field_and_warn())
+                    .build()
+                    .append(FieldEntry(OpaqueObject));
+            });
+
+            let warning = drop_warning_line(&log);
+            assert!(warning.contains("scope=custom-scope"), "got: {warning}");
         }
     }
 }

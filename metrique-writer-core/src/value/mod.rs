@@ -83,6 +83,12 @@ pub trait Value {
 /// JSON string and passes it to `string()`, so the inner writer never sees an object. That
 /// bypasses native object rendering, and defeats a sink that drops objects (e.g. OTel), which
 /// then receives an ordinary string.
+///
+/// A wrapper that re-wraps list elements in its own `Value` type must give that type the inner
+/// element's [`SHAPE`](Value::SHAPE) (`const SHAPE = V::SHAPE`). Writers read the element shape
+/// to bracket or nest object lists, and OTel drops a list only when its element shape is
+/// [`FieldShape::Object`](crate::descriptor::FieldShape::Object); with the default `Opaque`
+/// shape, an object list reaches OTel as a string attribute.
 pub trait ValueWriter: Sized {
     /// Write an arbitrary string property to the entry. This may populate entry-wide dimensions in EMF.
     ///
@@ -141,6 +147,12 @@ pub trait ValueWriter: Sized {
     /// this to emit a native nested object; the default serializes to a JSON string so the field
     /// is never dropped. A wrapper writer must forward this to the writer it wraps, or the inner
     /// format's native object support is bypassed.
+    ///
+    /// A [`Value`] that writes through this method should declare its
+    /// [`SHAPE`](Value::SHAPE) as [`FieldShape::Object`](crate::descriptor::FieldShape::Object).
+    /// A list's element shape decides how the list is written: the string fallback brackets
+    /// object lists, structured formats nest them as arrays, and OTel drops them without writing
+    /// the elements.
     #[cfg(not(metrique_require_explicit_impls))]
     fn object<O: ObjectValue + ?Sized>(self, object: &O) {
         write_object_as_string(self, object)

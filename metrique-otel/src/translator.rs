@@ -2,26 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
-use std::time::Duration;
+use std::cell::RefCell;
 
 use metrique_writer_core::{
     EntryConfig, MetricFlags, Observation, Unit, ValidationError,
     descriptor::FieldShape,
     entry::EntryWriter,
-    value::{
-        Distribution, ObjectValue, VALUES_INLINE_CAPACITY, Value, ValueWriter,
-        write_values_as_string,
-    },
+    value::{Distribution, ObjectValue, Value, ValueWriter, write_values_as_string},
 };
 use opentelemetry::KeyValue;
-use smallvec::SmallVec;
 
 use crate::{
-    ObjectFieldPolicy, ObjectPolicyInner,
+    ObjectPolicyInner, OtelSinkInner,
     flags::{InstrumentKind, OtelOptions},
-    metrics::InstrumentCache,
-    rate_limit::rate_limited,
 };
 
 /// A pending metric observation captured during `Entry::write`, replayed
@@ -102,72 +95,47 @@ thread_local! {
     static BUFS: RefCell<WriterBufs> = const { RefCell::new(WriterBufs::new()) };
 }
 
-#[cfg(test)]
-thread_local! {
-    /// Counts object fields dropped on this thread, so tests can tell a policy drop apart from a
-    /// discarded `error()`.
-    pub(crate) static OBJECT_FIELD_DROPS: Cell<usize> = const { Cell::new(0) };
-    /// Counts drops on this thread that the policy asked to warn about, independent of the
-    /// process-wide rate limit on the warning itself.
-    pub(crate) static OBJECT_FIELD_WARNS: Cell<usize> = const { Cell::new(0) };
-}
-
 /// Run a single append against the per-thread `WriterBufs` arena. Falls
 /// back to a stack-local arena if the thread-local is unavailable
 /// (re-entrant append from inside `Entry::write`, or thread shutdown).
 pub(crate) fn append_with_pool(
-    cache: &InstrumentCache,
-    scope: &'static str,
-    object_field_policy: &ObjectFieldPolicy,
+    sink: &OtelSinkInner,
     entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     let mut ran = false;
     let _ = BUFS.try_with(|cell| {
         if let Ok(mut bufs) = cell.try_borrow_mut() {
-            run(cache, scope, object_field_policy, &mut bufs, entry);
+            run(sink, &mut bufs, entry);
             ran = true;
         }
     });
     if !ran {
         let mut local = WriterBufs::new();
-        run(cache, scope, object_field_policy, &mut local, entry);
+        run(sink, &mut local, entry);
     }
 }
 
 fn run(
-    cache: &InstrumentCache,
-    scope: &'static str,
-    object_field_policy: &ObjectFieldPolicy,
+    sink: &OtelSinkInner,
     bufs: &mut WriterBufs,
     entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     bufs.reset();
-    let mut writer = OtelEntryWriter {
-        cache,
-        scope,
-        bufs,
-        object_field_policy,
-    };
+    let mut writer = OtelEntryWriter { sink, bufs };
     entry.write(&mut writer);
     writer.finish();
 }
 
 pub(crate) struct OtelEntryWriter<'a> {
-    pub(crate) cache: &'a InstrumentCache,
-    /// OTel `InstrumentationScope` name, derived once per entry type at
-    /// [`OtelSink::append`] time from `std::any::type_name::<E>()`.
-    ///
-    /// [`OtelSink::append`]: crate::OtelSink
-    pub(crate) scope: &'static str,
+    /// The sink's shared state: instrument cache, scope, object field policy, and warning limit.
+    sink: &'a OtelSinkInner,
     bufs: &'a mut WriterBufs,
-    object_field_policy: &'a ObjectFieldPolicy,
 }
 
 impl<'a> OtelEntryWriter<'a> {
     fn finish(self) {
-        let OtelEntryWriter {
-            cache, scope, bufs, ..
-        } = self;
+        let OtelEntryWriter { sink, bufs } = self;
+        let cache = &sink.instruments;
         // Pop metrics in reverse insertion order; OTel doesn't care about
         // record ordering inside an export window, and popping lets us
         // return each slot to the pool without holding a second borrow.
@@ -190,7 +158,7 @@ impl<'a> OtelEntryWriter<'a> {
                 &bufs.scratch
             };
             cache.record(
-                scope,
+                sink.scope,
                 &m.name,
                 m.kind,
                 m.observations.drain(..),
@@ -223,25 +191,22 @@ pub(crate) struct OtelValueWriter<'a, 'b> {
 }
 
 impl OtelValueWriter<'_, '_> {
-    /// Drops an object-valued field under the sink's [`ObjectFieldPolicy`], which documents why
-    /// objects are never attached. The field is never reported through `error()`.
+    /// Drops an object-valued field under the sink's
+    /// [`ObjectFieldPolicy`](crate::ObjectFieldPolicy), which documents why objects are never
+    /// attached. The field is never reported through `error()`.
     fn drop_object_field(self) {
-        #[cfg(test)]
-        OBJECT_FIELD_DROPS.set(OBJECT_FIELD_DROPS.get() + 1);
-        match self.parent.object_field_policy.0 {
+        let sink = self.parent.sink;
+        match sink.object_field_policy.0 {
             ObjectPolicyInner::DropField => {}
             ObjectPolicyInner::DropFieldAndWarn => {
-                #[cfg(test)]
-                OBJECT_FIELD_WARNS.set(OBJECT_FIELD_WARNS.get() + 1);
-                rate_limited!(
-                    Duration::from_secs(60),
+                if sink.object_field_warnings.try_acquire() {
                     tracing::warn!(
                         field = %self.name,
-                        scope = %self.parent.scope,
-                        "metrique-otel: dropped an object-valued field; OTel metric attributes \
-                         are part of the timeseries identity"
+                        scope = %sink.scope,
+                        "metrique-otel: dropped an object-valued field; as an attribute it \
+                         would create a separate timeseries for each distinct value"
                     )
-                )
+                }
             }
         }
     }
@@ -299,148 +264,16 @@ impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
     }
 
     fn values<'c, V: Value + 'c>(self, values: impl IntoIterator<Item = &'c V>) {
-        // No OTel list instrument, so a list becomes one joined entry attribute. The joined-string
-        // fallback renders elements through its own capture writer, not `object()` below, so each
-        // element is wrapped to record whether it (or a nested list element) wrote an object, and
-        // a list containing one is dropped instead of attached. Detection happens at write time,
-        // so a `Value` that calls `object()` under the `Opaque` shape is caught too. The flag is
-        // also set for a declared object element shape at any list depth, which drops an empty
-        // object list (otherwise attached as `[]`). An empty list of `Opaque` elements has
-        // nothing to detect and attaches as the constant `""`.
-        let saw_object = Cell::new(false);
-        let elements = detect_objects(values, &saw_object);
-        write_values_as_string(
-            AttachUnlessObject {
-                writer: self,
-                saw_object: &saw_object,
-            },
-            elements.iter(),
-        )
+        // A list whose element shape is declared `Object` (possibly inside `Optional`/`List`) is
+        // an object field, so it is dropped without writing its elements.
+        if matches!(V::SHAPE.leaf_shape(), FieldShape::Object) {
+            return self.drop_object_field();
+        }
+        // No OTel list instrument, so a list becomes one joined entry attribute.
+        write_values_as_string(self, values)
     }
 
     fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
         self.drop_object_field();
-    }
-}
-
-/// Wraps each list element in [`DetectObject`] sharing `saw_object`, and sets the flag up front when
-/// the element shape is declared `Object` (through any `Optional`/`List` wrappers), so an empty
-/// object list is dropped too.
-fn detect_objects<'v, 'a, V: Value + 'v>(
-    values: impl IntoIterator<Item = &'v V>,
-    saw_object: &'a Cell<bool>,
-) -> SmallVec<[DetectObject<'a, V>; VALUES_INLINE_CAPACITY]>
-where
-    'v: 'a,
-{
-    if matches!(V::SHAPE.leaf_shape(), FieldShape::Object) {
-        saw_object.set(true);
-    }
-    values
-        .into_iter()
-        .map(|value| DetectObject { value, saw_object })
-        .collect()
-}
-
-/// A list element that writes through [`DetectObjectWriter`], so an `object()` call anywhere in
-/// the element sets `saw_object`. `SHAPE` and `UNIT` forward `V`'s, keeping the joined output
-/// identical to an unwrapped element.
-struct DetectObject<'a, V> {
-    value: &'a V,
-    saw_object: &'a Cell<bool>,
-}
-
-impl<V: Value> Value for DetectObject<'_, V> {
-    const SHAPE: FieldShape<'static> = V::SHAPE;
-    const UNIT: Unit = V::UNIT;
-
-    fn write(&self, writer: impl ValueWriter) {
-        self.value.write(DetectObjectWriter {
-            writer,
-            saw_object: self.saw_object,
-        })
-    }
-}
-
-/// Forwards `string`, `metric`, and `error` to `writer`. `values()` re-wraps nested elements with
-/// the same flag (and sets it for a declared object element shape) before forwarding. `object()`
-/// only sets `saw_object`: the list is dropped as a whole, so the object's rendering is never
-/// needed.
-struct DetectObjectWriter<'a, W> {
-    writer: W,
-    saw_object: &'a Cell<bool>,
-}
-
-impl<W: ValueWriter> ValueWriter for DetectObjectWriter<'_, W> {
-    fn string(self, value: &str) {
-        self.writer.string(value)
-    }
-
-    fn metric<'a>(
-        self,
-        distribution: impl IntoIterator<Item = Observation>,
-        unit: Unit,
-        dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
-        flags: MetricFlags<'_>,
-    ) {
-        self.writer.metric(distribution, unit, dimensions, flags)
-    }
-
-    fn error(self, error: ValidationError) {
-        self.writer.error(error)
-    }
-
-    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        // Nested list elements share the outer flag, so an object at any depth drops the list.
-        let elements = detect_objects(values, self.saw_object);
-        self.writer.values(elements.iter())
-    }
-
-    fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
-        self.saw_object.set(true);
-    }
-}
-
-/// The final writer for a joined list: attaches the joined string through `writer` unless
-/// `saw_object` is set (an element wrote an object, or the element shape is declared `Object`), in
-/// which case the whole list is an object field and goes to the sink's [`ObjectFieldPolicy`].
-///
-/// The check relies on [`write_values_as_string`] writing every element before its single, final
-/// `string()` call, so the flag is complete when `string()` reads it. That helper never calls the
-/// other methods; they forward only to keep the writer well-formed.
-struct AttachUnlessObject<'a, 'b, 'c> {
-    writer: OtelValueWriter<'b, 'c>,
-    saw_object: &'a Cell<bool>,
-}
-
-impl ValueWriter for AttachUnlessObject<'_, '_, '_> {
-    fn string(self, value: &str) {
-        if self.saw_object.get() {
-            self.writer.drop_object_field()
-        } else {
-            self.writer.string(value)
-        }
-    }
-
-    fn metric<'a>(
-        self,
-        distribution: impl IntoIterator<Item = Observation>,
-        unit: Unit,
-        dimensions: impl IntoIterator<Item = (&'a str, &'a str)>,
-        flags: MetricFlags<'_>,
-    ) {
-        self.writer.metric(distribution, unit, dimensions, flags)
-    }
-
-    fn error(self, error: ValidationError) {
-        self.writer.error(error)
-    }
-
-    fn values<'a, V: Value + 'a>(self, values: impl IntoIterator<Item = &'a V>) {
-        self.writer.values(values)
-    }
-
-    fn object<O: ObjectValue + ?Sized>(self, object: &O) {
-        self.writer.object(object)
     }
 }

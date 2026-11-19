@@ -4,14 +4,13 @@
 //! Rendering a struct field as a nested object rather than a flat scalar.
 //!
 //! [`ObjectValue`] describes a type whose fields render as object members, written through the
-//! same [`EntryWriter`] an entry uses, so a `#[metrics]` type can nest once the derive generates
-//! its impl (see [`ObjectValue`]). [`AsObject`] is the
-//! [`ValueFormatter`] a field opts into with `#[metrics(format = AsObject)]`. Objects are not
+//! same [`EntryWriter`] an entry uses. [`AsObject`] is the [`ValueFormatter`] a field opts into
+//! with `#[metrics(format = AsObject)]`. Objects are not
 //! metrics: timestamp, config, and per-member unit/dimension/flag metadata are ignored. A format
 //! does one of three things with an object: renders it natively (JSON, EMF, and LocalFormat);
 //! falls back to the [`ValueWriter::object`] default [`write_object_as_string`], which serializes
-//! it to a JSON string so the field is not dropped; or, when its only carrier is wrong for
-//! objects, drops it (e.g. OTel, where every attribute is part of the timeseries identity).
+//! it to a JSON string so the field is not dropped; or drops it (OTel, where an object attribute
+//! would create a separate timeseries for each distinct value).
 //!
 //! The wrapper matrix is split for coherence: `Vec<O>`/`Option<O>`/`Option<Vec<O>>` are
 //! [`AsObject`] formatter impls, while `&O`/`Box<O>`/`Arc<O>` forward on [`ObjectValue`] (`Box`

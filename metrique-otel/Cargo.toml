@@ -31,7 +31,6 @@ opentelemetry-otlp = { version = "0.32", features = [
     "metrics",
 ] }
 papaya = { workspace = true }
-smallvec = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 

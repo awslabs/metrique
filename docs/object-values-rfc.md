@@ -10,8 +10,8 @@ This RFC proposes a way to emit a struct field as a nested object rather than a
 flat scalar. On formats that support structured values (JSON, EMF), the field is
 written as a native nested object. On formats that do not, the field falls back
 to a JSON-encoded string (matching the existing `values()` precedent). OTel is
-the exception: every OTel attribute is part of the timeseries identity, so the
-OTel sink drops the field instead of attaching it. A descriptor-time warning
+the exception: OTel records each distinct set of attributes as a separate
+timeseries, so the OTel sink drops the field instead of attaching it. A descriptor-time warning
 fires once at setup to inform the user which fields are being serialized rather
 than rendered natively. This addresses
 [#355](https://github.com/awslabs/metrique/issues/355).
@@ -232,10 +232,10 @@ The default fallback is a string rather than a drop, so on those formats a field
 is never silently lost. The array fallback is bracketed, so one `JSON.parse`
 recovers it.
 
-OTel is the exception. Every OTel metric attribute is part of the timeseries
-identity, and OTel metrics have no non-identifying metadata (EMF's properties
-have no equivalent), so a JSON-string attribute would make each distinct object
-a new timeseries on every metric in the entry. The OTel sink therefore never
+OTel is the exception. The OTel SDK records each distinct set of metric
+attributes as a separate timeseries and has no equivalent of EMF's properties,
+so a JSON-string attribute would make each distinct object a new timeseries on
+every metric in the entry. The OTel sink therefore never
 attaches an object: it drops the field and records the rest of the entry. The
 drop is silent by default, which is the silent loss the
 [no-op default](#valuewriterobject) was rejected for. Here it is a deliberate,
@@ -251,11 +251,11 @@ _\* NOTE: OTel defines
 which
 [opentelemetry-sdk](https://docs.rs/opentelemetry_sdk/latest/opentelemetry_sdk/)
 does not support. Supporting them would not change this row: a complex attribute
-is still an attribute, so it is still part of the timeseries identity. A better
-fit would be
+is still an attribute, so each distinct value still creates a separate
+timeseries. A better fit would be
 [exemplars](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exemplars),
-which attach sampled context to a data point without making it part of the
-timeseries identity, but `opentelemetry-sdk` does not populate them yet. Even
+which attach sampled context to a data point without creating a new timeseries,
+but `opentelemetry-sdk` does not populate them yet. Even
 then, exemplar attributes have no map type, so an object would still be
 JSON-encoded unless the SDK also adopts complex attributes._
 
