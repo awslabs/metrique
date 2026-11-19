@@ -376,7 +376,26 @@ impl<S> MetricReporterBuilder<S> {
 
     /// Change the publishing interval for metrics
     ///
-    /// This value defaults to 60 seconds.
+    /// This value defaults to 60 seconds. It controls how often the reporter
+    /// flushes collected metrics, not their CloudWatch storage resolution.
+    /// Call this before `metrics_rs_version`, which selects the
+    /// metrics.rs recorder version and changes the builder type.
+    ///
+    /// ```no_run
+    /// # use metrics_024 as metrics;
+    /// use std::time::Duration;
+    /// use metrique_metricsrs::MetricReporter;
+    /// use metrique_writer::format::FormatExt as _;
+    /// use metrique_writer_format_emf::{Emf, HighStorageResolution};
+    ///
+    /// let stream = Emf::all_validations("MyNS".into(), vec![vec![]])
+    ///     .output_to(std::fs::File::create("metrics.log").unwrap());
+    /// let reporter = MetricReporter::builder()
+    ///     .metrics_publish_interval(Duration::from_secs(1))
+    ///     .metrics_io_stream(HighStorageResolution::from(stream))
+    ///     .metrics_rs_version::<dyn metrics::Recorder>()
+    ///     .build_and_install();
+    /// ```
     pub fn metrics_publish_interval(mut self, duration: Duration) -> Self {
         self.metrics_publish_interval = duration;
         self
