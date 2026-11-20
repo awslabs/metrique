@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.34](https://github.com/awslabs/metrique/compare/metrique-v0.1.33...metrique-v0.1.34) - 2026-11-20
+
+### Added
+
+- *(metrique-otel)* reject object values instead of attaching them ([#425](https://github.com/awslabs/metrique/pull/425))
+- *(timers)* ergonomic timing APIs on Stopwatch and futures ([#434](https://github.com/awslabs/metrique/pull/434))
+- *(metrique)* render objects natively in LocalFormat ([#424](https://github.com/awslabs/metrique/pull/424))
+- Install MetricsPool for Cancellation ([#410](https://github.com/awslabs/metrique/pull/410))
+- *(writer-format-json)* render object fields as native JSON ([#417](https://github.com/awslabs/metrique/pull/417))
+- *(writer-format-emf)* render object fields as native JSON ([#423](https://github.com/awslabs/metrique/pull/423))
+- *(writer-core)* add nested object-value primitive and AsObject for… ([#409](https://github.com/awslabs/metrique/pull/409))
+
+### Fixed
+
+- make dev-dependencies that point back up the graph path-only ([#407](https://github.com/awslabs/metrique/pull/407))
+- *(metrique-aggregation)* skip NaN in exponential histograms ([#433](https://github.com/awslabs/metrique/pull/433))
+
+### Other
+
+- update Cargo.toml dependencies
+- check dependency floors and raise floors that were too low ([#406](https://github.com/awslabs/metrique/pull/406))
+- Preserve entry metadata in dimension wrappers ([#403](https://github.com/awslabs/metrique/pull/403))
+
 ### Added
 
 - *(metrique)* Ergonomic timing helpers (#399): `Stopwatch::time(|| ..)`, `Stopwatch::time_async(fut)` and `Stopwatch::add_duration(duration)` add the time a block took to a `Stopwatch` field; `fut.timed().await` (via `TimedFutureExt`) and `Timed::blocking(|| ..)` return a `Timed<T>` whose `split_time_to(&mut Option<Timer>)`, `record_to(&mut Stopwatch)` or `into_parts()` park the frozen duration in a metric field and hand back the output; `Timer::from_duration` builds an already-stopped `Timer`. `timed_with_timesource` / `Timed::blocking_with_timesource` use an explicit `TimeSource`, and `Timed<Result<_, _>>` can route the duration by outcome with `split_time_to_if_ok`, `split_time_to_result` and `record_to_if_ok`.
