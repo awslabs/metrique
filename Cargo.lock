@@ -1871,6 +1871,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "papaya",
+ "rstest",
  "tokio",
  "tracing",
  "tracing-subscriber",

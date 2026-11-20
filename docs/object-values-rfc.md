@@ -3,14 +3,17 @@
 > Status: RFC (design with prototype)
 >
 > Applies to: `metrique-writer-core`, `metrique-writer`,
-> `metrique-writer-format-emf`, `metrique-writer-format-json`, `metrique-macro`
+> `metrique-writer-format-emf`, `metrique-writer-format-json`, `metrique-macro`,
+> `metrique`, `metrique-otel`
 
 This RFC proposes a way to emit a struct field as a nested object rather than a
 flat scalar. On formats that support structured values (JSON, EMF), the field is
 written as a native nested object. On formats that do not, the field falls back
-to a JSON-encoded string (matching the existing `values()` precedent). A
-descriptor-time warning fires once at setup to inform the user which fields are
-being serialized rather than rendered natively. This addresses
+to a JSON-encoded string (matching the existing `values()` precedent). OTel is
+the exception: OTel records each distinct set of attributes as a separate
+timeseries, so the OTel sink drops the field instead of attaching it. A descriptor-time warning
+fires once at setup to inform the user which fields are being serialized rather
+than rendered natively. This addresses
 [#355](https://github.com/awslabs/metrique/issues/355).
 
 ---
@@ -217,22 +220,44 @@ the sharing. This can be addressed in follow up work.
 
 ## What formats do
 
-| Format        | Object                                         | Array of objects              |
-| ------------- | ---------------------------------------------- | ----------------------------- |
-| EMF           | native nested object in the properties section | native array                  |
-| JSON          | native nested object                           | native array                  |
-| `LocalFormat` | native                                         | native                        |
-| OTel*         | JSON-encoded string attribute                  | one JSON-encoded array string |
-| Anything else | JSON-encoded string                            | JSON-encoded array string     |
+| Format        | Object                                         | Array of objects          |
+| ------------- | ---------------------------------------------- | ------------------------- |
+| EMF           | native nested object in the properties section | native array              |
+| JSON          | native nested object                           | native array              |
+| `LocalFormat` | native                                         | native                    |
+| OTel*         | dropped, not attached                          | dropped, not attached     |
+| Anything else | JSON-encoded string                            | JSON-encoded array string |
 
-The fallback is a string rather than a drop, so a field is never silently lost.
-The array fallback is bracketed, so one `JSON.parse` recovers it.
+The default fallback is a string rather than a drop, so on those formats a field
+is never silently lost. The array fallback is bracketed, so one `JSON.parse`
+recovers it.
 
-_\* NOTE: OTel supports object properties as
+OTel is the exception. The OTel SDK records each distinct set of metric
+attributes as a separate timeseries and has no equivalent of EMF's properties,
+so a JSON-string attribute would make each distinct object a new timeseries on
+every metric in the entry. The OTel sink therefore never
+attaches an object: it drops the field and records the rest of the entry. The
+drop is silent by default, which is the silent loss the
+[no-op default](#valuewriterobject) was rejected for. Here it is a deliberate,
+documented outcome for one sink rather than an accident of a missing impl, and
+`ObjectFieldPolicy::drop_field_and_warn()` on `OtelSinkBuilder` makes it
+visible with a rate-limited warning. The drop does not go through
+`ValueWriter::error()`: JSON and EMF fail the whole entry on any field's
+validation error, and an object field on OTel is expected, not invalid, so it
+must never fail the entry.
+
+_\* NOTE: OTel defines
 [Complex Attributes](https://opentelemetry.io/blog/2025/complex-attribute-types/),
-but
+which
 [opentelemetry-sdk](https://docs.rs/opentelemetry_sdk/latest/opentelemetry_sdk/)
-has not been updated to reflect that yet._
+does not support. Supporting them would not change this row: a complex attribute
+is still an attribute, so each distinct value still creates a separate
+timeseries. A better fit would be
+[exemplars](https://opentelemetry.io/docs/specs/otel/metrics/data-model/#exemplars),
+which attach sampled context to a data point without creating a new timeseries,
+but `opentelemetry-sdk` does not populate them yet. Even
+then, exemplar attributes have no map type, so an object would still be
+JSON-encoded unless the SDK also adopts complex attributes._
 
 ## Naming
 

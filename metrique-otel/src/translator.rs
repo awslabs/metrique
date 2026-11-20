@@ -6,14 +6,15 @@ use std::cell::RefCell;
 
 use metrique_writer_core::{
     EntryConfig, MetricFlags, Observation, Unit, ValidationError,
+    descriptor::FieldShape,
     entry::EntryWriter,
-    value::{Distribution, Value, ValueWriter},
+    value::{Distribution, ObjectValue, Value, ValueWriter, write_values_as_string},
 };
 use opentelemetry::KeyValue;
 
 use crate::{
+    ObjectPolicyInner, OtelSinkInner,
     flags::{InstrumentKind, OtelOptions},
-    metrics::InstrumentCache,
 };
 
 /// A pending metric observation captured during `Entry::write`, replayed
@@ -98,48 +99,43 @@ thread_local! {
 /// back to a stack-local arena if the thread-local is unavailable
 /// (re-entrant append from inside `Entry::write`, or thread shutdown).
 pub(crate) fn append_with_pool(
-    cache: &InstrumentCache,
-    scope: &'static str,
+    sink: &OtelSinkInner,
     entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     let mut ran = false;
     let _ = BUFS.try_with(|cell| {
         if let Ok(mut bufs) = cell.try_borrow_mut() {
-            run(cache, scope, &mut bufs, entry);
+            run(sink, &mut bufs, entry);
             ran = true;
         }
     });
     if !ran {
         let mut local = WriterBufs::new();
-        run(cache, scope, &mut local, entry);
+        run(sink, &mut local, entry);
     }
 }
 
 fn run(
-    cache: &InstrumentCache,
-    scope: &'static str,
+    sink: &OtelSinkInner,
     bufs: &mut WriterBufs,
     entry: &(impl metrique_writer_core::Entry + ?Sized),
 ) {
     bufs.reset();
-    let mut writer = OtelEntryWriter { cache, scope, bufs };
+    let mut writer = OtelEntryWriter { sink, bufs };
     entry.write(&mut writer);
     writer.finish();
 }
 
 pub(crate) struct OtelEntryWriter<'a> {
-    pub(crate) cache: &'a InstrumentCache,
-    /// OTel `InstrumentationScope` name, derived once per entry type at
-    /// [`OtelSink::append`] time from `std::any::type_name::<E>()`.
-    ///
-    /// [`OtelSink::append`]: crate::OtelSink
-    pub(crate) scope: &'static str,
+    /// The sink's shared state: instrument cache, scope, object field policy, and warning limit.
+    sink: &'a OtelSinkInner,
     bufs: &'a mut WriterBufs,
 }
 
 impl<'a> OtelEntryWriter<'a> {
     fn finish(self) {
-        let OtelEntryWriter { cache, scope, bufs } = self;
+        let OtelEntryWriter { sink, bufs } = self;
+        let cache = &sink.instruments;
         // Pop metrics in reverse insertion order; OTel doesn't care about
         // record ordering inside an export window, and popping lets us
         // return each slot to the pool without holding a second borrow.
@@ -162,7 +158,7 @@ impl<'a> OtelEntryWriter<'a> {
                 &bufs.scratch
             };
             cache.record(
-                scope,
+                sink.scope,
                 &m.name,
                 m.kind,
                 m.observations.drain(..),
@@ -192,6 +188,28 @@ impl<'a, 'b> EntryWriter<'a> for OtelEntryWriter<'b> {
 pub(crate) struct OtelValueWriter<'a, 'b> {
     pub(crate) parent: &'a mut OtelEntryWriter<'b>,
     pub(crate) name: Cow<'a, str>,
+}
+
+impl OtelValueWriter<'_, '_> {
+    /// Drops an object-valued field under the sink's
+    /// [`ObjectFieldPolicy`](crate::ObjectFieldPolicy), which documents why objects are never
+    /// attached. The field is never reported through `error()`.
+    fn drop_object_field(self) {
+        let sink = self.parent.sink;
+        match sink.object_field_policy.0 {
+            ObjectPolicyInner::DropField => {}
+            ObjectPolicyInner::DropFieldAndWarn => {
+                if sink.object_field_warnings.try_acquire() {
+                    tracing::warn!(
+                        field = %self.name,
+                        scope = %sink.scope,
+                        "metrique-otel: dropped an object-valued field; as an attribute it \
+                         would create a separate timeseries for each distinct value"
+                    )
+                }
+            }
+        }
+    }
 }
 
 impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
@@ -246,7 +264,16 @@ impl<'a, 'b> ValueWriter for OtelValueWriter<'a, 'b> {
     }
 
     fn values<'c, V: Value + 'c>(self, values: impl IntoIterator<Item = &'c V>) {
+        // A list whose element shape is declared `Object` (possibly inside `Optional`/`List`) is
+        // an object field, so it is dropped without writing its elements.
+        if matches!(V::SHAPE.leaf_shape(), FieldShape::Object) {
+            return self.drop_object_field();
+        }
         // No OTel list instrument, so a list becomes one joined entry attribute.
-        metrique_writer_core::value::write_values_as_string(self, values)
+        write_values_as_string(self, values)
+    }
+
+    fn object<O: ObjectValue + ?Sized>(self, _object: &O) {
+        self.drop_object_field();
     }
 }
