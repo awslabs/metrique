@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.34](https://github.com/awslabs/metrique/compare/metrique-v0.1.33...metrique-v0.1.34) - 2026-11-20
+
 ### Added
 
 - *(metrique)* Ergonomic timing helpers (#399): `Stopwatch::time(|| ..)`, `Stopwatch::time_async(fut)` and `Stopwatch::add_duration(duration)` add the time a block took to a `Stopwatch` field; `fut.timed().await` (via `TimedFutureExt`) and `Timed::blocking(|| ..)` return a `Timed<T>` whose `split_time_to(&mut Option<Timer>)`, `record_to(&mut Stopwatch)` or `into_parts()` park the frozen duration in a metric field and hand back the output; `Timer::from_duration` builds an already-stopped `Timer`. `timed_with_timesource` / `Timed::blocking_with_timesource` use an explicit `TimeSource`, and `Timed<Result<_, _>>` can route the duration by outcome with `split_time_to_if_ok`, `split_time_to_result` and `record_to_if_ok`.
@@ -26,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - *(metrique-otel)* A value written through `ValueWriter::object` (such as a `format = AsObject` field), or a list of them, is not attached to the entry's metrics as an attribute. OTel records each distinct set of attributes as a separate timeseries, so an object attribute would create a new timeseries per distinct value on every metric in the entry. The field is dropped and the rest of the entry is recorded; the sink does not report object fields as validation errors. The drop is silent by default (`ObjectFieldPolicy::drop_field()`); `OtelSinkBuilder::with_object_field_policy(ObjectFieldPolicy::drop_field_and_warn())` adds a `warn` naming the field and the sink's scope, rate-limited to one per minute per sink (clones of a sink share the limit). A list is dropped when its declared element shape is an object (an empty list included); scalar lists attach as one comma-joined attribute. Upgrade `metrique-otel` together with `metrique-writer-core`: earlier `metrique-otel` releases accept the new core version but have no object handling, so they attach object fields as JSON-string attributes.
 
+- Install MetricsPool for Cancellation ([#410](https://github.com/awslabs/metrique/pull/410))
+
+- *(writer-core)* add nested object-value primitive and AsObject for… ([#409](https://github.com/awslabs/metrique/pull/409))
+
 ### Changed
 
 - *(metrique-writer-core)* Under `--cfg metrique_require_explicit_impls`, `ValueWriter::object` has no default, so every `ValueWriter` impl must choose how it handles objects. Normal builds keep the JSON-string default. The cfg applies to the whole build graph, dependencies included, so before enabling it upgrade all metrique crates together and make sure any third-party `ValueWriter` impls define `object`.
@@ -33,7 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- *(metrique-aggregation)* `ExponentialAggregationStrategy` and `AtomicExponentialAggregationStrategy` (the defaults for `Histogram` and `SharedHistogram`) now skip NaN observations, as `SortAndMerge` does. A NaN was recorded in the top bucket and emitted as a value of about 1.77e16.
+- *(metrique-aggregation)* `ExponentialAggregationStrategy` and `AtomicExponentialAggregationStrategy` (the defaults for `Histogram` and `SharedHistogram`) now skip NaN observations, as `SortAndMerge` does. A NaN was recorded in the top bucket and emitted as a value of about 1.77e16. ([#433](https://github.com/awslabs/metrique/pull/433))
+- make dev-dependencies that point back up the graph path-only ([#407](https://github.com/awslabs/metrique/pull/407))
+
+### Other
+
+- check dependency floors and raise floors that were too low ([#406](https://github.com/awslabs/metrique/pull/406))
+- Preserve entry metadata in dimension wrappers ([#403](https://github.com/awslabs/metrique/pull/403))
 
 ## [0.1.33](https://github.com/awslabs/metrique/compare/metrique-v0.1.32...metrique-v0.1.33) - 2026-10-01
 
